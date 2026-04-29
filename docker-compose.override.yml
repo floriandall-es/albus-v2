@@ -1,0 +1,29 @@
+# Auto-loaded dev overrides. Compose merges this on top of docker-compose.yml
+# whenever you run `docker compose up` from the repo root. The production
+# deploy uses infra/docker-compose.prod.yml explicitly and is unaffected.
+services:
+  api:
+    # The base file already mounts ./api:/app and the api Dockerfile runs
+    # uvicorn — but uvicorn doesn't reload by default. Override the command.
+    command: ["bash", "-lc", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app"]
+    environment:
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3030}
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.dev
+    command: ["npm", "run", "dev"]
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      NEXT_PUBLIC_ROOT_DOMAIN: localhost
+      # Next.js dev needs CHOKIDAR_USEPOLLING for some bind-mount setups
+      # (notably Docker Desktop on macOS where inotify events don't bubble).
+      CHOKIDAR_USEPOLLING: "1"
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - ./web:/app
+      # Anonymous volume preserves the container's installed node_modules
+      # rather than letting the host's (possibly empty) node_modules shadow it.
+      - /app/node_modules
+      - /app/.next

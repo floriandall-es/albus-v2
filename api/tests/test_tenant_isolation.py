@@ -11,7 +11,10 @@ from sqlalchemy import create_engine, text
 from app.core.config import settings
 
 # RLS-probing engine MUST be the non-superuser role; superusers bypass RLS.
-APP_ENGINE_URL = settings.runtime_db_url
+def _app_engine_url() -> str:
+    # Re-read settings each call so the test-database session fixture
+    # (which mutates settings before any test runs) takes effect.
+    return settings.runtime_db_url
 
 
 def _seed(conn, tenant_id: int, label: str):
@@ -29,7 +32,7 @@ def _seed(conn, tenant_id: int, label: str):
 
 
 def test_rls_blocks_cross_tenant_reads():
-    engine = create_engine(APP_ENGINE_URL, future=True)
+    engine = create_engine(_app_engine_url(), future=True)
     suffix = uuid.uuid4().hex[:6]
 
     # Seed (no RLS context — superuser-like role inside the tx still sees,
@@ -108,7 +111,7 @@ def test_me_endpoint_isolates_memberships(client):
     b_token = r.json()["access_token"]
 
     # Seed departments for B directly
-    engine = create_engine(APP_ENGINE_URL, future=True)
+    engine = create_engine(_app_engine_url(), future=True)
     with engine.begin() as conn:
         b_id = conn.execute(
             text("SELECT id FROM tenants WHERE slug = :s"), {"s": f"bb-{suffix}"}

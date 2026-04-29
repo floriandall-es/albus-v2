@@ -1,0 +1,15 @@
+FROM node:20-alpine
+WORKDIR /app
+
+# Install deps separately so we cache the layer; the override mount won't
+# clobber /app/node_modules thanks to the anonymous volume in compose.
+COPY package.json package-lock.json* ./
+RUN npm install --no-audit --no-fund
+
+# Source is bind-mounted by docker-compose.override.yml in dev. The COPY
+# below is just so the image is runnable on its own (e.g. `docker run`).
+COPY . .
+
+ENV NEXT_TELEMETRY_DISABLED=1
+EXPOSE 3000
+CMD ["npm", "run", "dev"]
