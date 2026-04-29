@@ -23,7 +23,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-me-in-prod-this-is-only-for-dev}
       JWT_ALGORITHM: HS256
       JWT_TTL_MINUTES: 60
-      CORS_ORIGINS: http://localhost:3000
+      CORS_ORIGINS: http://localhost:3030,http://localhost:3000
     depends_on:
       db:
         condition: service_healthy
