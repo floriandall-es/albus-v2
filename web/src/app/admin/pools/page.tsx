@@ -90,6 +90,10 @@ export default function PoolsPage() {
 
 function PoolDialog({ initial, onClose }: { initial: Pool | null; onClose: () => void }) {
   const qc = useQueryClient();
+  // Tracks the pool we're working with. Starts as `initial` (null for create);
+  // after a successful create we promote it to the returned Pool so the same
+  // dialog flips into "edit" mode and the member picker appears.
+  const [currentPool, setCurrentPool] = useState<Pool | null>(initial);
   const [name, setName] = useState(initial?.name ?? "");
   const [mode, setMode] = useState<MembershipMode>(initial?.membership_mode ?? "dedicated");
   const [equityIndep, setEquityIndep] = useState<boolean>(
@@ -97,38 +101,40 @@ function PoolDialog({ initial, onClose }: { initial: Pool | null; onClose: () =>
   );
 
   const detail = useQuery({
-    queryKey: ["pool", initial?.id],
-    queryFn: () => (initial ? api.getPool(initial.id) : Promise.resolve(null)),
-    enabled: !!initial,
+    queryKey: ["pool", currentPool?.id],
+    queryFn: () => (currentPool ? api.getPool(currentPool.id) : Promise.resolve(null)),
+    enabled: !!currentPool,
   });
   const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
 
   const save = useMutation({
     mutationFn: () => {
       const body = { name, membership_mode: mode, equity_independent: equityIndep };
-      return initial
-        ? api.updatePool(initial.id, body)
+      return currentPool
+        ? api.updatePool(currentPool.id, body)
         : api.createPool(body);
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["pools"] });
-      onClose();
+      // Promote the freshly-created (or just-saved) pool into edit mode so the
+      // user can immediately add members without re-opening the dialog.
+      setCurrentPool(data);
     },
   });
 
   const addMember = useMutation({
     mutationFn: (person_id: number) =>
-      api.addPoolMember(initial!.id, person_id),
+      api.addPoolMember(currentPool!.id, person_id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["pool", initial?.id] });
+      qc.invalidateQueries({ queryKey: ["pool", currentPool?.id] });
       qc.invalidateQueries({ queryKey: ["pools"] });
     },
   });
   const removeMember = useMutation({
     mutationFn: (person_id: number) =>
-      api.removePoolMember(initial!.id, person_id),
+      api.removePoolMember(currentPool!.id, person_id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["pool", initial?.id] });
+      qc.invalidateQueries({ queryKey: ["pool", currentPool?.id] });
       qc.invalidateQueries({ queryKey: ["pools"] });
     },
   });
@@ -138,8 +144,10 @@ function PoolDialog({ initial, onClose }: { initial: Pool | null; onClose: () =>
     (t) => !memberIds.has(t.person_id),
   );
 
+  const isNew = !currentPool;
+
   return (
-    <Modal open={true} onClose={onClose} title={initial ? "Editar pool" : "Nuevo pool"}>
+    <Modal open={true} onClose={onClose} title={isNew ? "Nuevo pool" : "Editar pool"}>
       <form
         className="space-y-3"
         onSubmit={(e) => {
@@ -163,17 +171,24 @@ function PoolDialog({ initial, onClose }: { initial: Pool | null; onClose: () =>
           Equity independiente
         </label>
         {save.isError && <ErrorText>{(save.error as Error).message}</ErrorText>}
+        {!isNew && save.isSuccess && (
+          <p className="text-xs text-green-700">Cambios guardados.</p>
+        )}
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={onClose}>
-            Cancelar
+            {isNew ? "Cancelar" : "Cerrar"}
           </Button>
           <Button type="submit" disabled={save.isPending}>
-            {save.isPending ? "Guardando…" : "Guardar"}
+            {save.isPending
+              ? "Guardando…"
+              : isNew
+                ? "Crear"
+                : "Guardar"}
           </Button>
         </div>
       </form>
 
-      {initial && (
+      {currentPool && (
         <div className="mt-6 border-t pt-4">
           <h3 className="text-sm font-semibold mb-2">Miembros</h3>
           {detail.isLoading && <p className="text-xs text-gray-500">Cargando…</p>}
