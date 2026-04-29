@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type Category, type TeamMember } from "@/lib/api";
+import { api, type Category, type Invitation, type TeamMember } from "@/lib/api";
 import {
   Button,
   Card,
@@ -71,6 +71,8 @@ export default function TeamPage() {
         </Card>
       )}
 
+      <PendingInvitations />
+
       {editing && (
         <TeamEditDialog
           member={editing}
@@ -79,6 +81,73 @@ export default function TeamPage() {
         />
       )}
     </>
+  );
+}
+
+function PendingInvitations() {
+  const qc = useQueryClient();
+  const invs = useQuery({ queryKey: ["invitations"], queryFn: api.listInvitations });
+  const revoke = useMutation({
+    mutationFn: (id: number) => api.revokeInvitation(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["invitations"] }),
+  });
+  const apiBase =
+    typeof window === "undefined"
+      ? ""
+      : window.location.origin.replace(/:\d+$/, ":3030");
+
+  if (!invs.data || invs.data.length === 0) return null;
+  return (
+    <section className="mt-8">
+      <h2 className="text-lg font-semibold mb-3">Invitaciones pendientes</h2>
+      <Card>
+        <table className="w-full text-sm">
+          <thead className="border-b bg-gray-50 text-left text-gray-600">
+            <tr>
+              <th className="px-4 py-2 font-medium">Email</th>
+              <th className="px-4 py-2 font-medium">Nombre</th>
+              <th className="px-4 py-2 font-medium">Caduca</th>
+              <th className="px-4 py-2 font-medium text-right">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {invs.data.map((inv: Invitation) => (
+              <tr key={inv.id} className="border-b last:border-b-0">
+                <td className="px-4 py-2">{inv.email}</td>
+                <td className="px-4 py-2">{inv.person_name}</td>
+                <td className="px-4 py-2 text-gray-600">
+                  {new Date(inv.expires_at).toLocaleDateString()}
+                </td>
+                <td className="px-4 py-2 text-right space-x-2">
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      // Re-issuing not supported here; admin can re-invite from /invite
+                      alert(
+                        "Para re-enviar el enlace, vuelve a invitar al mismo email; la invitación anterior se revocará automáticamente.",
+                      );
+                    }}
+                  >
+                    Re-enviar
+                  </Button>
+                  <Button
+                    variant="danger"
+                    onClick={() => revoke.mutate(inv.id)}
+                    disabled={revoke.isPending}
+                  >
+                    Revocar
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+      <p className="mt-2 text-xs text-gray-500">
+        El envío de email aún no está habilitado. Comparte el enlace generado al crear
+        la invitación con la persona correspondiente.
+      </p>
+    </section>
   );
 }
 

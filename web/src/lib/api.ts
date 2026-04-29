@@ -25,6 +25,7 @@ export type Tenant = {
   country: string | null;
   locale: string | null;
   created_at: string;
+  onboarding_completed_at: string | null;
 };
 
 export type Person = {
@@ -310,13 +311,56 @@ export const api = {
     email: string;
     person_name: string;
     category_id?: number | null;
-    roles: string[];
-    fte_pct: number;
-    does_guardias: boolean;
-    guardia_types: string[];
+    roles?: string[];
   }) =>
-    request<{ membership: Membership; person_id: number; email: string; created_person: boolean }>(
-      "/api/team/invite",
+    request<InviteCreateResponse>("/api/team/invite", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  // Invitations (admin)
+  listInvitations: () => request<Invitation[]>("/api/invitations"),
+  revokeInvitation: (id: number) =>
+    request<Invitation>(`/api/invitations/${id}/revoke`, { method: "POST" }),
+
+  // Public invite acceptance (no auth)
+  getInvitationByToken: (token: string) =>
+    request<InvitationPublicView>(`/api/invitations/by-token/${encodeURIComponent(token)}`),
+  acceptInvitation: (token: string, body: { password: string; person_name?: string }) =>
+    request<AuthResponse>(
+      `/api/invitations/by-token/${encodeURIComponent(token)}/accept`,
       { method: "POST", body: JSON.stringify(body) },
     ),
+
+  // Onboarding
+  completeOnboarding: () =>
+    request<Tenant>("/api/onboarding/complete", { method: "POST" }),
+};
+
+export type InviteCreateResponse = {
+  invitation_id: number;
+  email: string;
+  expires_at: string;
+  accept_url: string;
+};
+
+export type Invitation = {
+  id: number;
+  tenant_id: number;
+  email: string;
+  person_name: string;
+  expires_at: string;
+  accepted_at: string | null;
+  revoked_at: string | null;
+  category_id: number | null;
+  roles: string[];
+  created_at: string;
+};
+
+export type InvitationPublicView = {
+  tenant_name: string;
+  tenant_slug: string;
+  email: string;
+  person_name: string;
+  expires_at: string;
 };

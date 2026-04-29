@@ -15,6 +15,7 @@ from app.models import (  # noqa: F401
     pool,
     skill,
     slot,
+    invitation,
 )
 
 config = context.config

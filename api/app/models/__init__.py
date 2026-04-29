@@ -12,6 +12,7 @@ from app.models.slot import (
     SlotTeamRoleCategory,
     SlotSkillRequired,
 )
+from app.models.invitation import Invitation
 
 __all__ = [
     "Tenant",
@@ -28,4 +29,5 @@ __all__ = [
     "SlotTeamRole",
     "SlotTeamRoleCategory",
     "SlotSkillRequired",
+    "Invitation",
 ]

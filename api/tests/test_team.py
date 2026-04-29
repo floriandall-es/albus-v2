@@ -65,7 +65,11 @@ def test_team_update_invalid_fte_422(auth_client):
     assert r.status_code == 422
 
 
-def test_team_invite_creates_person_and_membership(auth_client):
+def test_team_invite_creates_invitation(auth_client):
+    """The new invite contract: returns invitation_id + accept_url, does NOT
+    create a Person until accept. Full accept-flow is covered in
+    test_invitations.py — here we just sanity-check the response shape and
+    confirm /team count is unchanged until acceptance."""
     client, headers, _info = auth_client
     r = client.post(
         "/api/categories", headers=headers, json={"name": "Residente"}
@@ -80,46 +84,18 @@ def test_team_invite_creates_person_and_membership(auth_client):
             "person_name": "Carlos Nuevo",
             "category_id": cat_id,
             "roles": ["doctor"],
-            "fte_pct": 100,
         },
     )
     assert r.status_code == 201, r.text
     body = r.json()
-    assert body["created_person"] is True
     assert body["email"] == "carlos@example.com"
-    assert body["membership"]["category_id"] == cat_id
-    assert body["membership"]["roles"] == ["doctor"]
+    assert "invitation_id" in body
+    assert body["accept_url"].startswith("http")
+    assert "/invite/" in body["accept_url"]
 
-    # Now /team should show 2 rows
+    # /team unchanged — invitation pending
     r = client.get("/api/team", headers=headers)
-    assert len(r.json()) == 2
-
-
-def test_team_invite_reuses_existing_person(auth_client, second_tenant):
-    """If a Person with that email already exists (e.g. they admin another tenant),
-    invite reuses them and just adds a Membership."""
-    client, headers_a, _info_a = auth_client
-    _headers_b, info_b = second_tenant
-
-    # Bob is the admin of tenant B; invite him to tenant A
-    bob_email = f"bob-?@x"  # we don't actually know it; query through /team on B
-    # Easier: use a brand-new person via invite, then invite same email to other
-    r = client.post(
-        "/api/team/invite",
-        headers=headers_a,
-        json={"email": "shared@example.com", "person_name": "Shared User"},
-    )
-    assert r.status_code == 201
-    body1 = r.json()
-    assert body1["created_person"] is True
-
-    # Inviting same email to same tenant -> 409
-    r = client.post(
-        "/api/team/invite",
-        headers=headers_a,
-        json={"email": "shared@example.com", "person_name": "Shared User"},
-    )
-    assert r.status_code == 409
+    assert len(r.json()) == 1
 
 
 def test_team_tenant_isolation(auth_client, second_tenant):

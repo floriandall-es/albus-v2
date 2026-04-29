@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_ttl_minutes: int = 60
     cors_origins: str = "http://localhost:3000"
+    # Used to build invite accept URLs. In dev this points at the web service
+    # exposed on the host; in prod it's the public domain. The link is
+    # currently surfaced via API logs + UI since email is stubbed.
+    public_base_url: str = "http://localhost:3030"
 
     @property
     def cors_origins_list(self) -> list[str]:

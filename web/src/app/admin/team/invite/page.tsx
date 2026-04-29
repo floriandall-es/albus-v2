@@ -2,7 +2,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, type InviteCreateResponse } from "@/lib/api";
 import {
   Button,
   ErrorText,
@@ -19,9 +19,9 @@ export default function InvitePage() {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [categoryId, setCategoryId] = useState<number | "">("");
-  const [ftePct, setFtePct] = useState("100");
-  const [rolesText, setRolesText] = useState("");
-  const [doesGuardias, setDoesGuardias] = useState(true);
+  const [rolesText, setRolesText] = useState("member");
+  const [created, setCreated] = useState<InviteCreateResponse | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const invite = useMutation({
     mutationFn: () =>
@@ -33,23 +33,66 @@ export default function InvitePage() {
           .split(",")
           .map((r) => r.trim())
           .filter(Boolean),
-        fte_pct: Number(ftePct),
-        does_guardias: doesGuardias,
-        guardia_types: [],
       }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["team"] });
-      router.push("/admin/team");
+    onSuccess: (data) => {
+      setCreated(data);
+      qc.invalidateQueries({ queryKey: ["invitations"] });
     },
   });
+
+  function copyLink() {
+    if (!created) return;
+    navigator.clipboard.writeText(created.accept_url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  if (created) {
+    return (
+      <div className="max-w-xl">
+        <PageHeader title="Invitación creada" />
+        <div className="rounded-md border bg-amber-50 p-4 text-sm text-amber-900 mb-4">
+          El envío automático de correo aún no está habilitado. <strong>Comparte el
+          siguiente enlace</strong> con la persona invitada para que establezca su
+          contraseña y se una al equipo. El enlace caduca en 7 días.
+        </div>
+        <div className="rounded-md border bg-white p-4 mb-4">
+          <div className="text-xs text-gray-500 mb-1">Email</div>
+          <div className="text-sm mb-3">{created.email}</div>
+          <div className="text-xs text-gray-500 mb-1">Enlace de aceptación</div>
+          <div className="flex gap-2 items-center">
+            <code className="flex-1 break-all rounded bg-gray-100 px-2 py-1 text-xs">
+              {created.accept_url}
+            </code>
+            <Button onClick={copyLink}>{copied ? "Copiado" : "Copiar"}</Button>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setCreated(null);
+              setEmail("");
+              setName("");
+              setCategoryId("");
+              setRolesText("member");
+            }}
+          >
+            Invitar a otro
+          </Button>
+          <Button onClick={() => router.push("/admin/team")}>Volver al equipo</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-md">
       <PageHeader title="Invitar miembro" />
       <p className="text-sm text-gray-600 mb-4">
-        En este sprint no se envía email automáticamente. Se crea la persona y la
-        membresía; comparte la contraseña inicial fuera de la plataforma o pídele que
-        use el flujo de recuperación más adelante.
+        Se generará un enlace de invitación que la persona usará para crear su contraseña.
+        El envío automático por email se añadirá en una próxima versión.
       </p>
       <form
         className="space-y-3"
@@ -69,27 +112,18 @@ export default function InvitePage() {
             ...(cats.data ?? []).map((c) => ({ value: c.id, label: c.name })),
           ]}
         />
-        <TextField label="FTE %" type="number" value={ftePct} onChange={setFtePct} />
         <TextField
-          label="Roles (separados por coma, ej: doctor, admin)"
+          label="Roles (separados por coma, ej: member, doctor, admin)"
           value={rolesText}
           onChange={setRolesText}
         />
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={doesGuardias}
-            onChange={(e) => setDoesGuardias(e.target.checked)}
-          />
-          Hace guardias
-        </label>
         {invite.isError && <ErrorText>{(invite.error as Error).message}</ErrorText>}
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={() => router.push("/admin/team")}>
             Cancelar
           </Button>
           <Button type="submit" disabled={invite.isPending}>
-            {invite.isPending ? "Invitando…" : "Crear miembro"}
+            {invite.isPending ? "Generando…" : "Generar enlace"}
           </Button>
         </div>
       </form>

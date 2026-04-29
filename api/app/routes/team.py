@@ -1,18 +1,8 @@
-import secrets
+from fastapi import APIRouter, Depends, HTTPException
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.exc import IntegrityError
-
-from app.core.security import hash_password
 from app.models import Category, Membership, Person
 from app.routes.deps import RequestContext, get_current_context
-from app.schemas.auth import MembershipOut
-from app.schemas.team import (
-    TeamInviteRequest,
-    TeamInviteResponse,
-    TeamMemberOut,
-    TeamMemberUpdate,
-)
+from app.schemas.team import TeamMemberOut, TeamMemberUpdate
 
 router = APIRouter()
 
@@ -81,65 +71,5 @@ def update_team_member(
     return _serialize(m, person, cat)
 
 
-@router.post(
-    "/team/invite", response_model=TeamInviteResponse, status_code=status.HTTP_201_CREATED
-)
-def invite_team_member(
-    payload: TeamInviteRequest, ctx: RequestContext = Depends(get_current_context)
-) -> TeamInviteResponse:
-    if payload.category_id is not None:
-        cat = ctx.db.get(Category, payload.category_id)
-        if not cat or cat.tenant_id != ctx.tenant.id:
-            raise HTTPException(status_code=422, detail="Unknown category_id")
-
-    email = payload.email.lower()
-    person = ctx.db.query(Person).filter(Person.email == email).first()
-    created_person = False
-    if not person:
-        # No invite email is sent in this sprint — set an unusable random
-        # password. The admin will reset it for the user out-of-band, or a
-        # later sprint adds a self-serve reset flow.
-        random_pw = secrets.token_urlsafe(32)
-        person = Person(
-            email=email,
-            hashed_password=hash_password(random_pw),
-            name=payload.person_name,
-        )
-        ctx.db.add(person)
-        ctx.db.flush()
-        created_person = True
-
-    existing = (
-        ctx.db.query(Membership)
-        .filter(
-            Membership.tenant_id == ctx.tenant.id, Membership.person_id == person.id
-        )
-        .first()
-    )
-    if existing:
-        raise HTTPException(
-            status_code=409, detail="Person is already a member of this tenant"
-        )
-
-    m = Membership(
-        tenant_id=ctx.tenant.id,
-        person_id=person.id,
-        roles=payload.roles,
-        category_id=payload.category_id,
-        fte_pct=payload.fte_pct,
-        does_guardias=payload.does_guardias,
-        guardia_types=payload.guardia_types,
-    )
-    ctx.db.add(m)
-    try:
-        ctx.db.flush()
-    except IntegrityError:
-        ctx.db.rollback()
-        raise HTTPException(status_code=409, detail="Conflict creating membership")
-    ctx.db.refresh(m)
-    return TeamInviteResponse(
-        membership=MembershipOut.model_validate(m),
-        person_id=person.id,
-        email=person.email,
-        created_person=created_person,
-    )
+# NOTE: POST /api/team/invite was moved to app.routes.invitations in Sprint 3
+# and now creates a token-based Invitation rather than a Person directly.
