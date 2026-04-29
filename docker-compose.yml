@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-albus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-albus_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-albus}
+    ports:
+      - "55432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-albus} -d ${POSTGRES_DB:-albus}"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: ./api
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-albus}:${POSTGRES_PASSWORD:-albus_dev_password}@db:5432/${POSTGRES_DB:-albus}
+      APP_DATABASE_URL: postgresql+psycopg2://albus_app:albus_app_password@db:5432/${POSTGRES_DB:-albus}
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-prod-this-is-only-for-dev}
+      JWT_ALGORITHM: HS256
+      JWT_TTL_MINUTES: 60
+      CORS_ORIGINS: http://localhost:3000
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api:/app
+
+  web:
+    build: ./web
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      NEXT_PUBLIC_ROOT_DOMAIN: localhost
+    depends_on:
+      - api
+    ports:
+      - "3030:3000"
+
+volumes:
+  db_data:

@@ -1,0 +1,28 @@
+# albus-v2 production reverse proxy.
+# Replace __DOMAIN__ with your registered domain (e.g. albus.example.com)
+# before first deploy. See infra/RUNBOOK.md for the full replacement list.
+
+# API on api.__DOMAIN__
+api.__DOMAIN__ {
+    encode zstd gzip
+    reverse_proxy api:8000
+}
+
+# Tenant subdomains: any *.__DOMAIN__ EXCEPT api goes to the web frontend.
+# Caddy's on-demand TLS could be enabled here for unbounded tenants;
+# for now we use auto-TLS for the wildcard (configure DNS challenge if needed).
+*.__DOMAIN__ {
+    @notapi {
+        not host api.__DOMAIN__
+    }
+    handle @notapi {
+        encode zstd gzip
+        reverse_proxy web:3000
+    }
+}
+
+# Apex serves the marketing/login page (same web app).
+__DOMAIN__ {
+    encode zstd gzip
+    reverse_proxy web:3000
+}
