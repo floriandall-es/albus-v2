@@ -13,6 +13,7 @@ import {
   Select,
   TextField,
 } from "@/components/admin/ui";
+import { BulkInviteModal } from "@/components/admin/BulkInviteModal";
 
 const GUARDIA_TYPES = ["12h", "24h", "presencial", "localizada"];
 
@@ -20,17 +21,24 @@ export default function TeamPage() {
   const list = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
   const cats = useQuery({ queryKey: ["categories"], queryFn: api.listCategories });
   const [editing, setEditing] = useState<TeamMember | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   return (
     <>
       <PageHeader
         title="Equipo"
         action={
-          <Link href="/admin/team/invite">
-            <Button>Invitar miembro</Button>
-          </Link>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => setBulkOpen(true)}>
+              Importar CSV
+            </Button>
+            <Link href="/admin/team/invite">
+              <Button>Invitar miembro</Button>
+            </Link>
+          </div>
         }
       />
+      <BulkInviteModal open={bulkOpen} onClose={() => setBulkOpen(false)} />
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
       {list.isError && <ErrorText>{(list.error as Error).message}</ErrorText>}
       {list.data && list.data.length === 0 && <Empty>Aún no hay miembros.</Empty>}

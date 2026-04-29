@@ -335,6 +335,82 @@ export const api = {
   // Onboarding
   completeOnboarding: () =>
     request<Tenant>("/api/onboarding/complete", { method: "POST" }),
+
+  // Bulk invite (CSV)
+  bulkInvitePreview: async (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const token = getToken();
+    const headers = new Headers();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    const res = await fetch(`${API_BASE_URL}/api/team/invite/bulk/preview`, {
+      method: "POST",
+      body: fd,
+      headers,
+    });
+    if (!res.ok) {
+      let detail: unknown = res.statusText;
+      try {
+        const body = await res.json();
+        detail = body.detail ?? detail;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    }
+    return (await res.json()) as BulkPreviewResponse;
+  },
+  bulkInviteCommit: (rows: BulkCommitRow[]) =>
+    request<BulkCommitResponse>("/api/team/invite/bulk/commit", {
+      method: "POST",
+      body: JSON.stringify({ rows }),
+    }),
+};
+
+export type BulkPreviewRow = {
+  row_number: number;
+  email: string;
+  name: string;
+  category: string | null;
+  category_id: number | null;
+  status: "ok" | "warning" | "error";
+  error: string | null;
+  warning: string | null;
+};
+
+export type BulkPreviewResponse = {
+  rows: BulkPreviewRow[];
+  summary: {
+    total_rows: number;
+    valid_rows: number;
+    warning_rows: number;
+    error_rows: number;
+  };
+};
+
+export type BulkCommitRow = {
+  row_number: number;
+  email: string;
+  name: string;
+  category_id: number | null;
+};
+
+export type BulkCommitResultRow = {
+  row_number: number;
+  email: string;
+  status: "ok" | "skipped" | "error";
+  reason: string | null;
+  invitation: {
+    id: number;
+    email: string;
+    expires_at: string;
+    accept_url: string;
+  } | null;
+};
+
+export type BulkCommitResponse = {
+  results: BulkCommitResultRow[];
+  summary: { committed: number; skipped: number; errored: number };
 };
 
 export type InviteCreateResponse = {

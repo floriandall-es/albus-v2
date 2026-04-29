@@ -10,8 +10,7 @@ we'd switch to a public-id lookup column + bcrypt verify on the secret.
 from __future__ import annotations
 
 import logging
-import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
@@ -35,10 +34,10 @@ from app.schemas.invitation import (
     InviteCreateRequest,
     InviteCreateResponse,
 )
+from app.services.invitations import create_invitation as create_invitation_service
+from app.services.invitations import is_already_member
 
 logger = logging.getLogger("app.invitations")
-
-INVITE_TTL = timedelta(days=7)
 
 
 def _require_admin(ctx: RequestContext) -> None:
@@ -70,72 +69,38 @@ def create_invitation(
 
     email = payload.email.lower()
 
-    # If the person already exists AND is already a member of this tenant,
-    # reject — there's nothing to invite to.
-    existing_person = ctx.db.query(Person).filter(Person.email == email).first()
-    if existing_person:
-        already_member = (
-            ctx.db.query(Membership)
-            .filter(
-                Membership.tenant_id == ctx.tenant.id,
-                Membership.person_id == existing_person.id,
-            )
-            .first()
+    if is_already_member(ctx.db, ctx.tenant.id, email):
+        raise HTTPException(
+            status_code=409, detail="Person is already a member of this tenant"
         )
-        if already_member:
-            raise HTTPException(
-                status_code=409, detail="Person is already a member of this tenant"
-            )
 
-    # Revoke any existing live invitation for the same (tenant, email).
-    now = datetime.now(timezone.utc)
-    live_existing = (
-        ctx.db.query(Invitation)
-        .filter(
-            Invitation.tenant_id == ctx.tenant.id,
-            Invitation.email == email,
-            Invitation.accepted_at.is_(None),
-            Invitation.revoked_at.is_(None),
-        )
-        .all()
-    )
-    for inv in live_existing:
-        inv.revoked_at = now
-
-    raw_token = secrets.token_urlsafe(32)
-    token_hash = pwd_context.hash(raw_token)
-
-    inv = Invitation(
-        tenant_id=ctx.tenant.id,
-        email=email,
-        person_name=payload.person_name,
-        token_hash=token_hash,
-        expires_at=now + INVITE_TTL,
-        created_by_membership_id=ctx.membership.id,
-        category_id=payload.category_id,
-        roles=payload.roles or ["member"],
-    )
-    ctx.db.add(inv)
     try:
-        ctx.db.flush()
+        created = create_invitation_service(
+            ctx.db,
+            tenant_id=ctx.tenant.id,
+            email=email,
+            person_name=payload.person_name,
+            created_by_membership_id=ctx.membership.id,
+            category_id=payload.category_id,
+            roles=payload.roles or ["member"],
+        )
     except IntegrityError:
         ctx.db.rollback()
         raise HTTPException(status_code=409, detail="Conflict creating invitation")
 
-    accept_url = f"{settings.public_base_url.rstrip('/')}/invite/{raw_token}"
     logger.warning(
         "Invitation created tenant=%s email=%s id=%s accept_url=%s",
         ctx.tenant.slug,
         email,
-        inv.id,
-        accept_url,
+        created.invitation.id,
+        created.accept_url,
     )
 
     return InviteCreateResponse(
-        invitation_id=inv.id,
-        email=inv.email,
-        expires_at=inv.expires_at,
-        accept_url=accept_url,
+        invitation_id=created.invitation.id,
+        email=created.invitation.email,
+        expires_at=created.invitation.expires_at,
+        accept_url=created.accept_url,
     )
 
 

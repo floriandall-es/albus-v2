@@ -13,6 +13,7 @@ from app.routes import (
     skills,
     slots,
     team,
+    team_bulk,
 )
 
 app = FastAPI(title="albus-v2 API", version="0.1.0")
@@ -34,5 +35,6 @@ app.include_router(pools.router, prefix="/api")
 app.include_router(skills.router, prefix="/api")
 app.include_router(slots.router, prefix="/api")
 app.include_router(team.router, prefix="/api")
+app.include_router(team_bulk.router, prefix="/api")
 app.include_router(invitations.router, prefix="/api")
 app.include_router(onboarding.router, prefix="/api")

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Button, ErrorText, Select, TextField } from "@/components/admin/ui";
+import { BulkInviteModal } from "@/components/admin/BulkInviteModal";
 import { StepNav } from "../_nav";
 
 type GeneratedInvite = {
@@ -20,6 +21,7 @@ export default function TeamStep() {
   const [name, setName] = useState("");
   const [categoryId, setCategoryId] = useState<number | "">("");
   const [generated, setGenerated] = useState<GeneratedInvite[]>([]);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   const invite = useMutation({
     mutationFn: () =>
@@ -47,11 +49,17 @@ export default function TeamStep() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-2">Paso 5 — Equipo</h2>
+      <div className="flex items-start justify-between mb-2">
+        <h2 className="text-2xl font-semibold">Paso 5 — Equipo</h2>
+        <Button variant="secondary" onClick={() => setBulkOpen(true)}>
+          Importar CSV
+        </Button>
+      </div>
       <p className="text-sm text-gray-600 mb-6">
         Invita a tus compañeros. Por ahora se genera un enlace que tendrás que
         compartir manualmente (el envío automático por email llegará pronto).
       </p>
+      <BulkInviteModal open={bulkOpen} onClose={() => setBulkOpen(false)} />
 
       <form
         className="space-y-3 mb-4"
