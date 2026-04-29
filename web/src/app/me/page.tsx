@@ -13,6 +13,15 @@ export default function MePage() {
 
   const q = useQuery({ queryKey: ["me"], queryFn: api.me, retry: false });
 
+  // Redirect un-onboarded admins straight into the wizard.
+  useEffect(() => {
+    if (!q.data) return;
+    const isAdmin = q.data.memberships.some((m) => m.roles.includes("admin"));
+    if (isAdmin && q.data.current_tenant.onboarding_completed_at === null) {
+      router.replace("/onboarding");
+    }
+  }, [q.data, router]);
+
   if (q.isLoading) return <Centered>Loading…</Centered>;
   if (q.isError) {
     return (

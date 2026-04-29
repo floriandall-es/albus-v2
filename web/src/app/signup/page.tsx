@@ -26,7 +26,8 @@ export default function SignupPage() {
         password,
       });
       setToken(res.access_token);
-      router.push("/me");
+      // Fresh tenant — always go straight into the onboarding wizard.
+      router.push("/onboarding");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Signup failed");
     } finally {

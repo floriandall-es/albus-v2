@@ -8,6 +8,7 @@ from app.routes import (
     health,
     invitations,
     me,
+    onboarding,
     pools,
     skills,
     slots,
@@ -34,3 +35,4 @@ app.include_router(skills.router, prefix="/api")
 app.include_router(slots.router, prefix="/api")
 app.include_router(team.router, prefix="/api")
 app.include_router(invitations.router, prefix="/api")
+app.include_router(onboarding.router, prefix="/api")

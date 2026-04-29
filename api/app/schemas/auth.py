@@ -25,6 +25,7 @@ class TenantOut(BaseModel):
     country: str | None = None
     locale: str | None = None
     created_at: datetime
+    onboarding_completed_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
