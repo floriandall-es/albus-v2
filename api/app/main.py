@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
-from app.routes import auth, health, me
+from app.routes import auth, categories, health, me, pools, skills, slots, team
 
 app = FastAPI(title="albus-v2 API", version="0.1.0")
 
@@ -18,3 +18,8 @@ app.add_middleware(
 app.include_router(health.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(me.router, prefix="/api")
+app.include_router(categories.router, prefix="/api")
+app.include_router(pools.router, prefix="/api")
+app.include_router(skills.router, prefix="/api")
+app.include_router(slots.router, prefix="/api")
+app.include_router(team.router, prefix="/api")

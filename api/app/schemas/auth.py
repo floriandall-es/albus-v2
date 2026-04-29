@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel, EmailStr, Field
@@ -44,6 +44,12 @@ class MembershipOut(BaseModel):
     tenant_id: int
     person_id: int
     roles: list[str]
+    category_id: int | None = None
+    fte_pct: int = 100
+    does_guardias: bool = True
+    guardia_types: list[str] = Field(default_factory=list)
+    exemption_type: str | None = None
+    exemption_until: date | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -78,9 +84,17 @@ class AuthResponse(BaseModel):
     memberships: list[MembershipOut]
 
 
+class TenantSummaryCounts(BaseModel):
+    categories: int
+    pools: int
+    skills: int
+    slots: int
+
+
 class MeResponse(BaseModel):
     person: PersonOut
     current_tenant: TenantOut
     memberships: list[MembershipOut]
     role_types: list[RoleTypeOut]
     departments: list[DepartmentOut]
+    counts: TenantSummaryCounts
