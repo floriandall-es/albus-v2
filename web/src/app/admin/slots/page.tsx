@@ -132,6 +132,11 @@ function SlotDialog({
   const [startTime, setStartTime] = useState(initial?.start_time?.slice(0, 5) ?? "");
   const [endTime, setEndTime] = useState(initial?.end_time?.slice(0, 5) ?? "");
   const [days, setDays] = useState<DaysApplied>(initial?.days_applied ?? "all");
+  // Bitmap convention: bit 0 = Monday … bit 6 = Sunday. Mirrors the
+  // back-end check in the scheduler (Slot.custom_days_bitmap).
+  const [customDaysBitmap, setCustomDaysBitmap] = useState<number>(
+    initial?.custom_days_bitmap ?? 0,
+  );
   const [mode, setMode] = useState<StaffingMode>(initial?.staffing_mode ?? "single");
   const [headcount, setHeadcount] = useState<string>(
     initial?.headcount?.toString() ?? "1",
@@ -159,6 +164,9 @@ function SlotDialog({
       const body: SlotInput = {
         name,
         days_applied: days,
+        // Only send the bitmap when in custom mode; otherwise null
+        // (the back-end validates this and ignores it for non-custom days).
+        custom_days_bitmap: days === "custom" ? customDaysBitmap : null,
         staffing_mode: mode,
         headcount: Number(headcount),
         post_slot_rest: postRest,
@@ -237,6 +245,9 @@ function SlotDialog({
           onChange={(v) => v && setDays(v as DaysApplied)}
           options={DAYS.map((d) => ({ value: d.value, label: d.label }))}
         />
+        {days === "custom" && (
+          <CustomDaysPicker value={customDaysBitmap} onChange={setCustomDaysBitmap} />
+        )}
         <Select
           label="Modo de plantilla"
           value={mode}
@@ -373,5 +384,65 @@ function SlotDialog({
         </div>
       </form>
     </Modal>
+  );
+}
+
+// Bitmap day picker for slots with `days_applied = "custom"`. The bitmap
+// uses bit 0 = Monday … bit 6 = Sunday, matching how the scheduler reads
+// Slot.custom_days_bitmap on the server side.
+const DAY_LABELS: { bit: number; short: string; long: string }[] = [
+  { bit: 0, short: "L", long: "Lunes" },
+  { bit: 1, short: "M", long: "Martes" },
+  { bit: 2, short: "X", long: "Miércoles" },
+  { bit: 3, short: "J", long: "Jueves" },
+  { bit: 4, short: "V", long: "Viernes" },
+  { bit: 5, short: "S", long: "Sábado" },
+  { bit: 6, short: "D", long: "Domingo" },
+];
+
+function CustomDaysPicker({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const toggle = (bit: number) => {
+    const mask = 1 << bit;
+    onChange(value & mask ? value & ~mask : value | mask);
+  };
+  return (
+    <div className="space-y-1">
+      <label className="block text-sm font-medium text-gray-700">
+        Días concretos
+      </label>
+      <div className="flex flex-wrap gap-1">
+        {DAY_LABELS.map(({ bit, short, long }) => {
+          const active = (value & (1 << bit)) !== 0;
+          return (
+            <button
+              key={bit}
+              type="button"
+              onClick={() => toggle(bit)}
+              aria-pressed={active}
+              title={long}
+              className={
+                "flex h-9 w-9 items-center justify-center rounded-md border text-sm font-medium transition " +
+                (active
+                  ? "border-blue-600 bg-blue-600 text-white"
+                  : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50")
+              }
+            >
+              {short}
+            </button>
+          );
+        })}
+      </div>
+      {value === 0 && (
+        <p className="text-xs text-amber-700">
+          Selecciona al menos un día para activar la regla personalizada.
+        </p>
+      )}
+    </div>
   );
 }
