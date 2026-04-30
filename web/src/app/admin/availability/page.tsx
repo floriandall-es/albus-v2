@@ -30,6 +30,17 @@ const TYPE_LABEL: Record<string, string> = Object.fromEntries(
   TYPES.map((t) => [t.value, t.label]),
 );
 
+const STATUS_BADGE: Record<string, string> = {
+  pending: "bg-amber-100 text-amber-800",
+  approved: "bg-green-100 text-green-800",
+  denied: "bg-red-100 text-red-800",
+};
+const STATUS_LABEL: Record<string, string> = {
+  pending: "Pendiente",
+  approved: "Aprobada",
+  denied: "Denegada",
+};
+
 export default function AvailabilityPage() {
   const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
   const [personId, setPersonId] = useState<number | "">("");
@@ -62,6 +73,7 @@ export default function AvailabilityPage() {
           <Button onClick={() => setAdding(true)}>Añadir bloqueo</Button>
         }
       />
+      <PendingApprovals />
       <div className="mb-4 grid grid-cols-3 gap-3">
         <Select
           label="Persona"
@@ -91,6 +103,7 @@ export default function AvailabilityPage() {
                 <th className="px-4 py-2 font-medium">Desde</th>
                 <th className="px-4 py-2 font-medium">Hasta</th>
                 <th className="px-4 py-2 font-medium">Tipo</th>
+                <th className="px-4 py-2 font-medium">Estado</th>
                 <th className="px-4 py-2 font-medium">Notas</th>
                 <th className="px-4 py-2 font-medium text-right">Acciones</th>
               </tr>
@@ -103,6 +116,15 @@ export default function AvailabilityPage() {
                   <td className="px-4 py-2">{b.end_date}</td>
                   <td className="px-4 py-2">
                     {TYPE_LABEL[b.block_type] ?? b.block_type}
+                  </td>
+                  <td className="px-4 py-2">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                        STATUS_BADGE[b.status] ?? "bg-gray-100 text-gray-700"
+                      }`}
+                    >
+                      {STATUS_LABEL[b.status] ?? b.status}
+                    </span>
                   </td>
                   <td className="px-4 py-2 text-gray-600">{b.notes ?? "—"}</td>
                   <td className="px-4 py-2 text-right space-x-2">
@@ -224,5 +246,80 @@ function BlockModal({
         </div>
       </form>
     </Modal>
+  );
+}
+
+function PendingApprovals() {
+  const qc = useQueryClient();
+  const pending = useQuery({
+    queryKey: ["availability", "pending"],
+    queryFn: () => api.listAvailabilityBlocks({ status: "pending" }),
+  });
+  const approve = useMutation({
+    mutationFn: (id: number) => api.approveAvailabilityBlock(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["availability"] }),
+  });
+  const deny = useMutation({
+    mutationFn: ({ id, notes }: { id: number; notes: string }) =>
+      api.denyAvailabilityBlock(id, notes || null),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["availability"] }),
+  });
+
+  if (pending.isLoading) return null;
+  const rows = pending.data ?? [];
+  if (rows.length === 0) return null;
+  return (
+    <section className="mb-6">
+      <h2 className="mb-2 text-lg font-semibold">Pendientes de aprobar</h2>
+      <Card>
+        <table className="w-full text-sm">
+          <thead className="border-b bg-gray-50 text-left text-gray-600">
+            <tr>
+              <th className="px-4 py-2 font-medium">Persona</th>
+              <th className="px-4 py-2 font-medium">Desde</th>
+              <th className="px-4 py-2 font-medium">Hasta</th>
+              <th className="px-4 py-2 font-medium">Tipo</th>
+              <th className="px-4 py-2 font-medium">Notas</th>
+              <th className="px-4 py-2 font-medium text-right">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((b: AvailabilityBlock) => (
+              <tr key={b.id} className="border-b last:border-b-0">
+                <td className="px-4 py-2">{b.person_name}</td>
+                <td className="px-4 py-2">{b.start_date}</td>
+                <td className="px-4 py-2">{b.end_date}</td>
+                <td className="px-4 py-2">
+                  {TYPE_LABEL[b.block_type] ?? b.block_type}
+                </td>
+                <td className="px-4 py-2 text-gray-600">{b.notes ?? "—"}</td>
+                <td className="px-4 py-2 text-right space-x-2">
+                  <Button
+                    onClick={() => approve.mutate(b.id)}
+                    disabled={approve.isPending}
+                  >
+                    Aprobar
+                  </Button>
+                  <Button
+                    variant="danger"
+                    onClick={() => {
+                      const notes = window.prompt(
+                        "Motivo del rechazo (opcional):",
+                        "",
+                      );
+                      if (notes === null) return; // cancelled
+                      deny.mutate({ id: b.id, notes });
+                    }}
+                    disabled={deny.isPending}
+                  >
+                    Denegar
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </section>
   );
 }

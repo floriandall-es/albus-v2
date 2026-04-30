@@ -1,12 +1,13 @@
-"""Availability block admin endpoints.
+"""Availability block admin endpoints + self-service request workflow.
 
-Sprint 4: admin-managed only. Self-service requests + approvals are out of
-scope and land in Sprint 5+.
+Sprint 4 introduced the table as admin-managed only. Sprint 5 part C
+adds the request → approve/deny lifecycle. The solver only respects
+status='approved' rows; pending and denied are scheduling-no-ops.
 """
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -16,6 +17,9 @@ from app.schemas.availability import (
     AvailabilityBlockCreate,
     AvailabilityBlockOut,
     AvailabilityBlockUpdate,
+    AvailabilityDenyRequest,
+    AvailabilityRequestCreate,
+    BlockStatus,
 )
 
 router = APIRouter()
@@ -55,8 +59,18 @@ def _serialize(block: AvailabilityBlock, person: Person) -> AvailabilityBlockOut
         end_date=block.end_date,
         block_type=block.block_type,  # type: ignore[arg-type]
         notes=block.notes,
+        status=block.status,  # type: ignore[arg-type]
+        requested_by_membership_id=block.requested_by_membership_id,
+        reviewed_by_membership_id=block.reviewed_by_membership_id,
+        reviewed_at=block.reviewed_at,
+        review_notes=block.review_notes,
         created_at=block.created_at,
     )
+
+
+# ---------------------------------------------------------------------------
+# Admin endpoints (existing API, extended with status)
+# ---------------------------------------------------------------------------
 
 
 @router.get("/availability-blocks", response_model=list[AvailabilityBlockOut])
@@ -64,6 +78,7 @@ def list_blocks(
     person_id: int | None = None,
     from_: date | None = Query(default=None, alias="from"),
     to: date | None = None,
+    status_: BlockStatus | None = Query(default=None, alias="status"),
     ctx: RequestContext = Depends(get_current_context),
 ) -> list[AvailabilityBlockOut]:
     _require_admin(ctx)
@@ -76,6 +91,8 @@ def list_blocks(
         q = q.filter(AvailabilityBlock.end_date >= from_)
     if to is not None:
         q = q.filter(AvailabilityBlock.start_date <= to)
+    if status_ is not None:
+        q = q.filter(AvailabilityBlock.status == status_)
     rows = q.order_by(AvailabilityBlock.start_date.desc()).all()
     return [_serialize(b, p) for b, p in rows]
 
@@ -98,6 +115,10 @@ def create_block(
         end_date=payload.end_date,
         block_type=payload.block_type,
         notes=payload.notes,
+        # Admin-direct creation defaults to approved.
+        status="approved",
+        reviewed_by_membership_id=ctx.membership.id,
+        reviewed_at=datetime.now(timezone.utc),
     )
     ctx.db.add(block)
     ctx.db.flush()
@@ -143,5 +164,117 @@ def delete_block(
     block = ctx.db.get(AvailabilityBlock, block_id)
     if not block or block.tenant_id != ctx.tenant.id:
         raise HTTPException(status_code=404, detail="Block not found")
+    ctx.db.delete(block)
+    ctx.db.flush()
+
+
+@router.post(
+    "/availability-blocks/{block_id}/approve",
+    response_model=AvailabilityBlockOut,
+)
+def approve_block(
+    block_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> AvailabilityBlockOut:
+    _require_admin(ctx)
+    block = ctx.db.get(AvailabilityBlock, block_id)
+    if not block or block.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=404, detail="Block not found")
+    block.status = "approved"
+    block.reviewed_by_membership_id = ctx.membership.id
+    block.reviewed_at = datetime.now(timezone.utc)
+    ctx.db.flush()
+    person = ctx.db.get(Person, block.person_id)
+    assert person is not None
+    return _serialize(block, person)
+
+
+@router.post(
+    "/availability-blocks/{block_id}/deny",
+    response_model=AvailabilityBlockOut,
+)
+def deny_block(
+    block_id: int,
+    payload: AvailabilityDenyRequest,
+    ctx: RequestContext = Depends(get_current_context),
+) -> AvailabilityBlockOut:
+    _require_admin(ctx)
+    block = ctx.db.get(AvailabilityBlock, block_id)
+    if not block or block.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=404, detail="Block not found")
+    block.status = "denied"
+    block.reviewed_by_membership_id = ctx.membership.id
+    block.reviewed_at = datetime.now(timezone.utc)
+    block.review_notes = payload.review_notes
+    ctx.db.flush()
+    person = ctx.db.get(Person, block.person_id)
+    assert person is not None
+    return _serialize(block, person)
+
+
+# ---------------------------------------------------------------------------
+# Self-service endpoints (any authenticated member of the tenant)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/me/availability-requests",
+    response_model=AvailabilityBlockOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_my_request(
+    payload: AvailabilityRequestCreate,
+    ctx: RequestContext = Depends(get_current_context),
+) -> AvailabilityBlockOut:
+    block = AvailabilityBlock(
+        tenant_id=ctx.tenant.id,
+        person_id=ctx.person.id,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        block_type=payload.block_type,
+        notes=payload.notes,
+        status="pending",
+        requested_by_membership_id=ctx.membership.id,
+    )
+    ctx.db.add(block)
+    ctx.db.flush()
+    return _serialize(block, ctx.person)
+
+
+@router.get(
+    "/me/availability-requests",
+    response_model=list[AvailabilityBlockOut],
+)
+def list_my_requests(
+    ctx: RequestContext = Depends(get_current_context),
+) -> list[AvailabilityBlockOut]:
+    rows = (
+        ctx.db.query(AvailabilityBlock, Person)
+        .join(Person, Person.id == AvailabilityBlock.person_id)
+        .filter(AvailabilityBlock.person_id == ctx.person.id)
+        .order_by(AvailabilityBlock.created_at.desc())
+        .all()
+    )
+    return [_serialize(b, p) for b, p in rows]
+
+
+@router.delete(
+    "/me/availability-requests/{block_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+def delete_my_request(
+    block_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> None:
+    block = ctx.db.get(AvailabilityBlock, block_id)
+    # 404 (not 403) on cross-person/cross-status to avoid leaking existence.
+    if (
+        not block
+        or block.tenant_id != ctx.tenant.id
+        or block.person_id != ctx.person.id
+        or block.status != "pending"
+    ):
+        raise HTTPException(status_code=404, detail="Request not found")
     ctx.db.delete(block)
     ctx.db.flush()

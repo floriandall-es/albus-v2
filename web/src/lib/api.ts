@@ -50,6 +50,8 @@ export type AvailabilityBlockType =
   | "personal"
   | "other";
 
+export type AvailabilityBlockStatus = "pending" | "approved" | "denied";
+
 export type AvailabilityBlock = {
   id: number;
   tenant_id: number;
@@ -59,6 +61,11 @@ export type AvailabilityBlock = {
   end_date: string;
   block_type: AvailabilityBlockType;
   notes: string | null;
+  status: AvailabilityBlockStatus;
+  requested_by_membership_id: number | null;
+  reviewed_by_membership_id: number | null;
+  reviewed_at: string | null;
+  review_notes: string | null;
   created_at: string;
 };
 
@@ -444,16 +451,42 @@ export const api = {
     person_id?: number;
     from?: string;
     to?: string;
+    status?: AvailabilityBlockStatus;
   }) => {
     const qs = new URLSearchParams();
     if (params?.person_id !== undefined) qs.set("person_id", String(params.person_id));
     if (params?.from) qs.set("from", params.from);
     if (params?.to) qs.set("to", params.to);
+    if (params?.status) qs.set("status", params.status);
     const s = qs.toString();
     return request<AvailabilityBlock[]>(
       `/api/availability-blocks${s ? `?${s}` : ""}`,
     );
   },
+  approveAvailabilityBlock: (id: number) =>
+    request<AvailabilityBlock>(`/api/availability-blocks/${id}/approve`, {
+      method: "POST",
+    }),
+  denyAvailabilityBlock: (id: number, review_notes?: string | null) =>
+    request<AvailabilityBlock>(`/api/availability-blocks/${id}/deny`, {
+      method: "POST",
+      body: JSON.stringify({ review_notes: review_notes ?? null }),
+    }),
+  // Self-service availability requests (any member of tenant)
+  listMyAvailabilityRequests: () =>
+    request<AvailabilityBlock[]>("/api/me/availability-requests"),
+  createMyAvailabilityRequest: (body: {
+    start_date: string;
+    end_date: string;
+    block_type: AvailabilityBlockType;
+    notes?: string | null;
+  }) =>
+    request<AvailabilityBlock>("/api/me/availability-requests", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteMyAvailabilityRequest: (id: number) =>
+    request<void>(`/api/me/availability-requests/${id}`, { method: "DELETE" }),
   createAvailabilityBlock: (body: {
     person_id: number;
     start_date: string;
