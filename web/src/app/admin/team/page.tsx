@@ -15,7 +15,11 @@ import {
 } from "@/components/admin/ui";
 import { BulkInviteModal } from "@/components/admin/BulkInviteModal";
 
-const GUARDIA_TYPES = ["12h", "24h", "presencial", "localizada"];
+const DEFAULT_GUARDIA_TYPES = [
+  "presencial_24h",
+  "localizada",
+  "findes_festivos",
+];
 
 export default function TeamPage() {
   const list = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
@@ -208,6 +212,17 @@ function TeamEditDialog({
   onClose: () => void;
 }) {
   const qc = useQueryClient();
+  // Collect guardia_type values currently used on slots so they show up
+  // as suggested chips. Tenants can add anything else free-form.
+  const slotsQ = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
+  const slotTypes = (slotsQ.data ?? [])
+    .map((s) => s.guardia_type)
+    .filter((t): t is string => !!t);
+  const baseTypes = Array.from(
+    new Set([...DEFAULT_GUARDIA_TYPES, ...slotTypes, ...member.guardia_types]),
+  );
+  const [extraType, setExtraType] = useState("");
+  const [knownTypes, setKnownTypes] = useState<string[]>(baseTypes);
   const [categoryId, setCategoryId] = useState<number | "">(member.category_id ?? "");
   const [ftePct, setFtePct] = useState<string>(member.fte_pct.toString());
   const [doesGuardias, setDoesGuardias] = useState<boolean>(member.does_guardias);
@@ -279,7 +294,7 @@ function TeamEditDialog({
           <div>
             <span className="text-sm font-medium">Tipos de guardia</span>
             <div className="mt-1 flex flex-wrap gap-2">
-              {GUARDIA_TYPES.map((t) => (
+              {knownTypes.map((t) => (
                 <label key={t} className="flex items-center gap-1 text-sm">
                   <input
                     type="checkbox"
@@ -289,6 +304,32 @@ function TeamEditDialog({
                   {t}
                 </label>
               ))}
+            </div>
+            <div className="mt-2 flex gap-2">
+              <input
+                type="text"
+                placeholder="Nuevo tipo (p. ej. 24h_traumatologia)"
+                value={extraType}
+                onChange={(e) => setExtraType(e.target.value)}
+                className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm"
+              />
+              <button
+                type="button"
+                className="text-sm underline"
+                onClick={() => {
+                  const t = extraType.trim();
+                  if (!t) return;
+                  if (!knownTypes.includes(t)) {
+                    setKnownTypes((cur) => [...cur, t]);
+                  }
+                  if (!guardiaTypes.includes(t)) {
+                    setGuardiaTypes((cur) => [...cur, t]);
+                  }
+                  setExtraType("");
+                }}
+              >
+                Añadir
+              </button>
             </div>
           </div>
         )}

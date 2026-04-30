@@ -91,6 +91,7 @@ def _serialize(ctx: RequestContext, slot: Slot) -> SlotOut:
         headcount=slot.headcount,
         post_slot_rest=slot.post_slot_rest,
         counts_for_equity=slot.counts_for_equity,
+        guardia_type=slot.guardia_type,
         crosses_midnight=slot.crosses_midnight,
         team_roles=[
             SlotTeamRoleOut(
@@ -192,6 +193,7 @@ def create_slot(
         headcount=payload.headcount,
         post_slot_rest=payload.post_slot_rest,
         counts_for_equity=payload.counts_for_equity,
+        guardia_type=(payload.guardia_type or None),
     )
     ctx.db.add(obj)
     try:
@@ -219,6 +221,10 @@ def update_slot(
     data = payload.model_dump(exclude_unset=True)
     team_roles = data.pop("team_roles", None)
     skills_required = data.pop("skills_required", None)
+    if "guardia_type" in data:
+        # Normalize empty string to None so the column reflects "not a guardia".
+        gt = data["guardia_type"]
+        data["guardia_type"] = gt or None
     for k, v in data.items():
         setattr(obj, k, v)
     try:

@@ -201,6 +201,7 @@ export type Slot = {
   headcount: number;
   post_slot_rest: boolean;
   counts_for_equity: boolean;
+  guardia_type: string | null;
   crosses_midnight: boolean;
   team_roles: SlotTeamRole[];
   skills_required: SlotSkillRequired[];
@@ -219,6 +220,7 @@ export type SlotInput = {
   headcount: number;
   post_slot_rest: boolean;
   counts_for_equity: boolean;
+  guardia_type?: string | null;
   team_roles: { role_label: string; headcount: number; category_ids: number[] }[];
   skills_required: { skill_id: number; strength: SkillStrength }[];
 };

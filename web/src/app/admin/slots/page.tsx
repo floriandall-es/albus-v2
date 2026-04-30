@@ -145,6 +145,9 @@ function SlotDialog({
   const [countsEquity, setCountsEquity] = useState<boolean>(
     initial?.counts_for_equity ?? true,
   );
+  const [guardiaType, setGuardiaType] = useState<string>(
+    initial?.guardia_type ?? "",
+  );
   const [teamRoles, setTeamRoles] = useState<TeamRoleDraft[]>(
     initial?.team_roles.map((r) => ({
       role_label: r.role_label,
@@ -171,6 +174,7 @@ function SlotDialog({
         headcount: Number(headcount),
         post_slot_rest: postRest,
         counts_for_equity: countsEquity,
+        guardia_type: guardiaType.trim() || null,
         start_time: startTime ? `${startTime}:00` : null,
         end_time: endTime ? `${endTime}:00` : null,
         team_roles: mode === "team_composition" ? teamRoles : [],
@@ -271,6 +275,19 @@ function SlotDialog({
           />
           Cuenta para equidad
         </label>
+        <div>
+          <TextField
+            label="Tipo de guardia"
+            value={guardiaType}
+            onChange={setGuardiaType}
+            placeholder="presencial_24h"
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            Si este slot es una guardia, indica el tipo (presencial_24h,
+            localizada, findes_festivos…). Solo personas con ese tipo en su
+            perfil podrán cubrirlo. Déjalo vacío si no es una guardia.
+          </p>
+        </div>
 
         {mode === "team_composition" && (
           <div className="border-t pt-3">
