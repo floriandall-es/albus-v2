@@ -12,6 +12,7 @@ from app.routes import (
     me,
     onboarding,
     pools,
+    schedules,
     skills,
     slots,
     team,
@@ -42,3 +43,4 @@ app.include_router(invitations.router, prefix="/api")
 app.include_router(onboarding.router, prefix="/api")
 app.include_router(holidays.router, prefix="/api")
 app.include_router(availability.router, prefix="/api")
+app.include_router(schedules.router, prefix="/api")
