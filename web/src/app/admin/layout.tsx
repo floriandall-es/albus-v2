@@ -11,6 +11,9 @@ const NAV: { href: string; label: string }[] = [
   { href: "/admin/pools", label: "Pools" },
   { href: "/admin/skills", label: "Skills" },
   { href: "/admin/slots", label: "Slots" },
+  { href: "/admin/holidays", label: "Festivos" },
+  { href: "/admin/availability", label: "Bloqueos" },
+  { href: "/admin/schedule", label: "Planificación" },
 ];
 
 export default function AdminLayout({ children }: { children: ReactNode }) {

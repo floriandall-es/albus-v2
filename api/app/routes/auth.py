@@ -22,7 +22,11 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthRespons
     if existing_person:
         raise HTTPException(status_code=409, detail="Email already registered")
 
-    tenant = Tenant(slug=payload.tenant_slug, name=payload.tenant_name)
+    tenant = Tenant(
+        slug=payload.tenant_slug,
+        name=payload.tenant_name,
+        country_code=payload.country_code,
+    )
     db.add(tenant)
     db.flush()
 

@@ -24,8 +24,71 @@ export type Tenant = {
   name: string;
   country: string | null;
   locale: string | null;
+  country_code: string | null;
+  region_code: string | null;
   created_at: string;
   onboarding_completed_at: string | null;
+};
+
+export type HolidaySource = "national" | "regional" | "custom";
+export type Holiday = {
+  id: number;
+  tenant_id: number;
+  date: string;
+  name: string;
+  source: HolidaySource;
+  region_code: string | null;
+  created_at: string;
+};
+
+export type HolidayImportResult = { inserted: number; skipped: number };
+
+export type AvailabilityBlockType =
+  | "vacation"
+  | "sick"
+  | "training"
+  | "personal"
+  | "other";
+
+export type AvailabilityBlock = {
+  id: number;
+  tenant_id: number;
+  person_id: number;
+  person_name: string;
+  start_date: string;
+  end_date: string;
+  block_type: AvailabilityBlockType;
+  notes: string | null;
+  created_at: string;
+};
+
+export type ScheduleStatus = "draft" | "published" | "archived";
+
+export type Schedule = {
+  id: number;
+  tenant_id: number;
+  period: string;
+  status: ScheduleStatus;
+  generated_at: string | null;
+  published_at: string | null;
+  created_at: string;
+};
+
+export type Assignment = {
+  id: number;
+  schedule_id: number;
+  slot_id: number;
+  slot_name: string;
+  date: string;
+  person_id: number | null;
+  person_name: string | null;
+  team_role_id: number | null;
+  team_role_label: string | null;
+  notes: string | null;
+};
+
+export type ScheduleDetail = Schedule & {
+  assignments: Assignment[];
 };
 
 export type Person = {
@@ -339,6 +402,91 @@ export const api = {
   // Onboarding
   completeOnboarding: () =>
     request<Tenant>("/api/onboarding/complete", { method: "POST" }),
+
+  // Tenant defaults
+  updateTenantDefaults: (body: {
+    country_code?: string | null;
+    region_code?: string | null;
+  }) => request<Tenant>("/api/tenants/me", { method: "PATCH", body: JSON.stringify(body) }),
+
+  // Holidays
+  listHolidays: (year?: number) =>
+    request<Holiday[]>(`/api/holidays${year ? `?year=${year}` : ""}`),
+  createHoliday: (body: {
+    date: string;
+    name: string;
+    source?: HolidaySource;
+    region_code?: string | null;
+  }) => request<Holiday>("/api/holidays", { method: "POST", body: JSON.stringify(body) }),
+  deleteHoliday: (id: number) =>
+    request<void>(`/api/holidays/${id}`, { method: "DELETE" }),
+  importHolidays: (body: {
+    country_code: string;
+    region_code?: string | null;
+    year: number;
+  }) =>
+    request<HolidayImportResult>("/api/holidays/import", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  // Availability blocks
+  listAvailabilityBlocks: (params?: {
+    person_id?: number;
+    from?: string;
+    to?: string;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.person_id !== undefined) qs.set("person_id", String(params.person_id));
+    if (params?.from) qs.set("from", params.from);
+    if (params?.to) qs.set("to", params.to);
+    const s = qs.toString();
+    return request<AvailabilityBlock[]>(
+      `/api/availability-blocks${s ? `?${s}` : ""}`,
+    );
+  },
+  createAvailabilityBlock: (body: {
+    person_id: number;
+    start_date: string;
+    end_date: string;
+    block_type: AvailabilityBlockType;
+    notes?: string | null;
+  }) =>
+    request<AvailabilityBlock>("/api/availability-blocks", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateAvailabilityBlock: (
+    id: number,
+    body: {
+      person_id: number;
+      start_date: string;
+      end_date: string;
+      block_type: AvailabilityBlockType;
+      notes?: string | null;
+    },
+  ) =>
+    request<AvailabilityBlock>(`/api/availability-blocks/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteAvailabilityBlock: (id: number) =>
+    request<void>(`/api/availability-blocks/${id}`, { method: "DELETE" }),
+
+  // Schedules
+  listSchedules: () => request<Schedule[]>("/api/schedules"),
+  getSchedule: (id: number) => request<ScheduleDetail>(`/api/schedules/${id}`),
+  generateSchedule: (period: string) =>
+    request<ScheduleDetail>("/api/schedules/generate", {
+      method: "POST",
+      body: JSON.stringify({ period }),
+    }),
+  publishSchedule: (id: number) =>
+    request<Schedule>(`/api/schedules/${id}/publish`, { method: "POST" }),
+  archiveSchedule: (id: number) =>
+    request<Schedule>(`/api/schedules/${id}/archive`, { method: "POST" }),
+  deleteSchedule: (id: number) =>
+    request<void>(`/api/schedules/${id}`, { method: "DELETE" }),
 
   // Bulk invite (CSV)
   bulkInvitePreview: async (file: File) => {

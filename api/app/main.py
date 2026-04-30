@@ -6,6 +6,7 @@ from app.routes import (
     auth,
     categories,
     health,
+    holidays,
     invitations,
     me,
     onboarding,
@@ -38,3 +39,4 @@ app.include_router(team.router, prefix="/api")
 app.include_router(team_bulk.router, prefix="/api")
 app.include_router(invitations.router, prefix="/api")
 app.include_router(onboarding.router, prefix="/api")
+app.include_router(holidays.router, prefix="/api")
