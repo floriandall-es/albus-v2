@@ -38,6 +38,7 @@ from app.models import (
     Holiday,
     Membership,
     PersonSkill,
+    PoolMembership,
     Schedule,
     Slot,
     SlotSkillRequired,
@@ -115,6 +116,13 @@ class _Context:
         for ps in db.query(PersonSkill).all():
             self.person_skills[ps.person_id].add(ps.skill_id)
 
+        # Pool memberships — for slot.pool_id eligibility filtering. When a
+        # slot is scoped to a pool only members of that pool are eligible;
+        # when slot.pool_id is None every active member is eligible.
+        self.pool_members: dict[int, set[int]] = defaultdict(set)
+        for pm in db.query(PoolMembership).all():
+            self.pool_members[pm.pool_id].add(pm.person_id)
+
         # Holidays in the period.
         days = _dates_in_month(period)
         self.holiday_dates: set[date] = {
@@ -148,10 +156,17 @@ class _Context:
         self, slot: Slot, d: date, category_filter: set[int] | None = None
     ) -> list[int]:
         """Return person_ids eligible for (slot, date), respecting blocks,
-        hard skills, and an optional category filter (for team_composition
-        roles)."""
+        hard skills, the slot's pool (if any), and an optional category
+        filter (for team_composition roles)."""
+        pool_filter: set[int] | None = (
+            self.pool_members.get(slot.pool_id, set())
+            if slot.pool_id is not None
+            else None
+        )
         out: list[int] = []
         for m in self.memberships:
+            if pool_filter is not None and m.person_id not in pool_filter:
+                continue
             if category_filter and (m.category_id not in category_filter):
                 continue
             if self.is_blocked(m.person_id, d):

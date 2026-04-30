@@ -290,3 +290,46 @@ def test_publish_locks_regeneration(auth_client, client):
         json={"period": "2026-05-01"},
     )
     assert r.status_code == 400
+
+
+def test_pool_filters_eligibility(auth_client, client):
+    """A slot scoped to a pool only assigns members of that pool, even if
+    other active members in the tenant could otherwise satisfy the slot's
+    skill / category requirements."""
+    _client, headers, _info = auth_client
+    pid_in = _onboard(client, headers, "in@example.com", "InPool")
+    _pid_out = _onboard(client, headers, "out@example.com", "OutOfPool")
+
+    # Create the pool and add only InPool to it.
+    r = client.post(
+        "/api/pools",
+        headers=headers,
+        json={
+            "name": "REA",
+            "membership_mode": "dedicated",
+            "equity_independent": True,
+        },
+    )
+    assert r.status_code == 201, r.text
+    pool_id = r.json()["id"]
+
+    r = client.post(
+        f"/api/pools/{pool_id}/members",
+        headers=headers,
+        json={"person_id": pid_in},
+    )
+    assert r.status_code in (200, 201), r.text
+
+    # Slot scoped to that pool — only InPool should be eligible.
+    _create_slot(client, headers, name="REA Guardia", pool_id=pool_id)
+
+    r = client.post(
+        "/api/schedules/generate",
+        headers=headers,
+        json={"period": "2026-05-01"},
+    )
+    body = r.json()
+    persons = {
+        a["person_id"] for a in body["assignments"] if a["person_id"] is not None
+    }
+    assert persons == {pid_in}
