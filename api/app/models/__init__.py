@@ -14,6 +14,7 @@ from app.models.slot import (
 )
 from app.models.invitation import Invitation
 from app.models.holiday import Holiday
+from app.models.availability_block import AvailabilityBlock
 
 __all__ = [
     "Tenant",
@@ -32,4 +33,5 @@ __all__ = [
     "SlotSkillRequired",
     "Invitation",
     "Holiday",
+    "AvailabilityBlock",
 ]

@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.routes import (
     auth,
+    availability,
     categories,
     health,
     holidays,
@@ -40,3 +41,4 @@ app.include_router(team_bulk.router, prefix="/api")
 app.include_router(invitations.router, prefix="/api")
 app.include_router(onboarding.router, prefix="/api")
 app.include_router(holidays.router, prefix="/api")
+app.include_router(availability.router, prefix="/api")
