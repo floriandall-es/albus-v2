@@ -1,9 +1,15 @@
 "use client";
 import { useParams, useRouter } from "next/navigation";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Assignment } from "@/lib/api";
-import { Button, Card, ErrorText, PageHeader } from "@/components/admin/ui";
+import {
+  Button,
+  Card,
+  ErrorText,
+  Modal,
+  PageHeader,
+} from "@/components/admin/ui";
 
 const STATUS_LABEL: Record<string, string> = {
   draft: "Borrador",
@@ -16,6 +22,7 @@ export default function ScheduleDetailPage() {
   const router = useRouter();
   const qc = useQueryClient();
   const id = Number(params.id);
+  const [editing, setEditing] = useState<Assignment | null>(null);
 
   const detail = useQuery({
     queryKey: ["schedule", id],
@@ -63,6 +70,7 @@ export default function ScheduleDetailPage() {
   }
 
   const s = detail.data;
+  const isEditable = s.status === "draft";
   return (
     <>
       <PageHeader
@@ -100,6 +108,11 @@ export default function ScheduleDetailPage() {
       />
       <p className="mb-4 text-sm text-gray-600">
         Estado: <span className="font-medium">{STATUS_LABEL[s.status]}</span>
+        {isEditable && (
+          <span className="ml-3 text-xs text-gray-500">
+            (haz clic en una celda para editarla)
+          </span>
+        )}
       </p>
 
       <div className="overflow-x-auto">
@@ -143,40 +156,47 @@ export default function ScheduleDetailPage() {
                   </td>
                   {dates.map((d) => {
                     const cell = row.cells[d] ?? [];
+                    const empty =
+                      cell.length === 0 || cell.every((a) => a.person_id === null);
                     return (
                       <td
                         key={d}
                         className={`align-top px-1 py-1 ${
-                          cell.length === 0 || cell.every((a) => a.person_id === null)
-                            ? "bg-red-50"
-                            : ""
+                          empty ? "bg-red-50" : ""
                         }`}
                       >
                         {cell.length === 0 ? (
                           <span className="text-[10px] text-gray-400">—</span>
                         ) : (
                           cell.map((a) => (
-                            <div
+                            <button
+                              type="button"
                               key={a.id}
-                              className={`leading-tight ${
+                              onClick={() => isEditable && setEditing(a)}
+                              disabled={!isEditable}
+                              className={`block w-full text-left leading-tight ${
                                 a.person_id === null ? "text-red-700" : ""
-                              }`}
+                              } ${isEditable ? "hover:bg-blue-50 rounded cursor-pointer" : "cursor-default"}`}
                               title={a.notes ?? ""}
                             >
-                              {a.person_id === null ? (
-                                "Sin cubrir"
-                              ) : (
-                                <>
-                                  {a.person_name}
-                                  {a.team_role_label && (
-                                    <span className="text-gray-500">
-                                      {" "}
-                                      · {a.team_role_label}
-                                    </span>
-                                  )}
-                                </>
-                              )}
-                            </div>
+                              <span className="inline-flex items-center gap-1">
+                                {a.locked_at && (
+                                  <LockIcon className="h-3 w-3 text-amber-600" />
+                                )}
+                                {a.person_id === null ? (
+                                  "Sin cubrir"
+                                ) : (
+                                  <>
+                                    {a.person_name}
+                                    {a.team_role_label && (
+                                      <span className="text-gray-500">
+                                        {" "}· {a.team_role_label}
+                                      </span>
+                                    )}
+                                  </>
+                                )}
+                              </span>
+                            </button>
                           ))
                         )}
                       </td>
@@ -188,6 +208,14 @@ export default function ScheduleDetailPage() {
           </table>
         </Card>
       </div>
+
+      {editing && (
+        <AssignmentEditModal
+          assignment={editing}
+          scheduleId={id}
+          onClose={() => setEditing(null)}
+        />
+      )}
     </>
   );
 }
@@ -211,4 +239,146 @@ function buildGrid(assignments: Assignment[]) {
     a.slot_name.localeCompare(b.slot_name),
   );
   return { dates, slotRows };
+}
+
+function LockIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}
+
+function AssignmentEditModal({
+  assignment,
+  scheduleId,
+  onClose,
+}: {
+  assignment: Assignment;
+  scheduleId: number;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [selectedPid, setSelectedPid] = useState<number | "">(
+    assignment.person_id ?? "",
+  );
+
+  const eligible = useQuery({
+    queryKey: ["eligible", scheduleId, assignment.id],
+    queryFn: () => api.listEligiblePersons(scheduleId, assignment.id),
+  });
+
+  const invalidate = () =>
+    qc.invalidateQueries({ queryKey: ["schedule", scheduleId] });
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.patchAssignment(scheduleId, assignment.id, {
+        person_id: selectedPid === "" ? null : Number(selectedPid),
+        clear_person: selectedPid === "",
+      }),
+    onSuccess: () => {
+      invalidate();
+      onClose();
+    },
+  });
+  const clear = useMutation({
+    mutationFn: () =>
+      api.patchAssignment(scheduleId, assignment.id, { clear_person: true }),
+    onSuccess: () => {
+      invalidate();
+      onClose();
+    },
+  });
+  const lock = useMutation({
+    mutationFn: () =>
+      assignment.locked_at
+        ? api.unlockAssignment(scheduleId, assignment.id)
+        : api.lockAssignment(scheduleId, assignment.id),
+    onSuccess: () => {
+      invalidate();
+      onClose();
+    },
+  });
+
+  return (
+    <Modal
+      open={true}
+      onClose={onClose}
+      title={`Asignar a ${assignment.slot_name} (${assignment.date})`}
+    >
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save.mutate();
+        }}
+      >
+        <label className="block">
+          <span className="text-sm font-medium text-gray-700">Persona</span>
+          <select
+            value={String(selectedPid)}
+            onChange={(e) => {
+              const v = e.target.value;
+              setSelectedPid(v === "" ? "" : Number(v));
+            }}
+            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm bg-white"
+          >
+            <option value="">— Sin cubrir —</option>
+            {(eligible.data ?? []).map((p) => (
+              <option key={p.person_id} value={String(p.person_id)}>
+                {p.person_name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {eligible.isLoading && (
+          <p className="text-xs text-gray-500">Cargando elegibles…</p>
+        )}
+        {eligible.data && eligible.data.length === 0 && (
+          <p className="text-xs text-amber-700">
+            Nadie cumple los requisitos para este slot/fecha.
+          </p>
+        )}
+        {save.isError && <ErrorText>{(save.error as Error).message}</ErrorText>}
+        <div className="flex flex-wrap justify-between gap-2 pt-2">
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => lock.mutate()}
+              disabled={lock.isPending}
+            >
+              {assignment.locked_at ? "Desbloquear" : "Bloquear"}
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => clear.mutate()}
+              disabled={clear.isPending}
+            >
+              Vaciar
+            </Button>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={save.isPending}>
+              {save.isPending ? "Guardando…" : "Asignar"}
+            </Button>
+          </div>
+        </div>
+      </form>
+    </Modal>
+  );
 }

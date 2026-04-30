@@ -85,6 +85,13 @@ export type Assignment = {
   team_role_id: number | null;
   team_role_label: string | null;
   notes: string | null;
+  locked_at: string | null;
+  locked_by_membership_id: number | null;
+};
+
+export type EligiblePerson = {
+  person_id: number;
+  person_name: string;
 };
 
 export type ScheduleDetail = Schedule & {
@@ -489,6 +496,29 @@ export const api = {
     request<Schedule>(`/api/schedules/${id}/archive`, { method: "POST" }),
   deleteSchedule: (id: number) =>
     request<void>(`/api/schedules/${id}`, { method: "DELETE" }),
+  patchAssignment: (
+    scheduleId: number,
+    assignmentId: number,
+    body: { person_id?: number | null; clear_person?: boolean; team_role_id?: number | null },
+  ) =>
+    request<Assignment>(
+      `/api/schedules/${scheduleId}/assignments/${assignmentId}`,
+      { method: "PATCH", body: JSON.stringify(body) },
+    ),
+  lockAssignment: (scheduleId: number, assignmentId: number) =>
+    request<Assignment>(
+      `/api/schedules/${scheduleId}/assignments/${assignmentId}/lock`,
+      { method: "POST" },
+    ),
+  unlockAssignment: (scheduleId: number, assignmentId: number) =>
+    request<Assignment>(
+      `/api/schedules/${scheduleId}/assignments/${assignmentId}/lock`,
+      { method: "DELETE" },
+    ),
+  listEligiblePersons: (scheduleId: number, assignmentId: number) =>
+    request<EligiblePerson[]>(
+      `/api/schedules/${scheduleId}/assignments/${assignmentId}/eligible-persons`,
+    ),
 
   // Bulk invite (CSV)
   bulkInvitePreview: async (file: File) => {

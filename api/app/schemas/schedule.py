@@ -30,6 +30,20 @@ class AssignmentOut(BaseModel):
     team_role_id: int | None
     team_role_label: str | None
     notes: str | None
+    locked_at: datetime | None = None
+    locked_by_membership_id: int | None = None
+
+
+class AssignmentPatch(BaseModel):
+    person_id: int | None = None
+    team_role_id: int | None = None
+    # Sentinel: clients pass clear_person=True to set person_id=null.
+    clear_person: bool = False
+
+
+class EligiblePersonOut(BaseModel):
+    person_id: int
+    person_name: str
 
 
 class ScheduleDetail(ScheduleOut):

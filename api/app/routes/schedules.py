@@ -6,19 +6,29 @@ individual assignments is out of scope (Sprint 5).
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.models import Assignment, Person, Schedule, Slot, SlotTeamRole
+from app.models import (
+    Assignment,
+    Membership,
+    Person,
+    Schedule,
+    Slot,
+    SlotTeamRole,
+)
 from app.routes.deps import RequestContext, get_current_context
 from app.schemas.schedule import (
     AssignmentOut,
+    AssignmentPatch,
+    EligiblePersonOut,
     ScheduleDetail,
     ScheduleGenerateRequest,
     ScheduleOut,
 )
 from app.services import scheduler
+from app.services.scheduler import _Context, is_eligible
 
 router = APIRouter()
 
@@ -52,6 +62,8 @@ def _serialize_detail(ctx: RequestContext, schedule: Schedule) -> ScheduleDetail
             team_role_id=a.team_role_id,
             team_role_label=tr.role_label if tr else None,
             notes=a.notes,
+            locked_at=a.locked_at,
+            locked_by_membership_id=a.locked_by_membership_id,
         )
         for a, s, p, tr in rows
     ]
@@ -106,6 +118,7 @@ def generate(
         .filter(Schedule.period == period)
         .first()
     )
+    locked_carry: list[Assignment] = []
     if existing:
         if existing.status == "published":
             raise HTTPException(
@@ -115,7 +128,19 @@ def generate(
                     f"{period.strftime('%Y-%m')} — archívala primero"
                 ),
             )
-        # Draft or archived: replace.
+        # Carry forward locked assignments before deleting the old draft.
+        locked_carry = (
+            ctx.db.query(Assignment)
+            .filter(
+                Assignment.schedule_id == existing.id,
+                Assignment.locked_at.isnot(None),
+            )
+            .all()
+        )
+        # Detach so cascading delete doesn't take them — copy to plain
+        # dataclasses-by-value via expunge.
+        for a in locked_carry:
+            ctx.db.expunge(a)
         ctx.db.delete(existing)
         ctx.db.flush()
 
@@ -124,6 +149,7 @@ def generate(
         tenant_id=ctx.tenant.id,
         period=period,
         membership_id=ctx.membership.id,
+        locked=locked_carry,
     )
     return _serialize_detail(ctx, schedule)
 
@@ -156,6 +182,171 @@ def archive_schedule(
         raise HTTPException(status_code=404, detail="Schedule not found")
     scheduler.archive(ctx.db, s)
     return s
+
+
+# ---------------------------------------------------------------------------
+# Manual assignment editing (Sprint 5 part B)
+# ---------------------------------------------------------------------------
+
+
+def _get_draft_schedule_or_400(ctx: RequestContext, schedule_id: int) -> Schedule:
+    s = ctx.db.get(Schedule, schedule_id)
+    if not s or s.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    if s.status != "draft":
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se pueden editar planificaciones en borrador",
+        )
+    return s
+
+
+def _get_assignment(
+    ctx: RequestContext, schedule: Schedule, assignment_id: int
+) -> Assignment:
+    a = ctx.db.get(Assignment, assignment_id)
+    if not a or a.tenant_id != ctx.tenant.id or a.schedule_id != schedule.id:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    return a
+
+
+def _serialize_assignment(ctx: RequestContext, a: Assignment) -> AssignmentOut:
+    s = ctx.db.get(Slot, a.slot_id)
+    p = ctx.db.get(Person, a.person_id) if a.person_id else None
+    tr = ctx.db.get(SlotTeamRole, a.team_role_id) if a.team_role_id else None
+    assert s is not None
+    return AssignmentOut(
+        id=a.id,
+        schedule_id=a.schedule_id,
+        slot_id=a.slot_id,
+        slot_name=s.name,
+        date=a.date,
+        person_id=a.person_id,
+        person_name=p.name if p else None,
+        team_role_id=a.team_role_id,
+        team_role_label=tr.role_label if tr else None,
+        notes=a.notes,
+        locked_at=a.locked_at,
+        locked_by_membership_id=a.locked_by_membership_id,
+    )
+
+
+@router.patch(
+    "/schedules/{schedule_id}/assignments/{assignment_id}",
+    response_model=AssignmentOut,
+)
+def patch_assignment(
+    schedule_id: int,
+    assignment_id: int,
+    payload: AssignmentPatch,
+    ctx: RequestContext = Depends(get_current_context),
+) -> AssignmentOut:
+    _require_admin(ctx)
+    schedule = _get_draft_schedule_or_400(ctx, schedule_id)
+    a = _get_assignment(ctx, schedule, assignment_id)
+    data = payload.model_dump(exclude_unset=True)
+    clear = data.pop("clear_person", False)
+
+    # Optional team_role change (rare — usually fixed, but we allow it).
+    if "team_role_id" in data:
+        tr_id = data["team_role_id"]
+        if tr_id is not None:
+            tr = ctx.db.get(SlotTeamRole, tr_id)
+            if not tr or tr.tenant_id != ctx.tenant.id or tr.slot_id != a.slot_id:
+                raise HTTPException(
+                    status_code=422, detail="team_role_id no pertenece a este slot"
+                )
+        a.team_role_id = tr_id
+
+    if clear:
+        a.person_id = None
+        a.notes = "No hay personal disponible"
+    elif "person_id" in data:
+        new_pid = data["person_id"]
+        if new_pid is None:
+            a.person_id = None
+            a.notes = "No hay personal disponible"
+        else:
+            slot = ctx.db.get(Slot, a.slot_id)
+            assert slot is not None
+            sctx = _Context(ctx.db, ctx.tenant.id, schedule.period)
+            ok, reason = is_eligible(
+                sctx, new_pid, slot, a.date, team_role_id=a.team_role_id
+            )
+            if not ok:
+                raise HTTPException(status_code=422, detail=reason or "No elegible")
+            a.person_id = new_pid
+            a.notes = None
+
+    ctx.db.flush()
+    return _serialize_assignment(ctx, a)
+
+
+@router.post(
+    "/schedules/{schedule_id}/assignments/{assignment_id}/lock",
+    response_model=AssignmentOut,
+)
+def lock_assignment(
+    schedule_id: int,
+    assignment_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> AssignmentOut:
+    _require_admin(ctx)
+    schedule = _get_draft_schedule_or_400(ctx, schedule_id)
+    a = _get_assignment(ctx, schedule, assignment_id)
+    a.locked_at = datetime.now(timezone.utc)
+    a.locked_by_membership_id = ctx.membership.id
+    ctx.db.flush()
+    return _serialize_assignment(ctx, a)
+
+
+@router.delete(
+    "/schedules/{schedule_id}/assignments/{assignment_id}/lock",
+    response_model=AssignmentOut,
+)
+def unlock_assignment(
+    schedule_id: int,
+    assignment_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> AssignmentOut:
+    _require_admin(ctx)
+    schedule = _get_draft_schedule_or_400(ctx, schedule_id)
+    a = _get_assignment(ctx, schedule, assignment_id)
+    a.locked_at = None
+    a.locked_by_membership_id = None
+    ctx.db.flush()
+    return _serialize_assignment(ctx, a)
+
+
+@router.get(
+    "/schedules/{schedule_id}/assignments/{assignment_id}/eligible-persons",
+    response_model=list[EligiblePersonOut],
+)
+def list_eligible_persons(
+    schedule_id: int,
+    assignment_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> list[EligiblePersonOut]:
+    _require_admin(ctx)
+    s = ctx.db.get(Schedule, schedule_id)
+    if not s or s.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    a = _get_assignment(ctx, s, assignment_id)
+    slot = ctx.db.get(Slot, a.slot_id)
+    assert slot is not None
+    sctx = _Context(ctx.db, ctx.tenant.id, s.period)
+    out: list[EligiblePersonOut] = []
+    rows = (
+        ctx.db.query(Membership, Person)
+        .join(Person, Person.id == Membership.person_id)
+        .order_by(Person.name)
+        .all()
+    )
+    for m, p in rows:
+        ok, _ = is_eligible(sctx, m.person_id, slot, a.date, team_role_id=a.team_role_id)
+        if ok:
+            out.append(EligiblePersonOut(person_id=m.person_id, person_name=p.name))
+    return out
 
 
 @router.delete(
