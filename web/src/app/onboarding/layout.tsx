@@ -4,15 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, clearToken, getToken } from "@/lib/api";
-
-export const STEPS = [
-  { slug: "categories", label: "Categorías" },
-  { slug: "skills", label: "Skills" },
-  { slug: "pools", label: "Pools" },
-  { slug: "slots", label: "Slots" },
-  { slug: "team", label: "Equipo" },
-  { slug: "done", label: "Resumen" },
-] as const;
+import { STEPS } from "./_steps";
 
 export default function OnboardingLayout({ children }: { children: ReactNode }) {
   const router = useRouter();

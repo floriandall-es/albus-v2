@@ -280,8 +280,8 @@ export function BulkInviteModal({
               </table>
             </div>
             <p className="text-xs text-gray-500">
-              El envío de email aún no está habilitado: copia y comparte cada
-              enlace con la persona correspondiente.
+              Hemos enviado un email a cada persona con su enlace. Puedes copiar
+              los enlaces de abajo como respaldo si alguien no recibe el correo.
             </p>
             <div className="flex justify-end pt-1">
               <Button onClick={onClose}>Cerrar</Button>

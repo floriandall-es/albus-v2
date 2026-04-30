@@ -20,9 +20,19 @@ class Settings(BaseSettings):
     jwt_ttl_minutes: int = 60
     cors_origins: str = "http://localhost:3000"
     # Used to build invite accept URLs. In dev this points at the web service
-    # exposed on the host; in prod it's the public domain. The link is
-    # currently surfaced via API logs + UI since email is stubbed.
+    # exposed on the host; in prod it's the public domain.
     public_base_url: str = "http://localhost:3030"
+
+    # SMTP / email delivery. EMAIL_ENABLED=False means send_email() logs the
+    # body at INFO level and does NOT touch the network — used in tests and
+    # when SMTP isn't configured. When True, smtplib actually sends.
+    smtp_host: str = "mailhog"
+    smtp_port: int = 1025
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "Albus <noreply@albus.local>"
+    smtp_use_tls: bool = False
+    email_enabled: bool = False
 
     @property
     def cors_origins_list(self) -> list[str]:

@@ -35,7 +35,7 @@ from app.schemas.invitation import (
     InviteCreateResponse,
 )
 from app.services.invitations import create_invitation as create_invitation_service
-from app.services.invitations import is_already_member
+from app.services.invitations import is_already_member, send_invitation_email
 
 logger = logging.getLogger("app.invitations")
 
@@ -88,13 +88,13 @@ def create_invitation(
         ctx.db.rollback()
         raise HTTPException(status_code=409, detail="Conflict creating invitation")
 
-    logger.warning(
-        "Invitation created tenant=%s email=%s id=%s accept_url=%s",
+    logger.info(
+        "Invitation created tenant=%s email=%s id=%s",
         ctx.tenant.slug,
         email,
         created.invitation.id,
-        created.accept_url,
     )
+    send_invitation_email(ctx.db, tenant_id=ctx.tenant.id, created=created)
 
     return InviteCreateResponse(
         invitation_id=created.invitation.id,
@@ -138,6 +138,44 @@ def revoke_invitation(
         inv.revoked_at = datetime.now(timezone.utc)
     ctx.db.flush()
     return inv
+
+
+@router.post("/invitations/{invitation_id}/reissue", response_model=InviteCreateResponse)
+def reissue_invitation(
+    invitation_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> InviteCreateResponse:
+    """Re-send the invitation: revokes the old row, creates a fresh one with
+    a new token + expiry, sends the email, returns the new accept_url."""
+    _require_admin(ctx)
+    inv = ctx.db.get(Invitation, invitation_id)
+    if not inv or inv.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    if inv.accepted_at is not None:
+        raise HTTPException(status_code=400, detail="ya aceptada")
+
+    try:
+        created = create_invitation_service(
+            ctx.db,
+            tenant_id=ctx.tenant.id,
+            email=inv.email,
+            person_name=inv.person_name,
+            created_by_membership_id=ctx.membership.id,
+            category_id=inv.category_id,
+            roles=list(inv.roles) if inv.roles else ["member"],
+        )
+    except IntegrityError:
+        ctx.db.rollback()
+        raise HTTPException(status_code=409, detail="Conflict creating invitation")
+
+    send_invitation_email(ctx.db, tenant_id=ctx.tenant.id, created=created)
+
+    return InviteCreateResponse(
+        invitation_id=created.invitation.id,
+        email=created.invitation.email,
+        expires_at=created.invitation.expires_at,
+        accept_url=created.accept_url,
+    )
 
 
 # ---------------------------------------------------------------------------

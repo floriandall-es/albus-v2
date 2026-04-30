@@ -8,6 +8,7 @@ for the same (tenant, email)" rule live in one place.
 
 from __future__ import annotations
 
+import logging
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -16,7 +17,11 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.security import pwd_context
-from app.models import Invitation, Membership, Person
+from app.models import Invitation, Membership, Person, Tenant
+from app.services.email import send_email
+from app.services.email_templates import invitation_email
+
+logger = logging.getLogger("app.invitations")
 
 INVITE_TTL = timedelta(days=7)
 
@@ -122,3 +127,29 @@ def create_invitation(
         raw_token=raw_token,
         accept_url=build_accept_url(raw_token),
     )
+
+
+def send_invitation_email(
+    db: Session,
+    *,
+    tenant_id: int,
+    created: CreatedInvitation,
+) -> None:
+    """Best-effort send. Looks up the tenant for the body. Never raises."""
+    try:
+        tenant = db.get(Tenant, tenant_id)
+        tenant_name = tenant.name if tenant else "tu equipo"
+        subject, body = invitation_email(
+            person_name=created.invitation.person_name,
+            tenant_name=tenant_name,
+            accept_url=created.accept_url,
+            expires_at=created.invitation.expires_at,
+        )
+        send_email(to=created.invitation.email, subject=subject, body_text=body)
+    except Exception as exc:  # pragma: no cover
+        logger.error(
+            "Could not send invitation email tenant=%s email=%s err=%s",
+            tenant_id,
+            created.invitation.email,
+            exc,
+        )

@@ -264,3 +264,144 @@ def test_non_admin_cannot_invite(auth_client, client):
         json={"email": "another@example.com", "person_name": "X"},
     )
     assert r.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Email + reissue (Sprint 4 part A)
+# ---------------------------------------------------------------------------
+
+
+def test_invitation_creation_triggers_email(auth_client, client, monkeypatch):
+    sent: list[dict] = []
+
+    def fake_send(to, subject, body_text, body_html=None):
+        sent.append({"to": to, "subject": subject, "body": body_text})
+
+    monkeypatch.setattr("app.services.invitations.send_email", fake_send)
+
+    _client, headers, _info = auth_client
+    r = client.post(
+        "/api/team/invite",
+        headers=headers,
+        json={"email": "mail-me@example.com", "person_name": "Mail Me"},
+    )
+    assert r.status_code == 201
+    accept_url = r.json()["accept_url"]
+
+    assert len(sent) == 1
+    assert sent[0]["to"] == "mail-me@example.com"
+    assert "Mail Me" in sent[0]["body"]
+    assert accept_url in sent[0]["body"]
+
+
+def test_email_failure_does_not_break_invite(auth_client, client, monkeypatch):
+    def boom(*a, **kw):
+        raise RuntimeError("smtp down")
+
+    monkeypatch.setattr("app.services.invitations.send_email", boom)
+
+    _client, headers, _info = auth_client
+    r = client.post(
+        "/api/team/invite",
+        headers=headers,
+        json={"email": "robust@example.com", "person_name": "R"},
+    )
+    assert r.status_code == 201, r.text
+
+
+def test_reissue_replaces_token_and_sends_new_email(auth_client, client, monkeypatch):
+    sent: list[dict] = []
+    monkeypatch.setattr(
+        "app.services.invitations.send_email",
+        lambda to, subject, body_text, body_html=None: sent.append(
+            {"to": to, "subject": subject, "body": body_text}
+        ),
+    )
+
+    _client, headers, _info = auth_client
+    r = client.post(
+        "/api/team/invite",
+        headers=headers,
+        json={"email": "again2@example.com", "person_name": "A"},
+    )
+    assert r.status_code == 201
+    inv_id = r.json()["invitation_id"]
+    old_url = r.json()["accept_url"]
+
+    r = client.post(f"/api/invitations/{inv_id}/reissue", headers=headers)
+    assert r.status_code == 200, r.text
+    new_url = r.json()["accept_url"]
+    assert new_url != old_url
+
+    old_token = old_url.rsplit("/", 1)[-1]
+    new_token = new_url.rsplit("/", 1)[-1]
+    assert client.get(f"/api/invitations/by-token/{old_token}").status_code == 404
+    assert client.get(f"/api/invitations/by-token/{new_token}").status_code == 200
+
+    assert len(sent) == 2
+    assert sent[-1]["to"] == "again2@example.com"
+
+
+def test_reissue_rejects_accepted(auth_client, client):
+    _client, headers, _info = auth_client
+    r = client.post(
+        "/api/team/invite",
+        headers=headers,
+        json={"email": "done@example.com", "person_name": "D"},
+    )
+    inv_id = r.json()["invitation_id"]
+    token = r.json()["accept_url"].rsplit("/", 1)[-1]
+
+    r = client.post(
+        f"/api/invitations/by-token/{token}/accept",
+        json={"password": "donesecret1"},
+    )
+    assert r.status_code == 200
+
+    r = client.post(f"/api/invitations/{inv_id}/reissue", headers=headers)
+    assert r.status_code == 400
+
+
+def test_reissue_requires_admin(auth_client, client):
+    _client, headers, _info = auth_client
+    # Onboard a non-admin via an invite.
+    r = client.post(
+        "/api/team/invite",
+        headers=headers,
+        json={"email": "regular2@example.com", "person_name": "R", "roles": ["member"]},
+    )
+    member_token = r.json()["accept_url"].rsplit("/", 1)[-1]
+    r = client.post(
+        f"/api/invitations/by-token/{member_token}/accept",
+        json={"password": "regular12"},
+    )
+    member_jwt = r.json()["access_token"]
+
+    # Create another invite to target.
+    r = client.post(
+        "/api/team/invite",
+        headers=headers,
+        json={"email": "target@example.com", "person_name": "T"},
+    )
+    target_inv = r.json()["invitation_id"]
+
+    r = client.post(
+        f"/api/invitations/{target_inv}/reissue",
+        headers={"Authorization": f"Bearer {member_jwt}"},
+    )
+    assert r.status_code == 403
+
+
+def test_reissue_tenant_isolation(auth_client, second_tenant, client):
+    _client, headers_a, _info_a = auth_client
+    headers_b, _info_b = second_tenant
+
+    r = client.post(
+        "/api/team/invite",
+        headers=headers_a,
+        json={"email": "iso-a@example.com", "person_name": "X"},
+    )
+    inv_id = r.json()["invitation_id"]
+
+    r = client.post(f"/api/invitations/{inv_id}/reissue", headers=headers_b)
+    assert r.status_code == 404

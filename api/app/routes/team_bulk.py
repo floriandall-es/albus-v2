@@ -43,6 +43,7 @@ from app.services.invitations import (
 from app.services.invitations import (
     has_live_invitation,
     is_already_member,
+    send_invitation_email,
 )
 
 logger = logging.getLogger("app.team_bulk")
@@ -377,6 +378,17 @@ def commit_bulk(
                 )
             )
             continue
+
+        # Best-effort email; failure must NOT abort the batch.
+        try:
+            send_invitation_email(ctx.db, tenant_id=ctx.tenant.id, created=created)
+        except Exception as exc:  # pragma: no cover - send_invitation_email already swallows
+            logger.error(
+                "Bulk invite email failure tenant=%s email=%s err=%s",
+                ctx.tenant.slug,
+                email_norm,
+                exc,
+            )
 
         committed += 1
         results.append(

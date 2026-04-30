@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/admin/ui";
-import { STEPS } from "./layout";
+import { STEPS } from "./_steps";
 
 export function StepNav({
   currentSlug,

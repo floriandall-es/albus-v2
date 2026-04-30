@@ -99,10 +99,17 @@ function PendingInvitations() {
     mutationFn: (id: number) => api.revokeInvitation(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["invitations"] }),
   });
-  const apiBase =
-    typeof window === "undefined"
-      ? ""
-      : window.location.origin.replace(/:\d+$/, ":3030");
+  const [lastReissue, setLastReissue] = useState<{
+    email: string;
+    accept_url: string;
+  } | null>(null);
+  const reissue = useMutation({
+    mutationFn: (id: number) => api.reissueInvitation(id),
+    onSuccess: (data) => {
+      setLastReissue({ email: data.email, accept_url: data.accept_url });
+      qc.invalidateQueries({ queryKey: ["invitations"] });
+    },
+  });
 
   if (!invs.data || invs.data.length === 0) return null;
   return (
@@ -130,11 +137,15 @@ function PendingInvitations() {
                   <Button
                     variant="secondary"
                     onClick={() => {
-                      // Re-issuing not supported here; admin can re-invite from /invite
-                      alert(
-                        "Para re-enviar el enlace, vuelve a invitar al mismo email; la invitación anterior se revocará automáticamente.",
-                      );
+                      if (
+                        confirm(
+                          `¿Re-enviar la invitación a ${inv.email}? Se enviará un nuevo email y el enlace anterior dejará de funcionar.`,
+                        )
+                      ) {
+                        reissue.mutate(inv.id);
+                      }
                     }}
+                    disabled={reissue.isPending}
                   >
                     Re-enviar
                   </Button>
@@ -151,10 +162,38 @@ function PendingInvitations() {
           </tbody>
         </table>
       </Card>
-      <p className="mt-2 text-xs text-gray-500">
-        El envío de email aún no está habilitado. Comparte el enlace generado al crear
-        la invitación con la persona correspondiente.
-      </p>
+      {lastReissue && (
+        <div className="mt-3 rounded-md border border-green-200 bg-green-50 p-3 text-sm">
+          <p className="font-medium text-green-800">
+            Nueva invitación enviada a {lastReissue.email}
+          </p>
+          <p className="mt-1 text-xs text-green-900">
+            Enlace de respaldo (por si el email no llega):
+          </p>
+          <div className="mt-1 flex items-center gap-2">
+            <code className="flex-1 break-all rounded bg-white px-2 py-1 text-xs">
+              {lastReissue.accept_url}
+            </code>
+            <button
+              className="text-xs underline"
+              onClick={() => {
+                navigator.clipboard.writeText(lastReissue.accept_url);
+              }}
+            >
+              Copiar
+            </button>
+            <button
+              className="text-xs text-gray-600"
+              onClick={() => setLastReissue(null)}
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
+      {reissue.isError && (
+        <ErrorText>{(reissue.error as Error).message}</ErrorText>
+      )}
     </section>
   );
 }

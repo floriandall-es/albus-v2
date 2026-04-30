@@ -322,6 +322,10 @@ export const api = {
   listInvitations: () => request<Invitation[]>("/api/invitations"),
   revokeInvitation: (id: number) =>
     request<Invitation>(`/api/invitations/${id}/revoke`, { method: "POST" }),
+  reissueInvitation: (id: number) =>
+    request<InviteCreateResponse>(`/api/invitations/${id}/reissue`, {
+      method: "POST",
+    }),
 
   // Public invite acceptance (no auth)
   getInvitationByToken: (token: string) =>
