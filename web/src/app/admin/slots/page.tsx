@@ -148,6 +148,9 @@ function SlotDialog({
   const [guardiaType, setGuardiaType] = useState<string>(
     initial?.guardia_type ?? "",
   );
+  const [equityGroupKey, setEquityGroupKey] = useState<string>(
+    initial?.equity_group_key ?? "",
+  );
   const [teamRoles, setTeamRoles] = useState<TeamRoleDraft[]>(
     initial?.team_roles.map((r) => ({
       role_label: r.role_label,
@@ -175,6 +178,7 @@ function SlotDialog({
         post_slot_rest: postRest,
         counts_for_equity: countsEquity,
         guardia_type: guardiaType.trim() || null,
+        equity_group_key: equityGroupKey.trim() || null,
         start_time: startTime ? `${startTime}:00` : null,
         end_time: endTime ? `${endTime}:00` : null,
         team_roles: mode === "team_composition" ? teamRoles : [],
@@ -288,6 +292,22 @@ function SlotDialog({
             perfil podrán cubrirlo. Déjalo vacío si no es una guardia.
           </p>
         </div>
+        {countsEquity && (
+          <div>
+            <TextField
+              label="Grupo de equidad"
+              value={equityGroupKey}
+              onChange={setEquityGroupKey}
+              placeholder="guardia"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Slots con el mismo grupo se balancean entre sí (ej. todas las
+              guardias se reparten equitativamente, todos los quirófanos se
+              reparten equitativamente, sin mezclar). Déjalo vacío para usar
+              el grupo por defecto.
+            </p>
+          </div>
+        )}
 
         {mode === "team_composition" && (
           <div className="border-t pt-3">

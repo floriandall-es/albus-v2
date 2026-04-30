@@ -550,22 +550,33 @@ def _solve_cpsat(
     # ---- Objective: fairness (counts_for_equity, FTE-weighted). ----
     # We minimize max - min of weighted counts. Weights are int100/fte_pct
     # to make the LP integer.
+    #
+    # Slots are bucketed by `equity_group_key` so a tenant can balance
+    # "guardias" among themselves and "quirófano" among themselves
+    # independently. Slots with key=NULL all share one default bucket so
+    # the legacy behavior is preserved for tenants who don't set the key.
+    # Weekend balance stays a single global term (weighed less; it's a
+    # cross-group sanity check rather than a primary fairness dimension).
     person_ids_present = sorted({pid for (_, _, _, pid) in x.keys()})
-    equity_total: dict[int, list] = {pid: [] for pid in person_ids_present}
+    equity_groups: dict[str | None, dict[int, list]] = defaultdict(
+        lambda: {pid: [] for pid in person_ids_present}
+    )
     weekend_total: dict[int, list] = {pid: [] for pid in person_ids_present}
 
     for (d, slot_id, role_id, pid), var in x.items():
         slot = ctx.slot_by_id[slot_id]
         if slot.counts_for_equity:
-            equity_total[pid].append(var)
+            equity_groups[slot.equity_group_key][pid].append(var)
             if is_weekend_or_holiday[d]:
                 weekend_total[pid].append(var)
 
     obj_terms: list = []
 
-    def _balance_term(buckets: dict[int, list], weight: int) -> None:
+    def _balance_term(buckets: dict[int, list], weight: int, label: str) -> None:
         """Build (max - min) of weighted-by-FTE sums across buckets and add
-        weight*(max-min) to obj_terms."""
+        weight*(max-min) to obj_terms. `label` is used to disambiguate
+        IntVar names when the helper is called more than once (e.g. one
+        call per equity_group_key)."""
         if not buckets:
             return
         # Multiply each person's sum by 100 // fte to FTE-normalize. We
@@ -589,23 +600,33 @@ def _solve_cpsat(
             # scaled_pid = sum(vars) * 100 // fte == sum * scale_num // scale_den
             # CP-SAT only accepts linear int expressions; emulate by
             # introducing IntVar = sum(vars)*100, then use AddDivisionEquality.
-            raw = model.NewIntVar(0, 10000, f"raw_p{pid}")
+            raw = model.NewIntVar(0, 10000, f"raw_{label}_p{pid}")
             model.Add(raw == sum(vars_) * 100)
-            div = model.NewIntVar(0, 10000, f"sc_p{pid}")
+            div = model.NewIntVar(0, 10000, f"sc_{label}_p{pid}")
             model.AddDivisionEquality(div, raw, fte)
             scaled.append(div)
         if len(scaled) < 2:
             return
-        max_var = model.NewIntVar(0, 10000, "max_v")
-        min_var = model.NewIntVar(0, 10000, "min_v")
+        max_var = model.NewIntVar(0, 10000, f"max_{label}")
+        min_var = model.NewIntVar(0, 10000, f"min_{label}")
         model.AddMaxEquality(max_var, scaled)
         model.AddMinEquality(min_var, scaled)
-        spread = model.NewIntVar(0, 10000, "spread")
+        spread = model.NewIntVar(0, 10000, f"spread_{label}")
         model.Add(spread == max_var - min_var)
         obj_terms.append(weight * spread)
 
-    _balance_term(equity_total, W_FAIRNESS)
-    _balance_term(weekend_total, W_WEEKEND)
+    # One balance term per equity_group_key. NULL is the default bucket;
+    # legacy tenants (who haven't set the key on any slot) hit only this
+    # one and get the same behavior as before this column existed.
+    for group_key, buckets in equity_groups.items():
+        # Sanitize the group key for use in CP-SAT variable names (which
+        # don't tolerate weird chars). "default" for the NULL bucket.
+        safe = "default" if group_key is None else "".join(
+            c if c.isalnum() else "_" for c in group_key
+        )[:24]
+        _balance_term(buckets, W_FAIRNESS, f"eq_{safe}")
+
+    _balance_term(weekend_total, W_WEEKEND, "weekend")
 
     # ---- Soft skill term: weight per missing soft skill per assignment. ----
     for (d, slot_id, role_id, pid), var in x.items():

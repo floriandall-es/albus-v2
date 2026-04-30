@@ -284,3 +284,58 @@ def test_solver_falls_back_when_infeasible(auth_client, client):
     body = r.json()
     assert len(body["assignments"]) > 0
     assert all(a["person_id"] is None for a in body["assignments"])
+
+
+def test_solver_balances_per_equity_group(auth_client, client):
+    """When two slot types have different equity_group_key values, each
+    group must balance independently. Without grouping, the solver could
+    give person A all of one type and person B all of the other and
+    declare the totals "fair" — that is exactly what equity_group_key
+    prevents."""
+    _client, headers, _info = auth_client
+    pid_a = _onboard(client, headers, "alpha@example.com", "Alpha")
+    pid_b = _onboard(client, headers, "beta@example.com", "Beta")
+
+    # Two slots, different groups, both single-staff weekdays.
+    _create_slot(
+        client,
+        headers,
+        name="Guardia 24h",
+        equity_group_key="guardia",
+    )
+    _create_slot(
+        client,
+        headers,
+        name="Quirofano",
+        equity_group_key="quirofano",
+    )
+
+    r = client.post(
+        "/api/schedules/generate",
+        headers=headers,
+        json={"period": "2026-05-01"},
+    )
+    assert r.status_code in (200, 201), r.text
+    body = r.json()
+
+    # Count assignments per (slot_name, person_id).
+    by_slot: dict[str, Counter] = {}
+    slot_id_to_name = {}
+    for s in client.get("/api/slots", headers=headers).json():
+        slot_id_to_name[s["id"]] = s["name"]
+    for a in body["assignments"]:
+        if a["person_id"] is None:
+            continue
+        slot_name = slot_id_to_name[a["slot_id"]]
+        by_slot.setdefault(slot_name, Counter())[a["person_id"]] += 1
+
+    # In each group separately, the two members should be within 1 of each
+    # other. Without grouping, the solver could give A all guardias and B
+    # all quirófanos — both groups would have spread = (N, 0) which would
+    # fail this assertion.
+    for slot_name, counts in by_slot.items():
+        a = counts.get(pid_a, 0)
+        b = counts.get(pid_b, 0)
+        assert abs(a - b) <= 1, (
+            f"slot={slot_name} unbalanced: alpha={a} beta={b}"
+        )

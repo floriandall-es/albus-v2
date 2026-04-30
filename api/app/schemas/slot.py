@@ -33,6 +33,7 @@ class SlotCreate(BaseModel):
     post_slot_rest: bool = False
     counts_for_equity: bool = True
     guardia_type: str | None = Field(default=None, max_length=64)
+    equity_group_key: str | None = Field(default=None, max_length=64)
     team_roles: list[SlotTeamRoleIn] = Field(default_factory=list)
     skills_required: list[SlotSkillRequiredIn] = Field(default_factory=list)
 
@@ -83,6 +84,7 @@ class SlotOut(BaseModel):
     post_slot_rest: bool
     counts_for_equity: bool
     guardia_type: str | None
+    equity_group_key: str | None
     crosses_midnight: bool
     team_roles: list[SlotTeamRoleOut]
     skills_required: list[SlotSkillRequiredOut]

@@ -56,6 +56,10 @@ class Slot(Base):
     # slot. Common values: "presencial_24h", "localizada", "findes_festivos"
     # — tenants are free to invent their own taxonomy.
     guardia_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Free-text grouping tag for fairness. The solver runs one balance term
+    # per distinct equity_group_key (NULL is its own catch-all bucket). Has
+    # no effect when counts_for_equity=False.
+    equity_group_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
