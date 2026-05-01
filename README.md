@@ -6,7 +6,7 @@ Multi-tenant SaaS surgical scheduler for hospitals. **Sprint 1**: foundation onl
 
 - **Shared Postgres, shared schema, `tenant_id` on every tenant-scoped row.** No per-tenant database, no per-tenant schema.
 - **Postgres Row-Level Security is the safety net.** Every tenant-scoped table has `ROW LEVEL SECURITY` enabled with `FORCE` and a policy `USING (tenant_id = current_setting('app.tenant_id')::int)`. Even the table owner cannot bypass it.
-- **Subdomain-per-tenant** in production: `acme.__DOMAIN__` resolves Acme's UI. The frontend reads the subdomain client-side; **the backend reads tenant context from the JWT**, never from the Host header — that's the secure source of truth.
+- **Path-based tenancy** in production: every customer logs in at `https://trivu.net` and authenticates with `{email, password, tenant_slug}`. The tenant context lives in the JWT after login; **the backend reads tenant context from the JWT**, never from the URL path or Host header — that's the secure source of truth. (Subdomain-per-tenant was on the table early; we ruled it out for the unnecessary Caddy + DNS complexity at this scale.)
 - **Identity = platform-wide `Person` + per-tenant `Membership`** (Slack model). One person can belong to many tenants. Never a direct FK from `persons` to `tenants`.
 - **Auth**: JWT carrying `{person_id, tenant_id, roles[]}`. The FastAPI auth dependency decodes the token, verifies the membership, and runs `SET LOCAL app.tenant_id = <id>` on the request's transaction *before* any tenant query. Without that `SET`, RLS denies everything — the policy uses `current_setting('app.tenant_id', true)` which returns NULL when unset.
 
@@ -15,7 +15,7 @@ Multi-tenant SaaS surgical scheduler for hospitals. **Sprint 1**: foundation onl
 │  Browser │ ───────────────────────────────────┐
 └──────────┘                                    │
      │                                          ▼
-     │ subdomain {tenant}.__DOMAIN__   ┌────────────────┐
+     │ trivu.net (single host)        ┌────────────────┐
      ▼                                  │  FastAPI deps  │ decode JWT
 ┌─────────────┐                         │  set_tenant()  │ SET LOCAL app.tenant_id
 │   Next.js   │                         └────────┬───────┘
@@ -91,7 +91,7 @@ You run all deploys yourself. CI runs tests; CI does not touch the VPS. See **[i
 - First deploy + routine deploy
 - Backup + restore drill (run the drill before you trust the backup)
 - Common troubleshooting
-- The `__DOMAIN__` replacement checklist
+- The `trivu.net` replacement checklist
 
 ## Repo layout
 
@@ -114,7 +114,7 @@ web/             Next.js 14 (app router) + Tailwind + react-query
 
 infra/
   docker-compose.prod.yml
-  Caddyfile               # auto-TLS for *.__DOMAIN__
+  Caddyfile               # auto-TLS for *.trivu.net
   bootstrap.sh            # idempotent VPS setup
   RUNBOOK.md              # ops cheat sheet
 

@@ -93,8 +93,7 @@ Next steps (as ${DEPLOY_USER}):
   sudo -iu ${DEPLOY_USER}
   cd ${APP_ROOT}
   git clone git@github.com:floriandall-es/albus-v2.git ${REPO_DIR}
-  vi ${APP_ROOT}/.env             # fill in real secrets
-  vi ${REPO_DIR}/infra/Caddyfile  # replace __DOMAIN__
+  vi ${APP_ROOT}/.env             # fill in real secrets (POSTGRES_PASSWORD, JWT_SECRET, SMTP_*)
   cd ${REPO_DIR}
   docker compose --env-file ${APP_ROOT}/.env -f infra/docker-compose.prod.yml up -d --build
 

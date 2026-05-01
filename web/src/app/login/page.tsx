@@ -1,8 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api, setToken } from "@/lib/api";
-import { readTenantSlugFromHost } from "@/lib/tenant";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -11,11 +10,6 @@ export default function LoginPage() {
   const [tenantSlug, setTenantSlug] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    const fromHost = readTenantSlugFromHost();
-    if (fromHost) setTenantSlug(fromHost);
-  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();

@@ -2,27 +2,22 @@
 
 Every command here is meant to be copy-pasted by you on the VPS. **No CI workflow deploys for you** — by design.
 
-Replace `__DOMAIN__` with your real domain everywhere it appears (see [Domain replacements](#domain-replacements)).
+Domain: **trivu.net** (path-based tenancy — no wildcard subdomains).
 
 ---
 
-## 0. Domain replacements
+## 0. DNS
 
-Before your first deploy, do a one-time global find-and-replace of `__DOMAIN__` in the files below. Use `git grep __DOMAIN__` to verify nothing was missed.
+Two A records pointing at the Hetzner VPS IPv4:
 
-| File | What it controls |
-|---|---|
-| `infra/Caddyfile` | TLS hosts, reverse-proxy routing |
-| `infra/docker-compose.prod.yml` | `NEXT_PUBLIC_API_BASE_URL`, `NEXT_PUBLIC_ROOT_DOMAIN`, `CORS_ORIGINS` |
-| `README.md` | Examples (cosmetic) |
-| `infra/RUNBOOK.md` | Examples (cosmetic) |
+| Name | Type | Value |
+|---|---|---|
+| `trivu.net` (apex) | A | `<VPS_IP>` |
+| `api.trivu.net` | A | `<VPS_IP>` |
 
-```bash
-# Verify after replacing:
-git grep __DOMAIN__ || echo "all replaced"
-```
+Optional but nice: matching AAAA records for the IPv6.
 
-DNS: point both `__DOMAIN__` and `*.__DOMAIN__` (wildcard A/AAAA) at the VPS.
+**No wildcard, no `*.trivu.net`** — tenants share a single hostname; the JWT carries tenant context after login.
 
 ---
 
@@ -44,11 +39,12 @@ cd repo
 
 # Fill in secrets
 vi /srv/albus/.env
-# Required: POSTGRES_PASSWORD (long random), JWT_SECRET (openssl rand -hex 48)
-
-# Replace __DOMAIN__
-vi infra/Caddyfile
-vi infra/docker-compose.prod.yml
+# Required:
+#   POSTGRES_PASSWORD  (long random)
+#   POSTGRES_USER, POSTGRES_DB (defaults: albus / albus)
+#   JWT_SECRET         (openssl rand -hex 48)
+#   SMTP_*             (Resend / Mailgun / Brevo creds)
+#   EMAIL_ENABLED      (true once SMTP works)
 ```
 
 The deploy user must have an SSH key authorized on the `floriandall-es/albus-v2` repo (read-only deploy key recommended).
@@ -65,18 +61,19 @@ docker compose --env-file /srv/albus/.env -f infra/docker-compose.prod.yml up -d
 docker compose -f infra/docker-compose.prod.yml logs -f api
 
 # Once you see "Uvicorn running on http://0.0.0.0:8000", verify:
-curl -sf https://api.__DOMAIN__/api/health
+curl -sf https://api.trivu.net/api/health
 # {"status":"ok"}
 
-# Sign up a tenant
-curl -s https://api.__DOMAIN__/api/signup \
+# Sign up the first tenant
+curl -s https://api.trivu.net/api/signup \
   -H 'Content-Type: application/json' \
   -d '{"tenant_name":"Test","tenant_slug":"test","person_name":"Admin","email":"admin@example.com","password":"supersecret1"}'
 
-# Then visit https://test.__DOMAIN__ in a browser.
+# Then visit https://trivu.net in a browser, log in with email + password
+# + tenant_slug "test".
 ```
 
-Caddy gets its TLS certs automatically on first request to each subdomain. Tail Caddy logs once if you want confirmation:
+Caddy auto-issues + renews Let's Encrypt certs for `trivu.net` and `api.trivu.net` on first request. Tail Caddy logs once if you want confirmation:
 
 ```bash
 docker compose -f infra/docker-compose.prod.yml logs caddy | grep -i certificate
