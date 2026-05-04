@@ -1,13 +1,13 @@
 "use client";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, type Category } from "@/lib/api";
 import { Button, ErrorText, TextField } from "@/components/admin/ui";
 import { StepNav } from "../_nav";
 
-// Defaults match the standard Spanish surgical-service hierarchy. Most
-// residency programs run R1-R5 (some specialties end at R4). Listed
-// senior → junior so the dropdown / order feels natural.
+// Standard Spanish surgical-service hierarchy. Listed senior → junior so
+// the order in the checklist feels natural. Each toggles independently —
+// admins keep what they need, drop what they don't.
 const DEFAULTS = [
   "Jefe de servicio",
   "Jefe de sección",
@@ -22,7 +22,7 @@ const DEFAULTS = [
 export default function CategoriesStep() {
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ["categories"], queryFn: api.listCategories });
-  const [name, setName] = useState("");
+  const [customName, setCustomName] = useState("");
 
   const create = useMutation({
     mutationFn: (n: string) => api.createCategory({ name: n }),
@@ -34,14 +34,16 @@ export default function CategoriesStep() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["categories"] }),
   });
 
-  const existingNames = new Set((list.data ?? []).map((c) => c.name));
-  const missingDefaults = DEFAULTS.filter((d) => !existingNames.has(d));
+  const existing: Category[] = list.data ?? [];
+  const byName = new Map(existing.map((c) => [c.name, c]));
+  const customCategories = existing.filter((c) => !DEFAULTS.includes(c.name));
 
-  async function addAllDefaults() {
-    for (const d of missingDefaults) {
-      // Sequential — keeps the UI strictly correct and the network volume is tiny.
-      // eslint-disable-next-line no-await-in-loop
-      await create.mutateAsync(d);
+  async function toggleDefault(name: string, checked: boolean) {
+    if (checked) {
+      await create.mutateAsync(name);
+    } else {
+      const cat = byName.get(name);
+      if (cat) await del.mutateAsync(cat.id);
     }
   }
 
@@ -50,60 +52,96 @@ export default function CategoriesStep() {
       <h2 className="text-2xl font-semibold mb-2">Paso 1 — Categorías</h2>
       <p className="text-sm text-gray-600 mb-6">
         Las categorías describen los niveles de tu equipo (Adjunto, Residente, etc.).
-        Las usaremos más adelante para asignar slots y calcular equidad.
+        Las usaremos más adelante para asignar slots y calcular equidad. Marca las que apliquen
+        a tu servicio y añade las que falten.
       </p>
 
-      {missingDefaults.length > 0 && (
-        <div className="mb-4 rounded-md border bg-amber-50 p-3 text-sm">
-          <p className="mb-2 text-amber-900">¿Quieres usar los valores predefinidos?</p>
-          <ul className="text-xs text-amber-900 mb-2 list-disc pl-5">
-            {missingDefaults.map((d) => (
-              <li key={d}>{d}</li>
+      <div className="rounded-md border bg-white mb-4">
+        <div className="px-4 py-2 border-b bg-gray-50 text-xs font-medium uppercase tracking-wide text-gray-600">
+          Categorías habituales
+        </div>
+        <ul className="divide-y">
+          {DEFAULTS.map((d) => {
+            const checked = byName.has(d);
+            const isPending =
+              (create.isPending && create.variables === d) ||
+              (del.isPending && del.variables === byName.get(d)?.id);
+            return (
+              <li key={d} className="flex items-center px-4 py-2 text-sm">
+                <input
+                  type="checkbox"
+                  id={`cat-${d}`}
+                  className="mr-3 h-4 w-4"
+                  checked={checked}
+                  disabled={isPending}
+                  onChange={(e) => toggleDefault(d, e.target.checked)}
+                />
+                <label htmlFor={`cat-${d}`} className="flex-1 cursor-pointer">
+                  {d}
+                </label>
+                {isPending && (
+                  <span className="text-xs text-gray-400">guardando…</span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      <div className="rounded-md border bg-white mb-4">
+        <div className="px-4 py-2 border-b bg-gray-50 text-xs font-medium uppercase tracking-wide text-gray-600">
+          Otras categorías
+        </div>
+        {customCategories.length === 0 && (
+          <p className="px-4 py-3 text-sm text-gray-500">
+            Aún no has añadido categorías personalizadas.
+          </p>
+        )}
+        {customCategories.length > 0 && (
+          <ul className="divide-y">
+            {customCategories.map((c) => (
+              <li key={c.id} className="flex items-center justify-between px-4 py-2 text-sm">
+                <span>{c.name}</span>
+                <button
+                  type="button"
+                  className="text-xs text-red-600 underline"
+                  onClick={() => del.mutate(c.id)}
+                  disabled={del.isPending}
+                >
+                  Eliminar
+                </button>
+              </li>
             ))}
           </ul>
-          <Button onClick={addAllDefaults} disabled={create.isPending}>
-            Añadir todos los predefinidos
-          </Button>
-        </div>
-      )}
-
-      <form
-        className="flex gap-2 mb-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (name.trim()) {
-            create.mutate(name.trim());
-            setName("");
-          }
-        }}
-      >
-        <div className="flex-1">
-          <TextField label="" value={name} onChange={setName} placeholder="Nombre de la categoría" />
-        </div>
-        <div className="self-end">
-          <Button type="submit" disabled={!name.trim() || create.isPending}>
-            Añadir
-          </Button>
-        </div>
-      </form>
-      {create.isError && <ErrorText>{(create.error as Error).message}</ErrorText>}
-
-      <ul className="rounded-md border bg-white divide-y">
-        {(list.data ?? []).map((c) => (
-          <li key={c.id} className="flex items-center justify-between px-4 py-2 text-sm">
-            <span>{c.name}</span>
-            <button
-              className="text-xs text-red-600 underline"
-              onClick={() => del.mutate(c.id)}
-            >
-              Eliminar
-            </button>
-          </li>
-        ))}
-        {(list.data ?? []).length === 0 && (
-          <li className="px-4 py-3 text-sm text-gray-500">Aún no hay categorías.</li>
         )}
-      </ul>
+        <form
+          className="flex gap-2 px-4 py-3 border-t"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const trimmed = customName.trim();
+            if (!trimmed) return;
+            create.mutate(trimmed);
+            setCustomName("");
+          }}
+        >
+          <div className="flex-1">
+            <TextField
+              label=""
+              value={customName}
+              onChange={setCustomName}
+              placeholder="Ej. Enfermero/a, Auxiliar, Becario…"
+            />
+          </div>
+          <div className="self-end">
+            <Button type="submit" disabled={!customName.trim() || create.isPending}>
+              Añadir
+            </Button>
+          </div>
+        </form>
+      </div>
+
+      {create.isError && <ErrorText>{(create.error as Error).message}</ErrorText>}
+      {del.isError && <ErrorText>{(del.error as Error).message}</ErrorText>}
 
       <StepNav currentSlug="categories" />
     </div>
