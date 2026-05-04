@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, setToken } from "@/lib/api";
@@ -20,7 +21,7 @@ export default function LoginPage() {
       setToken(res.access_token);
       router.push("/me");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(err instanceof Error ? err.message : "No se ha podido iniciar sesión");
     } finally {
       setLoading(false);
     }
@@ -28,21 +29,39 @@ export default function LoginPage() {
 
   return (
     <main className="mx-auto max-w-md p-8">
-      <h1 className="text-2xl font-semibold mb-6">Sign in</h1>
+      <div className="flex flex-col items-center mb-6">
+        <Image
+          src="/logo.jpeg"
+          alt="Trivu"
+          width={160}
+          height={160}
+          priority
+          className="h-32 w-auto"
+        />
+      </div>
+      <h1 className="text-2xl font-semibold mb-6 text-center">Inicia sesión</h1>
       <form onSubmit={onSubmit} className="space-y-4">
-        <Field label="Tenant slug" value={tenantSlug} onChange={setTenantSlug} />
+        <Field
+          label="Identificador del servicio"
+          value={tenantSlug}
+          onChange={setTenantSlug}
+          placeholder="ej. lapaz"
+        />
         <Field label="Email" type="email" value={email} onChange={setEmail} />
-        <Field label="Password" type="password" value={password} onChange={setPassword} />
+        <Field label="Contraseña" type="password" value={password} onChange={setPassword} />
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button
           type="submit"
           disabled={loading}
           className="w-full rounded-md bg-gray-900 px-4 py-2 text-white disabled:opacity-50"
         >
-          {loading ? "Signing in…" : "Sign in"}
+          {loading ? "Entrando…" : "Entrar"}
         </button>
-        <p className="text-sm text-gray-600">
-          No account? <a className="underline" href="/signup">Create a tenant</a>
+        <p className="text-sm text-gray-600 text-center">
+          ¿No tienes cuenta?{" "}
+          <a className="underline" href="/signup">
+            Crear un servicio
+          </a>
         </p>
       </form>
     </main>
@@ -54,6 +73,7 @@ function Field(props: {
   value: string;
   onChange: (v: string) => void;
   type?: string;
+  placeholder?: string;
 }) {
   return (
     <label className="block">
@@ -62,6 +82,7 @@ function Field(props: {
         type={props.type ?? "text"}
         value={props.value}
         onChange={(e) => props.onChange(e.target.value)}
+        placeholder={props.placeholder}
         required
         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
       />

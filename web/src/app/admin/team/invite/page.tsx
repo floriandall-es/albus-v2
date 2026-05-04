@@ -52,10 +52,11 @@ export default function InvitePage() {
     return (
       <div className="max-w-xl">
         <PageHeader title="Invitación creada" />
-        <div className="rounded-md border bg-amber-50 p-4 text-sm text-amber-900 mb-4">
-          El envío automático de correo aún no está habilitado. <strong>Comparte el
-          siguiente enlace</strong> con la persona invitada para que establezca su
-          contraseña y se una al equipo. El enlace caduca en 7 días.
+        <div className="rounded-md border bg-emerald-50 p-4 text-sm text-emerald-900 mb-4">
+          Invitación enviada por correo a <strong>{created.email}</strong>. Si
+          la persona no lo encuentra (revisa también la carpeta de spam),
+          puedes copiar el enlace de abajo y compartírselo manualmente. El
+          enlace caduca en 7 días.
         </div>
         <div className="rounded-md border bg-white p-4 mb-4">
           <div className="text-xs text-gray-500 mb-1">Email</div>
@@ -91,8 +92,8 @@ export default function InvitePage() {
     <div className="max-w-md">
       <PageHeader title="Invitar miembro" />
       <p className="text-sm text-gray-600 mb-4">
-        Se generará un enlace de invitación que la persona usará para crear su contraseña.
-        El envío automático por email se añadirá en una próxima versión.
+        Enviaremos un email a la persona con el enlace para crear su contraseña.
+        También verás el enlace aquí por si necesitas compartirlo manualmente.
       </p>
       <form
         className="space-y-3"

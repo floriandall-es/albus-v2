@@ -1,4 +1,5 @@
 "use client";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, setToken } from "@/lib/api";
@@ -29,7 +30,7 @@ export default function SignupPage() {
       // Fresh tenant — always go straight into the onboarding wizard.
       router.push("/onboarding");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Signup failed");
+      setError(err instanceof Error ? err.message : "No se ha podido crear el servicio");
     } finally {
       setLoading(false);
     }
@@ -37,27 +38,56 @@ export default function SignupPage() {
 
   return (
     <main className="mx-auto max-w-md p-8">
-      <h1 className="text-2xl font-semibold mb-6">Create your hospital workspace</h1>
+      <div className="flex flex-col items-center mb-6">
+        <Image
+          src="/logo.jpeg"
+          alt="Trivu"
+          width={160}
+          height={160}
+          priority
+          className="h-32 w-auto"
+        />
+      </div>
+      <h1 className="text-2xl font-semibold mb-2 text-center">
+        Crea tu servicio
+      </h1>
+      <p className="text-sm text-gray-600 mb-6 text-center">
+        Configura Trivu para tu hospital o departamento en unos minutos.
+      </p>
       <form onSubmit={onSubmit} className="space-y-4">
-        <Field label="Hospital name" value={tenantName} onChange={setTenantName} />
         <Field
-          label="Subdomain slug (a–z, 0–9, dashes)"
+          label="Nombre del servicio"
+          value={tenantName}
+          onChange={setTenantName}
+          placeholder="ej. Hospital Universitario La Paz"
+        />
+        <Field
+          label="Identificador (a–z, 0–9, guiones)"
           value={tenantSlug}
           onChange={(v) => setTenantSlug(v.toLowerCase())}
+          placeholder="ej. lapaz"
         />
-        <Field label="Your name" value={personName} onChange={setPersonName} />
+        <Field label="Tu nombre" value={personName} onChange={setPersonName} />
         <Field label="Email" type="email" value={email} onChange={setEmail} />
-        <Field label="Password (min 8 chars)" type="password" value={password} onChange={setPassword} />
+        <Field
+          label="Contraseña (mínimo 8 caracteres)"
+          type="password"
+          value={password}
+          onChange={setPassword}
+        />
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button
           type="submit"
           disabled={loading}
           className="w-full rounded-md bg-gray-900 px-4 py-2 text-white disabled:opacity-50"
         >
-          {loading ? "Creating…" : "Create workspace"}
+          {loading ? "Creando…" : "Crear servicio"}
         </button>
-        <p className="text-sm text-gray-600">
-          Already have one? <a className="underline" href="/login">Sign in</a>
+        <p className="text-sm text-gray-600 text-center">
+          ¿Ya tienes cuenta?{" "}
+          <a className="underline" href="/login">
+            Inicia sesión
+          </a>
         </p>
       </form>
     </main>
@@ -69,6 +99,7 @@ function Field(props: {
   value: string;
   onChange: (v: string) => void;
   type?: string;
+  placeholder?: string;
 }) {
   return (
     <label className="block">
@@ -77,6 +108,7 @@ function Field(props: {
         type={props.type ?? "text"}
         value={props.value}
         onChange={(e) => props.onChange(e.target.value)}
+        placeholder={props.placeholder}
         required
         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2"
       />

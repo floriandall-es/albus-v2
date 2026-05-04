@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     smtp_port: int = 1025
     smtp_username: str = ""
     smtp_password: str = ""
-    smtp_from: str = "Albus <noreply@albus.local>"
+    smtp_from: str = "Trivu <noreply@trivu.local>"
     smtp_use_tls: bool = False
     email_enabled: bool = False
 

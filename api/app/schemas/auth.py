@@ -10,7 +10,7 @@ class SignupRequest(BaseModel):
     person_name: str = Field(min_length=1, max_length=255)
     email: EmailStr
     password: str = Field(min_length=8, max_length=255)
-    # ISO 3166-1 alpha-2. Defaults to ES — Albus' v1 launch market. Used as
+    # ISO 3166-1 alpha-2. Defaults to ES — Trivu's v1 launch market. Used as
     # the default for the holiday import flow; admins can change it later.
     country_code: str | None = Field(default="ES", max_length=8)
 

@@ -19,7 +19,7 @@ from app.routes import (
     team_bulk,
 )
 
-app = FastAPI(title="albus-v2 API", version="0.1.0")
+app = FastAPI(title="Trivu API", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
