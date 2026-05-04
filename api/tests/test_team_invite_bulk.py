@@ -328,3 +328,26 @@ def test_preview_rejects_unknown_header(auth_client, client):
     )
     assert r.status_code == 400
     assert "no reconocidas" in r.json()["detail"].lower()
+
+
+def test_preview_accepts_semicolon_separator(auth_client, client):
+    """Excel in Spanish / EU locales defaults to ';' as the field
+    separator because comma is used for decimals. The parser should
+    auto-detect and treat ';' the same as ','."""
+    _c, headers, _info = auth_client
+    csv = (
+        "email;nombre;categoría\n"
+        "ana@example.com;Ana López;\n"
+        "luis@example.com;Luis García;\n"
+    )
+    r = client.post(
+        "/api/team/invite/bulk/preview",
+        headers=headers,
+        files={"file": ("equipo.csv", csv.encode("utf-8"), "text/csv")},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["summary"]["total_rows"] == 2
+    by_email = {r["email"]: r for r in body["rows"]}
+    assert by_email["ana@example.com"]["name"] == "Ana López"
+    assert by_email["luis@example.com"]["name"] == "Luis García"

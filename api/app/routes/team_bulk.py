@@ -100,6 +100,24 @@ def _strip_bom(text: str) -> str:
     return text
 
 
+def _detect_delimiter(text: str) -> str:
+    """Sniff the CSV delimiter so semicolon-separated files (Excel ES/EU
+    default) are accepted alongside comma-separated ones. Falls back to
+    "," if the sample is too small or the sniffer fails.
+    """
+    # Look at the first ~2 KB; the first line is enough but Sniffer wants
+    # a couple of rows for confidence.
+    sample = text[:2048]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
+        return dialect.delimiter
+    except csv.Error:
+        # Sniffer choked (one-line file, weird quoting). Fall back to
+        # whichever of `;` or `,` appears more in the first line.
+        first_line = sample.splitlines()[0] if sample else ""
+        return ";" if first_line.count(";") > first_line.count(",") else ","
+
+
 def _validate_email(value: str) -> str | None:
     """Returns the normalized (lowercased) email or None if invalid."""
     try:
@@ -125,7 +143,11 @@ def _parse_csv(raw: bytes) -> list[dict[str, str]]:
         )
     text = _strip_bom(text)
 
-    reader = csv.reader(io.StringIO(text))
+    # Spanish/European Excel defaults to ";" as the CSV separator because
+    # the comma is used as a decimal separator. Detect by sniffing the
+    # first non-empty line; fall back to "," if undetectable.
+    delimiter = _detect_delimiter(text)
+    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
     try:
         header = next(reader)
     except StopIteration:
