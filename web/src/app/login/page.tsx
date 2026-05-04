@@ -19,7 +19,19 @@ export default function LoginPage() {
     try {
       const res = await api.login({ email, password, tenant_slug: tenantSlug });
       setToken(res.access_token);
-      router.push("/me");
+      // Role-aware landing:
+      //  - Admin who hasn't finished onboarding → /onboarding (resume wizard)
+      //  - Admin who has → /admin (their primary workspace)
+      //  - Anyone else → /me (personal schedule view)
+      const isAdmin = res.memberships.some((m) => m.roles.includes("admin"));
+      const onboarded = res.tenant.onboarding_completed_at != null;
+      if (isAdmin && !onboarded) {
+        router.push("/onboarding");
+      } else if (isAdmin) {
+        router.push("/admin");
+      } else {
+        router.push("/me");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se ha podido iniciar sesión");
     } finally {
