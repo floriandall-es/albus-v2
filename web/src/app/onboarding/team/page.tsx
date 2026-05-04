@@ -85,16 +85,21 @@ export default function TeamStep() {
           ]}
         />
         <Button type="submit" disabled={!email || !name || invite.isPending}>
-          {invite.isPending ? "Generando…" : "Generar enlace de invitación"}
+          {invite.isPending ? "Invitando…" : "Invitar"}
         </Button>
         {invite.isError && <ErrorText>{(invite.error as Error).message}</ErrorText>}
       </form>
 
       {generated.length > 0 && (
         <section className="mb-6">
-          <h3 className="text-sm font-medium mb-2">
-            Enlaces generados en esta sesión
+          <h3 className="text-sm font-medium mb-1">
+            Invitaciones enviadas en esta sesión
           </h3>
+          <p className="text-xs text-gray-500 mb-2">
+            Cada persona ha recibido un email con el enlace para crear su
+            contraseña. Si no les llega (carpeta de spam, dirección errónea,
+            etc.) puedes copiar su enlace de aquí y compartírselo a mano.
+          </p>
           <ul className="rounded-md border bg-white divide-y text-sm">
             {generated.map((g, i) => (
               <li key={i} className="px-4 py-2">
@@ -117,8 +122,7 @@ export default function TeamStep() {
             ))}
           </ul>
           <p className="mt-2 text-xs text-gray-500">
-            Copia y comparte cada enlace con la persona correspondiente. Caducan en 7
-            días.
+            Los enlaces caducan en 7 días.
           </p>
         </section>
       )}

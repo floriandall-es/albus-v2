@@ -124,7 +124,7 @@ export default function InvitePage() {
             Cancelar
           </Button>
           <Button type="submit" disabled={invite.isPending}>
-            {invite.isPending ? "Generando…" : "Generar enlace"}
+            {invite.isPending ? "Invitando…" : "Invitar"}
           </Button>
         </div>
       </form>
