@@ -5,12 +5,18 @@ import { api } from "@/lib/api";
 import { Button, ErrorText, TextField } from "@/components/admin/ui";
 import { StepNav } from "../_nav";
 
+// Defaults match the standard Spanish surgical-service hierarchy. Most
+// residency programs run R1-R5 (some specialties end at R4). Listed
+// senior → junior so the dropdown / order feels natural.
 const DEFAULTS = [
   "Jefe de servicio",
+  "Jefe de sección",
   "Adjunto",
   "Residente R5",
   "Residente R4",
   "Residente R3",
+  "Residente R2",
+  "Residente R1",
 ];
 
 export default function CategoriesStep() {
