@@ -56,8 +56,9 @@ export default function TeamStep() {
         </Button>
       </div>
       <p className="text-sm text-gray-600 mb-6">
-        Invita a tus compañeros. Por ahora se genera un enlace que tendrás que
-        compartir manualmente (el envío automático por email llegará pronto).
+        Invita a tus compañeros. Recibirán un email con el enlace para crear su
+        contraseña. Si no llega (revisa también la carpeta de spam), puedes
+        copiar el enlace de abajo y compartirlo manualmente.
       </p>
       <BulkInviteModal open={bulkOpen} onClose={() => setBulkOpen(false)} />
 
