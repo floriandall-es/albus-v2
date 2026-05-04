@@ -631,7 +631,105 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ rows }),
     }),
+
+  // Slot succession rules (sprint 14)
+  listSuccessionRules: () =>
+    request<SlotSuccessionRule[]>("/api/slot-succession-rules"),
+  createSuccessionRule: (body: SlotSuccessionRuleInput) =>
+    request<SlotSuccessionRule>("/api/slot-succession-rules", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateSuccessionRule: (id: number, body: SlotSuccessionRuleUpdate) =>
+    request<SlotSuccessionRule>(`/api/slot-succession-rules/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteSuccessionRule: (id: number) =>
+    request<void>(`/api/slot-succession-rules/${id}`, { method: "DELETE" }),
+
+  // Slot frequency caps (sprint 14)
+  listFrequencyCaps: () =>
+    request<SlotFrequencyCap[]>("/api/slot-frequency-caps"),
+  createFrequencyCap: (body: SlotFrequencyCapInput) =>
+    request<SlotFrequencyCap>("/api/slot-frequency-caps", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateFrequencyCap: (id: number, body: SlotFrequencyCapUpdate) =>
+    request<SlotFrequencyCap>(`/api/slot-frequency-caps/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteFrequencyCap: (id: number) =>
+    request<void>(`/api/slot-frequency-caps/${id}`, { method: "DELETE" }),
 };
+
+// ---------------------------------------------------------------------------
+// Sprint 14: cross-slot dependency types
+// ---------------------------------------------------------------------------
+
+export type SuccessionAppliesTo = "same_person" | "whole_team";
+export type DependencySeverity = "hard" | "soft";
+export type FrequencyPeriod =
+  | "rolling_7"
+  | "rolling_14"
+  | "rolling_28"
+  | "iso_week"
+  | "calendar_month";
+
+export type SlotSuccessionRule = {
+  id: number;
+  tenant_id: number;
+  after_slot_id: number;
+  forbid_slot_id: number;
+  days_after: number;
+  applies_to: SuccessionAppliesTo;
+  severity: DependencySeverity;
+  weight: number;
+  created_at: string;
+};
+
+export type SlotSuccessionRuleInput = {
+  after_slot_id: number;
+  forbid_slot_id: number;
+  days_after: number;
+  applies_to?: SuccessionAppliesTo;
+  severity?: DependencySeverity;
+  weight?: number;
+};
+
+export type SlotSuccessionRuleUpdate = {
+  days_after?: number;
+  severity?: DependencySeverity;
+  weight?: number;
+};
+
+export type SlotFrequencyCap = {
+  id: number;
+  tenant_id: number;
+  slot_id: number;
+  period: FrequencyPeriod;
+  max_count: number;
+  severity: DependencySeverity;
+  weight: number;
+  created_at: string;
+};
+
+export type SlotFrequencyCapInput = {
+  slot_id: number;
+  period: FrequencyPeriod;
+  max_count: number;
+  severity?: DependencySeverity;
+  weight?: number;
+};
+
+export type SlotFrequencyCapUpdate = {
+  max_count?: number;
+  severity?: DependencySeverity;
+  weight?: number;
+};
+
 
 export type BulkPreviewRow = {
   row_number: number;

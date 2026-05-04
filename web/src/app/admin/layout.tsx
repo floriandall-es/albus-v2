@@ -11,6 +11,7 @@ const NAV: { href: string; label: string }[] = [
   { href: "/admin/pools", label: "Unidades" },
   { href: "/admin/skills", label: "Competencias" },
   { href: "/admin/slots", label: "Turnos" },
+  { href: "/admin/rules", label: "Reglas" },
   { href: "/admin/holidays", label: "Festivos" },
   { href: "/admin/availability", label: "Bloqueos" },
   { href: "/admin/schedule", label: "Planificación" },

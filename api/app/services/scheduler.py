@@ -33,6 +33,7 @@ Weights are module constants — tune in code for now.
 from __future__ import annotations
 
 import calendar
+import itertools
 import logging
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta, timezone
@@ -49,11 +50,13 @@ from app.models import (
     PoolMembership,
     Schedule,
     Slot,
+    SlotFrequencyCap,
     SlotRule,
     SlotRuleRotationBlock,
     SlotRuleRotationMember,
     SlotRuleWeeklyPin,
     SlotSkillRequired,
+    SlotSuccessionRule,
     SlotTeamRole,
     SlotTeamRoleCategory,
 )
@@ -82,6 +85,47 @@ def _dates_in_month(period: date) -> list[date]:
     month = period.month
     days = calendar.monthrange(year, month)[1]
     return [date(year, month, d) for d in range(1, days + 1)]
+
+
+def slot_time_interval(
+    slot: Slot, d: date
+) -> tuple[datetime, datetime] | None:
+    """Return (start, end) datetime interval for `slot` on date `d`, or
+    None if the slot has no defined times (treat as on-call — never
+    conflicts on time grounds with another slot).
+
+    Slots whose end_time <= start_time cross midnight: the interval ends
+    on (d + 1 day).
+    """
+    if slot.start_time is None or slot.end_time is None:
+        return None
+    s = datetime.combine(d, slot.start_time)
+    e = datetime.combine(d, slot.end_time)
+    if slot.end_time <= slot.start_time:
+        # Crosses midnight (or zero-length — treat as crossing for safety).
+        e = datetime.combine(d + timedelta(days=1), slot.end_time)
+    return (s, e)
+
+
+def slots_overlap_in_time(slot_a: Slot, d_a: date, slot_b: Slot, d_b: date) -> bool:
+    """True iff slot A on date d_a and slot B on date d_b have overlapping
+    wall-clock intervals.
+
+    A slot with no start_time or no end_time is treated as on-call —
+    on-call slots never conflict on time grounds with anything else
+    (same date or adjacent date). This is the canonical "guardia
+    localizada" case: someone can be on-call AND working a regular
+    shift in the same window.
+
+    Two intervals [s1, e1) and [s2, e2) overlap iff s1 < e2 AND s2 < e1.
+    """
+    iv_a = slot_time_interval(slot_a, d_a)
+    iv_b = slot_time_interval(slot_b, d_b)
+    if iv_a is None or iv_b is None:
+        return False
+    s1, e1 = iv_a
+    s2, e2 = iv_b
+    return s1 < e2 and s2 < e1
 
 
 def _slot_applies(slot: Slot, d: date, holiday_dates: set[date]) -> bool:
@@ -173,6 +217,16 @@ class _Context:
         ):
             self.rotation_members_by_rule[m.rule_id].append(m)
 
+        # Cross-slot dependency rules (sprint 14).
+        self.succession_rules: list[SlotSuccessionRule] = (
+            db.query(SlotSuccessionRule)
+            .filter(SlotSuccessionRule.applies_to == "same_person")
+            .all()
+        )
+        self.frequency_caps: list[SlotFrequencyCap] = (
+            db.query(SlotFrequencyCap).all()
+        )
+
         days = _dates_in_month(period)
         self.holiday_dates: set[date] = {
             h.date for h in db.query(Holiday).all() if h.date in set(days)
@@ -193,6 +247,28 @@ class _Context:
             self.blocks_by_person[b.person_id].append((b.start_date, b.end_date))
 
         self.dates = days
+
+        # Pre-existing published assignments BEFORE the period are needed
+        # to evaluate rolling-window frequency caps at the start of the
+        # period. Look back rolling_28 days max — that's the longest
+        # supported window. Drafts don't count (they're tentative).
+        lookback_start = period_start - timedelta(days=28)
+        self.prior_published_counts: dict[
+            tuple[int, int, date], int
+        ] = defaultdict(int)
+        # (person_id, slot_id, date) -> count (always 0 or 1 in practice).
+        prior = (
+            db.query(Assignment)
+            .join(Schedule, Assignment.schedule_id == Schedule.id)
+            .filter(Schedule.status == "published")
+            .filter(Assignment.date >= lookback_start)
+            .filter(Assignment.date < period_start)
+            .filter(Assignment.person_id.isnot(None))
+            .all()
+        )
+        for a in prior:
+            key = (a.person_id, a.slot_id, a.date)
+            self.prior_published_counts[key] += 1
 
     def is_blocked(self, person_id: int, d: date) -> bool:
         for s, e in self.blocks_by_person.get(person_id, ()):
@@ -511,6 +587,9 @@ def _solve_cpsat(
     # those days exclude those people. The pre-pinned cells never become
     # CP-SAT variables.
     pre_busy: set[tuple[int, date]] = set()
+    # Same info but with slot_id, used by the time-overlap constraint
+    # below to forbid solver vars whose times conflict with a pre-pin.
+    pre_pinned_assignments: list[tuple[int, date, int]] = []  # (pid, date, slot_id)
     # If a pre-pinned person worked a post_slot_rest slot on D, exclude
     # them from solver demands on D+1 too.
     pre_rest_block: set[tuple[int, date]] = set()
@@ -563,6 +642,7 @@ def _solve_cpsat(
         )
         if person_id is not None:
             pre_busy.add((person_id, d))
+            pre_pinned_assignments.append((person_id, d, slot.id))
             if slot.post_slot_rest:
                 pre_rest_block.add((person_id, d + timedelta(days=1)))
 
@@ -653,6 +733,7 @@ def _solve_cpsat(
                         )
                         if person_id is not None:
                             pre_busy.add((person_id, d))
+                            pre_pinned_assignments.append((person_id, d, slot.id))
                             if slot.post_slot_rest:
                                 pre_rest_block.add((person_id, d + timedelta(days=1)))
                 else:
@@ -733,18 +814,59 @@ def _solve_cpsat(
                 sum(x[(d, slot_id, role_id, pid)] for pid in cands) == target
             )
 
-    # ---- Hard: at most one slot per person per day. ---
-    by_person_day: dict[tuple[int, date], list] = defaultdict(list)
+    # ---- Hard: time-overlap mutual exclusion per person. ---
+    # (Sprint 14 fix.) Replaces the old "at most one slot per (person,
+    # date)" constraint, which was wrong: a doctor commonly does
+    # consulta 08–14 AND guardia 14–08(next) on the same calendar day.
+    # Those don't overlap in wall-clock time and should both be
+    # allowed.
+    #
+    # For each person we look at every variable they appear in PLUS
+    # every pre-pinned (rotation/fixed_weekly) assignment on a
+    # nearby date, and forbid pairs whose time windows overlap.
+    # Because a slot crossing midnight extends into the next day, the
+    # overlap check has to cross dates too — for each var on date D
+    # we compare against vars/pre-pins on D-1, D, and D+1.
+    vars_by_person: dict[int, list[tuple[date, int, "cp_model.IntVar"]]] = defaultdict(
+        list
+    )
     for (d, slot_id, role_id, pid), var in x.items():
-        by_person_day[(pid, d)].append(var)
-    for vars_ in by_person_day.values():
-        if len(vars_) > 1:
-            model.Add(sum(vars_) <= 1)
+        vars_by_person[pid].append((d, slot_id, var))
+    # Pre-pinned (forced) "variables" — represent as a date+slot tuple
+    # with no IntVar; we bake them in by forbidding any conflicting
+    # solver var.
+    pre_pinned_by_person: dict[int, list[tuple[date, int]]] = defaultdict(list)
+    for (pid, d_pin, s_pin) in pre_pinned_assignments:
+        pre_pinned_by_person[pid].append((d_pin, s_pin))
+
+    for pid, items in vars_by_person.items():
+        # Solver-var vs solver-var pairs.
+        for (d1, s1, v1), (d2, s2, v2) in itertools.combinations(items, 2):
+            if abs((d1 - d2).days) > 1:
+                continue
+            slot_a = ctx.slot_by_id[s1]
+            slot_b = ctx.slot_by_id[s2]
+            if slots_overlap_in_time(slot_a, d1, slot_b, d2):
+                model.Add(v1 + v2 <= 1)
+        # Solver-var vs pre-pin pairs: pre-pin is forced =1 logically,
+        # so any overlapping solver var must be =0.
+        for d_pin, s_pin in pre_pinned_by_person.get(pid, ()):
+            slot_pin = ctx.slot_by_id.get(s_pin)
+            if slot_pin is None:
+                continue
+            for (d_v, s_v, v) in items:
+                if abs((d_v - d_pin).days) > 1:
+                    continue
+                slot_v = ctx.slot_by_id[s_v]
+                if slots_overlap_in_time(slot_pin, d_pin, slot_v, d_v):
+                    model.Add(v == 0)
 
     # ---- Hard: post_slot_rest. ---
     # If slot S has post_slot_rest=True, anyone assigned on date D cannot
     # work any slot on D+1.
-    by_person_day_any: dict[tuple[int, date], list] = by_person_day
+    by_person_day_any: dict[tuple[int, date], list] = defaultdict(list)
+    for (d, slot_id, role_id, pid), var in x.items():
+        by_person_day_any[(pid, d)].append(var)
     for (d, slot_id, role_id, pid), var in x.items():
         slot = ctx.slot_by_id[slot_id]
         if not slot.post_slot_rest:
@@ -785,6 +907,181 @@ def _solve_cpsat(
                 # post-solve. Mark target down, re-state constraint.
                 continue
             model.Add(v == 1)
+
+    # ---- Cross-slot dependencies (sprint 14). ----
+    # We accumulate soft-objective contributions in soft_obj_terms here
+    # and append them to obj_terms further down.
+    soft_obj_terms: list = []
+
+    # Index solver vars by (slot_id, date, person_id) -> var, for fast
+    # succession/frequency-cap lookups. There's at most one var per
+    # such triple (because role_id is collapsed: succession & frequency
+    # caps are slot-level, not role-level).
+    vars_by_sdp: dict[tuple[int, date, int], list] = defaultdict(list)
+    for (d_, slot_id_, role_id_, pid_), var_ in x.items():
+        vars_by_sdp[(slot_id_, d_, pid_)].append(var_)
+
+    # Pre-pin index for the same key.
+    prepin_by_sdp: set[tuple[int, date, int]] = set()
+    for (pid_, d_, s_) in pre_pinned_assignments:
+        prepin_by_sdp.add((s_, d_, pid_))
+
+    # ---- Succession rules (same_person). ----
+    # For each rule R: if person P works after_slot on day D, they
+    # cannot (hard) / are penalized (soft) for working forbid_slot
+    # on D' for D' in (D, D+R.days_after].
+    period_dates_set = set(ctx.dates)
+    person_ids_all = sorted(ctx.member_by_person_id.keys())
+    for rule in ctx.succession_rules:
+        a_slot = rule.after_slot_id
+        b_slot = rule.forbid_slot_id
+        for D in ctx.dates:
+            for offset in range(1, rule.days_after + 1):
+                Dp = D + timedelta(days=offset)
+                if Dp not in period_dates_set:
+                    continue
+                for P in person_ids_all:
+                    a_vars = list(vars_by_sdp.get((a_slot, D, P), []))
+                    b_vars = list(vars_by_sdp.get((b_slot, Dp, P), []))
+                    a_pinned = (a_slot, D, P) in prepin_by_sdp
+                    b_pinned = (b_slot, Dp, P) in prepin_by_sdp
+
+                    # If both sides are pre-pinned: schema-level conflict.
+                    # Skip — there's nothing the solver can do; admin
+                    # config conflict surfaces as a normal assignment
+                    # collision. (We don't try to silently break the
+                    # rotation here.)
+                    if a_pinned and b_pinned:
+                        continue
+                    # If pinned on the "after" side, the "before -> after"
+                    # implication collapses to "forbid b". And vice versa.
+                    if rule.severity == "hard":
+                        if a_pinned:
+                            for bv in b_vars:
+                                model.Add(bv == 0)
+                            continue
+                        if b_pinned:
+                            for av in a_vars:
+                                model.Add(av == 0)
+                            continue
+                        if not a_vars or not b_vars:
+                            continue
+                        # Pairwise: a + b <= 1 for each (a, b).
+                        for av in a_vars:
+                            for bv in b_vars:
+                                model.Add(av + bv <= 1)
+                    else:
+                        # Soft: penalize each (a, b) co-occurrence by weight.
+                        if a_pinned:
+                            for bv in b_vars:
+                                soft_obj_terms.append(rule.weight * bv)
+                            continue
+                        if b_pinned:
+                            for av in a_vars:
+                                soft_obj_terms.append(rule.weight * av)
+                            continue
+                        if not a_vars or not b_vars:
+                            continue
+                        for av in a_vars:
+                            for bv in b_vars:
+                                # Penalty indicator z s.t. z >= a + b - 1.
+                                z = model.NewBoolVar(
+                                    f"succ_r{rule.id}_{D}_{Dp}_p{P}_{id(av)}_{id(bv)}"
+                                )
+                                model.Add(z >= av + bv - 1)
+                                soft_obj_terms.append(rule.weight * z)
+
+    # ---- Frequency caps. ----
+    # For each cap on slot S with period type T:
+    #   For each person P, for each window W in T:
+    #     count = sum(vars where (slot=S, date in W, person=P))
+    #          + sum(prior_published_counts for (P, S, d in W))
+    #     hard:  count <= max_count
+    #     soft:  excess >= count - max_count;  obj += weight * excess
+    def _cap_windows(period: str) -> list[tuple[date, list[date]]]:
+        """Return list of (anchor_date, [days in window]) for the given
+        period. For rolling_*, anchor is the trailing day D and window is
+        [D-N+1, D]. For iso_week / calendar_month, anchor is the first
+        date in the period that falls in that bucket and the window is
+        the full bucket clipped to the period."""
+        out: list[tuple[date, list[date]]] = []
+        if period.startswith("rolling_"):
+            n = int(period.split("_")[1])
+            for D in ctx.dates:
+                window = [D - timedelta(days=k) for k in range(n - 1, -1, -1)]
+                out.append((D, window))
+            return out
+        if period == "iso_week":
+            seen: dict[tuple[int, int], list[date]] = defaultdict(list)
+            for D in ctx.dates:
+                key = D.isocalendar()[:2]
+                seen[key].append(D)
+            for key, days in seen.items():
+                out.append((days[0], days))
+            return out
+        if period == "calendar_month":
+            seen2: dict[tuple[int, int], list[date]] = defaultdict(list)
+            for D in ctx.dates:
+                key = (D.year, D.month)
+                seen2[key].append(D)
+            for key, days in seen2.items():
+                out.append((days[0], days))
+            return out
+        return out
+
+    for cap in ctx.frequency_caps:
+        windows = _cap_windows(cap.period)
+        for anchor, days in windows:
+            for P in person_ids_all:
+                window_vars: list = []
+                for d_ in days:
+                    if d_ in period_dates_set:
+                        window_vars.extend(vars_by_sdp.get((cap.slot_id, d_, P), []))
+                # Pre-pinned in-period assignments to that slot count.
+                prior_in_period = sum(
+                    1
+                    for d_ in days
+                    if d_ in period_dates_set
+                    and (cap.slot_id, d_, P) in prepin_by_sdp
+                )
+                # Pre-existing published assignments OUTSIDE the period
+                # (only meaningful for rolling windows that look back).
+                prior_outside = 0
+                if cap.period.startswith("rolling_"):
+                    for d_ in days:
+                        if d_ in period_dates_set:
+                            continue
+                        prior_outside += ctx.prior_published_counts.get(
+                            (P, cap.slot_id, d_), 0
+                        )
+                base = prior_in_period + prior_outside
+                if not window_vars and base == 0:
+                    continue  # nothing to constrain
+                if cap.severity == "hard":
+                    if window_vars:
+                        model.Add(sum(window_vars) + base <= cap.max_count)
+                    elif base > cap.max_count:
+                        # Pre-pinned config already exceeds the cap; nothing
+                        # the solver can do. Log & skip.
+                        logger.warning(
+                            "Frequency cap exceeded by pre-pinned/prior data: "
+                            "person=%s slot=%s anchor=%s base=%d cap=%d",
+                            P,
+                            cap.slot_id,
+                            anchor,
+                            base,
+                            cap.max_count,
+                        )
+                else:
+                    # Soft: excess = max(0, sum + base - max_count).
+                    if not window_vars:
+                        continue
+                    bound = len(window_vars) + base
+                    excess = model.NewIntVar(
+                        0, max(1, bound), f"freq_excess_c{cap.id}_a{anchor}_p{P}"
+                    )
+                    model.Add(excess >= sum(window_vars) + base - cap.max_count)
+                    soft_obj_terms.append(cap.weight * excess)
 
     # ---- Objective: fairness (counts_for_equity, FTE-weighted). ----
     # We minimize max - min of weighted counts. Weights are int100/fte_pct
@@ -904,6 +1201,8 @@ def _solve_cpsat(
                 model.AddBoolOr([v1.Not(), v2.Not()]).OnlyEnforceIf(z.Not())
                 obj_terms.append(W_GUARDIA_SPREAD * shortfall * z)
 
+    if soft_obj_terms:
+        obj_terms.extend(soft_obj_terms)
     if obj_terms:
         model.Minimize(sum(obj_terms))
 
