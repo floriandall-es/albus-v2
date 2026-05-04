@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.slot_rule import SlotRuleOut
+
 
 DaysApplied = Literal["all", "weekdays", "weekends_holidays", "custom"]
 StaffingMode = Literal["single", "multiple_same", "team_composition"]
@@ -88,6 +90,7 @@ class SlotOut(BaseModel):
     crosses_midnight: bool
     team_roles: list[SlotTeamRoleOut]
     skills_required: list[SlotSkillRequiredOut]
+    rules: list[SlotRuleOut]
     created_at: datetime
 
     model_config = {"from_attributes": True}

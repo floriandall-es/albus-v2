@@ -3,8 +3,13 @@ from sqlalchemy.exc import IntegrityError
 
 from app.models import (
     Category,
+    Membership,
     Skill,
     Slot,
+    SlotRule,
+    SlotRuleRotationBlock,
+    SlotRuleRotationMember,
+    SlotRuleWeeklyPin,
     SlotSkillRequired,
     SlotTeamRole,
     SlotTeamRoleCategory,
@@ -18,6 +23,14 @@ from app.schemas.slot import (
     SlotTeamRoleIn,
     SlotTeamRoleOut,
     SlotUpdate,
+)
+from app.schemas.slot_rule import (
+    RotationBlockOut,
+    RotationMemberOut,
+    SlotRuleIn,
+    SlotRuleOut,
+    SlotRulesReplaceIn,
+    WeeklyPinOut,
 )
 
 router = APIRouter()
@@ -77,6 +90,65 @@ def _serialize(ctx: RequestContext, slot: Slot) -> SlotOut:
         .all()
     )
 
+    rules = (
+        ctx.db.query(SlotRule)
+        .filter(SlotRule.slot_id == slot.id)
+        .order_by(SlotRule.position, SlotRule.id)
+        .all()
+    )
+    rule_ids = [r.id for r in rules] or [0]
+    pins = (
+        ctx.db.query(SlotRuleWeeklyPin)
+        .filter(SlotRuleWeeklyPin.rule_id.in_(rule_ids))
+        .order_by(SlotRuleWeeklyPin.weekday, SlotRuleWeeklyPin.id)
+        .all()
+    )
+    blocks = (
+        ctx.db.query(SlotRuleRotationBlock)
+        .filter(SlotRuleRotationBlock.rule_id.in_(rule_ids))
+        .order_by(SlotRuleRotationBlock.position, SlotRuleRotationBlock.id)
+        .all()
+    )
+    members = (
+        ctx.db.query(SlotRuleRotationMember)
+        .filter(SlotRuleRotationMember.rule_id.in_(rule_ids))
+        .order_by(SlotRuleRotationMember.position, SlotRuleRotationMember.id)
+        .all()
+    )
+    pins_by_rule: dict[int, list[SlotRuleWeeklyPin]] = {}
+    for p in pins:
+        pins_by_rule.setdefault(p.rule_id, []).append(p)
+    blocks_by_rule: dict[int, list[SlotRuleRotationBlock]] = {}
+    for b in blocks:
+        blocks_by_rule.setdefault(b.rule_id, []).append(b)
+    members_by_rule: dict[int, list[SlotRuleRotationMember]] = {}
+    for m in members:
+        members_by_rule.setdefault(m.rule_id, []).append(m)
+
+    rules_out = [
+        SlotRuleOut(
+            id=r.id,
+            tenant_id=r.tenant_id,
+            position=r.position,
+            days_bitmap=r.days_bitmap,
+            strategy=r.strategy,  # type: ignore[arg-type]
+            anchor_date=r.anchor_date,
+            weekly_pins=[
+                WeeklyPinOut(id=p.id, weekday=p.weekday, person_id=p.person_id)
+                for p in pins_by_rule.get(r.id, [])
+            ],
+            rotation_blocks=[
+                RotationBlockOut(id=b.id, position=b.position, days_bitmap=b.days_bitmap)
+                for b in blocks_by_rule.get(r.id, [])
+            ],
+            rotation_members=[
+                RotationMemberOut(id=m.id, position=m.position, person_id=m.person_id)
+                for m in members_by_rule.get(r.id, [])
+            ],
+        )
+        for r in rules
+    ]
+
     return SlotOut(
         id=slot.id,
         tenant_id=slot.tenant_id,
@@ -107,6 +179,7 @@ def _serialize(ctx: RequestContext, slot: Slot) -> SlotOut:
             SlotSkillRequiredOut(id=s.id, skill_id=s.skill_id, strength=s.strength)  # type: ignore[arg-type]
             for s in skills
         ],
+        rules=rules_out,
         created_at=slot.created_at,
     )
 
@@ -206,6 +279,20 @@ def create_slot(
 
     _replace_team_roles(ctx, obj, payload.team_roles)
     _replace_skills_required(ctx, obj, payload.skills_required)
+    # Default rule: solver covering all 7 days, position 0. Mirrors the
+    # backfill in migration 0013 — brand-new slots behave like before this
+    # feature unless the admin explicitly reconfigures their rules.
+    ctx.db.add(
+        SlotRule(
+            tenant_id=ctx.tenant.id,
+            slot_id=obj.id,
+            position=0,
+            days_bitmap=0b1111111,
+            strategy="solver",
+            anchor_date=None,
+        )
+    )
+    ctx.db.flush()
     ctx.db.refresh(obj)
     return _serialize(ctx, obj)
 
@@ -255,3 +342,191 @@ def delete_slot(slot_id: int, ctx: RequestContext = Depends(get_current_context)
     obj = _get_or_404(ctx, slot_id)
     ctx.db.delete(obj)
     ctx.db.flush()
+
+
+def _validate_rules_in_tenant_persons(
+    ctx: RequestContext, person_ids: set[int]
+) -> None:
+    """Every person_id referenced in pins/members must be a member of this
+    tenant — Person rows aren't tenant-scoped but Memberships are."""
+    if not person_ids:
+        return
+    found = (
+        ctx.db.query(Membership.person_id)
+        .filter(Membership.person_id.in_(person_ids))
+        .all()
+    )
+    found_ids = {row[0] for row in found}
+    missing = [p for p in person_ids if p not in found_ids]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Personas no pertenecen a este equipo: {sorted(missing)}",
+        )
+
+
+def _validate_rules(rules: list[SlotRuleIn]) -> None:
+    if not rules:
+        raise HTTPException(
+            status_code=400, detail="Debe haber al menos una regla por turno"
+        )
+    seen_mask = 0
+    for idx, r in enumerate(rules):
+        if r.days_bitmap <= 0 or r.days_bitmap > 127:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Regla {idx + 1}: días inválidos (debe ser 1..127)",
+            )
+        if seen_mask & r.days_bitmap:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Regla {idx + 1}: solapa con otra regla en los mismos días",
+            )
+        seen_mask |= r.days_bitmap
+
+        if r.strategy == "rotation":
+            if r.anchor_date is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Regla {idx + 1}: la rotación necesita fecha ancla",
+                )
+            if not r.rotation_blocks:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Regla {idx + 1}: la rotación necesita al menos un bloque",
+                )
+            if not r.rotation_members:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Regla {idx + 1}: la rotación necesita al menos un miembro",
+                )
+            block_mask = 0
+            for bidx, b in enumerate(r.rotation_blocks):
+                if b.days_bitmap & ~r.days_bitmap:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"Regla {idx + 1}, bloque {bidx + 1}: incluye días fuera"
+                            " del bitmap de la regla"
+                        ),
+                    )
+                if block_mask & b.days_bitmap:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"Regla {idx + 1}, bloque {bidx + 1}: solapa con otro"
+                            " bloque"
+                        ),
+                    )
+                block_mask |= b.days_bitmap
+            if block_mask != r.days_bitmap:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Regla {idx + 1}: los bloques deben cubrir exactamente"
+                        " los días de la regla"
+                    ),
+                )
+            positions = [m.position for m in r.rotation_members]
+            if len(set(positions)) != len(positions):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Regla {idx + 1}: posiciones de miembros duplicadas",
+                )
+            persons = [m.person_id for m in r.rotation_members]
+            if len(set(persons)) != len(persons):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Regla {idx + 1}: una persona aparece dos veces en la rotación",
+                )
+        elif r.strategy == "fixed_weekly":
+            seen_pin: set[tuple[int, int]] = set()
+            for pidx, p in enumerate(r.weekly_pins):
+                if not (r.days_bitmap & (1 << p.weekday)):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"Regla {idx + 1}, pin {pidx + 1}: el día"
+                            f" {p.weekday} no está en la regla"
+                        ),
+                    )
+                key = (p.weekday, p.person_id)
+                if key in seen_pin:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"Regla {idx + 1}: pin duplicado para weekday="
+                            f"{p.weekday}, person_id={p.person_id}"
+                        ),
+                    )
+                seen_pin.add(key)
+
+
+@router.put("/slots/{slot_id}/rules", response_model=SlotOut)
+def replace_slot_rules(
+    slot_id: int,
+    payload: SlotRulesReplaceIn,
+    ctx: RequestContext = Depends(get_current_context),
+) -> SlotOut:
+    obj = _get_or_404(ctx, slot_id)
+    rules = payload.rules
+    _validate_rules(rules)
+
+    # Validate person_ids belong to this tenant via Membership.
+    person_ids: set[int] = set()
+    for r in rules:
+        for p in r.weekly_pins:
+            person_ids.add(p.person_id)
+        for m in r.rotation_members:
+            person_ids.add(m.person_id)
+    _validate_rules_in_tenant_persons(ctx, person_ids)
+
+    # Atomic replace: delete existing rules (cascade drops children).
+    existing = ctx.db.query(SlotRule).filter(SlotRule.slot_id == obj.id).all()
+    for r in existing:
+        ctx.db.delete(r)
+    ctx.db.flush()
+
+    for pos, r in enumerate(rules):
+        rule = SlotRule(
+            tenant_id=ctx.tenant.id,
+            slot_id=obj.id,
+            position=pos,
+            days_bitmap=r.days_bitmap,
+            strategy=r.strategy,
+            anchor_date=r.anchor_date if r.strategy == "rotation" else None,
+        )
+        ctx.db.add(rule)
+        ctx.db.flush()
+        if r.strategy == "fixed_weekly":
+            for p in r.weekly_pins:
+                ctx.db.add(
+                    SlotRuleWeeklyPin(
+                        tenant_id=ctx.tenant.id,
+                        rule_id=rule.id,
+                        weekday=p.weekday,
+                        person_id=p.person_id,
+                    )
+                )
+        elif r.strategy == "rotation":
+            for b in r.rotation_blocks:
+                ctx.db.add(
+                    SlotRuleRotationBlock(
+                        tenant_id=ctx.tenant.id,
+                        rule_id=rule.id,
+                        position=b.position,
+                        days_bitmap=b.days_bitmap,
+                    )
+                )
+            for m in r.rotation_members:
+                ctx.db.add(
+                    SlotRuleRotationMember(
+                        tenant_id=ctx.tenant.id,
+                        rule_id=rule.id,
+                        position=m.position,
+                        person_id=m.person_id,
+                    )
+                )
+    ctx.db.flush()
+    ctx.db.refresh(obj)
+    return _serialize(ctx, obj)

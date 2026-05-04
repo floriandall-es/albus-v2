@@ -9,7 +9,11 @@ import {
   type SkillStrength,
   type Slot,
   type SlotInput,
+  type SlotRule,
+  type SlotRuleInput,
+  type SlotRuleStrategy,
   type StaffingMode,
+  type TeamMember,
 } from "@/lib/api";
 import {
   Button,
@@ -40,6 +44,7 @@ export default function SlotsPage() {
   const list = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
   const cats = useQuery({ queryKey: ["categories"], queryFn: api.listCategories });
   const skills = useQuery({ queryKey: ["skills"], queryFn: api.listSkills });
+  const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
   const [editing, setEditing] = useState<Slot | "new" | null>(null);
 
   const del = useMutation({
@@ -106,6 +111,7 @@ export default function SlotsPage() {
           initial={editing === "new" ? null : editing}
           categories={cats.data ?? []}
           skills={skills.data ?? []}
+          team={team.data ?? []}
           onClose={() => setEditing(null)}
         />
       )}
@@ -120,11 +126,13 @@ function SlotDialog({
   initial,
   categories,
   skills,
+  team,
   onClose,
 }: {
   initial: Slot | null;
   categories: Category[];
   skills: Skill[];
+  team: TeamMember[];
   onClose: () => void;
 }) {
   const qc = useQueryClient();
@@ -164,9 +172,21 @@ function SlotDialog({
       strength: s.strength,
     })) ?? [],
   );
+  const [rules, setRules] = useState<RuleDraft[]>(
+    initial?.rules.map(ruleToDraft) ?? [
+      {
+        days_bitmap: 0b1111111,
+        strategy: "solver",
+        anchor_date: null,
+        weekly_pins: [],
+        rotation_blocks: [],
+        rotation_members: [],
+      },
+    ],
+  );
 
   const save = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const body: SlotInput = {
         name,
         days_applied: days,
@@ -184,13 +204,27 @@ function SlotDialog({
         team_roles: mode === "team_composition" ? teamRoles : [],
         skills_required: skillsRequired,
       };
-      return initial ? api.updateSlot(initial.id, body) : api.createSlot(body);
+      const slot = initial
+        ? await api.updateSlot(initial.id, body)
+        : await api.createSlot(body);
+      // Atomic rule replacement always runs after slot core is saved.
+      // For new slots the API created a default solver rule; we overwrite
+      // it with whatever the admin configured (which often is exactly the
+      // same default rule, so this is a cheap no-op).
+      const ruleInputs: SlotRuleInput[] = rules.map(draftToInput);
+      await api.replaceSlotRules(slot.id, ruleInputs);
+      return slot;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["slots"] });
       onClose();
     },
   });
+
+  // Validation: rules must not have empty bitmaps and must collectively
+  // cover the slot's days_applied days. The back-end enforces overlap
+  // and rotation completeness; this banner is just an early-warning.
+  const ruleValidationError = validateRulesClient(rules, days, customDaysBitmap);
 
   function addTeamRole() {
     setTeamRoles((cur) => [
@@ -308,6 +342,50 @@ function SlotDialog({
             </p>
           </div>
         )}
+
+        <div className="border-t pt-3">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold">Reglas de asignación</h3>
+            <Button
+              variant="secondary"
+              onClick={() =>
+                setRules((cur) => [
+                  ...cur,
+                  {
+                    days_bitmap: 0,
+                    strategy: "solver",
+                    anchor_date: null,
+                    weekly_pins: [],
+                    rotation_blocks: [],
+                    rotation_members: [],
+                  },
+                ])
+              }
+            >
+              + Añadir regla
+            </Button>
+          </div>
+          {ruleValidationError && (
+            <p className="mb-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
+              {ruleValidationError}
+            </p>
+          )}
+          {rules.map((r, i) => (
+            <RuleCard
+              key={i}
+              rule={r}
+              team={team}
+              onChange={(patch) =>
+                setRules((cur) =>
+                  cur.map((rr, idx) => (idx === i ? { ...rr, ...patch } : rr)),
+                )
+              }
+              onDelete={() =>
+                setRules((cur) => cur.filter((_, idx) => idx !== i))
+              }
+            />
+          ))}
+        </div>
 
         {mode === "team_composition" && (
           <div className="border-t pt-3">
@@ -480,6 +558,399 @@ function CustomDaysPicker({
           Selecciona al menos un día para activar la regla personalizada.
         </p>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Rules editor
+// ---------------------------------------------------------------------------
+
+type RuleDraft = {
+  days_bitmap: number;
+  strategy: SlotRuleStrategy;
+  anchor_date: string | null;
+  weekly_pins: { weekday: number; person_id: number }[];
+  rotation_blocks: { position: number; days_bitmap: number }[];
+  rotation_members: { position: number; person_id: number }[];
+};
+
+function ruleToDraft(r: SlotRule): RuleDraft {
+  return {
+    days_bitmap: r.days_bitmap,
+    strategy: r.strategy,
+    anchor_date: r.anchor_date,
+    weekly_pins: r.weekly_pins.map((p) => ({
+      weekday: p.weekday,
+      person_id: p.person_id,
+    })),
+    rotation_blocks: r.rotation_blocks.map((b) => ({
+      position: b.position,
+      days_bitmap: b.days_bitmap,
+    })),
+    rotation_members: r.rotation_members.map((m) => ({
+      position: m.position,
+      person_id: m.person_id,
+    })),
+  };
+}
+
+function draftToInput(r: RuleDraft): SlotRuleInput {
+  return {
+    days_bitmap: r.days_bitmap,
+    strategy: r.strategy,
+    anchor_date: r.strategy === "rotation" ? r.anchor_date : null,
+    weekly_pins:
+      r.strategy === "fixed_weekly"
+        ? r.weekly_pins.filter((p) => r.days_bitmap & (1 << p.weekday))
+        : [],
+    rotation_blocks: r.strategy === "rotation" ? r.rotation_blocks : [],
+    rotation_members: r.strategy === "rotation" ? r.rotation_members : [],
+  };
+}
+
+function validateRulesClient(
+  rules: RuleDraft[],
+  days: DaysApplied,
+  customBitmap: number,
+): string | null {
+  let combined = 0;
+  for (let i = 0; i < rules.length; i++) {
+    const r = rules[i];
+    if (r.days_bitmap === 0) return `Regla ${i + 1}: selecciona al menos un día.`;
+    if (combined & r.days_bitmap)
+      return `Regla ${i + 1}: solapa con otra regla en los mismos días.`;
+    combined |= r.days_bitmap;
+  }
+  // Check coverage against the slot's days_applied target.
+  const target =
+    days === "all"
+      ? 0b1111111
+      : days === "weekdays"
+        ? 0b0011111
+        : days === "weekends_holidays"
+          ? 0b1100000
+          : customBitmap;
+  if (target && (combined & target) !== target) {
+    return "Las reglas no cubren todos los días del turno. Las fechas sin regla quedarán vacías.";
+  }
+  return null;
+}
+
+const ROT_PRESETS: { value: string; label: string }[] = [
+  { value: "daily", label: "Diaria" },
+  { value: "weekdays", label: "Solo laborables" },
+  { value: "weekdays_weekend_grouped", label: "Laborables + finde agrupado" },
+  { value: "weekly", label: "Semanal" },
+  { value: "custom", label: "Personalizado" },
+];
+
+function blocksFromPreset(
+  preset: string,
+  bitmap: number,
+): { position: number; days_bitmap: number }[] {
+  if (preset === "weekly") {
+    return [{ position: 0, days_bitmap: bitmap }];
+  }
+  if (preset === "daily") {
+    const out: { position: number; days_bitmap: number }[] = [];
+    let pos = 0;
+    for (let bit = 0; bit < 7; bit++) {
+      const mask = 1 << bit;
+      if (bitmap & mask) out.push({ position: pos++, days_bitmap: mask });
+    }
+    return out;
+  }
+  if (preset === "weekdays") {
+    const out: { position: number; days_bitmap: number }[] = [];
+    let pos = 0;
+    for (let bit = 0; bit < 5; bit++) {
+      const mask = 1 << bit;
+      if (bitmap & mask) out.push({ position: pos++, days_bitmap: mask });
+    }
+    return out;
+  }
+  if (preset === "weekdays_weekend_grouped") {
+    const out: { position: number; days_bitmap: number }[] = [];
+    let pos = 0;
+    for (let bit = 0; bit < 4; bit++) {
+      const mask = 1 << bit;
+      if (bitmap & mask) out.push({ position: pos++, days_bitmap: mask });
+    }
+    const we = bitmap & 0b1110000;
+    if (we) out.push({ position: pos++, days_bitmap: we });
+    return out;
+  }
+  return [];
+}
+
+function bitmapDescription(bitmap: number): string {
+  return DAY_LABELS.map((d) => (bitmap & (1 << d.bit) ? d.short : "·")).join(" ");
+}
+
+function RuleCard({
+  rule,
+  team,
+  onChange,
+  onDelete,
+}: {
+  rule: RuleDraft;
+  team: TeamMember[];
+  onChange: (patch: Partial<RuleDraft>) => void;
+  onDelete: () => void;
+}) {
+  const toggleDay = (bit: number) => {
+    const mask = 1 << bit;
+    const next = rule.days_bitmap & mask
+      ? rule.days_bitmap & ~mask
+      : rule.days_bitmap | mask;
+    onChange({ days_bitmap: next });
+  };
+
+  const setStrategy = (s: SlotRuleStrategy) => onChange({ strategy: s });
+
+  const summary = (() => {
+    if (rule.strategy === "solver") return "Asignación automática (solver)";
+    if (rule.strategy === "manual") return "Asignación manual";
+    if (rule.strategy === "fixed_weekly")
+      return `${rule.weekly_pins.length} pin(s) por día de la semana`;
+    return `${rule.rotation_blocks.length} bloque(s) · ${rule.rotation_members.length} persona(s)`;
+  })();
+
+  return (
+    <div className="rounded-md border bg-gray-50 p-2 mb-2 space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-gray-700">
+          <span className="font-mono">{bitmapDescription(rule.days_bitmap)}</span>
+          <span className="ml-2 text-gray-500">· {summary}</span>
+        </div>
+        <button
+          type="button"
+          onClick={onDelete}
+          className="text-xs text-red-700 hover:underline"
+        >
+          Quitar
+        </button>
+      </div>
+
+      <div>
+        <span className="text-xs font-medium text-gray-700">Días que cubre</span>
+        <div className="mt-1 flex flex-wrap gap-1">
+          {DAY_LABELS.map(({ bit, short, long }) => {
+            const active = (rule.days_bitmap & (1 << bit)) !== 0;
+            return (
+              <button
+                key={bit}
+                type="button"
+                onClick={() => toggleDay(bit)}
+                aria-pressed={active}
+                title={long}
+                className={
+                  "flex h-8 w-8 items-center justify-center rounded-md border text-xs font-medium transition " +
+                  (active
+                    ? "border-blue-600 bg-blue-600 text-white"
+                    : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50")
+                }
+              >
+                {short}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-3 text-xs">
+        {(
+          [
+            { v: "solver", label: "Solver" },
+            { v: "fixed_weekly", label: "Día fijo" },
+            { v: "rotation", label: "Rotación" },
+            { v: "manual", label: "Manual" },
+          ] as { v: SlotRuleStrategy; label: string }[]
+        ).map((opt) => (
+          <label key={opt.v} className="flex items-center gap-1">
+            <input
+              type="radio"
+              checked={rule.strategy === opt.v}
+              onChange={() => setStrategy(opt.v)}
+            />
+            {opt.label}
+          </label>
+        ))}
+      </div>
+
+      {rule.strategy === "fixed_weekly" && (
+        <FixedWeeklyEditor rule={rule} team={team} onChange={onChange} />
+      )}
+      {rule.strategy === "rotation" && (
+        <RotationEditor rule={rule} team={team} onChange={onChange} />
+      )}
+    </div>
+  );
+}
+
+function FixedWeeklyEditor({
+  rule,
+  team,
+  onChange,
+}: {
+  rule: RuleDraft;
+  team: TeamMember[];
+  onChange: (patch: Partial<RuleDraft>) => void;
+}) {
+  const setPin = (weekday: number, person_id: number | null) => {
+    const cleaned = rule.weekly_pins.filter((p) => p.weekday !== weekday);
+    if (person_id !== null) cleaned.push({ weekday, person_id });
+    onChange({ weekly_pins: cleaned });
+  };
+  const days = DAY_LABELS.filter((d) => rule.days_bitmap & (1 << d.bit));
+  if (!days.length) {
+    return <p className="text-xs text-gray-500">Activa días en la regla para fijar pines.</p>;
+  }
+  return (
+    <div className="space-y-1">
+      {days.map((d) => {
+        const pin = rule.weekly_pins.find((p) => p.weekday === d.bit);
+        return (
+          <div key={d.bit} className="grid grid-cols-[5rem_1fr] items-center gap-2 text-xs">
+            <span className="text-gray-700">{d.long}</span>
+            <Select
+              label=""
+              value={pin?.person_id ?? ""}
+              onChange={(v) =>
+                setPin(d.bit, v === "" || v === null ? null : Number(v))
+              }
+              options={[
+                { value: "", label: "—" },
+                ...team.map((m) => ({
+                  value: m.person_id,
+                  label: m.person_name,
+                })),
+              ]}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function RotationEditor({
+  rule,
+  team,
+  onChange,
+}: {
+  rule: RuleDraft;
+  team: TeamMember[];
+  onChange: (patch: Partial<RuleDraft>) => void;
+}) {
+  const applyPreset = (preset: string) => {
+    onChange({ rotation_blocks: blocksFromPreset(preset, rule.days_bitmap) });
+  };
+  const addMember = () => {
+    const used = new Set(rule.rotation_members.map((m) => m.person_id));
+    const next = team.find((t) => !used.has(t.person_id));
+    if (next)
+      onChange({
+        rotation_members: [
+          ...rule.rotation_members,
+          { position: rule.rotation_members.length, person_id: next.person_id },
+        ],
+      });
+  };
+  const moveMember = (idx: number, dir: -1 | 1) => {
+    const j = idx + dir;
+    if (j < 0 || j >= rule.rotation_members.length) return;
+    const arr = [...rule.rotation_members];
+    [arr[idx], arr[j]] = [arr[j], arr[idx]];
+    onChange({
+      rotation_members: arr.map((m, i) => ({ ...m, position: i })),
+    });
+  };
+  const removeMember = (idx: number) => {
+    const arr = rule.rotation_members
+      .filter((_, i) => i !== idx)
+      .map((m, i) => ({ ...m, position: i }));
+    onChange({ rotation_members: arr });
+  };
+  return (
+    <div className="space-y-2 rounded border border-gray-200 bg-white p-2">
+      <div className="grid grid-cols-2 gap-2">
+        <TextField
+          label="Fecha ancla"
+          type="date"
+          value={rule.anchor_date ?? ""}
+          onChange={(v) => onChange({ anchor_date: v || null })}
+        />
+        <Select
+          label="Forma de la rotación"
+          value=""
+          onChange={(v) => v && applyPreset(String(v))}
+          options={[
+            { value: "", label: "Aplicar plantilla…" },
+            ...ROT_PRESETS.map((p) => ({ value: p.value, label: p.label })),
+          ]}
+        />
+      </div>
+      <div>
+        <span className="text-xs font-medium text-gray-700">Bloques</span>
+        <div className="mt-1 space-y-1">
+          {rule.rotation_blocks.length === 0 && (
+            <p className="text-xs text-gray-500">
+              Aplica una plantilla o añade bloques personalizados.
+            </p>
+          )}
+          {rule.rotation_blocks.map((b, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs">
+              <span className="w-12 text-gray-500">#{i + 1}</span>
+              <span className="font-mono">{bitmapDescription(b.days_bitmap)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div>
+        <div className="mb-1 flex items-center justify-between">
+          <span className="text-xs font-medium text-gray-700">Miembros (orden = ciclo)</span>
+          <Button variant="secondary" onClick={addMember} disabled={team.length === 0}>
+            + Añadir
+          </Button>
+        </div>
+        {rule.rotation_members.length === 0 && (
+          <p className="text-xs text-gray-500">Añade al menos un miembro.</p>
+        )}
+        {rule.rotation_members.map((m, i) => {
+          const tm = team.find((t) => t.person_id === m.person_id);
+          return (
+            <div key={i} className="flex items-center gap-2 text-xs">
+              <span className="w-6 text-gray-500">{i + 1}.</span>
+              <span className="flex-1">{tm?.person_name ?? `Persona ${m.person_id}`}</span>
+              <button
+                type="button"
+                className="text-gray-500 hover:text-gray-800"
+                onClick={() => moveMember(i, -1)}
+                disabled={i === 0}
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                className="text-gray-500 hover:text-gray-800"
+                onClick={() => moveMember(i, 1)}
+                disabled={i === rule.rotation_members.length - 1}
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                className="text-red-700 hover:underline"
+                onClick={() => removeMember(i)}
+              >
+                Quitar
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

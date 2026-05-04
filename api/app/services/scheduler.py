@@ -49,6 +49,10 @@ from app.models import (
     PoolMembership,
     Schedule,
     Slot,
+    SlotRule,
+    SlotRuleRotationBlock,
+    SlotRuleRotationMember,
+    SlotRuleWeeklyPin,
     SlotSkillRequired,
     SlotTeamRole,
     SlotTeamRoleCategory,
@@ -139,6 +143,36 @@ class _Context:
         for pm in db.query(PoolMembership).all():
             self.pool_members[pm.pool_id].add(pm.person_id)
 
+        # Per-slot assignment rules. Each slot has 1+ non-overlapping rules
+        # over weekdays; each rule has its own strategy (solver, fixed_weekly,
+        # rotation, manual).
+        self.rules_by_slot: dict[int, list[SlotRule]] = defaultdict(list)
+        for r in db.query(SlotRule).order_by(SlotRule.position, SlotRule.id).all():
+            self.rules_by_slot[r.slot_id].append(r)
+        self.weekly_pins_by_rule: dict[int, dict[int, list[int]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
+        for p in db.query(SlotRuleWeeklyPin).all():
+            self.weekly_pins_by_rule[p.rule_id][p.weekday].append(p.person_id)
+        self.rotation_blocks_by_rule: dict[int, list[SlotRuleRotationBlock]] = (
+            defaultdict(list)
+        )
+        for b in (
+            db.query(SlotRuleRotationBlock)
+            .order_by(SlotRuleRotationBlock.position, SlotRuleRotationBlock.id)
+            .all()
+        ):
+            self.rotation_blocks_by_rule[b.rule_id].append(b)
+        self.rotation_members_by_rule: dict[int, list[SlotRuleRotationMember]] = (
+            defaultdict(list)
+        )
+        for m in (
+            db.query(SlotRuleRotationMember)
+            .order_by(SlotRuleRotationMember.position, SlotRuleRotationMember.id)
+            .all()
+        ):
+            self.rotation_members_by_rule[m.rule_id].append(m)
+
         days = _dates_in_month(period)
         self.holiday_dates: set[date] = {
             h.date for h in db.query(Holiday).all() if h.date in set(days)
@@ -165,6 +199,57 @@ class _Context:
             if s <= d <= e:
                 return True
         return False
+
+    def rule_for(self, slot_id: int, d: date) -> SlotRule | None:
+        """Return the single rule that covers `d` for this slot, or None.
+
+        Rules within a slot are guaranteed non-overlapping at the API
+        layer, so there's at most one match. None means the slot has no
+        rule that covers this weekday — admin chose to leave that day
+        uncovered.
+        """
+        wd = d.weekday()
+        bit = 1 << wd
+        for r in self.rules_by_slot.get(slot_id, ()):
+            if r.days_bitmap & bit:
+                return r
+        return None
+
+    def rotation_person_for(self, rule: SlotRule, d: date) -> int | None:
+        """Compute the rotation-assigned person for a rotation rule + date.
+
+        See migration 0013 docstring for the math:
+            b_idx = block whose bitmap covers d.weekday()
+            weeks = (d - anchor_date) // 7
+            global = weeks * K + b_idx
+            member_pos = global % N
+        Returns None if the rotation has no members or no matching block.
+        """
+        if rule.anchor_date is None:
+            return None
+        blocks = self.rotation_blocks_by_rule.get(rule.id, [])
+        members = self.rotation_members_by_rule.get(rule.id, [])
+        if not blocks or not members:
+            return None
+        wd = d.weekday()
+        bit = 1 << wd
+        b_idx: int | None = None
+        for i, b in enumerate(blocks):
+            if b.days_bitmap & bit:
+                b_idx = i
+                break
+        if b_idx is None:
+            return None
+        weeks = (d - rule.anchor_date).days // 7
+        k = len(blocks)
+        n = len(members)
+        global_idx = weeks * k + b_idx
+        member_pos = global_idx % n  # Python % is non-negative for negative ints
+        return members[member_pos].person_id
+
+    def fixed_weekly_persons(self, rule: SlotRule, d: date) -> list[int]:
+        """Return the pinned person_ids for the (rule, weekday) pair."""
+        return list(self.weekly_pins_by_rule.get(rule.id, {}).get(d.weekday(), []))
 
     def has_required_skills(self, person_id: int, slot_id: int) -> bool:
         needed = self.slot_hard_skills.get(slot_id)
@@ -290,6 +375,13 @@ def _greedy_fallback(
         for slot in ctx.slots:
             if not _slot_applies(slot, d, ctx.holiday_dates):
                 continue
+            # Per-rule strategies aren't fully honoured by the greedy
+            # fallback (it doesn't know rotations or weekly pins). It
+            # still respects "no rule for this weekday → skip" so the
+            # admin's day coverage decisions hold.
+            rule = ctx.rule_for(slot.id, d)
+            if rule is None:
+                continue
 
             mode = slot.staffing_mode
             if mode in ("single", "multiple_same"):
@@ -413,34 +505,172 @@ def _solve_cpsat(
         wd = d.weekday()
         is_weekend_or_holiday[d] = (wd >= 5) or (d in ctx.holiday_dates)
 
+    # Per-rule pre-pinned assignments (rotation / fixed_weekly / manual)
+    # are emitted directly to the DB before the solver runs, and the
+    # involved (person_id, date) pairs are recorded so solver demands on
+    # those days exclude those people. The pre-pinned cells never become
+    # CP-SAT variables.
+    pre_busy: set[tuple[int, date]] = set()
+    # If a pre-pinned person worked a post_slot_rest slot on D, exclude
+    # them from solver demands on D+1 too.
+    pre_rest_block: set[tuple[int, date]] = set()
+
+    def _emit_prepin(
+        slot: Slot,
+        d: date,
+        rule: SlotRule,
+        team_role_id: int | None,
+    ) -> None:
+        """Materialize one pre-pinned assignment (or NULL placeholder) for
+        a non-solver rule. Honours eligibility — a configured person who
+        isn't eligible on this date emits person_id=NULL with a notes
+        string so the admin sees the conflict."""
+        person_id: int | None = None
+        notes: str | None = None
+        if rule.strategy == "rotation":
+            picked = ctx.rotation_person_for(rule, d)
+            if picked is None:
+                notes = "Rotación sin miembros configurados"
+            else:
+                reason = ctx.eligibility_reason(picked, slot, d, team_role_id)
+                if reason:
+                    notes = f"Persona de la rotación no disponible: {reason}"
+                else:
+                    person_id = picked
+        elif rule.strategy == "fixed_weekly":
+            pinned = ctx.fixed_weekly_persons(rule, d)
+            picked = pinned[0] if pinned else None
+            if picked is None:
+                notes = "Sin persona fijada para este día de la semana"
+            else:
+                reason = ctx.eligibility_reason(picked, slot, d, team_role_id)
+                if reason:
+                    notes = f"Persona fija no disponible: {reason}"
+                else:
+                    person_id = picked
+        elif rule.strategy == "manual":
+            notes = "Pendiente de asignar manualmente"
+        db.add(
+            Assignment(
+                tenant_id=ctx.tenant_id,
+                schedule_id=schedule.id,
+                slot_id=slot.id,
+                date=d,
+                person_id=person_id,
+                team_role_id=team_role_id,
+                notes=notes,
+            )
+        )
+        if person_id is not None:
+            pre_busy.add((person_id, d))
+            if slot.post_slot_rest:
+                pre_rest_block.add((person_id, d + timedelta(days=1)))
+
+    locked_keys_set = {(la.date, la.slot_id, la.team_role_id) for la in locked}
+
     for d in ctx.dates:
         for slot in ctx.slots:
             if not _slot_applies(slot, d, ctx.holiday_dates):
                 continue
+            rule = ctx.rule_for(slot.id, d)
+            if rule is None:
+                # Admin chose not to cover this weekday on this slot.
+                continue
             mode = slot.staffing_mode
-            if mode in ("single", "multiple_same"):
-                head = 1 if mode == "single" else max(1, slot.headcount)
-                demands.append((d, slot.id, None, head))
-                is_guardia_demand[(d, slot.id, None)] = bool(slot.guardia_type)
-            elif mode == "team_composition":
-                roles = ctx.team_roles_by_slot.get(slot.id, [])
-                if not roles:
-                    # Emit a placeholder unfilled and skip — solver can't
-                    # do anything with no roles.
-                    db.add(
-                        Assignment(
-                            tenant_id=ctx.tenant_id,
-                            schedule_id=schedule.id,
-                            slot_id=slot.id,
-                            date=d,
-                            person_id=None,
-                            notes="Slot sin roles definidos",
+            # team_composition is always solver-driven regardless of rule
+            # strategy — per-role configuration via rules is out of scope.
+            effective_strategy = (
+                "solver" if mode == "team_composition" else rule.strategy
+            )
+            if effective_strategy == "solver":
+                if mode in ("single", "multiple_same"):
+                    head = 1 if mode == "single" else max(1, slot.headcount)
+                    demands.append((d, slot.id, None, head))
+                    is_guardia_demand[(d, slot.id, None)] = bool(slot.guardia_type)
+                elif mode == "team_composition":
+                    roles = ctx.team_roles_by_slot.get(slot.id, [])
+                    if not roles:
+                        db.add(
+                            Assignment(
+                                tenant_id=ctx.tenant_id,
+                                schedule_id=schedule.id,
+                                slot_id=slot.id,
+                                date=d,
+                                person_id=None,
+                                notes="Slot sin roles definidos",
+                            )
                         )
-                    )
+                        continue
+                    for role in roles:
+                        demands.append((d, slot.id, role.id, max(1, role.headcount)))
+                        is_guardia_demand[(d, slot.id, role.id)] = bool(slot.guardia_type)
+            else:
+                # Non-solver strategies for single / multiple_same. A
+                # locked assignment for this (date, slot) pre-empts the
+                # rule pick — the lock wins. We rely on the locked-key
+                # set: if a lock exists, we let _solve_cpsat's lock
+                # branch handle emission (by adding a degenerate solver
+                # demand below).
+                if (d, slot.id, None) in locked_keys_set:
+                    head = 1 if mode == "single" else max(1, slot.headcount)
+                    demands.append((d, slot.id, None, head))
+                    is_guardia_demand[(d, slot.id, None)] = bool(slot.guardia_type)
                     continue
-                for role in roles:
-                    demands.append((d, slot.id, role.id, max(1, role.headcount)))
-                    is_guardia_demand[(d, slot.id, role.id)] = bool(slot.guardia_type)
+                head = 1 if mode == "single" else max(1, slot.headcount)
+                # Emit one prepin assignment (potentially with NULL person).
+                # For headcount > 1, fixed_weekly may have several pins;
+                # rotation/manual still produce one main pick — we pad
+                # the rest with NULL.
+                if rule.strategy == "fixed_weekly" and head > 1:
+                    pinned = ctx.fixed_weekly_persons(rule, d)
+                    emitted_persons: set[int] = set()
+                    for slot_idx in range(head):
+                        person_id: int | None = None
+                        notes: str | None = None
+                        if slot_idx < len(pinned):
+                            cand = pinned[slot_idx]
+                            if cand in emitted_persons:
+                                notes = "Persona duplicada en pines"
+                            else:
+                                reason = ctx.eligibility_reason(cand, slot, d, None)
+                                if reason:
+                                    notes = f"Persona fija no disponible: {reason}"
+                                else:
+                                    person_id = cand
+                                    emitted_persons.add(cand)
+                        else:
+                            notes = "Sin persona fijada para este día de la semana"
+                        db.add(
+                            Assignment(
+                                tenant_id=ctx.tenant_id,
+                                schedule_id=schedule.id,
+                                slot_id=slot.id,
+                                date=d,
+                                person_id=person_id,
+                                team_role_id=None,
+                                notes=notes,
+                            )
+                        )
+                        if person_id is not None:
+                            pre_busy.add((person_id, d))
+                            if slot.post_slot_rest:
+                                pre_rest_block.add((person_id, d + timedelta(days=1)))
+                else:
+                    # Single-pick (or single-staff slot): emit primary
+                    # prepin once; pad NULLs for any extra headcount.
+                    _emit_prepin(slot, d, rule, None)
+                    for _ in range(head - 1):
+                        db.add(
+                            Assignment(
+                                tenant_id=ctx.tenant_id,
+                                schedule_id=schedule.id,
+                                slot_id=slot.id,
+                                date=d,
+                                person_id=None,
+                                team_role_id=None,
+                                notes="Plaza adicional pendiente",
+                            )
+                        )
 
     # Locked map for quick lookup.
     locked_by_key: dict[tuple[date, int, int | None], list[Assignment]] = defaultdict(list)
@@ -455,6 +685,15 @@ def _solve_cpsat(
     for (d, slot_id, role_id, head) in demands:
         slot = ctx.slot_by_id[slot_id]
         cands = ctx.candidates_for_slot(slot, d, team_role_id=role_id)
+        # Drop any candidate already pre-pinned by a non-solver rule on
+        # this date — they're busy elsewhere. Also drop anyone owed a
+        # post-slot rest day from a pre-pinned shift the previous day.
+        if pre_busy or pre_rest_block:
+            cands = [
+                pid
+                for pid in cands
+                if (pid, d) not in pre_busy and (pid, d) not in pre_rest_block
+            ]
         candidates_by_demand[(d, slot_id, role_id)] = cands
         for pid in cands:
             x[(d, slot_id, role_id, pid)] = model.NewBoolVar(

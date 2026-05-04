@@ -201,6 +201,47 @@ export type SlotSkillRequired = {
   strength: SkillStrength;
 };
 
+export type SlotRuleStrategy = "solver" | "fixed_weekly" | "rotation" | "manual";
+
+export type SlotRuleWeeklyPin = {
+  id: number;
+  weekday: number;
+  person_id: number;
+};
+
+export type SlotRuleRotationBlock = {
+  id: number;
+  position: number;
+  days_bitmap: number;
+};
+
+export type SlotRuleRotationMember = {
+  id: number;
+  position: number;
+  person_id: number;
+};
+
+export type SlotRule = {
+  id: number;
+  tenant_id: number;
+  position: number;
+  days_bitmap: number;
+  strategy: SlotRuleStrategy;
+  anchor_date: string | null;
+  weekly_pins: SlotRuleWeeklyPin[];
+  rotation_blocks: SlotRuleRotationBlock[];
+  rotation_members: SlotRuleRotationMember[];
+};
+
+export type SlotRuleInput = {
+  days_bitmap: number;
+  strategy: SlotRuleStrategy;
+  anchor_date?: string | null;
+  weekly_pins?: { weekday: number; person_id: number }[];
+  rotation_blocks?: { position: number; days_bitmap: number }[];
+  rotation_members?: { position: number; person_id: number }[];
+};
+
 export type Slot = {
   id: number;
   tenant_id: number;
@@ -220,6 +261,7 @@ export type Slot = {
   crosses_midnight: boolean;
   team_roles: SlotTeamRole[];
   skills_required: SlotSkillRequired[];
+  rules: SlotRule[];
   created_at: string;
 };
 
@@ -383,6 +425,11 @@ export const api = {
   updateSlot: (id: number, body: Partial<SlotInput>) =>
     request<Slot>(`/api/slots/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   deleteSlot: (id: number) => request<void>(`/api/slots/${id}`, { method: "DELETE" }),
+  replaceSlotRules: (id: number, rules: SlotRuleInput[]) =>
+    request<Slot>(`/api/slots/${id}/rules`, {
+      method: "PUT",
+      body: JSON.stringify({ rules }),
+    }),
 
   // Team
   listTeam: () => request<TeamMember[]>("/api/team"),

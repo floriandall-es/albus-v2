@@ -12,6 +12,12 @@ from app.models.slot import (
     SlotTeamRoleCategory,
     SlotSkillRequired,
 )
+from app.models.slot_rule import (
+    SlotRule,
+    SlotRuleWeeklyPin,
+    SlotRuleRotationBlock,
+    SlotRuleRotationMember,
+)
 from app.models.invitation import Invitation
 from app.models.holiday import Holiday
 from app.models.availability_block import AvailabilityBlock
@@ -32,6 +38,10 @@ __all__ = [
     "SlotTeamRole",
     "SlotTeamRoleCategory",
     "SlotSkillRequired",
+    "SlotRule",
+    "SlotRuleWeeklyPin",
+    "SlotRuleRotationBlock",
+    "SlotRuleRotationMember",
     "Invitation",
     "Holiday",
     "AvailabilityBlock",
