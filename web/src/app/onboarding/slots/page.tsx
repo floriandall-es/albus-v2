@@ -38,11 +38,11 @@ export default function SlotsStep() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-2">Paso 4 — Slots</h2>
+      <h2 className="text-2xl font-semibold mb-2">Paso 4 — Tipos de turno</h2>
       <p className="text-sm text-gray-600 mb-6">
         Define los turnos típicos de tu día (Mañana, Guardia 24h, etc.). Para
-        configuraciones avanzadas (composición de equipo, skills requeridas) usa la
-        sección de Slots en Admin después.
+        configuraciones avanzadas (composición de equipo, competencias requeridas)
+        usa la sección de Turnos en Admin después.
       </p>
 
       <form
@@ -52,7 +52,7 @@ export default function SlotsStep() {
           if (name.trim()) create.mutate();
         }}
       >
-        <TextField label="Nombre del slot" value={name} onChange={setName} />
+        <TextField label="Nombre del tipo de turno" value={name} onChange={setName} />
         <div className="grid grid-cols-2 gap-3">
           <Select<DaysApplied>
             label="Días"
@@ -84,7 +84,7 @@ export default function SlotsStep() {
           />
         )}
         <Button type="submit" disabled={!name.trim() || create.isPending}>
-          Añadir slot
+          Añadir tipo de turno
         </Button>
         {create.isError && <ErrorText>{(create.error as Error).message}</ErrorText>}
       </form>
@@ -108,7 +108,7 @@ export default function SlotsStep() {
           </li>
         ))}
         {(list.data ?? []).length === 0 && (
-          <li className="px-4 py-3 text-sm text-gray-500">Aún no hay slots.</li>
+          <li className="px-4 py-3 text-sm text-gray-500">Aún no hay tipos de turno.</li>
         )}
       </ul>
 

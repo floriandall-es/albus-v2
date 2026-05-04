@@ -32,10 +32,10 @@ export default function PoolsStep() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-2">Paso 3 — Pools</h2>
+      <h2 className="text-2xl font-semibold mb-2">Paso 3 — Unidades</h2>
       <p className="text-sm text-gray-600 mb-6">
-        ¿Tu servicio tiene sub-equipos? (ej. REA, Trasplantes). Si todo el equipo se
-        organiza como una sola unidad, puedes saltar este paso.
+        ¿Tu servicio se divide en unidades? (ej. REA, Trasplantes). Si todo el equipo
+        funciona como una sola unidad, puedes saltar este paso.
       </p>
 
       <div className="flex gap-2 mb-6">
@@ -43,13 +43,13 @@ export default function PoolsStep() {
           variant={hasSubteams === "yes" ? "primary" : "secondary"}
           onClick={() => setHasSubteams("yes")}
         >
-          Sí, tiene sub-equipos
+          Sí, tiene varias unidades
         </Button>
         <Button
           variant={hasSubteams === "no" ? "primary" : "secondary"}
           onClick={() => setHasSubteams("no")}
         >
-          No, todo el equipo es una unidad
+          No, todo el equipo es una sola unidad
         </Button>
       </div>
 
@@ -62,7 +62,7 @@ export default function PoolsStep() {
               if (name.trim()) create.mutate();
             }}
           >
-            <TextField label="Nombre del pool" value={name} onChange={setName} />
+            <TextField label="Nombre de la unidad" value={name} onChange={setName} />
             <Select<MembershipMode>
               label="Modo"
               value={mode}
@@ -95,7 +95,7 @@ export default function PoolsStep() {
               </li>
             ))}
             {(list.data ?? []).length === 0 && (
-              <li className="px-4 py-3 text-sm text-gray-500">Aún no hay pools.</li>
+              <li className="px-4 py-3 text-sm text-gray-500">Aún no hay unidades.</li>
             )}
           </ul>
         </>
@@ -103,7 +103,7 @@ export default function PoolsStep() {
 
       {hasSubteams === "no" && (
         <p className="text-sm text-gray-600">
-          Perfecto — no necesitas crear pools. Pulsa Siguiente.
+          Perfecto — no necesitas crear unidades. Pulsa Siguiente.
         </p>
       )}
 

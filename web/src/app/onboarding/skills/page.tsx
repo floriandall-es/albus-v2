@@ -21,9 +21,9 @@ export default function SkillsStep() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-2">Paso 2 — Skills</h2>
+      <h2 className="text-2xl font-semibold mb-2">Paso 2 — Competencias</h2>
       <p className="text-sm text-gray-600 mb-6">
-        Añade habilidades clave de tu equipo (ej. Cirugía mínimamente invasiva,
+        Añade competencias clave de tu equipo (ej. Cirugía mínimamente invasiva,
         Trasplante…). Puedes saltar este paso si todos hacen lo mismo.
       </p>
 
@@ -38,7 +38,7 @@ export default function SkillsStep() {
         }}
       >
         <div className="flex-1">
-          <TextField label="" value={name} onChange={setName} placeholder="Nombre de la skill" />
+          <TextField label="" value={name} onChange={setName} placeholder="Nombre de la competencia" />
         </div>
         <div className="self-end">
           <Button type="submit" disabled={!name.trim() || create.isPending}>
@@ -61,7 +61,7 @@ export default function SkillsStep() {
           </li>
         ))}
         {(list.data ?? []).length === 0 && (
-          <li className="px-4 py-3 text-sm text-gray-500">Aún no hay skills.</li>
+          <li className="px-4 py-3 text-sm text-gray-500">Aún no hay competencias.</li>
         )}
       </ul>
 

@@ -25,13 +25,13 @@ export default function SkillsPage() {
   return (
     <>
       <PageHeader
-        title="Skills"
-        action={<Button onClick={() => setEditing("new")}>Nueva skill</Button>}
+        title="Competencias"
+        action={<Button onClick={() => setEditing("new")}>Nueva competencia</Button>}
       />
 
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
       {list.isError && <ErrorText>{(list.error as Error).message}</ErrorText>}
-      {list.data && list.data.length === 0 && <Empty>Aún no hay skills.</Empty>}
+      {list.data && list.data.length === 0 && <Empty>Aún no hay competencias.</Empty>}
       {list.data && list.data.length > 0 && (
         <Card>
           <table className="w-full text-sm">
@@ -54,7 +54,7 @@ export default function SkillsPage() {
                     <Button
                       variant="danger"
                       onClick={() => {
-                        if (confirm(`¿Eliminar skill "${s.name}"?`)) del.mutate(s.id);
+                        if (confirm(`¿Eliminar competencia "${s.name}"?`)) del.mutate(s.id);
                       }}
                     >
                       Eliminar
@@ -95,7 +95,7 @@ function SkillDialog({ initial, onClose }: { initial: Skill | null; onClose: () 
   });
 
   return (
-    <Modal open={true} onClose={onClose} title={initial ? "Editar skill" : "Nueva skill"}>
+    <Modal open={true} onClose={onClose} title={initial ? "Editar competencia" : "Nueva competencia"}>
       <form
         className="space-y-3"
         onSubmit={(e) => {

@@ -8,9 +8,9 @@ import { api, clearToken, getToken } from "@/lib/api";
 const NAV: { href: string; label: string }[] = [
   { href: "/admin/team", label: "Equipo" },
   { href: "/admin/categories", label: "Categorías" },
-  { href: "/admin/pools", label: "Pools" },
-  { href: "/admin/skills", label: "Skills" },
-  { href: "/admin/slots", label: "Slots" },
+  { href: "/admin/pools", label: "Unidades" },
+  { href: "/admin/skills", label: "Competencias" },
+  { href: "/admin/slots", label: "Turnos" },
   { href: "/admin/holidays", label: "Festivos" },
   { href: "/admin/availability", label: "Bloqueos" },
   { href: "/admin/schedule", label: "Planificación" },

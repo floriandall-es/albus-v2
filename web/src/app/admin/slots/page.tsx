@@ -50,12 +50,12 @@ export default function SlotsPage() {
   return (
     <>
       <PageHeader
-        title="Slots"
-        action={<Button onClick={() => setEditing("new")}>Nuevo slot</Button>}
+        title="Tipos de turno"
+        action={<Button onClick={() => setEditing("new")}>Nuevo tipo de turno</Button>}
       />
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
       {list.isError && <ErrorText>{(list.error as Error).message}</ErrorText>}
-      {list.data && list.data.length === 0 && <Empty>Aún no hay slots.</Empty>}
+      {list.data && list.data.length === 0 && <Empty>Aún no hay tipos de turno.</Empty>}
       {list.data && list.data.length > 0 && (
         <Card>
           <table className="w-full text-sm">
@@ -88,7 +88,7 @@ export default function SlotsPage() {
                     <Button
                       variant="danger"
                       onClick={() => {
-                        if (confirm(`¿Eliminar slot "${s.name}"?`)) del.mutate(s.id);
+                        if (confirm(`¿Eliminar tipo de turno "${s.name}"?`)) del.mutate(s.id);
                       }}
                     >
                       Eliminar
@@ -234,7 +234,7 @@ function SlotDialog({
   }
 
   return (
-    <Modal open={true} onClose={onClose} title={initial ? "Editar slot" : "Nuevo slot"}>
+    <Modal open={true} onClose={onClose} title={initial ? "Editar tipo de turno" : "Nuevo tipo de turno"}>
       <form
         className="space-y-3 max-h-[70vh] overflow-y-auto pr-1"
         onSubmit={(e) => {
@@ -287,7 +287,7 @@ function SlotDialog({
             placeholder="presencial_24h"
           />
           <p className="mt-1 text-xs text-gray-500">
-            Si este slot es una guardia, indica el tipo (presencial_24h,
+            Si este turno es una guardia, indica el tipo (presencial_24h,
             localizada, findes_festivos…). Solo personas con ese tipo en su
             perfil podrán cubrirlo. Déjalo vacío si no es una guardia.
           </p>
@@ -301,7 +301,7 @@ function SlotDialog({
               placeholder="guardia"
             />
             <p className="mt-1 text-xs text-gray-500">
-              Slots con el mismo grupo se balancean entre sí (ej. todas las
+              Turnos con el mismo grupo se balancean entre sí (ej. todas las
               guardias se reparten equitativamente, todos los quirófanos se
               reparten equitativamente, sin mezclar). Déjalo vacío para usar
               el grupo por defecto.
@@ -374,18 +374,18 @@ function SlotDialog({
 
         <div className="border-t pt-3">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold">Skills requeridas</h3>
+            <h3 className="text-sm font-semibold">Competencias requeridas</h3>
             <Button variant="secondary" onClick={addSkill} disabled={skills.length === 0}>
-              + Añadir skill
+              + Añadir competencia
             </Button>
           </div>
           {skills.length === 0 && (
-            <p className="text-xs text-gray-500">Crea skills primero.</p>
+            <p className="text-xs text-gray-500">Crea competencias primero.</p>
           )}
           {skillsRequired.map((s, i) => (
             <div key={i} className="grid grid-cols-[1fr_8rem_auto] gap-2 items-end mb-2">
               <Select
-                label="Skill"
+                label="Competencia"
                 value={s.skill_id}
                 onChange={(v) => v !== "" && updateSkill(i, { skill_id: Number(v) })}
                 options={skills.map((sk) => ({ value: sk.id, label: sk.name }))}

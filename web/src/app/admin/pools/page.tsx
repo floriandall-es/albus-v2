@@ -32,12 +32,12 @@ export default function PoolsPage() {
   return (
     <>
       <PageHeader
-        title="Pools"
-        action={<Button onClick={() => setEditing("new")}>Nuevo pool</Button>}
+        title="Unidades"
+        action={<Button onClick={() => setEditing("new")}>Nueva unidad</Button>}
       />
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
       {list.isError && <ErrorText>{(list.error as Error).message}</ErrorText>}
-      {list.data && list.data.length === 0 && <Empty>Aún no hay pools.</Empty>}
+      {list.data && list.data.length === 0 && <Empty>Aún no hay unidades.</Empty>}
       {list.data && list.data.length > 0 && (
         <Card>
           <table className="w-full text-sm">
@@ -45,7 +45,7 @@ export default function PoolsPage() {
               <tr>
                 <th className="px-4 py-2 font-medium">Nombre</th>
                 <th className="px-4 py-2 font-medium">Modo</th>
-                <th className="px-4 py-2 font-medium">Equity indep.</th>
+                <th className="px-4 py-2 font-medium">Equidad propia</th>
                 <th className="px-4 py-2 font-medium">Miembros</th>
                 <th className="px-4 py-2 font-medium text-right">Acciones</th>
               </tr>
@@ -64,7 +64,7 @@ export default function PoolsPage() {
                     <Button
                       variant="danger"
                       onClick={() => {
-                        if (confirm(`¿Eliminar pool "${p.name}"?`)) del.mutate(p.id);
+                        if (confirm(`¿Eliminar unidad "${p.name}"?`)) del.mutate(p.id);
                       }}
                     >
                       Eliminar
@@ -147,7 +147,7 @@ function PoolDialog({ initial, onClose }: { initial: Pool | null; onClose: () =>
   const isNew = !currentPool;
 
   return (
-    <Modal open={true} onClose={onClose} title={isNew ? "Nuevo pool" : "Editar pool"}>
+    <Modal open={true} onClose={onClose} title={isNew ? "Nueva unidad" : "Editar unidad"}>
       <form
         className="space-y-3"
         onSubmit={(e) => {
@@ -168,7 +168,7 @@ function PoolDialog({ initial, onClose }: { initial: Pool | null; onClose: () =>
             checked={equityIndep}
             onChange={(e) => setEquityIndep(e.target.checked)}
           />
-          Equity independiente
+          Equidad propia (esta unidad se reparte sus turnos por separado)
         </label>
         {save.isError && <ErrorText>{(save.error as Error).message}</ErrorText>}
         {!isNew && save.isSuccess && (
