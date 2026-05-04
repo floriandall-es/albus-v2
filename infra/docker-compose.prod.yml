@@ -41,10 +41,11 @@ services:
         condition: service_healthy
 
   web:
-    build: ../web
+    build:
+      context: ../web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: https://api.trivu.net
     restart: unless-stopped
-    environment:
-      NEXT_PUBLIC_API_BASE_URL: https://api.trivu.net
     depends_on:
       - api
 
