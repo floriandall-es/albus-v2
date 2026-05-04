@@ -24,15 +24,26 @@ def test_categories_crud_round_trip(auth_client):
     assert cat["name"] == "Adjunto"
     assert cat["level"] == 2
 
-    # Duplicate name -> 409
+    # Idempotent: same name returns the existing row with 200, no duplicate.
     r = client.post(
         "/api/categories",
         headers=headers,
         json={"name": "Adjunto"},
     )
-    assert r.status_code == 409
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == cid
 
-    # List has one
+    # Case-insensitive: "ADJUNTO" also returns the same row.
+    r = client.post("/api/categories", headers=headers, json={"name": "ADJUNTO"})
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == cid
+
+    # Whitespace is trimmed.
+    r = client.post("/api/categories", headers=headers, json={"name": "  Adjunto  "})
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == cid
+
+    # List still has exactly one.
     r = client.get("/api/categories", headers=headers)
     assert r.status_code == 200
     assert len(r.json()) == 1

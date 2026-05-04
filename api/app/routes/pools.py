@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
@@ -48,13 +48,35 @@ def list_pools(ctx: RequestContext = Depends(get_current_context)) -> list[PoolO
     return [_serialize(ctx, p, member_count=int(c)) for p, c in rows]
 
 
-@router.post("/pools", response_model=PoolOut, status_code=status.HTTP_201_CREATED)
+@router.post("/pools", response_model=PoolOut)
 def create_pool(
-    payload: PoolCreate, ctx: RequestContext = Depends(get_current_context)
+    payload: PoolCreate,
+    response: Response,
+    ctx: RequestContext = Depends(get_current_context),
 ) -> PoolOut:
+    """Idempotent on name (case-insensitive, trimmed). If a pool with the
+    same name exists, return it with 200 OK; only 201 on actual create."""
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Name cannot be empty")
+
+    existing = (
+        ctx.db.query(Pool).filter(func.lower(Pool.name) == name.lower()).first()
+    )
+    if existing:
+        # Return the existing row with its current member count so the
+        # caller can render it consistently.
+        count = (
+            ctx.db.query(func.count(PoolMembership.id))
+            .filter(PoolMembership.pool_id == existing.id)
+            .scalar()
+        )
+        response.status_code = status.HTTP_200_OK
+        return _serialize(ctx, existing, member_count=int(count or 0))
+
     obj = Pool(
         tenant_id=ctx.tenant.id,
-        name=payload.name,
+        name=name,
         department_id=payload.department_id,
         membership_mode=payload.membership_mode,
         equity_independent=payload.equity_independent,
@@ -64,8 +86,20 @@ def create_pool(
         ctx.db.flush()
     except IntegrityError:
         ctx.db.rollback()
-        raise HTTPException(status_code=409, detail="Pool name already exists")
+        winner = (
+            ctx.db.query(Pool).filter(func.lower(Pool.name) == name.lower()).first()
+        )
+        if winner:
+            count = (
+                ctx.db.query(func.count(PoolMembership.id))
+                .filter(PoolMembership.pool_id == winner.id)
+                .scalar()
+            )
+            response.status_code = status.HTTP_200_OK
+            return _serialize(ctx, winner, member_count=int(count or 0))
+        raise HTTPException(status_code=409, detail="Ya existe un pool con ese nombre")
     ctx.db.refresh(obj)
+    response.status_code = status.HTTP_201_CREATED
     return _serialize(ctx, obj, member_count=0)
 
 
@@ -99,13 +133,19 @@ def update_pool(
 ) -> PoolOut:
     obj = _get_or_404(ctx, pool_id)
     data = payload.model_dump(exclude_unset=True)
+    if "name" in data and data["name"] is not None:
+        data["name"] = data["name"].strip()
+        if not data["name"]:
+            raise HTTPException(status_code=422, detail="Name cannot be empty")
     for k, v in data.items():
         setattr(obj, k, v)
     try:
         ctx.db.flush()
     except IntegrityError:
         ctx.db.rollback()
-        raise HTTPException(status_code=409, detail="Pool name already exists")
+        raise HTTPException(
+            status_code=409, detail="Ya existe otro pool con ese nombre"
+        )
     ctx.db.refresh(obj)
     count = (
         ctx.db.query(func.count(PoolMembership.id))

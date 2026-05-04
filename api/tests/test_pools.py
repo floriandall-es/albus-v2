@@ -15,9 +15,22 @@ def test_pools_crud_and_members(auth_client):
     pid = pool["id"]
     assert pool["member_count"] == 0
 
-    # Duplicate -> 409
-    r = client.post("/api/pools", headers=headers, json={"name": "REA"})
-    assert r.status_code == 409
+    # Idempotent: duplicate name returns the existing row with 200.
+    r = client.post(
+        "/api/pools",
+        headers=headers,
+        json={"name": "REA", "membership_mode": "dedicated", "equity_independent": True},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == pid
+    # Case-insensitive too.
+    r = client.post(
+        "/api/pools",
+        headers=headers,
+        json={"name": "rea", "membership_mode": "dedicated", "equity_independent": True},
+    )
+    assert r.status_code == 200
+    assert r.json()["id"] == pid
 
     # List
     r = client.get("/api/pools", headers=headers)

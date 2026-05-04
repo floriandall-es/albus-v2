@@ -21,9 +21,14 @@ def test_skills_crud(auth_client):
     assert r.status_code == 200
     assert r.json()["description"] == "Updated"
 
-    # Duplicate name -> 409
+    # Idempotent: duplicate name returns existing row with 200.
     r = client.post("/api/skills", headers=headers, json={"name": "ECMO"})
-    assert r.status_code == 409
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == sid
+    # Case-insensitive: same row.
+    r = client.post("/api/skills", headers=headers, json={"name": "ecmo"})
+    assert r.status_code == 200
+    assert r.json()["id"] == sid
 
     r = client.delete(f"/api/skills/{sid}", headers=headers)
     assert r.status_code == 204

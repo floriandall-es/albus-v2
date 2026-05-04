@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
 from app.models import Skill
@@ -21,20 +22,42 @@ def list_skills(ctx: RequestContext = Depends(get_current_context)) -> list[Skil
     return [SkillOut.model_validate(r) for r in rows]
 
 
-@router.post("/skills", response_model=SkillOut, status_code=status.HTTP_201_CREATED)
+@router.post("/skills", response_model=SkillOut)
 def create_skill(
-    payload: SkillCreate, ctx: RequestContext = Depends(get_current_context)
+    payload: SkillCreate,
+    response: Response,
+    ctx: RequestContext = Depends(get_current_context),
 ) -> SkillOut:
-    obj = Skill(
-        tenant_id=ctx.tenant.id, name=payload.name, description=payload.description
+    """Idempotent on name (case-insensitive, trimmed). See create_category
+    for the same pattern + reasoning."""
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Name cannot be empty")
+
+    existing = (
+        ctx.db.query(Skill).filter(func.lower(Skill.name) == name.lower()).first()
     )
+    if existing:
+        response.status_code = status.HTTP_200_OK
+        return SkillOut.model_validate(existing)
+
+    obj = Skill(tenant_id=ctx.tenant.id, name=name, description=payload.description)
     ctx.db.add(obj)
     try:
         ctx.db.flush()
     except IntegrityError:
         ctx.db.rollback()
-        raise HTTPException(status_code=409, detail="Skill name already exists")
+        winner = (
+            ctx.db.query(Skill)
+            .filter(func.lower(Skill.name) == name.lower())
+            .first()
+        )
+        if winner:
+            response.status_code = status.HTTP_200_OK
+            return SkillOut.model_validate(winner)
+        raise HTTPException(status_code=409, detail="Ya existe una skill con ese nombre")
     ctx.db.refresh(obj)
+    response.status_code = status.HTTP_201_CREATED
     return SkillOut.model_validate(obj)
 
 
@@ -51,13 +74,19 @@ def update_skill(
 ) -> SkillOut:
     obj = _get_or_404(ctx, skill_id)
     data = payload.model_dump(exclude_unset=True)
+    if "name" in data and data["name"] is not None:
+        data["name"] = data["name"].strip()
+        if not data["name"]:
+            raise HTTPException(status_code=422, detail="Name cannot be empty")
     for k, v in data.items():
         setattr(obj, k, v)
     try:
         ctx.db.flush()
     except IntegrityError:
         ctx.db.rollback()
-        raise HTTPException(status_code=409, detail="Skill name already exists")
+        raise HTTPException(
+            status_code=409, detail="Ya existe otra skill con ese nombre"
+        )
     ctx.db.refresh(obj)
     return SkillOut.model_validate(obj)
 
