@@ -92,10 +92,10 @@ export function BulkInviteModal({
         {stage === "pick" && (
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
-              El CSV debe tener tres columnas:{" "}
+              El CSV debe tener tres columnas (en cualquier orden):{" "}
               <code className="rounded bg-gray-100 px-1">email</code>,{" "}
-              <code className="rounded bg-gray-100 px-1">name</code>,{" "}
-              <code className="rounded bg-gray-100 px-1">category</code>. La
+              <code className="rounded bg-gray-100 px-1">nombre</code>,{" "}
+              <code className="rounded bg-gray-100 px-1">categoría</code>. La
               categoría es opcional, pero si se indica debe coincidir con una
               categoría existente del equipo.
             </p>

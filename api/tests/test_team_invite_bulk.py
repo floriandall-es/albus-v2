@@ -56,10 +56,12 @@ def test_preview_happy_path(auth_client, client):
 
 def test_preview_rejects_wrong_header(auth_client, client):
     _c, headers, _ = auth_client
+    # `mail` isn't a known alias for email; `categoria` (no accent) IS
+    # accepted, so this tests the unknown-column path.
     csv = "mail,name,categoria\nana@example.com,Ana,\n"
     r = _upload(client, headers, _csv_bytes(csv))
     assert r.status_code == 400
-    assert "Cabecera" in r.json()["detail"]
+    assert "no reconocidas" in r.json()["detail"].lower()
 
 
 def test_preview_row_errors(auth_client, client):
@@ -289,4 +291,40 @@ def test_template_endpoint(auth_client, client):
     r = client.get("/api/team/invite/bulk/template", headers=headers)
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/csv")
-    assert r.text.startswith("email,name,category")
+    assert r.text.startswith("email,nombre,categoría")
+
+
+def test_preview_accepts_spanish_headers_and_arbitrary_order(auth_client, client):
+    """Spanish admins typing CSVs in their own language. Header mapping is
+    alias-based and case/accent-insensitive, and column order is free."""
+    _c, headers, _info = auth_client
+    # All-Spanish, accents present, columns reordered (categoría first).
+    csv = (
+        "categoría,nombre,email\n"
+        "Adjunto,Maria Lopez,maria@hospital.es\n"
+        ",Juan Garcia,juan@hospital.es\n"
+    )
+    r = client.post(
+        "/api/team/invite/bulk/preview",
+        headers=headers,
+        files={"file": ("equipo.csv", csv.encode("utf-8"), "text/csv")},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["summary"]["total_rows"] == 2
+    # Both rows parsed correctly despite reordered columns.
+    by_email = {r["email"]: r for r in body["rows"]}
+    assert by_email["maria@hospital.es"]["name"] == "Maria Lopez"
+    assert by_email["juan@hospital.es"]["name"] == "Juan Garcia"
+
+
+def test_preview_rejects_unknown_header(auth_client, client):
+    _c, headers, _info = auth_client
+    csv = "email,name,team\nx@y.com,X,Cardio\n"
+    r = client.post(
+        "/api/team/invite/bulk/preview",
+        headers=headers,
+        files={"file": ("equipo.csv", csv.encode("utf-8"), "text/csv")},
+    )
+    assert r.status_code == 400
+    assert "no reconocidas" in r.json()["detail"].lower()

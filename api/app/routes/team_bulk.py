@@ -50,16 +50,41 @@ logger = logging.getLogger("app.team_bulk")
 
 router = APIRouter()
 
-REQUIRED_HEADERS = ["email", "name", "category"]
+CANONICAL_HEADERS = ["email", "name", "category"]
+# Map every accepted header form (lowercased, accents stripped) to the
+# canonical key we use internally. Lets admins use either English or
+# Spanish CSVs — and tolerates common typos like the unaccented
+# "categoria". Order is irrelevant because we read the file by header
+# names, not column position.
+HEADER_ALIASES = {
+    "email": "email",
+    "correo": "email",
+    "name": "name",
+    "nombre": "name",
+    "category": "category",
+    "categoria": "category",  # also matches "categoría" after accent strip
+}
 MAX_FILE_BYTES = 1 * 1024 * 1024  # 1 MB
 MAX_ROWS = 5000
 
 # CSV template returned by the GET endpoint and shipped to the frontend.
 CSV_TEMPLATE = (
-    "email,name,category\r\n"
+    "email,nombre,categoría\r\n"
     "maria@hospital.es,Maria Lopez,Adjunto\r\n"
     "juan@hospital.es,Juan Garcia,Residente R3\r\n"
 )
+
+
+def _strip_accents(s: str) -> str:
+    """Lowercase, strip accents, used to normalize CSV header names so
+    `categoría`, `categoria`, `Categoría` and `CATEGORÍA` all match the
+    same canonical key."""
+    import unicodedata
+
+    return "".join(
+        c for c in unicodedata.normalize("NFD", s.lower())
+        if unicodedata.category(c) != "Mn"
+    )
 
 
 def _require_admin(ctx: RequestContext) -> None:
@@ -106,13 +131,37 @@ def _parse_csv(raw: bytes) -> list[dict[str, str]]:
     except StopIteration:
         raise HTTPException(status_code=400, detail="El archivo CSV está vacío.")
 
-    normalized = [(h or "").strip().lower() for h in header]
-    if normalized != REQUIRED_HEADERS:
+    # Resolve each provided header to its canonical key via the alias map.
+    # Unknown headers are reported. We require email + name; category is
+    # optional in the data (admins can leave it blank) but the column
+    # itself must be present so the mapping is unambiguous.
+    raw_header = [(h or "").strip() for h in header]
+    canonical: list[str | None] = []
+    unknown: list[str] = []
+    for h in raw_header:
+        key = HEADER_ALIASES.get(_strip_accents(h))
+        canonical.append(key)
+        if key is None and h:
+            unknown.append(h)
+    if unknown:
         raise HTTPException(
             status_code=400,
             detail=(
-                "Cabecera incorrecta. Se esperaba exactamente: "
-                f"{','.join(REQUIRED_HEADERS)}"
+                f"Columnas no reconocidas: {', '.join(unknown)}. "
+                "Cabeceras aceptadas: email, nombre, categoría "
+                "(o sus equivalentes en inglés)."
+            ),
+        )
+    missing = [k for k in CANONICAL_HEADERS if k not in canonical]
+    if missing:
+        # All three columns must be present. category may be empty per row,
+        # but the column header itself is mandatory so each row dict has a
+        # consistent shape.
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Faltan columnas requeridas. La cabecera debe incluir: "
+                "email, nombre, categoría."
             ),
         )
 
@@ -121,15 +170,16 @@ def _parse_csv(raw: bytes) -> list[dict[str, str]]:
         # Skip blank lines (all empty / whitespace fields).
         if not raw_row or all((c or "").strip() == "" for c in raw_row):
             continue
-        # Pad / truncate to header length.
-        padded = (raw_row + [""] * len(REQUIRED_HEADERS))[: len(REQUIRED_HEADERS)]
-        rows.append(
-            {
-                "email": (padded[0] or "").strip(),
-                "name": (padded[1] or "").strip(),
-                "category": (padded[2] or "").strip(),
-            }
-        )
+        # Map each column by its canonical key (which respects the order
+        # the admin's CSV used — columns can be in any order). Pad short
+        # rows so trailing columns become empty strings instead of
+        # IndexError.
+        padded = (raw_row + [""] * len(canonical))[: len(canonical)]
+        row: dict[str, str] = {k: "" for k in CANONICAL_HEADERS}
+        for col_idx, key in enumerate(canonical):
+            if key is not None:
+                row[key] = (padded[col_idx] or "").strip()
+        rows.append(row)
         if len(rows) > MAX_ROWS:
             raise HTTPException(
                 status_code=400,
