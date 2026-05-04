@@ -154,11 +154,15 @@ export function Modal({
   onClose,
   title,
   children,
+  size = "md",
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
+  /** "md" (~512px, default) for forms; "lg" (~720px) for wider content
+   *  like CSV import flows. */
+  size?: "md" | "lg";
 }) {
   useEffect(() => {
     if (!open) return;
@@ -170,9 +174,10 @@ export function Modal({
   }, [open, onClose]);
 
   if (!open) return null;
+  const widthClass = size === "lg" ? "max-w-3xl" : "max-w-lg";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-      <div className="w-full max-w-lg rounded-lg bg-white shadow-lg">
+      <div className={`w-full ${widthClass} rounded-lg bg-white shadow-lg`}>
         <div className="flex items-center justify-between border-b px-4 py-3">
           <h2 className="text-base font-semibold">{title}</h2>
           <button

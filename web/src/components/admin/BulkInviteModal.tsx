@@ -87,8 +87,8 @@ export function BulkInviteModal({
     : 0;
 
   return (
-    <Modal open={open} onClose={onClose} title="Importar equipo desde CSV">
-      <div className="w-[min(90vw,720px)]">
+    <Modal open={open} onClose={onClose} title="Importar equipo desde CSV" size="lg">
+      <div>
         {stage === "pick" && (
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
