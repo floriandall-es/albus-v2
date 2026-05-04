@@ -128,19 +128,32 @@ export default function CategoriesStep() {
         )}
         {customCategories.length > 0 && (
           <ul className="divide-y">
-            {customCategories.map((c) => (
-              <li key={c.id} className="flex items-center justify-between px-4 py-2 text-sm">
-                <span>{c.name}</span>
-                <button
-                  type="button"
-                  className="text-xs text-red-600 underline"
-                  onClick={() => del.mutate(c.id)}
-                  disabled={del.isPending}
-                >
-                  Eliminar
-                </button>
-              </li>
-            ))}
+            {customCategories.map((c) => {
+              const isPending = del.isPending && del.variables === c.id;
+              return (
+                <li key={c.id} className="flex items-center px-4 py-2 text-sm">
+                  <input
+                    type="checkbox"
+                    id={`cat-custom-${c.id}`}
+                    className="mr-3 h-4 w-4"
+                    checked
+                    disabled={isPending}
+                    // Custom rows are always present in this list, so they
+                    // start ticked. Unticking deletes — same semantic as
+                    // unticking a predefined row.
+                    onChange={(e) => {
+                      if (!e.target.checked) del.mutate(c.id);
+                    }}
+                  />
+                  <label htmlFor={`cat-custom-${c.id}`} className="flex-1 cursor-pointer">
+                    {c.name}
+                  </label>
+                  {isPending && (
+                    <span className="text-xs text-gray-400">guardando…</span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
         <form
