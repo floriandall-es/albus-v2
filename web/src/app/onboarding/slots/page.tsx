@@ -194,11 +194,18 @@ export default function SlotsStep() {
   return (
     <div>
       <h2 className="text-2xl font-semibold mb-2">Paso 4 — Turnos</h2>
-      <p className="text-sm text-gray-600 mb-6">
+      <p className="text-sm text-gray-600 mb-3">
         Define los turnos típicos de tu servicio. Marca los habituales y/o añade
-        los tuyos abajo. Para ajustes finos (composición de equipo, competencias
-        requeridas, descanso post-guardia) edita después en la sección de Turnos
-        en Admin.
+        los tuyos abajo. Por defecto cada turno se asigna automáticamente con el
+        solver, repartiendo los turnos equitativamente entre el equipo.
+      </p>
+      <p className="text-xs text-gray-500 mb-6">
+        ¿Necesitas rotaciones, días fijos o asignación manual? Termina la
+        configuración básica aquí y luego edita cada turno en{" "}
+        <strong>Admin → Turnos</strong>: cada turno admite reglas distintas para
+        diferentes días de la semana (p. ej. rotación L–J + solver fin de semana).
+        También puedes ajustar composición de equipo, competencias requeridas,
+        descanso post-guardia y grupo de equidad.
       </p>
 
       <div className="rounded-md border bg-white mb-4 divide-y">
