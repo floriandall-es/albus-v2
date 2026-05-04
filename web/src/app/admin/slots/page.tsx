@@ -343,49 +343,63 @@ function SlotDialog({
           </div>
         )}
 
-        <div className="border-t pt-3">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold">Reglas de asignación</h3>
-            <Button
-              variant="secondary"
-              onClick={() =>
-                setRules((cur) => [
-                  ...cur,
-                  {
-                    days_bitmap: 0,
-                    strategy: "solver",
-                    anchor_date: null,
-                    weekly_pins: [],
-                    rotation_blocks: [],
-                    rotation_members: [],
-                  },
-                ])
-              }
-            >
-              + Añadir regla
-            </Button>
-          </div>
-          {ruleValidationError && (
-            <p className="mb-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
-              {ruleValidationError}
+        {mode === "team_composition" ? (
+          <div className="border-t pt-3">
+            <h3 className="text-sm font-semibold mb-1">Reglas de asignación</h3>
+            <p className="rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
+              Las reglas por día (rotación, día fijo, manual) no se aplican a
+              turnos con composición de equipo. Para este turno la asignación
+              se hace siempre con el solver, respetando los roles definidos
+              abajo. Si necesitas estrategias por día para un turno con
+              equipo, créalo como dos turnos separados o pide la mejora de
+              reglas-por-rol.
             </p>
-          )}
-          {rules.map((r, i) => (
-            <RuleCard
-              key={i}
-              rule={r}
-              team={team}
-              onChange={(patch) =>
-                setRules((cur) =>
-                  cur.map((rr, idx) => (idx === i ? { ...rr, ...patch } : rr)),
-                )
-              }
-              onDelete={() =>
-                setRules((cur) => cur.filter((_, idx) => idx !== i))
-              }
-            />
-          ))}
-        </div>
+          </div>
+        ) : (
+          <div className="border-t pt-3">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold">Reglas de asignación</h3>
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  setRules((cur) => [
+                    ...cur,
+                    {
+                      days_bitmap: 0,
+                      strategy: "solver",
+                      anchor_date: null,
+                      weekly_pins: [],
+                      rotation_blocks: [],
+                      rotation_members: [],
+                    },
+                  ])
+                }
+              >
+                + Añadir regla
+              </Button>
+            </div>
+            {ruleValidationError && (
+              <p className="mb-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
+                {ruleValidationError}
+              </p>
+            )}
+            {rules.map((r, i) => (
+              <RuleCard
+                key={i}
+                rule={r}
+                team={team}
+                onChange={(patch) =>
+                  setRules((cur) =>
+                    cur.map((rr, idx) => (idx === i ? { ...rr, ...patch } : rr)),
+                  )
+                }
+                onDelete={() =>
+                  setRules((cur) => cur.filter((_, idx) => idx !== i))
+                }
+              />
+            ))}
+          </div>
+        )}
 
         {mode === "team_composition" && (
           <div className="border-t pt-3">
