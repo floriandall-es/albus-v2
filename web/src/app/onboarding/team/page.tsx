@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Button, ErrorText, Select, TextField } from "@/components/admin/ui";
@@ -61,6 +61,8 @@ export default function TeamStep() {
         copiar el enlace de abajo y compartirlo manualmente.
       </p>
       <BulkInviteModal open={bulkOpen} onClose={() => setBulkOpen(false)} />
+
+      <MyProfileCard />
 
       <form
         className="space-y-3 mb-4"
@@ -143,5 +145,81 @@ export default function TeamStep() {
 
       <StepNav currentSlug="team" />
     </div>
+  );
+}
+
+function MyProfileCard() {
+  // The admin's own membership lives in /api/me. We let them set their
+  // category here so they can be scheduled like any other team member —
+  // typical case is the Jefe de servicio also taking shifts.
+  const qc = useQueryClient();
+  const me = useQuery({ queryKey: ["me"], queryFn: api.me });
+  const cats = useQuery({ queryKey: ["categories"], queryFn: api.listCategories });
+
+  const myMembership = me.data?.memberships?.[0] ?? null;
+  const [categoryId, setCategoryId] = useState<number | "">("");
+  const [savedFlash, setSavedFlash] = useState(false);
+
+  // Sync local state from server when it loads or refreshes.
+  useEffect(() => {
+    if (myMembership) {
+      setCategoryId(myMembership.category_id ?? "");
+    }
+  }, [myMembership?.id, myMembership?.category_id]);
+
+  const save = useMutation({
+    mutationFn: (newCat: number | null) =>
+      api.updateTeamMember(myMembership!.id, { category_id: newCat }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["me"] });
+      qc.invalidateQueries({ queryKey: ["team"] });
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 1500);
+    },
+  });
+
+  if (!me.data || !myMembership) {
+    return null;
+  }
+
+  const onChange = (v: string | number) => {
+    const newVal = v === "" ? "" : Number(v);
+    setCategoryId(newVal);
+    save.mutate(newVal === "" ? null : newVal);
+  };
+
+  return (
+    <section className="rounded-md border bg-white p-4 mb-6">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-medium">Tu perfil</h3>
+        {savedFlash && (
+          <span className="text-xs text-green-700">Guardado</span>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
+        <div>
+          <div className="text-xs text-gray-500">Nombre</div>
+          <div>{me.data.person.name}</div>
+        </div>
+        <div>
+          <div className="text-xs text-gray-500">Email</div>
+          <div className="break-all">{me.data.person.email}</div>
+        </div>
+      </div>
+      <Select
+        label="Tu categoría"
+        value={categoryId}
+        onChange={(v) => onChange(v)}
+        options={[
+          { value: "", label: "— Sin categoría (solo administro) —" },
+          ...(cats.data ?? []).map((c) => ({ value: c.id, label: c.name })),
+        ]}
+      />
+      <p className="mt-2 text-xs text-gray-500">
+        Si también haces turnos clínicos, elige tu categoría profesional. Si solo
+        administras Trivu, déjala vacía. Podrás cambiarla luego en Equipo.
+      </p>
+      {save.isError && <ErrorText>{(save.error as Error).message}</ErrorText>}
+    </section>
   );
 }
