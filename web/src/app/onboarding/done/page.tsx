@@ -41,7 +41,7 @@ export default function DoneStep() {
         <SummaryRow label="Categorías" value={counts.categories} />
         <SummaryRow label="Competencias" value={counts.skills} />
         <SummaryRow label="Unidades" value={counts.pools} />
-        <SummaryRow label="Tipos de turno" value={counts.slots} />
+        <SummaryRow label="Turnos" value={counts.slots} />
         <SummaryRow label="Invitaciones pendientes" value={counts.invites} />
       </ul>
 

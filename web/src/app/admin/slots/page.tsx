@@ -50,12 +50,12 @@ export default function SlotsPage() {
   return (
     <>
       <PageHeader
-        title="Tipos de turno"
-        action={<Button onClick={() => setEditing("new")}>Nuevo tipo de turno</Button>}
+        title="Turnos"
+        action={<Button onClick={() => setEditing("new")}>Nuevo turno</Button>}
       />
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
       {list.isError && <ErrorText>{(list.error as Error).message}</ErrorText>}
-      {list.data && list.data.length === 0 && <Empty>Aún no hay tipos de turno.</Empty>}
+      {list.data && list.data.length === 0 && <Empty>Aún no hay turnos.</Empty>}
       {list.data && list.data.length > 0 && (
         <Card>
           <table className="w-full text-sm">
@@ -88,7 +88,7 @@ export default function SlotsPage() {
                     <Button
                       variant="danger"
                       onClick={() => {
-                        if (confirm(`¿Eliminar tipo de turno "${s.name}"?`)) del.mutate(s.id);
+                        if (confirm(`¿Eliminar turno "${s.name}"?`)) del.mutate(s.id);
                       }}
                     >
                       Eliminar
@@ -234,7 +234,7 @@ function SlotDialog({
   }
 
   return (
-    <Modal open={true} onClose={onClose} title={initial ? "Editar tipo de turno" : "Nuevo tipo de turno"}>
+    <Modal open={true} onClose={onClose} title={initial ? "Editar turno" : "Nuevo turno"}>
       <form
         className="space-y-3 max-h-[70vh] overflow-y-auto pr-1"
         onSubmit={(e) => {

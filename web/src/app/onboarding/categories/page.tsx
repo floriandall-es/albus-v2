@@ -5,19 +5,44 @@ import { api, type Category } from "@/lib/api";
 import { Button, ErrorText, TextField } from "@/components/admin/ui";
 import { StepNav } from "../_nav";
 
-// Standard Spanish surgical-service hierarchy. Listed senior → junior so
-// the order in the checklist feels natural. Each toggles independently —
-// admins keep what they need, drop what they don't.
-const DEFAULTS = [
-  "Jefe de servicio",
-  "Jefe de sección",
-  "Adjunto",
-  "Residente R5",
-  "Residente R4",
-  "Residente R3",
-  "Residente R2",
-  "Residente R1",
+// Common roles across Spanish hospital departments, grouped so the
+// checklist stays scannable. Each row toggles independently — admins
+// keep what applies to their service, drop what doesn't, and add custom
+// ones at the bottom.
+const DEFAULT_GROUPS: { title: string; items: string[] }[] = [
+  {
+    title: "Médicos",
+    items: [
+      "Jefe de servicio",
+      "Jefe de sección",
+      "Adjunto",
+      "Residente R5",
+      "Residente R4",
+      "Residente R3",
+      "Residente R2",
+      "Residente R1",
+    ],
+  },
+  {
+    title: "Enfermería",
+    items: [
+      "Supervisor/a de enfermería",
+      "Enfermero/a",
+      "Auxiliar de enfermería (TCAE)",
+      "Matrona",
+    ],
+  },
+  {
+    title: "Otros",
+    items: [
+      "Técnico (laboratorio / radiología)",
+      "Celador/a",
+      "Administrativo/a",
+    ],
+  },
 ];
+
+const ALL_DEFAULTS = new Set(DEFAULT_GROUPS.flatMap((g) => g.items));
 
 export default function CategoriesStep() {
   const qc = useQueryClient();
@@ -36,7 +61,7 @@ export default function CategoriesStep() {
 
   const existing: Category[] = list.data ?? [];
   const byName = new Map(existing.map((c) => [c.name, c]));
-  const customCategories = existing.filter((c) => !DEFAULTS.includes(c.name));
+  const customCategories = existing.filter((c) => !ALL_DEFAULTS.has(c.name));
 
   async function toggleDefault(name: string, checked: boolean) {
     if (checked) {
@@ -51,41 +76,45 @@ export default function CategoriesStep() {
     <div>
       <h2 className="text-2xl font-semibold mb-2">Paso 1 — Categorías</h2>
       <p className="text-sm text-gray-600 mb-6">
-        Las categorías describen los niveles de tu equipo (Adjunto, Residente, etc.).
-        Las usaremos más adelante para asignar slots y calcular equidad. Marca las que apliquen
-        a tu servicio y añade las que falten.
+        Las categorías describen los niveles de tu equipo. Las usaremos más adelante
+        para asignar turnos y calcular equidad. Marca las que apliquen a tu
+        servicio y añade las que falten.
       </p>
 
-      <div className="rounded-md border bg-white mb-4">
-        <div className="px-4 py-2 border-b bg-gray-50 text-xs font-medium uppercase tracking-wide text-gray-600">
-          Categorías habituales
-        </div>
-        <ul className="divide-y">
-          {DEFAULTS.map((d) => {
-            const checked = byName.has(d);
-            const isPending =
-              (create.isPending && create.variables === d) ||
-              (del.isPending && del.variables === byName.get(d)?.id);
-            return (
-              <li key={d} className="flex items-center px-4 py-2 text-sm">
-                <input
-                  type="checkbox"
-                  id={`cat-${d}`}
-                  className="mr-3 h-4 w-4"
-                  checked={checked}
-                  disabled={isPending}
-                  onChange={(e) => toggleDefault(d, e.target.checked)}
-                />
-                <label htmlFor={`cat-${d}`} className="flex-1 cursor-pointer">
-                  {d}
-                </label>
-                {isPending && (
-                  <span className="text-xs text-gray-400">guardando…</span>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+      <div className="rounded-md border bg-white mb-4 divide-y">
+        {DEFAULT_GROUPS.map((group) => (
+          <div key={group.title}>
+            <div className="px-4 py-2 bg-gray-50 text-xs font-medium uppercase tracking-wide text-gray-600">
+              {group.title}
+            </div>
+            <ul className="divide-y">
+              {group.items.map((d) => {
+                const checked = byName.has(d);
+                const isPending =
+                  (create.isPending && create.variables === d) ||
+                  (del.isPending && del.variables === byName.get(d)?.id);
+                return (
+                  <li key={d} className="flex items-center px-4 py-2 text-sm">
+                    <input
+                      type="checkbox"
+                      id={`cat-${d}`}
+                      className="mr-3 h-4 w-4"
+                      checked={checked}
+                      disabled={isPending}
+                      onChange={(e) => toggleDefault(d, e.target.checked)}
+                    />
+                    <label htmlFor={`cat-${d}`} className="flex-1 cursor-pointer">
+                      {d}
+                    </label>
+                    {isPending && (
+                      <span className="text-xs text-gray-400">guardando…</span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
       </div>
 
       <div className="rounded-md border bg-white mb-4">
@@ -129,7 +158,7 @@ export default function CategoriesStep() {
               label=""
               value={customName}
               onChange={setCustomName}
-              placeholder="Ej. Enfermero/a, Auxiliar, Becario…"
+              placeholder="Ej. Farmacéutico/a, Fisioterapeuta, Becario…"
             />
           </div>
           <div className="self-end">
