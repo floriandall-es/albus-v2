@@ -219,21 +219,29 @@ export default function SlotsStep() {
                     ? `${t.start_time.slice(0, 5)}–${t.end_time.slice(0, 5)}`
                     : "sin horario fijo";
                 return (
-                  <li key={t.name} className="flex items-center px-4 py-2 text-sm">
-                    <input
-                      type="checkbox"
-                      id={`slot-${t.name}`}
-                      className="mr-3 h-4 w-4"
-                      checked={checked}
-                      disabled={isPending}
-                      onChange={(e) => toggleTemplate(t, e.target.checked)}
-                    />
-                    <label htmlFor={`slot-${t.name}`} className="flex-1 cursor-pointer">
-                      {t.name}{" "}
-                      <span className="text-xs text-gray-500">({subtitle})</span>
-                    </label>
-                    {isPending && (
-                      <span className="text-xs text-gray-400">guardando…</span>
+                  <li key={t.name} className="px-4 py-2 text-sm">
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id={`slot-${t.name}`}
+                        className="mr-3 h-4 w-4"
+                        checked={checked}
+                        disabled={isPending}
+                        onChange={(e) => toggleTemplate(t, e.target.checked)}
+                      />
+                      <label
+                        htmlFor={`slot-${t.name}`}
+                        className="flex-1 cursor-pointer"
+                      >
+                        {t.name}{" "}
+                        <span className="text-xs text-gray-500">({subtitle})</span>
+                      </label>
+                      {isPending && (
+                        <span className="text-xs text-gray-400">guardando…</span>
+                      )}
+                    </div>
+                    {existingSlot && (
+                      <SlotInlineEditor slot={existingSlot} />
                     )}
                   </li>
                 );
@@ -257,30 +265,32 @@ export default function SlotsStep() {
             {customSlots.map((s) => {
               const isPending = del.isPending && del.variables === s.id;
               return (
-                <li key={s.id} className="flex items-center px-4 py-2 text-sm">
-                  <input
-                    type="checkbox"
-                    id={`slot-custom-${s.id}`}
-                    className="mr-3 h-4 w-4"
-                    checked
-                    disabled={isPending}
-                    onChange={(e) => {
-                      if (!e.target.checked) del.mutate(s.id);
-                    }}
-                  />
-                  <label
-                    htmlFor={`slot-custom-${s.id}`}
-                    className="flex-1 cursor-pointer"
-                  >
-                    {s.name}{" "}
-                    <span className="text-xs text-gray-500">
-                      ({formatTimeRange(s)} · {s.days_applied}
-                      {s.headcount > 1 ? ` × ${s.headcount}` : ""})
-                    </span>
-                  </label>
-                  {isPending && (
-                    <span className="text-xs text-gray-400">guardando…</span>
-                  )}
+                <li key={s.id} className="px-4 py-2 text-sm">
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id={`slot-custom-${s.id}`}
+                      className="mr-3 h-4 w-4"
+                      checked
+                      disabled={isPending}
+                      onChange={(e) => {
+                        if (!e.target.checked) del.mutate(s.id);
+                      }}
+                    />
+                    <label
+                      htmlFor={`slot-custom-${s.id}`}
+                      className="flex-1 cursor-pointer"
+                    >
+                      {s.name}{" "}
+                      <span className="text-xs text-gray-500">
+                        ({formatTimeRange(s)})
+                      </span>
+                    </label>
+                    {isPending && (
+                      <span className="text-xs text-gray-400">guardando…</span>
+                    )}
+                  </div>
+                  <SlotInlineEditor slot={s} />
                 </li>
               );
             })}
@@ -339,6 +349,64 @@ export default function SlotsStep() {
       {del.isError && <ErrorText>{(del.error as Error).message}</ErrorText>}
 
       <StepNav currentSlug="slots" />
+    </div>
+  );
+}
+
+function SlotInlineEditor({ slot }: { slot: Slot }) {
+  // Inline editors for the most-used slot fields. Auto-save on change.
+  // The full editor (team composition, skills, equity group, post-rest)
+  // lives in /admin/slots — this is just enough to avoid making admins
+  // leave the wizard for the common case of "Mañana but only laborables"
+  // or "Mañana with 4 people".
+  const qc = useQueryClient();
+  const update = useMutation({
+    mutationFn: (body: Partial<SlotInput>) => api.updateSlot(slot.id, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["slots"] }),
+  });
+
+  return (
+    <div className="ml-7 mt-2 grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
+      <Select<DaysApplied>
+        label="Días"
+        value={slot.days_applied}
+        onChange={(v) =>
+          v && update.mutate({ days_applied: v as DaysApplied })
+        }
+        options={[
+          { value: "all", label: "Todos los días" },
+          { value: "weekdays", label: "Días laborables" },
+          { value: "weekends_holidays", label: "Findes y festivos" },
+          { value: "custom", label: "Personalizado" },
+        ]}
+      />
+      <Select<StaffingMode>
+        label="Modo"
+        value={slot.staffing_mode}
+        onChange={(v) =>
+          v && update.mutate({ staffing_mode: v as StaffingMode })
+        }
+        options={[
+          { value: "single", label: "Una persona" },
+          { value: "multiple_same", label: "Varias (mismo perfil)" },
+          { value: "team_composition", label: "Equipo" },
+        ]}
+      />
+      {slot.staffing_mode === "multiple_same" ? (
+        <input
+          type="number"
+          min={1}
+          value={slot.headcount}
+          onChange={(e) => {
+            const n = Math.max(1, Number(e.target.value) || 1);
+            update.mutate({ headcount: n });
+          }}
+          className="w-16 rounded-md border border-gray-300 px-2 py-1 text-sm"
+          aria-label="Personas"
+        />
+      ) : (
+        <span />
+      )}
     </div>
   );
 }
