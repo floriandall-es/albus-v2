@@ -18,7 +18,9 @@ export default function DoneStep() {
     mutationFn: () => api.completeOnboarding(),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["me"] });
-      router.replace("/me");
+      // Only admins land here (the onboarding wizard is admin-only),
+      // so /admin is the natural workspace to drop them into.
+      router.replace("/admin");
     },
   });
 
