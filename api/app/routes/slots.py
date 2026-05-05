@@ -427,17 +427,28 @@ def _validate_rules(rules: list[SlotRuleIn]) -> None:
                         " los días de la regla"
                     ),
                 )
-            positions = [m.position for m in r.rotation_members]
-            if len(set(positions)) != len(positions):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Regla {idx + 1}: posiciones de miembros duplicadas",
-                )
+            # Per-position duplicate person check (DB also enforces via
+            # UNIQUE(rule_id, position, person_id), but we error here with
+            # a friendlier Spanish message).
+            seen_pos_person: set[tuple[int, int]] = set()
+            for m in r.rotation_members:
+                key = (m.position, m.person_id)
+                if key in seen_pos_person:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"Regla {idx + 1}: persona duplicada en la"
+                            f" posición {m.position}"
+                        ),
+                    )
+                seen_pos_person.add(key)
+            # A person can appear in only one position of the rotation.
+            # (Migration 0015 keeps UNIQUE(rule_id, person_id) for this.)
             persons = [m.person_id for m in r.rotation_members]
             if len(set(persons)) != len(persons):
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Regla {idx + 1}: una persona aparece dos veces en la rotación",
+                    detail=f"Regla {idx + 1}: una persona aparece en dos posiciones de la rotación",
                 )
         elif r.strategy == "fixed_weekly":
             seen_pin: set[tuple[int, int]] = set()

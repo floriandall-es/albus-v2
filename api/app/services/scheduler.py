@@ -291,22 +291,26 @@ class _Context:
                 return r
         return None
 
-    def rotation_person_for(self, rule: SlotRule, d: date) -> int | None:
-        """Compute the rotation-assigned person for a rotation rule + date.
+    def rotation_persons_for(self, rule: SlotRule, d: date) -> list[int]:
+        """Compute the rotation-assigned team for a rotation rule + date.
 
-        See migration 0013 docstring for the math:
+        Sprint 15 generalized this from "single person per position" to
+        "team per position". The cycle math is unchanged:
             b_idx = block whose bitmap covers d.weekday()
             weeks = (d - anchor_date) // 7
             global = weeks * K + b_idx
-            member_pos = global % N
-        Returns None if the rotation has no members or no matching block.
+            position_idx = global % P
+        where P is the number of distinct positions. Returns the list of
+        person_ids assigned to that position, in stable id order so
+        downstream emission is deterministic. Returns [] for unconfigured
+        rules (no members / no matching block / no anchor).
         """
         if rule.anchor_date is None:
-            return None
+            return []
         blocks = self.rotation_blocks_by_rule.get(rule.id, [])
         members = self.rotation_members_by_rule.get(rule.id, [])
         if not blocks or not members:
-            return None
+            return []
         wd = d.weekday()
         bit = 1 << wd
         b_idx: int | None = None
@@ -315,13 +319,32 @@ class _Context:
                 b_idx = i
                 break
         if b_idx is None:
-            return None
+            return []
+        # Distinct positions in the rotation (sorted ascending). With
+        # multi-person teams the position index space is sparse-by-id but
+        # dense-by-rank: positions are always 0..P-1 in valid configs but
+        # we don't rely on that — we work off observed values.
+        positions_sorted = sorted({m.position for m in members})
+        p_count = len(positions_sorted)
+        if p_count == 0:
+            return []
         weeks = (d - rule.anchor_date).days // 7
         k = len(blocks)
-        n = len(members)
         global_idx = weeks * k + b_idx
-        member_pos = global_idx % n  # Python % is non-negative for negative ints
-        return members[member_pos].person_id
+        # Python % is non-negative for negative dividends.
+        target_pos = positions_sorted[global_idx % p_count]
+        # Sort the team within a position by member.id so emission order
+        # is deterministic and the same team always lands in the same
+        # demand slot. (Members are pre-loaded ordered by (position, id)
+        # in __init__, so this filter preserves that order.)
+        return [m.person_id for m in members if m.position == target_pos]
+
+    # Back-compat shim: a few legacy code paths and tests want a single
+    # person. Returns the first member of the rotation team for this date,
+    # or None.
+    def rotation_person_for(self, rule: SlotRule, d: date) -> int | None:
+        team = self.rotation_persons_for(rule, d)
+        return team[0] if team else None
 
     def fixed_weekly_persons(self, rule: SlotRule, d: date) -> list[int]:
         """Return the pinned person_ids for the (rule, weekday) pair."""
@@ -594,57 +617,145 @@ def _solve_cpsat(
     # them from solver demands on D+1 too.
     pre_rest_block: set[tuple[int, date]] = set()
 
-    def _emit_prepin(
+    def _emit_team_prepin(
         slot: Slot,
         d: date,
         rule: SlotRule,
         team_role_id: int | None,
+        head: int,
     ) -> None:
-        """Materialize one pre-pinned assignment (or NULL placeholder) for
-        a non-solver rule. Honours eligibility — a configured person who
-        isn't eligible on this date emits person_id=NULL with a notes
-        string so the admin sees the conflict."""
-        person_id: int | None = None
-        notes: str | None = None
+        """Materialize up to `head` pre-pinned assignments for a
+        non-solver rule (rotation / fixed_weekly / manual).
+
+        Multi-person handling (sprint 15): rotation and fixed_weekly both
+        return a list of configured persons for (rule, date). For each:
+        - If the configured person is eligible: emit one assignment and
+          register them for cross-slot conflict detection (overlap,
+          succession, frequency caps).
+        - If ineligible: emit a NULL placeholder with a Spanish reason.
+        - Duplicate persons within the configured list (shouldn't happen
+          with current API validation, but defensive): collapse to one,
+          subsequent slots become NULL "Persona duplicada en pines".
+        - If configured < head: pad with NULL "Plaza adicional pendiente"
+          rows so the admin sees the gap.
+        - If configured > head: take first `head`; log a warning. (This
+          can happen when an admin shrinks slot.headcount below the team
+          size without revisiting the rule.)
+        manual rules always emit head NULL rows with "Pendiente de asignar
+        manualmente".
+        """
+        if rule.strategy == "manual":
+            for _ in range(head):
+                db.add(
+                    Assignment(
+                        tenant_id=ctx.tenant_id,
+                        schedule_id=schedule.id,
+                        slot_id=slot.id,
+                        date=d,
+                        person_id=None,
+                        team_role_id=team_role_id,
+                        notes="Pendiente de asignar manualmente",
+                    )
+                )
+            return
+
         if rule.strategy == "rotation":
-            picked = ctx.rotation_person_for(rule, d)
-            if picked is None:
-                notes = "Rotación sin miembros configurados"
-            else:
-                reason = ctx.eligibility_reason(picked, slot, d, team_role_id)
-                if reason:
-                    notes = f"Persona de la rotación no disponible: {reason}"
-                else:
-                    person_id = picked
+            configured = ctx.rotation_persons_for(rule, d)
+            empty_notes = "Rotación sin miembros configurados"
+            ineligible_prefix = "Persona de la rotación no disponible"
         elif rule.strategy == "fixed_weekly":
-            pinned = ctx.fixed_weekly_persons(rule, d)
-            picked = pinned[0] if pinned else None
-            if picked is None:
-                notes = "Sin persona fijada para este día de la semana"
-            else:
-                reason = ctx.eligibility_reason(picked, slot, d, team_role_id)
-                if reason:
-                    notes = f"Persona fija no disponible: {reason}"
-                else:
-                    person_id = picked
-        elif rule.strategy == "manual":
-            notes = "Pendiente de asignar manualmente"
-        db.add(
-            Assignment(
-                tenant_id=ctx.tenant_id,
-                schedule_id=schedule.id,
-                slot_id=slot.id,
-                date=d,
-                person_id=person_id,
-                team_role_id=team_role_id,
-                notes=notes,
+            configured = ctx.fixed_weekly_persons(rule, d)
+            empty_notes = "Sin persona fijada para este día de la semana"
+            ineligible_prefix = "Persona fija no disponible"
+        else:
+            # Unknown strategy — should never reach here. Emit NULLs.
+            for _ in range(head):
+                db.add(
+                    Assignment(
+                        tenant_id=ctx.tenant_id,
+                        schedule_id=schedule.id,
+                        slot_id=slot.id,
+                        date=d,
+                        person_id=None,
+                        team_role_id=team_role_id,
+                        notes="Estrategia desconocida",
+                    )
+                )
+            return
+
+        if len(configured) > head:
+            logger.warning(
+                "Configured team larger than headcount: slot=%s date=%s "
+                "configured=%d head=%d — taking first %d (deterministic)",
+                slot.name,
+                d.isoformat(),
+                len(configured),
+                head,
+                head,
             )
-        )
-        if person_id is not None:
-            pre_busy.add((person_id, d))
-            pre_pinned_assignments.append((person_id, d, slot.id))
-            if slot.post_slot_rest:
-                pre_rest_block.add((person_id, d + timedelta(days=1)))
+            configured = configured[:head]
+
+        emitted_persons: set[int] = set()
+        emitted = 0
+        for cand in configured:
+            person_id: int | None = None
+            notes: str | None = None
+            if cand in emitted_persons:
+                notes = "Persona duplicada en pines"
+            else:
+                reason = ctx.eligibility_reason(cand, slot, d, team_role_id)
+                if reason:
+                    notes = f"{ineligible_prefix}: {reason}"
+                else:
+                    person_id = cand
+                    emitted_persons.add(cand)
+            db.add(
+                Assignment(
+                    tenant_id=ctx.tenant_id,
+                    schedule_id=schedule.id,
+                    slot_id=slot.id,
+                    date=d,
+                    person_id=person_id,
+                    team_role_id=team_role_id,
+                    notes=notes,
+                )
+            )
+            if person_id is not None:
+                pre_busy.add((person_id, d))
+                pre_pinned_assignments.append((person_id, d, slot.id))
+                if slot.post_slot_rest:
+                    pre_rest_block.add((person_id, d + timedelta(days=1)))
+            emitted += 1
+
+        # Pad NULLs for any remaining headcount.
+        if emitted == 0 and head > 0:
+            # No configured persons at all — emit head rows with the
+            # category-specific "empty" reason on each.
+            for _ in range(head):
+                db.add(
+                    Assignment(
+                        tenant_id=ctx.tenant_id,
+                        schedule_id=schedule.id,
+                        slot_id=slot.id,
+                        date=d,
+                        person_id=None,
+                        team_role_id=team_role_id,
+                        notes=empty_notes,
+                    )
+                )
+            return
+        for _ in range(head - emitted):
+            db.add(
+                Assignment(
+                    tenant_id=ctx.tenant_id,
+                    schedule_id=schedule.id,
+                    slot_id=slot.id,
+                    date=d,
+                    person_id=None,
+                    team_role_id=team_role_id,
+                    notes="Plaza adicional pendiente",
+                )
+            )
 
     locked_keys_set = {(la.date, la.slot_id, la.team_role_id) for la in locked}
 
@@ -697,61 +808,10 @@ def _solve_cpsat(
                     is_guardia_demand[(d, slot.id, None)] = bool(slot.guardia_type)
                     continue
                 head = 1 if mode == "single" else max(1, slot.headcount)
-                # Emit one prepin assignment (potentially with NULL person).
-                # For headcount > 1, fixed_weekly may have several pins;
-                # rotation/manual still produce one main pick — we pad
-                # the rest with NULL.
-                if rule.strategy == "fixed_weekly" and head > 1:
-                    pinned = ctx.fixed_weekly_persons(rule, d)
-                    emitted_persons: set[int] = set()
-                    for slot_idx in range(head):
-                        person_id: int | None = None
-                        notes: str | None = None
-                        if slot_idx < len(pinned):
-                            cand = pinned[slot_idx]
-                            if cand in emitted_persons:
-                                notes = "Persona duplicada en pines"
-                            else:
-                                reason = ctx.eligibility_reason(cand, slot, d, None)
-                                if reason:
-                                    notes = f"Persona fija no disponible: {reason}"
-                                else:
-                                    person_id = cand
-                                    emitted_persons.add(cand)
-                        else:
-                            notes = "Sin persona fijada para este día de la semana"
-                        db.add(
-                            Assignment(
-                                tenant_id=ctx.tenant_id,
-                                schedule_id=schedule.id,
-                                slot_id=slot.id,
-                                date=d,
-                                person_id=person_id,
-                                team_role_id=None,
-                                notes=notes,
-                            )
-                        )
-                        if person_id is not None:
-                            pre_busy.add((person_id, d))
-                            pre_pinned_assignments.append((person_id, d, slot.id))
-                            if slot.post_slot_rest:
-                                pre_rest_block.add((person_id, d + timedelta(days=1)))
-                else:
-                    # Single-pick (or single-staff slot): emit primary
-                    # prepin once; pad NULLs for any extra headcount.
-                    _emit_prepin(slot, d, rule, None)
-                    for _ in range(head - 1):
-                        db.add(
-                            Assignment(
-                                tenant_id=ctx.tenant_id,
-                                schedule_id=schedule.id,
-                                slot_id=slot.id,
-                                date=d,
-                                person_id=None,
-                                team_role_id=None,
-                                notes="Plaza adicional pendiente",
-                            )
-                        )
+                # Multi-person aware emission. Both rotation and
+                # fixed_weekly can configure 1..head people for
+                # (rule, date); manual always emits head NULLs.
+                _emit_team_prepin(slot, d, rule, None, head)
 
     # Locked map for quick lookup.
     locked_by_key: dict[tuple[date, int, int | None], list[Assignment]] = defaultdict(list)

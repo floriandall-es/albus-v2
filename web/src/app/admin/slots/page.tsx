@@ -388,6 +388,7 @@ function SlotDialog({
                 key={i}
                 rule={r}
                 team={team}
+                headcount={Math.max(1, Number(headcount) || 1)}
                 onChange={(patch) =>
                   setRules((cur) =>
                     cur.map((rr, idx) => (idx === i ? { ...rr, ...patch } : rr)),
@@ -705,11 +706,13 @@ function bitmapDescription(bitmap: number): string {
 function RuleCard({
   rule,
   team,
+  headcount,
   onChange,
   onDelete,
 }: {
   rule: RuleDraft;
   team: TeamMember[];
+  headcount: number;
   onChange: (patch: Partial<RuleDraft>) => void;
   onDelete: () => void;
 }) {
@@ -727,8 +730,9 @@ function RuleCard({
     if (rule.strategy === "solver") return "Asignación automática (solver)";
     if (rule.strategy === "manual") return "Asignación manual";
     if (rule.strategy === "fixed_weekly")
-      return `${rule.weekly_pins.length} pin(s) por día de la semana`;
-    return `${rule.rotation_blocks.length} bloque(s) · ${rule.rotation_members.length} persona(s)`;
+      return `${rule.weekly_pins.length} pin(s) en total`;
+    const positions = new Set(rule.rotation_members.map((m) => m.position)).size;
+    return `${rule.rotation_blocks.length} bloque(s) · ${positions} posición(es) · ${rule.rotation_members.length} persona(s)`;
   })();
 
   return (
@@ -794,10 +798,20 @@ function RuleCard({
       </div>
 
       {rule.strategy === "fixed_weekly" && (
-        <FixedWeeklyEditor rule={rule} team={team} onChange={onChange} />
+        <FixedWeeklyEditor
+          rule={rule}
+          team={team}
+          headcount={headcount}
+          onChange={onChange}
+        />
       )}
       {rule.strategy === "rotation" && (
-        <RotationEditor rule={rule} team={team} onChange={onChange} />
+        <RotationEditor
+          rule={rule}
+          team={team}
+          headcount={headcount}
+          onChange={onChange}
+        />
       )}
     </div>
   );
@@ -806,42 +820,112 @@ function RuleCard({
 function FixedWeeklyEditor({
   rule,
   team,
+  headcount,
   onChange,
 }: {
   rule: RuleDraft;
   team: TeamMember[];
+  headcount: number;
   onChange: (patch: Partial<RuleDraft>) => void;
 }) {
-  const setPin = (weekday: number, person_id: number | null) => {
-    const cleaned = rule.weekly_pins.filter((p) => p.weekday !== weekday);
-    if (person_id !== null) cleaned.push({ weekday, person_id });
-    onChange({ weekly_pins: cleaned });
+  // Sprint 15: each weekday can hold a TEAM of pinned people. Pins are
+  // identified by index within the (rule, weekday) sub-list — we don't
+  // care about insertion order, only that the same person isn't pinned
+  // twice in the same weekday (the API enforces this).
+  const setPinAt = (weekday: number, idx: number, person_id: number | null) => {
+    const all = [...rule.weekly_pins];
+    // Find the absolute index of the idx-th pin for this weekday.
+    let seen = -1;
+    let absIdx = -1;
+    for (let i = 0; i < all.length; i++) {
+      if (all[i].weekday === weekday) {
+        seen += 1;
+        if (seen === idx) {
+          absIdx = i;
+          break;
+        }
+      }
+    }
+    if (person_id === null) {
+      if (absIdx >= 0) all.splice(absIdx, 1);
+    } else if (absIdx >= 0) {
+      all[absIdx] = { weekday, person_id };
+    } else {
+      all.push({ weekday, person_id });
+    }
+    onChange({ weekly_pins: all });
   };
+  const addPin = (weekday: number) => {
+    const used = new Set(
+      rule.weekly_pins.filter((p) => p.weekday === weekday).map((p) => p.person_id),
+    );
+    const next = team.find((t) => !used.has(t.person_id));
+    if (!next) return;
+    onChange({
+      weekly_pins: [...rule.weekly_pins, { weekday, person_id: next.person_id }],
+    });
+  };
+  const removePin = (weekday: number, idx: number) => setPinAt(weekday, idx, null);
+
   const days = DAY_LABELS.filter((d) => rule.days_bitmap & (1 << d.bit));
   if (!days.length) {
     return <p className="text-xs text-gray-500">Activa días en la regla para fijar pines.</p>;
   }
   return (
-    <div className="space-y-1">
+    <div className="space-y-2">
       {days.map((d) => {
-        const pin = rule.weekly_pins.find((p) => p.weekday === d.bit);
+        const pinsForDay = rule.weekly_pins.filter((p) => p.weekday === d.bit);
+        const mismatch = pinsForDay.length !== headcount;
         return (
-          <div key={d.bit} className="grid grid-cols-[5rem_1fr] items-center gap-2 text-xs">
-            <span className="text-gray-700">{d.long}</span>
-            <Select
-              label=""
-              value={pin?.person_id ?? ""}
-              onChange={(v) =>
-                setPin(d.bit, v === "" || v === null ? null : Number(v))
-              }
-              options={[
-                { value: "", label: "—" },
-                ...team.map((m) => ({
-                  value: m.person_id,
-                  label: m.person_name,
-                })),
-              ]}
-            />
+          <div key={d.bit} className="rounded border bg-white p-2 text-xs">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="font-medium text-gray-700">{d.long}</span>
+              <button
+                type="button"
+                onClick={() => addPin(d.bit)}
+                disabled={team.length === 0 || pinsForDay.length >= team.length}
+                className="text-blue-700 hover:underline disabled:text-gray-400 disabled:no-underline"
+              >
+                + Añadir persona
+              </button>
+            </div>
+            {pinsForDay.length === 0 && (
+              <p className="text-gray-500">Sin personas asignadas a este día.</p>
+            )}
+            {pinsForDay.map((pin, idx) => (
+              <div
+                key={`${d.bit}-${idx}-${pin.person_id}`}
+                className="mb-1 flex items-center gap-2"
+              >
+                <div className="flex-1">
+                  <Select
+                    label=""
+                    value={pin.person_id}
+                    onChange={(v) =>
+                      v !== "" && setPinAt(d.bit, idx, Number(v))
+                    }
+                    options={team.map((m) => ({
+                      value: m.person_id,
+                      label: m.person_name,
+                    }))}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removePin(d.bit, idx)}
+                  className="text-red-700 hover:underline"
+                >
+                  Eliminar
+                </button>
+              </div>
+            ))}
+            {mismatch && (
+              <p className="mt-1 text-amber-700">
+                {d.long}: {pinsForDay.length} persona{pinsForDay.length === 1 ? "" : "s"}
+                {" "}asignada{pinsForDay.length === 1 ? "" : "s"} (el turno requiere{" "}
+                {headcount}).
+              </p>
+            )}
           </div>
         );
       })}
@@ -852,41 +936,88 @@ function FixedWeeklyEditor({
 function RotationEditor({
   rule,
   team,
+  headcount,
   onChange,
 }: {
   rule: RuleDraft;
   team: TeamMember[];
+  headcount: number;
   onChange: (patch: Partial<RuleDraft>) => void;
 }) {
+  // Sprint 15: each position is a "team card" holding 1..N people. The
+  // cycle math is unchanged — position index still drives which team is
+  // on duty for a given (date, block).
   const applyPreset = (preset: string) => {
     onChange({ rotation_blocks: blocksFromPreset(preset, rule.days_bitmap) });
   };
-  const addMember = () => {
-    const used = new Set(rule.rotation_members.map((m) => m.person_id));
-    const next = team.find((t) => !used.has(t.person_id));
-    if (next)
-      onChange({
-        rotation_members: [
-          ...rule.rotation_members,
-          { position: rule.rotation_members.length, person_id: next.person_id },
-        ],
-      });
-  };
-  const moveMember = (idx: number, dir: -1 | 1) => {
-    const j = idx + dir;
-    if (j < 0 || j >= rule.rotation_members.length) return;
-    const arr = [...rule.rotation_members];
-    [arr[idx], arr[j]] = [arr[j], arr[idx]];
+
+  // Compute distinct positions present, in ascending order. Empty
+  // positions (no members yet) are not represented in the data — we
+  // expose them via "+ Añadir posición" which appends position=max+1.
+  const positions = Array.from(
+    new Set(rule.rotation_members.map((m) => m.position)),
+  ).sort((a, b) => a - b);
+
+  const allUsedPersonIds = new Set(rule.rotation_members.map((m) => m.person_id));
+
+  const addPosition = () => {
+    const nextPos = positions.length === 0 ? 0 : positions[positions.length - 1] + 1;
+    const next = team.find((t) => !allUsedPersonIds.has(t.person_id));
+    if (!next) return;
     onChange({
-      rotation_members: arr.map((m, i) => ({ ...m, position: i })),
+      rotation_members: [
+        ...rule.rotation_members,
+        { position: nextPos, person_id: next.person_id },
+      ],
     });
   };
-  const removeMember = (idx: number) => {
-    const arr = rule.rotation_members
-      .filter((_, i) => i !== idx)
-      .map((m, i) => ({ ...m, position: i }));
-    onChange({ rotation_members: arr });
+
+  const addMemberToPosition = (pos: number) => {
+    const next = team.find((t) => !allUsedPersonIds.has(t.person_id));
+    if (!next) return;
+    onChange({
+      rotation_members: [
+        ...rule.rotation_members,
+        { position: pos, person_id: next.person_id },
+      ],
+    });
   };
+
+  const removeMember = (pos: number, personId: number) => {
+    const arr = rule.rotation_members.filter(
+      (m) => !(m.position === pos && m.person_id === personId),
+    );
+    // If this was the only member of `pos`, renumber subsequent positions
+    // down so we keep them dense (0..P-1). Solver tolerates sparse, but
+    // the UI is clearer with dense numbering.
+    const stillUsed = new Set(arr.map((m) => m.position));
+    const sorted = Array.from(stillUsed).sort((a, b) => a - b);
+    const remap = new Map<number, number>();
+    sorted.forEach((p, i) => remap.set(p, i));
+    onChange({
+      rotation_members: arr.map((m) => ({
+        ...m,
+        position: remap.get(m.position) ?? m.position,
+      })),
+    });
+  };
+
+  const setMemberPerson = (
+    pos: number,
+    oldPersonId: number,
+    newPersonId: number,
+  ) => {
+    if (newPersonId === oldPersonId) return;
+    if (allUsedPersonIds.has(newPersonId)) return; // already in rotation
+    onChange({
+      rotation_members: rule.rotation_members.map((m) =>
+        m.position === pos && m.person_id === oldPersonId
+          ? { ...m, person_id: newPersonId }
+          : m,
+      ),
+    });
+  };
+
   return (
     <div className="space-y-2 rounded border border-gray-200 bg-white p-2">
       <div className="grid grid-cols-2 gap-2">
@@ -924,43 +1055,91 @@ function RotationEditor({
       </div>
       <div>
         <div className="mb-1 flex items-center justify-between">
-          <span className="text-xs font-medium text-gray-700">Miembros (orden = ciclo)</span>
-          <Button variant="secondary" onClick={addMember} disabled={team.length === 0}>
-            + Añadir
+          <span className="text-xs font-medium text-gray-700">
+            Posiciones (orden = ciclo)
+          </span>
+          <Button
+            variant="secondary"
+            onClick={addPosition}
+            disabled={team.length === 0 || allUsedPersonIds.size >= team.length}
+          >
+            + Añadir posición
           </Button>
         </div>
-        {rule.rotation_members.length === 0 && (
-          <p className="text-xs text-gray-500">Añade al menos un miembro.</p>
+        {positions.length === 0 && (
+          <p className="text-xs text-gray-500">
+            Añade al menos una posición.
+          </p>
         )}
-        {rule.rotation_members.map((m, i) => {
-          const tm = team.find((t) => t.person_id === m.person_id);
+        {positions.map((pos, posIdx) => {
+          const members = rule.rotation_members.filter((m) => m.position === pos);
+          const mismatch = members.length !== headcount;
           return (
-            <div key={i} className="flex items-center gap-2 text-xs">
-              <span className="w-6 text-gray-500">{i + 1}.</span>
-              <span className="flex-1">{tm?.person_name ?? `Persona ${m.person_id}`}</span>
-              <button
-                type="button"
-                className="text-gray-500 hover:text-gray-800"
-                onClick={() => moveMember(i, -1)}
-                disabled={i === 0}
-              >
-                ↑
-              </button>
-              <button
-                type="button"
-                className="text-gray-500 hover:text-gray-800"
-                onClick={() => moveMember(i, 1)}
-                disabled={i === rule.rotation_members.length - 1}
-              >
-                ↓
-              </button>
-              <button
-                type="button"
-                className="text-red-700 hover:underline"
-                onClick={() => removeMember(i)}
-              >
-                Quitar
-              </button>
+            <div
+              key={pos}
+              className="mb-2 rounded border border-gray-200 bg-gray-50 p-2 text-xs"
+            >
+              <div className="mb-1 flex items-center justify-between">
+                <span className="font-medium text-gray-700">
+                  Posición {posIdx + 1}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => addMemberToPosition(pos)}
+                  disabled={
+                    team.length === 0 || allUsedPersonIds.size >= team.length
+                  }
+                  className="text-blue-700 hover:underline disabled:text-gray-400 disabled:no-underline"
+                >
+                  + Añadir persona
+                </button>
+              </div>
+              {members.length === 0 && (
+                <p className="text-gray-500">Sin personas en esta posición.</p>
+              )}
+              {members.map((m) => {
+                const otherPersonsInRule = new Set(
+                  rule.rotation_members
+                    .filter((mm) => mm.person_id !== m.person_id)
+                    .map((mm) => mm.person_id),
+                );
+                const options = team
+                  .filter((t) =>
+                    t.person_id === m.person_id ||
+                    !otherPersonsInRule.has(t.person_id),
+                  )
+                  .map((t) => ({ value: t.person_id, label: t.person_name }));
+                return (
+                  <div
+                    key={`${pos}-${m.person_id}`}
+                    className="mb-1 flex items-center gap-2"
+                  >
+                    <div className="flex-1">
+                      <Select
+                        label=""
+                        value={m.person_id}
+                        onChange={(v) =>
+                          v !== "" && setMemberPerson(pos, m.person_id, Number(v))
+                        }
+                        options={options}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeMember(pos, m.person_id)}
+                      className="text-red-700 hover:underline"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                );
+              })}
+              {mismatch && (
+                <p className="mt-1 text-amber-700">
+                  Posición {posIdx + 1}: {members.length} persona
+                  {members.length === 1 ? "" : "s"} (el turno requiere {headcount}).
+                </p>
+              )}
             </div>
           );
         })}

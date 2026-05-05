@@ -105,12 +105,20 @@ class SlotRuleRotationBlock(Base):
 
 class SlotRuleRotationMember(Base):
     __tablename__ = "slot_rule_rotation_members"
+    # Migration 0015 dropped UNIQUE(rule_id, position) so multiple people
+    # can share a rotation position (team rotation). UNIQUE(rule_id,
+    # person_id) survives — same person can't hold two positions in one
+    # rotation. UNIQUE(rule_id, position, person_id) blocks double-adding
+    # the same person to the same position.
     __table_args__ = (
         UniqueConstraint(
-            "rule_id", "position", name="uq_slot_rule_rotation_members_rule_position"
+            "rule_id", "person_id", name="uq_slot_rule_rotation_members_rule_person"
         ),
         UniqueConstraint(
-            "rule_id", "person_id", name="uq_slot_rule_rotation_members_rule_person"
+            "rule_id",
+            "position",
+            "person_id",
+            name="uq_slot_rule_rotation_members_rule_position_person",
         ),
     )
 
