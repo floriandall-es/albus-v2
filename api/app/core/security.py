@@ -20,6 +20,7 @@ def verify_password(password: str, hashed: str) -> bool:
 def create_access_token(*, person_id: int, tenant_id: int, roles: list[str]) -> str:
     now = datetime.now(timezone.utc)
     payload: dict[str, Any] = {
+        "kind": "access",
         "person_id": person_id,
         "tenant_id": tenant_id,
         "roles": roles,
@@ -30,4 +31,36 @@ def create_access_token(*, person_id: int, tenant_id: int, roles: list[str]) -> 
 
 
 def decode_access_token(token: str) -> dict[str, Any]:
-    return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    # Reject any token that isn't an access token. Pre-auth tokens (issued
+    # during the multi-tenant login picker flow) carry kind=pre_auth and
+    # MUST NOT be usable as bearer credentials. Older tokens without a kind
+    # claim are accepted for backwards compatibility.
+    kind = payload.get("kind", "access")
+    if kind != "access":
+        raise jwt.InvalidTokenError(f"Token kind {kind!r} cannot be used as access token")
+    return payload
+
+
+def create_pre_auth_token(*, person_id: int) -> str:
+    """Short-lived token issued after email+password verification when the
+    person has 2+ memberships and must pick a tenant before getting a real
+    access token. Cannot be used as a bearer credential — see
+    decode_access_token."""
+    now = datetime.now(timezone.utc)
+    payload: dict[str, Any] = {
+        "kind": "pre_auth",
+        "person_id": person_id,
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=settings.pre_auth_ttl_minutes)).timestamp()),
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def decode_pre_auth_token(token: str) -> dict[str, Any]:
+    payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    if payload.get("kind") != "pre_auth":
+        raise jwt.InvalidTokenError("Not a pre-auth token")
+    if not payload.get("person_id"):
+        raise jwt.InvalidTokenError("Malformed pre-auth token")
+    return payload

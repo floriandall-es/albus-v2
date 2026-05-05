@@ -2,13 +2,16 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { api, setToken } from "@/lib/api";
+import { api, isTenantSelectionResponse, setToken, type AuthResponse } from "@/lib/api";
+
+// Stash key for the in-flight tenant picker. Lives only between login → picker
+// nav, so sessionStorage (cleared on tab close) is the right scope.
+export const PRE_AUTH_KEY = "trivu.preAuth";
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [tenantSlug, setTenantSlug] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -17,21 +20,21 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const res = await api.login({ email, password, tenant_slug: tenantSlug });
-      setToken(res.access_token);
-      // Role-aware landing:
-      //  - Admin who hasn't finished onboarding → /onboarding (resume wizard)
-      //  - Admin who has → /admin (their primary workspace)
-      //  - Anyone else → /me (personal schedule view)
-      const isAdmin = res.memberships.some((m) => m.roles.includes("admin"));
-      const onboarded = res.tenant.onboarding_completed_at != null;
-      if (isAdmin && !onboarded) {
-        router.push("/onboarding");
-      } else if (isAdmin) {
-        router.push("/admin");
-      } else {
-        router.push("/me");
+      const res = await api.login({ email, password });
+      if (isTenantSelectionResponse(res)) {
+        // Stash the pre_auth_token + tenant list and let the picker page
+        // finish the flow.
+        sessionStorage.setItem(
+          PRE_AUTH_KEY,
+          JSON.stringify({
+            pre_auth_token: res.pre_auth_token,
+            available_tenants: res.available_tenants,
+          }),
+        );
+        router.push("/login/select-tenant");
+        return;
       }
+      finalizeLogin(res, router);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se ha podido iniciar sesión");
     } finally {
@@ -53,12 +56,6 @@ export default function LoginPage() {
       </div>
       <h1 className="text-2xl font-semibold mb-6 text-center">Inicia sesión</h1>
       <form onSubmit={onSubmit} className="space-y-4">
-        <Field
-          label="Identificador del servicio"
-          value={tenantSlug}
-          onChange={setTenantSlug}
-          placeholder="ej. lapaz"
-        />
         <Field label="Email" type="email" value={email} onChange={setEmail} />
         <Field label="Contraseña" type="password" value={password} onChange={setPassword} />
         {error && <p className="text-sm text-red-600">{error}</p>}
@@ -78,6 +75,24 @@ export default function LoginPage() {
       </form>
     </main>
   );
+}
+
+// Shared post-login redirect. Used both on the single-membership path and
+// after the tenant picker exchanges a pre_auth_token for an access token.
+export function finalizeLogin(
+  res: AuthResponse,
+  router: { push: (path: string) => void },
+) {
+  setToken(res.access_token);
+  const isAdmin = res.memberships.some((m) => m.roles.includes("admin"));
+  const onboarded = res.tenant.onboarding_completed_at != null;
+  if (isAdmin && !onboarded) {
+    router.push("/onboarding");
+  } else if (isAdmin) {
+    router.push("/admin");
+  } else {
+    router.push("/me");
+  }
 }
 
 function Field(props: {

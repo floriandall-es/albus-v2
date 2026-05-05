@@ -94,28 +94,29 @@ def test_me_endpoint_isolates_memberships(client):
 
     # Tenant A admin
     r = client.post("/api/signup", json={
-        "tenant_name": "A", "tenant_slug": f"aa-{suffix}",
+        "tenant_name": f"A {suffix}",
         "person_name": "Alice", "email": f"alice-{suffix}@x.com",
         "password": "supersecret1",
     })
     assert r.status_code == 201
-    a_token = r.json()["access_token"]
+    a_body = r.json()
+    a_token = a_body["access_token"]
+    a_slug = a_body["tenant"]["slug"]
 
     # Tenant B admin (different person)
     r = client.post("/api/signup", json={
-        "tenant_name": "B", "tenant_slug": f"bb-{suffix}",
+        "tenant_name": f"B {suffix}",
         "person_name": "Bob", "email": f"bob-{suffix}@x.com",
         "password": "supersecret1",
     })
     assert r.status_code == 201
-    b_token = r.json()["access_token"]
+    b_body = r.json()
+    b_token = b_body["access_token"]
+    b_id = b_body["tenant"]["id"]
 
     # Seed departments for B directly
     engine = create_engine(_app_engine_url(), future=True)
     with engine.begin() as conn:
-        b_id = conn.execute(
-            text("SELECT id FROM tenants WHERE slug = :s"), {"s": f"bb-{suffix}"}
-        ).scalar_one()
         conn.execute(text("SET LOCAL app.tenant_id = :t"), {"t": str(b_id)})
         conn.execute(
             text("INSERT INTO departments (tenant_id, name) VALUES (:t, 'B-secret')"),
@@ -129,7 +130,7 @@ def test_me_endpoint_isolates_memberships(client):
     body = r.json()
     assert all(d["name"] != "B-secret" for d in body["departments"])
     assert len(body["memberships"]) == 1
-    assert body["current_tenant"]["slug"] == f"aa-{suffix}"
+    assert body["current_tenant"]["slug"] == a_slug
 
     # B's /me does see B-secret
     r = client.get("/api/me", headers={"Authorization": f"Bearer {b_token}"})

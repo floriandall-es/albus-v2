@@ -58,16 +58,17 @@ def test_full_invite_accept_flow(auth_client, client):
     )
     assert r.status_code == 400
 
-    # Carlos can log in directly
+    # Carlos can log in directly. Carlos has only one membership so login
+    # returns a JWT immediately without going through the tenant picker.
     r = client.post(
         "/api/login",
         json={
             "email": "carlos@example.com",
             "password": "carloss3cret",
-            "tenant_slug": _info_slug(_info),
         },
     )
     assert r.status_code == 200, r.text
+    assert "access_token" in r.json()
 
 
 def _info_slug(info):
@@ -193,16 +194,21 @@ def test_existing_person_new_tenant_keeps_password(auth_client, second_tenant, c
     # Bob's name should NOT be overwritten on his existing Person.
     assert body["person"]["email"] == bob_email
 
-    # Bob's original password (set via signup in second_tenant fixture) still works
+    # Bob's original password (set via signup in second_tenant fixture) still
+    # works. He now has 2 memberships (B from signup, A from accepting the
+    # invite), so login returns the tenant picker payload — not a JWT.
     r = client.post(
         "/api/login",
         json={
             "email": bob_email,
             "password": "supersecret1",
-            "tenant_slug": info_b["tenant_slug"],
         },
     )
     assert r.status_code == 200
+    body = r.json()
+    assert body.get("requires_tenant_selection") is True
+    tenant_ids = {t["id"] for t in body["available_tenants"]}
+    assert info_b["tenant_id"] in tenant_ids
 
 
 def test_invite_existing_member_409(auth_client, client):

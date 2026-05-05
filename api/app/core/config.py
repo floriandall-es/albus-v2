@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me-in-prod-this-is-only-for-dev"
     jwt_algorithm: str = "HS256"
     jwt_ttl_minutes: int = 60
+    # TTL for the short-lived pre-auth token issued during the multi-tenant
+    # login picker flow. 5 minutes is plenty for "user clicks a tenant card"
+    # but tight enough that a leaked token isn't a long-term threat.
+    pre_auth_ttl_minutes: int = 5
     cors_origins: str = "http://localhost:3000"
     # Used to build invite accept URLs. In dev this points at the web service
     # exposed on the host; in prod it's the public domain.

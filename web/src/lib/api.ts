@@ -327,6 +327,28 @@ export type AuthResponse = {
   memberships: Membership[];
 };
 
+// Returned by /api/login when the person has 2+ memberships and must pick a
+// tenant before getting a real access token. The caller stores the
+// pre_auth_token (sessionStorage) and POSTs it back via /login/select-tenant.
+export type TenantPickerOption = {
+  id: number;
+  slug: string;
+  name: string;
+};
+
+export type TenantSelectionResponse = {
+  requires_tenant_selection: true;
+  pre_auth_token: string;
+  person: { id: number; email: string; name: string };
+  available_tenants: TenantPickerOption[];
+};
+
+export function isTenantSelectionResponse(
+  res: AuthResponse | TenantSelectionResponse,
+): res is TenantSelectionResponse {
+  return (res as TenantSelectionResponse).requires_tenant_selection === true;
+}
+
 export type MeResponse = {
   person: Person;
   current_tenant: Tenant;
@@ -360,14 +382,26 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const api = {
   signup: (body: {
     tenant_name: string;
-    tenant_slug: string;
     person_name: string;
     email: string;
     password: string;
   }) => request<AuthResponse>("/api/signup", { method: "POST", body: JSON.stringify(body) }),
 
-  login: (body: { email: string; password: string; tenant_slug: string }) =>
-    request<AuthResponse>("/api/login", { method: "POST", body: JSON.stringify(body) }),
+  // Login is conditional on how many memberships the person has:
+  // - 1 membership → AuthResponse with access_token (existing flow)
+  // - 2+ memberships → TenantSelectionResponse; caller must redirect to the
+  //   picker page and exchange the pre_auth_token via selectTenant().
+  login: (body: { email: string; password: string }) =>
+    request<AuthResponse | TenantSelectionResponse>("/api/login", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  selectTenant: (body: { pre_auth_token: string; tenant_id: number }) =>
+    request<AuthResponse>("/api/login/select-tenant", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   me: () => request<MeResponse>("/api/me"),
 

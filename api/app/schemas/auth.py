@@ -6,7 +6,6 @@ from pydantic import BaseModel, EmailStr, Field
 
 class SignupRequest(BaseModel):
     tenant_name: str = Field(min_length=1, max_length=255)
-    tenant_slug: str = Field(min_length=2, max_length=64, pattern=r"^[a-z0-9][a-z0-9-]*$")
     person_name: str = Field(min_length=1, max_length=255)
     email: EmailStr
     password: str = Field(min_length=8, max_length=255)
@@ -18,7 +17,32 @@ class SignupRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
-    tenant_slug: str
+
+
+class SelectTenantRequest(BaseModel):
+    pre_auth_token: str
+    tenant_id: int
+
+
+class TenantPickerOption(BaseModel):
+    id: int
+    slug: str
+    name: str
+
+
+class PreAuthPersonOut(BaseModel):
+    id: int
+    email: str
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
+class TenantSelectionResponse(BaseModel):
+    requires_tenant_selection: bool = True
+    pre_auth_token: str
+    person: PreAuthPersonOut
+    available_tenants: list[TenantPickerOption]
 
 
 class TenantOut(BaseModel):
