@@ -1150,14 +1150,19 @@ def _solve_cpsat(
     # We minimize max - min of weighted counts. Weights are int100/fte_pct
     # to make the LP integer.
     #
-    # Slots are bucketed by `equity_group_key` so a tenant can balance
-    # "guardias" among themselves and "quirófano" among themselves
-    # independently. Slots with key=NULL all share one default bucket so
-    # the legacy behavior is preserved for tenants who don't set the key.
+    # Slots are bucketed by `equity_group_key`. Slots that share a key
+    # balance together (e.g. "guardia" → all guardia variants split
+    # evenly among the eligible people). Slots with key=NULL each form
+    # their OWN single-slot group — every slot balances independently
+    # by default, and an admin opts INTO grouped-balance by setting the
+    # same key on multiple slots. (Earlier behavior was the opposite —
+    # all NULL-group slots in one bucket — but that produced "person X
+    # does 100% of localizadas while totals look balanced" because the
+    # localizada slot was lumped with quirófanos and consultas.)
     # Weekend balance stays a single global term (weighed less; it's a
     # cross-group sanity check rather than a primary fairness dimension).
     person_ids_present = sorted({pid for (_, _, _, pid) in x.keys()})
-    equity_groups: dict[str | None, dict[int, list]] = defaultdict(
+    equity_groups: dict[str, dict[int, list]] = defaultdict(
         lambda: {pid: [] for pid in person_ids_present}
     )
     weekend_total: dict[int, list] = {pid: [] for pid in person_ids_present}
@@ -1165,7 +1170,13 @@ def _solve_cpsat(
     for (d, slot_id, role_id, pid), var in x.items():
         slot = ctx.slot_by_id[slot_id]
         if slot.counts_for_equity:
-            equity_groups[slot.equity_group_key][pid].append(var)
+            # NULL key → unique per-slot bucket. Explicit key → shared.
+            group_key = (
+                slot.equity_group_key
+                if slot.equity_group_key
+                else f"_slot_{slot.id}"
+            )
+            equity_groups[group_key][pid].append(var)
             if is_weekend_or_holiday[d]:
                 weekend_total[pid].append(var)
 
@@ -1214,9 +1225,9 @@ def _solve_cpsat(
         model.Add(spread == max_var - min_var)
         obj_terms.append(weight * spread)
 
-    # One balance term per equity_group_key. NULL is the default bucket;
-    # legacy tenants (who haven't set the key on any slot) hit only this
-    # one and get the same behavior as before this column existed.
+    # One balance term per group. Explicit keys (e.g. "guardia") share a
+    # term across all slots that opted in; synthetic _slot_{id} keys
+    # produce a per-slot term so each slot self-balances by default.
     for group_key, buckets in equity_groups.items():
         # Sanitize the group key for use in CP-SAT variable names (which
         # don't tolerate weird chars). "default" for the NULL bucket.

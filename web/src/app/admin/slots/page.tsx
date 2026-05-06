@@ -175,7 +175,10 @@ function SlotDialog({
   const [rules, setRules] = useState<RuleDraft[]>(
     initial?.rules.map(ruleToDraft) ?? [
       {
-        days_bitmap: 0b1111111,
+        days_bitmap: slotAllowedDaysBitmap(
+          initial?.days_applied ?? "all",
+          initial?.custom_days_bitmap ?? 0,
+        ),
         strategy: "solver",
         anchor_date: null,
         weekly_pins: [],
@@ -389,6 +392,7 @@ function SlotDialog({
                 rule={r}
                 team={team}
                 headcount={Math.max(1, Number(headcount) || 1)}
+                allowedDaysBitmap={slotAllowedDaysBitmap(days, customDaysBitmap)}
                 onChange={(patch) =>
                   setRules((cur) =>
                     cur.map((rr, idx) => (idx === i ? { ...rr, ...patch } : rr)),
@@ -529,6 +533,20 @@ const DAY_LABELS: { bit: number; short: string; long: string }[] = [
   { bit: 5, short: "S", long: "Sábado" },
   { bit: 6, short: "D", long: "Domingo" },
 ];
+
+// Mirror of the back-end `_default_rule_bitmap` helper: the days a rule
+// can possibly cover, derived from the slot's days_applied. For
+// weekends_holidays we still return all 7 bits because holidays can fall
+// on any weekday — the slot itself filters to weekend ∪ holiday at solve
+// time.
+function slotAllowedDaysBitmap(
+  days: DaysApplied,
+  customDaysBitmap: number,
+): number {
+  if (days === "weekdays") return 0b0011111;
+  if (days === "custom") return customDaysBitmap || 0b1111111;
+  return 0b1111111;
+}
 
 function CustomDaysPicker({
   value,
@@ -707,17 +725,20 @@ function RuleCard({
   rule,
   team,
   headcount,
+  allowedDaysBitmap,
   onChange,
   onDelete,
 }: {
   rule: RuleDraft;
   team: TeamMember[];
   headcount: number;
+  allowedDaysBitmap: number;
   onChange: (patch: Partial<RuleDraft>) => void;
   onDelete: () => void;
 }) {
   const toggleDay = (bit: number) => {
     const mask = 1 << bit;
+    if (!(allowedDaysBitmap & mask)) return;
     const next = rule.days_bitmap & mask
       ? rule.days_bitmap & ~mask
       : rule.days_bitmap | mask;
@@ -755,19 +776,28 @@ function RuleCard({
         <span className="text-xs font-medium text-gray-700">Días que cubre</span>
         <div className="mt-1 flex flex-wrap gap-1">
           {DAY_LABELS.map(({ bit, short, long }) => {
+            const inScope = (allowedDaysBitmap & (1 << bit)) !== 0;
             const active = (rule.days_bitmap & (1 << bit)) !== 0;
+            const disabled = !inScope;
             return (
               <button
                 key={bit}
                 type="button"
                 onClick={() => toggleDay(bit)}
                 aria-pressed={active}
-                title={long}
+                disabled={disabled}
+                title={
+                  disabled
+                    ? `${long} — fuera del alcance del turno`
+                    : long
+                }
                 className={
                   "flex h-8 w-8 items-center justify-center rounded-md border text-xs font-medium transition " +
-                  (active
-                    ? "border-blue-600 bg-blue-600 text-white"
-                    : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50")
+                  (disabled
+                    ? "cursor-not-allowed border-gray-200 bg-gray-100 text-gray-300"
+                    : active
+                      ? "border-blue-600 bg-blue-600 text-white"
+                      : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50")
                 }
               >
                 {short}

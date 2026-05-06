@@ -43,6 +43,26 @@ def _get_or_404(ctx: RequestContext, slot_id: int) -> Slot:
     return obj
 
 
+def _default_rule_bitmap(slot: Slot) -> int:
+    """Derive the default rule's days_bitmap from the slot's days_applied.
+
+    Bit layout: 0=Mon, 1=Tue, ..., 5=Sat, 6=Sun.
+    - all                 → 0b1111111 (127)
+    - weekdays            → 0b0011111 (31, Mon-Fri)
+    - weekends_holidays   → 0b1111111 (127): holidays can fall on any
+                            weekday, so the rule bitmap must cover all
+                            days; the slot itself filters to weekend ∪
+                            holiday occurrences at solve time.
+    - custom              → slot.custom_days_bitmap (fallback to all if empty)
+    """
+    da = slot.days_applied
+    if da == "weekdays":
+        return 0b0011111
+    if da == "custom":
+        return slot.custom_days_bitmap or 0b1111111
+    return 0b1111111
+
+
 def _validate_categories(ctx: RequestContext, ids: list[int]) -> None:
     if not ids:
         return
@@ -279,15 +299,17 @@ def create_slot(
 
     _replace_team_roles(ctx, obj, payload.team_roles)
     _replace_skills_required(ctx, obj, payload.skills_required)
-    # Default rule: solver covering all 7 days, position 0. Mirrors the
-    # backfill in migration 0013 — brand-new slots behave like before this
-    # feature unless the admin explicitly reconfigures their rules.
+    # Default rule: solver, position 0. The rule's days_bitmap is
+    # derived from slot.days_applied so the admin doesn't have to
+    # reconcile two day-scopes for a brand-new slot. Custom-day slots
+    # use their custom_days_bitmap; "weekdays" / "weekends_holidays" /
+    # "all" map to the obvious bitmaps.
     ctx.db.add(
         SlotRule(
             tenant_id=ctx.tenant.id,
             slot_id=obj.id,
             position=0,
-            days_bitmap=0b1111111,
+            days_bitmap=_default_rule_bitmap(obj),
             strategy="solver",
             anchor_date=None,
         )
