@@ -3,7 +3,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, type TenantPickerOption } from "@/lib/api";
-import { finalizeLogin, PRE_AUTH_KEY } from "../page";
+import { finalizeLogin, PRE_AUTH_KEY } from "../_utils";
 
 type Stash = {
   pre_auth_token: string;

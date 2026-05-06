@@ -2,11 +2,8 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { api, isTenantSelectionResponse, setToken, type AuthResponse } from "@/lib/api";
-
-// Stash key for the in-flight tenant picker. Lives only between login → picker
-// nav, so sessionStorage (cleared on tab close) is the right scope.
-export const PRE_AUTH_KEY = "trivu.preAuth";
+import { api, isTenantSelectionResponse } from "@/lib/api";
+import { finalizeLogin, PRE_AUTH_KEY } from "./_utils";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -75,24 +72,6 @@ export default function LoginPage() {
       </form>
     </main>
   );
-}
-
-// Shared post-login redirect. Used both on the single-membership path and
-// after the tenant picker exchanges a pre_auth_token for an access token.
-export function finalizeLogin(
-  res: AuthResponse,
-  router: { push: (path: string) => void },
-) {
-  setToken(res.access_token);
-  const isAdmin = res.memberships.some((m) => m.roles.includes("admin"));
-  const onboarded = res.tenant.onboarding_completed_at != null;
-  if (isAdmin && !onboarded) {
-    router.push("/onboarding");
-  } else if (isAdmin) {
-    router.push("/admin");
-  } else {
-    router.push("/me");
-  }
 }
 
 function Field(props: {
