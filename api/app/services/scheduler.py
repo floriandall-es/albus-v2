@@ -921,6 +921,21 @@ def _solve_cpsat(
                 if slots_overlap_in_time(slot_pin, d_pin, slot_v, d_v):
                     model.Add(v == 0)
 
+    # ---- Hard: same-slot exclusivity. ---
+    # A person can fill at most one role of the same slot on the same
+    # date. The time-overlap constraint above is a NO-OP for slots with
+    # no start_time/end_time (on-call slots are explicitly allowed to
+    # coexist with other slots in time terms), which leaves nothing
+    # stopping the solver from picking the same person for two demands
+    # of the same (date, slot_id) when those demands are different
+    # team_role rows. This explicit constraint closes that hole.
+    by_person_slot_day: dict[tuple[int, int, date], list] = defaultdict(list)
+    for (d, slot_id, role_id, pid), var in x.items():
+        by_person_slot_day[(pid, slot_id, d)].append(var)
+    for (pid, slot_id, d), vars_ in by_person_slot_day.items():
+        if len(vars_) > 1:
+            model.Add(sum(vars_) <= 1)
+
     # ---- Hard: post_slot_rest. ---
     # If slot S has post_slot_rest=True, anyone assigned on date D cannot
     # work any slot on D+1.

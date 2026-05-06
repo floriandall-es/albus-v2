@@ -8,7 +8,6 @@ import {
   Card,
   ErrorText,
   Modal,
-  PageHeader,
 } from "@/components/admin/ui";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -73,39 +72,37 @@ export default function ScheduleDetailPage() {
   const isEditable = s.status === "draft";
   return (
     <>
-      <PageHeader
-        title={`Planificación · ${s.period}`}
-        action={
-          <div className="flex gap-2">
-            {s.status === "draft" && (
-              <>
-                <Button
-                  variant="secondary"
-                  onClick={() => regenerate.mutate()}
-                  disabled={regenerate.isPending}
-                >
-                  Regenerar
-                </Button>
-                <Button
-                  onClick={() => publish.mutate()}
-                  disabled={publish.isPending}
-                >
-                  Publicar
-                </Button>
-              </>
-            )}
-            {s.status === "published" && (
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <h1 className="text-2xl font-semibold">{`Planificación · ${s.period}`}</h1>
+        <div className="flex gap-2">
+          {s.status === "draft" && (
+            <>
               <Button
                 variant="secondary"
-                onClick={() => archive.mutate()}
-                disabled={archive.isPending}
+                onClick={() => regenerate.mutate()}
+                disabled={regenerate.isPending}
               >
-                Archivar
+                Regenerar
               </Button>
-            )}
-          </div>
-        }
-      />
+              <Button
+                onClick={() => publish.mutate()}
+                disabled={publish.isPending}
+              >
+                Publicar
+              </Button>
+            </>
+          )}
+          {s.status === "published" && (
+            <Button
+              variant="secondary"
+              onClick={() => archive.mutate()}
+              disabled={archive.isPending}
+            >
+              Archivar
+            </Button>
+          )}
+        </div>
+      </div>
       <p className="mb-4 text-sm text-gray-600">
         Estado: <span className="font-medium">{STATUS_LABEL[s.status]}</span>
         {isEditable && (
