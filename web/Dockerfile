@@ -12,8 +12,10 @@ COPY . .
 # docker-compose build.args. Falls back to the dev default for local
 # `docker build` without args.
 ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+ARG NEXT_PUBLIC_ROOT_DOMAIN=localhost
 ENV NEXT_TELEMETRY_DISABLED=1 \
-    NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+    NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
+    NEXT_PUBLIC_ROOT_DOMAIN=$NEXT_PUBLIC_ROOT_DOMAIN
 RUN npm run build
 
 FROM node:20-alpine AS runner

@@ -50,10 +50,17 @@ services:
       - ./api:/app
 
   web:
-    build: ./web
-    environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
-      NEXT_PUBLIC_ROOT_DOMAIN: localhost
+    # NEXT_PUBLIC_* values must be passed as BUILD args, not runtime env —
+    # Next.js inlines them into the client bundle at build time. Setting
+    # them under `environment:` here is a no-op (and was the cause of the
+    # bug where prod served a bundle hardcoded to http://localhost:8000).
+    # On prod, set NEXT_PUBLIC_API_BASE_URL=https://trivu.net (and the
+    # root domain) in .env before `docker compose build web`.
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+        NEXT_PUBLIC_ROOT_DOMAIN: ${NEXT_PUBLIC_ROOT_DOMAIN:-localhost}
     depends_on:
       - api
     ports:
