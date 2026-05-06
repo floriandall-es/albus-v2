@@ -1,6 +1,12 @@
-# Auto-loaded dev overrides. Compose merges this on top of docker-compose.yml
-# whenever you run `docker compose up` from the repo root. The production
-# deploy uses infra/docker-compose.prod.yml explicitly and is unaffected.
+# Local dev overrides. NOT auto-loaded — opt in explicitly:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# The previous filename (docker-compose.override.yml) was auto-merged by
+# `docker compose up` from the repo root, which silently turned prod
+# deploys into dev mode (bind mounts, npm run dev, NEXT_PUBLIC_API_BASE_URL
+# baked to localhost:8000). Renamed to prevent that — prod must use
+# `infra/docker-compose.prod.yml` and only that.
 services:
   api:
     # The base file already mounts ./api:/app and the api Dockerfile runs
