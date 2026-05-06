@@ -83,6 +83,18 @@ def create_succession_rule(
         )
     _slot_or_422(ctx, payload.after_slot_id, "after_slot_id")
     _slot_or_422(ctx, payload.forbid_slot_id, "forbid_slot_id")
+    # Self-pair with same-day (days_after=0) is degenerate: a slot can't
+    # conflict with itself on the same day — the slot's own headcount
+    # already prevents that. Reject so admins don't create rules that
+    # silently force the slot empty.
+    if (
+        payload.days_after == 0
+        and payload.after_slot_id == payload.forbid_slot_id
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Una incompatibilidad del mismo día requiere dos turnos diferentes",
+        )
 
     existing = (
         ctx.db.query(SlotSuccessionRule)

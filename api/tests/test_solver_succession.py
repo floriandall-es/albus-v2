@@ -133,3 +133,66 @@ def test_soft_succession_allows_violation_when_no_alternative(auth_client, clien
     # Schedule produced; not all NULLs.
     filled = [a for a in body["assignments"] if a["person_id"] is not None]
     assert len(filled) > 0
+
+
+def test_same_day_incompatibility_hard_blocks_pair(auth_client, client):
+    """days_after=0 = "X and Y can't happen on the same day for the same
+    person, even if their times don't overlap." Sister rule of the
+    standard succession rule, rendered as a separate UI section but
+    sharing the data shape."""
+    _client, headers, _info = auth_client
+    pid = _onboard(client, headers, "ana@example.com", "Ana")
+    _onboard(client, headers, "luis@example.com", "Luis")
+
+    # Two non-overlapping slots on the same day.
+    quirofano = _create_slot(
+        client, headers, name="Quirófano", start_time="08:00:00", end_time="14:00:00"
+    )
+    consulta = _create_slot(
+        client, headers, name="Consulta", start_time="16:00:00", end_time="20:00:00"
+    )
+
+    _create_succession(
+        client,
+        headers,
+        after_id=quirofano["id"],
+        forbid_id=consulta["id"],
+        days_after=0,
+        severity="hard",
+    )
+
+    r = client.post(
+        "/api/schedules/generate", headers=headers, json={"period": "2026-05-01"}
+    )
+    assert r.status_code in (200, 201), r.text
+    body = r.json()
+
+    by_date_person = {}
+    for a in body["assignments"]:
+        if a["person_id"] is None:
+            continue
+        by_date_person.setdefault((a["date"], a["person_id"]), set()).add(a["slot_id"])
+
+    # No person should ever have both Quirófano and Consulta on the same date.
+    for (d, p), slot_ids in by_date_person.items():
+        assert not (
+            quirofano["id"] in slot_ids and consulta["id"] in slot_ids
+        ), f"Same-day incompat violated for person={p} on {d}"
+
+
+def test_same_day_self_pair_rejected(auth_client, client):
+    """A slot can't conflict with itself on the same day — degenerate."""
+    _client, headers, _info = auth_client
+    s = _create_slot(client, headers, name="Solo")
+    r = client.post(
+        "/api/slot-succession-rules",
+        headers=headers,
+        json={
+            "after_slot_id": s["id"],
+            "forbid_slot_id": s["id"],
+            "days_after": 0,
+            "severity": "hard",
+        },
+    )
+    assert r.status_code == 422
+    assert "diferentes" in r.json()["detail"].lower()

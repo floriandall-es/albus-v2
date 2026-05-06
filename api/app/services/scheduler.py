@@ -995,8 +995,11 @@ def _solve_cpsat(
     for rule in ctx.succession_rules:
         a_slot = rule.after_slot_id
         b_slot = rule.forbid_slot_id
+        # days_after=0 = same-day incompatibility (UI labels this as a
+        # distinct rule type). days_after>=1 = next-N-days succession.
+        offsets = [0] if rule.days_after == 0 else range(1, rule.days_after + 1)
         for D in ctx.dates:
-            for offset in range(1, rule.days_after + 1):
+            for offset in offsets:
                 Dp = D + timedelta(days=offset)
                 if Dp not in period_dates_set:
                     continue

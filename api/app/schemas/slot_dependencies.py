@@ -14,14 +14,17 @@ FrequencyPeriod = Literal[
 class SlotSuccessionRuleIn(BaseModel):
     after_slot_id: int
     forbid_slot_id: int
-    days_after: int = Field(ge=1, le=14)
+    # 0 = same calendar day (incompatibility), 1+ = next-day-onwards
+    # succession. Same data shape, two semantic flavors surfaced as
+    # distinct rule types in the UI.
+    days_after: int = Field(ge=0, le=14)
     applies_to: SuccessionAppliesTo = "same_person"
     severity: Severity = "hard"
     weight: int = Field(default=5, ge=0, le=1000)
 
 
 class SlotSuccessionRuleUpdate(BaseModel):
-    days_after: int | None = Field(default=None, ge=1, le=14)
+    days_after: int | None = Field(default=None, ge=0, le=14)
     severity: Severity | None = None
     weight: int | None = Field(default=None, ge=0, le=1000)
 

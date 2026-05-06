@@ -47,8 +47,11 @@ export default function RulesPage() {
     <>
       <PageHeader title="Reglas" />
       <p className="-mt-4 mb-6 text-sm text-gray-600">
-        Sucesión entre turnos y límites de frecuencia por persona.
+        Incompatibilidades del mismo día, sucesión entre turnos y límites de
+        frecuencia por persona.
       </p>
+      <SameDaySection slots={slots.data ?? []} slotById={slotById} />
+      <div className="h-8" />
       <SuccessionSection slots={slots.data ?? []} slotById={slotById} />
       <div className="h-8" />
       <FrequencySection slots={slots.data ?? []} slotById={slotById} />
@@ -78,6 +81,11 @@ function SuccessionSection({
     onSuccess: () => qc.invalidateQueries({ queryKey: ["succession-rules"] }),
   });
 
+  // Same data table, but the days_after=0 rows belong to the
+  // "Incompatibilidades del mismo día" section above. Filter them out
+  // here so each section shows only its own rule type.
+  const successionRules = (list.data ?? []).filter((r) => r.days_after >= 1);
+
   return (
     <section>
       <div className="flex items-center justify-between mb-3">
@@ -86,10 +94,10 @@ function SuccessionSection({
       </div>
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
       {list.isError && <ErrorText>{(list.error as Error).message}</ErrorText>}
-      {list.data && list.data.length === 0 && (
+      {list.data && successionRules.length === 0 && (
         <Empty>Aún no hay reglas de sucesión.</Empty>
       )}
-      {list.data && list.data.length > 0 && (
+      {successionRules.length > 0 && (
         <Card>
           <table className="w-full text-sm">
             <thead className="border-b bg-gray-50 text-left text-gray-600">
@@ -104,7 +112,7 @@ function SuccessionSection({
               </tr>
             </thead>
             <tbody>
-              {list.data.map((r) => (
+              {successionRules.map((r) => (
                 <tr key={r.id} className="border-b last:border-b-0">
                   <td className="px-4 py-2">
                     {slotById[r.after_slot_id]?.name ?? `#${r.after_slot_id}`}
@@ -470,6 +478,230 @@ function FrequencyDialog({
         {severity === "soft" && (
           <NumberField
             label="Peso (penalización en blandas)"
+            value={weight}
+            onChange={(v) => setWeight(typeof v === "number" ? v : 5)}
+            min={0}
+            max={1000}
+          />
+        )}
+        {save.isError && <ErrorText>{(save.error as Error).message}</ErrorText>}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={save.isPending}>
+            {save.isPending ? "Guardando…" : "Guardar"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Same-day incompatibility — succession rules with days_after = 0.
+// Surfaces as a distinct rule type because the UX is simpler (no day
+// count, no "next-day" semantics) and the use case is conceptually
+// different ("these two slots can't both happen on the same day for the
+// same person").
+// ---------------------------------------------------------------------------
+
+function SameDaySection({
+  slots,
+  slotById,
+}: {
+  slots: Slot[];
+  slotById: Record<number, Slot>;
+}) {
+  const qc = useQueryClient();
+  const list = useQuery({
+    queryKey: ["succession-rules"],
+    queryFn: api.listSuccessionRules,
+  });
+  const [editing, setEditing] = useState<SlotSuccessionRule | "new" | null>(null);
+  const del = useMutation({
+    mutationFn: (id: number) => api.deleteSuccessionRule(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["succession-rules"] }),
+  });
+
+  const sameDay = (list.data ?? []).filter((r) => r.days_after === 0);
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-semibold">
+          Incompatibilidades del mismo día
+        </h2>
+        <Button onClick={() => setEditing("new")}>+ Añadir regla</Button>
+      </div>
+      <p className="-mt-2 mb-3 text-xs text-gray-500">
+        Dos turnos que no pueden coincidir el mismo día para la misma persona,
+        aunque sus horarios no se solapen. (Para conflictos de horario solapado
+        no necesitas regla — el solver los detecta automáticamente.)
+      </p>
+      {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
+      {list.isError && <ErrorText>{(list.error as Error).message}</ErrorText>}
+      {list.data && sameDay.length === 0 && (
+        <Empty>Aún no hay incompatibilidades del mismo día.</Empty>
+      )}
+      {sameDay.length > 0 && (
+        <Card>
+          <table className="w-full text-sm">
+            <thead className="border-b bg-gray-50 text-left text-gray-600">
+              <tr>
+                <th className="px-4 py-2 font-medium">Turno</th>
+                <th className="px-4 py-2 font-medium">No se puede combinar con</th>
+                <th className="px-4 py-2 font-medium">Severidad</th>
+                <th className="px-4 py-2 font-medium">Peso</th>
+                <th className="px-4 py-2 font-medium text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sameDay.map((r) => (
+                <tr key={r.id} className="border-b last:border-b-0">
+                  <td className="px-4 py-2">
+                    {slotById[r.after_slot_id]?.name ?? `#${r.after_slot_id}`}
+                  </td>
+                  <td className="px-4 py-2">
+                    {slotById[r.forbid_slot_id]?.name ?? `#${r.forbid_slot_id}`}
+                  </td>
+                  <td className="px-4 py-2">{SEVERITY_LABEL[r.severity]}</td>
+                  <td className="px-4 py-2 text-gray-600">
+                    {r.severity === "soft" ? r.weight : "—"}
+                  </td>
+                  <td className="px-4 py-2 text-right space-x-2">
+                    <Button variant="secondary" onClick={() => setEditing(r)}>
+                      Editar
+                    </Button>
+                    <Button
+                      variant="danger"
+                      onClick={() => {
+                        if (confirm("¿Eliminar esta incompatibilidad?"))
+                          del.mutate(r.id);
+                      }}
+                    >
+                      Eliminar
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
+      {del.isError && <ErrorText>{(del.error as Error).message}</ErrorText>}
+
+      {editing && (
+        <SameDayDialog
+          initial={editing === "new" ? null : editing}
+          slots={slots}
+          onClose={() => setEditing(null)}
+        />
+      )}
+    </section>
+  );
+}
+
+function SameDayDialog({
+  initial,
+  slots,
+  onClose,
+}: {
+  initial: SlotSuccessionRule | null;
+  slots: Slot[];
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [afterSlotId, setAfterSlotId] = useState<number | "">(
+    initial?.after_slot_id ?? "",
+  );
+  const [forbidSlotId, setForbidSlotId] = useState<number | "">(
+    initial?.forbid_slot_id ?? "",
+  );
+  const [severity, setSeverity] = useState<DependencySeverity>(
+    initial?.severity ?? "hard",
+  );
+  const [weight, setWeight] = useState<number>(initial?.weight ?? 5);
+
+  const save = useMutation({
+    mutationFn: () => {
+      if (initial) {
+        return api.updateSuccessionRule(initial.id, {
+          days_after: 0,
+          severity,
+          weight,
+        });
+      }
+      if (afterSlotId === "" || forbidSlotId === "") {
+        throw new Error("Selecciona los dos turnos");
+      }
+      if (afterSlotId === forbidSlotId) {
+        throw new Error("Los dos turnos deben ser diferentes");
+      }
+      return api.createSuccessionRule({
+        after_slot_id: afterSlotId,
+        forbid_slot_id: forbidSlotId,
+        days_after: 0,
+        applies_to: "same_person",
+        severity,
+        weight,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["succession-rules"] });
+      onClose();
+    },
+  });
+
+  const slotOptions = slots.map((s) => ({ value: s.id, label: s.name }));
+
+  return (
+    <Modal
+      open={true}
+      onClose={onClose}
+      title={
+        initial
+          ? "Editar incompatibilidad del mismo día"
+          : "Nueva incompatibilidad del mismo día"
+      }
+    >
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save.mutate();
+        }}
+      >
+        <Select
+          label="Turno"
+          value={afterSlotId}
+          onChange={(v) => setAfterSlotId(v === "" ? "" : Number(v))}
+          options={[
+            { value: "", label: "Selecciona un turno" },
+            ...slotOptions,
+          ]}
+        />
+        <Select
+          label="No se puede combinar con"
+          value={forbidSlotId}
+          onChange={(v) => setForbidSlotId(v === "" ? "" : Number(v))}
+          options={[
+            { value: "", label: "Selecciona un turno" },
+            ...slotOptions,
+          ]}
+        />
+        <Select
+          label="Severidad"
+          value={severity}
+          onChange={(v) => v && setSeverity(v as DependencySeverity)}
+          options={[
+            { value: "hard", label: "Estricta (el solver no lo permitirá)" },
+            { value: "soft", label: "Blanda (penaliza, pero permite)" },
+          ]}
+        />
+        {severity === "soft" && (
+          <NumberField
+            label="Peso de la penalización"
             value={weight}
             onChange={(v) => setWeight(typeof v === "number" ? v : 5)}
             min={0}
