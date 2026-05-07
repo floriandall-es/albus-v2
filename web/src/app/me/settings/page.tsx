@@ -1,11 +1,10 @@
 "use client";
-import { PageHeader } from "@/components/admin/ui";
 import { ProfileCards } from "@/components/settings/profile-cards";
 
-export default function AdminSettingsPage() {
+export default function MeSettingsPage() {
   return (
     <>
-      <PageHeader title="Mi cuenta" />
+      <h1 className="text-2xl font-semibold mb-6">Mi cuenta</h1>
       <ProfileCards />
     </>
   );
