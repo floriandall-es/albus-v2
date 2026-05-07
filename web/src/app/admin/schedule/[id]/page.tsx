@@ -245,6 +245,11 @@ export default function ScheduleDetailPage() {
         </Card>
       </div>
 
+      <BalanceStats
+        assignments={s.assignments}
+        holidayDates={holidayDates}
+      />
+
       {editing && (
         <AssignmentEditModal
           assignment={editing}
@@ -439,5 +444,193 @@ function AssignmentEditModal({
         </div>
       </form>
     </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Balance stats: per-person counts of slot assignments. Lets the admin see
+// at a glance whether the schedule is fairly distributed. Min/max highlighted
+// per column so outliers stand out.
+// ---------------------------------------------------------------------------
+
+function BalanceStats({
+  assignments,
+  holidayDates,
+}: {
+  assignments: Assignment[];
+  holidayDates: Set<string>;
+}) {
+  const stats = useMemo(() => {
+    // person -> { total, weekend_holiday, perSlot: { name -> count } }
+    const byPerson = new Map<
+      number,
+      {
+        person_id: number;
+        person_name: string;
+        total: number;
+        we_or_holiday: number;
+        perSlot: Map<string, number>;
+      }
+    >();
+    const slotNames = new Set<string>();
+    for (const a of assignments) {
+      if (a.person_id === null || a.person_name === null) continue;
+      slotNames.add(a.slot_name);
+      let row = byPerson.get(a.person_id);
+      if (!row) {
+        row = {
+          person_id: a.person_id,
+          person_name: a.person_name,
+          total: 0,
+          we_or_holiday: 0,
+          perSlot: new Map(),
+        };
+        byPerson.set(a.person_id, row);
+      }
+      row.total += 1;
+      const wd = new Date(a.date).getUTCDay(); // 0=Sun..6=Sat
+      if (wd === 0 || wd === 6 || holidayDates.has(a.date)) {
+        row.we_or_holiday += 1;
+      }
+      row.perSlot.set(a.slot_name, (row.perSlot.get(a.slot_name) ?? 0) + 1);
+    }
+    const rows = Array.from(byPerson.values()).sort((a, b) =>
+      a.person_name.localeCompare(b.person_name),
+    );
+    const slotNamesSorted = Array.from(slotNames).sort();
+
+    // Per-slot min/max for highlighting outliers.
+    const minMaxBySlot = new Map<string, { min: number; max: number }>();
+    for (const name of slotNamesSorted) {
+      let mn = Infinity;
+      let mx = -Infinity;
+      for (const r of rows) {
+        const v = r.perSlot.get(name) ?? 0;
+        if (v < mn) mn = v;
+        if (v > mx) mx = v;
+      }
+      minMaxBySlot.set(name, { min: mn, max: mx });
+    }
+    let totalMin = Infinity;
+    let totalMax = -Infinity;
+    let weMin = Infinity;
+    let weMax = -Infinity;
+    for (const r of rows) {
+      if (r.total < totalMin) totalMin = r.total;
+      if (r.total > totalMax) totalMax = r.total;
+      if (r.we_or_holiday < weMin) weMin = r.we_or_holiday;
+      if (r.we_or_holiday > weMax) weMax = r.we_or_holiday;
+    }
+    return {
+      rows,
+      slotNamesSorted,
+      minMaxBySlot,
+      totalMin,
+      totalMax,
+      weMin,
+      weMax,
+    };
+  }, [assignments, holidayDates]);
+
+  if (stats.rows.length === 0) return null;
+
+  const cellClass = (
+    v: number,
+    mn: number,
+    mx: number,
+    differs: boolean,
+  ) => {
+    if (!differs) return "text-gray-700";
+    if (v === mx && mx !== mn) return "text-rose-700 font-medium";
+    if (v === mn && mx !== mn) return "text-emerald-700";
+    return "text-gray-700";
+  };
+
+  return (
+    <div className="mt-6">
+      <h2 className="mb-2 text-sm font-semibold text-gray-700">
+        Reparto por persona
+      </h2>
+      <div className="overflow-x-auto">
+        <Card>
+          <table className="w-full text-xs">
+            <thead className="border-b bg-gray-50 text-left text-gray-600">
+              <tr>
+                <th className="px-3 py-2 font-medium">Persona</th>
+                <th className="px-3 py-2 font-medium text-right">Total</th>
+                <th
+                  className="px-3 py-2 font-medium text-right"
+                  title="Asignaciones en sábado, domingo o festivo"
+                >
+                  Fines de semana / festivos
+                </th>
+                {stats.slotNamesSorted.map((name) => (
+                  <th
+                    key={name}
+                    className="px-3 py-2 font-medium text-right"
+                  >
+                    {name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {stats.rows.map((r) => (
+                <tr key={r.person_id} className="border-b last:border-b-0">
+                  <td className="px-3 py-2">{r.person_name}</td>
+                  <td
+                    className={
+                      "px-3 py-2 text-right "
+                      + cellClass(
+                        r.total,
+                        stats.totalMin,
+                        stats.totalMax,
+                        stats.totalMin !== stats.totalMax,
+                      )
+                    }
+                  >
+                    {r.total}
+                  </td>
+                  <td
+                    className={
+                      "px-3 py-2 text-right "
+                      + cellClass(
+                        r.we_or_holiday,
+                        stats.weMin,
+                        stats.weMax,
+                        stats.weMin !== stats.weMax,
+                      )
+                    }
+                  >
+                    {r.we_or_holiday}
+                  </td>
+                  {stats.slotNamesSorted.map((name) => {
+                    const v = r.perSlot.get(name) ?? 0;
+                    const mm = stats.minMaxBySlot.get(name)!;
+                    return (
+                      <td
+                        key={name}
+                        className={
+                          "px-3 py-2 text-right "
+                          + cellClass(v, mm.min, mm.max, mm.min !== mm.max)
+                        }
+                      >
+                        {v || "—"}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      </div>
+      <p className="mt-2 text-[11px] text-gray-500">
+        <span className="text-rose-700">Rojo</span>: máximo de la columna ·{" "}
+        <span className="text-emerald-700">verde</span>: mínimo. Diferencias
+        grandes pueden indicar desbalance — revisa reglas o asignaciones
+        manuales.
+      </p>
+    </div>
   );
 }

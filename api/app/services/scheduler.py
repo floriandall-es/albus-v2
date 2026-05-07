@@ -774,6 +774,138 @@ def _greedy_fallback(
 # ---------------------------------------------------------------------------
 
 
+def _log_infeasibility_diagnostic(
+    *,
+    ctx: "_Context",
+    demands: list[tuple[date, int, int | None, int]],
+    candidates_by_demand: dict[tuple[date, int, int | None], list[int]],
+    pre_pinned_assignments: list[tuple[int, date, int]],
+    pre_busy: set[tuple[int, date]],
+    pre_rest_block: set[tuple[int, date]],
+) -> None:
+    """When CP-SAT returns INFEASIBLE, print enough state to pinpoint
+    which constraint group is killing the model. Hits the api log;
+    inspect with `docker compose logs api`.
+
+    Things we look for, in order of typical culprit-likelihood:
+    1. Demands with zero or too few eligible candidates (config: pool /
+       skill / availability blocks too tight).
+    2. Same person pre-pinned to two slots whose times overlap on the
+       same day — pre-pins themselves are emitted unconditionally, but
+       cross-slot solver vars referring to them inherit the conflict.
+    3. post_slot_rest cascade: a pre-pinned slot with post_slot_rest
+       blocks the same person across MANY downstream solver demands;
+       if that pushes another demand to <head candidates, infeasibility.
+    4. Candidate scarcity per day: total person-days needed vs available
+       (rough sanity check).
+    """
+    logger.warning("=== CP-SAT infeasibility diagnostic ===")
+
+    # 1. Per-demand candidate count vs head.
+    short_demands = []
+    zero_demands = []
+    for (d, slot_id, role_id, head) in demands:
+        cands = candidates_by_demand.get((d, slot_id, role_id), [])
+        if not cands:
+            zero_demands.append((d, slot_id, role_id, head))
+        elif len(cands) < head:
+            short_demands.append((d, slot_id, role_id, head, len(cands)))
+    if zero_demands:
+        logger.warning(
+            "  [scarcity] %d demand(s) with ZERO eligible candidates (model"
+            " can't satisfy sum=head):",
+            len(zero_demands),
+        )
+        for (d, slot_id, role_id, head) in zero_demands[:10]:
+            slot = ctx.slot_by_id.get(slot_id)
+            logger.warning(
+                "    %s slot=%s role=%s head=%d",
+                d.isoformat(),
+                slot.name if slot else slot_id,
+                role_id,
+                head,
+            )
+    if short_demands:
+        logger.warning(
+            "  [scarcity] %d demand(s) with FEWER candidates than head"
+            " (target capped to len(cands), model still tries sum=target):",
+            len(short_demands),
+        )
+        for (d, slot_id, role_id, head, ncands) in short_demands[:10]:
+            slot = ctx.slot_by_id.get(slot_id)
+            logger.warning(
+                "    %s slot=%s role=%s head=%d cands=%d",
+                d.isoformat(),
+                slot.name if slot else slot_id,
+                role_id,
+                head,
+                ncands,
+            )
+
+    # 2. Pre-pin time-overlap between two pins on same person/day.
+    pins_by_person_day: dict[tuple[int, date], list[int]] = defaultdict(list)
+    for (pid, d, slot_id) in pre_pinned_assignments:
+        pins_by_person_day[(pid, d)].append(slot_id)
+    overlapping_pin_pairs = []
+    for (pid, d), slot_ids in pins_by_person_day.items():
+        if len(slot_ids) < 2:
+            continue
+        for i in range(len(slot_ids)):
+            for j in range(i + 1, len(slot_ids)):
+                sa = ctx.slot_by_id.get(slot_ids[i])
+                sb = ctx.slot_by_id.get(slot_ids[j])
+                if sa is None or sb is None:
+                    continue
+                if slots_overlap_in_time(sa, d, sb, d):
+                    overlapping_pin_pairs.append((pid, d, sa.name, sb.name))
+    if overlapping_pin_pairs:
+        logger.warning(
+            "  [pre-pin overlap] %d pair(s) of pinned slots whose times"
+            " overlap on the same person/day. Solver vars on overlapping"
+            " slots inherit conflicts via the time-overlap constraint:",
+            len(overlapping_pin_pairs),
+        )
+        for (pid, d, na, nb) in overlapping_pin_pairs[:10]:
+            m = ctx.member_by_person_id.get(pid)
+            person_name = m.person_id if m else pid
+            logger.warning(
+                "    %s person=%s pinned to %s + %s (overlap)",
+                d.isoformat(),
+                person_name,
+                na,
+                nb,
+            )
+
+    # 3. post_slot_rest cascade footprint.
+    if pre_rest_block:
+        logger.warning(
+            "  [post_slot_rest] %d (person, day) pair(s) blocked by the"
+            " previous day's rest-required slot.",
+            len(pre_rest_block),
+        )
+
+    # 4. Per-person pre-pinned day count + total demand person-days.
+    pre_pin_count: dict[int, int] = defaultdict(int)
+    for (pid, d) in pre_busy:
+        pre_pin_count[pid] += 1
+    total_person_days = sum(head for (_d, _s, _r, head) in demands)
+    n_persons = len(ctx.memberships)
+    days_in_period = len(ctx.dates)
+    logger.warning(
+        "  [load] %d person-days demanded; %d person-days physically"
+        " available (people=%d * days=%d). Pre-pinned days/person:",
+        total_person_days,
+        n_persons * days_in_period,
+        n_persons,
+        days_in_period,
+    )
+    for pid, n in sorted(pre_pin_count.items(), key=lambda x: -x[1])[:10]:
+        m = ctx.member_by_person_id.get(pid)
+        logger.warning("    person=%s pre_pinned_days=%d", pid, n)
+
+    logger.warning("=== end diagnostic ===")
+
+
 def _solve_cpsat(
     db: Session,
     ctx: _Context,
@@ -1517,6 +1649,16 @@ def _solve_cpsat(
         logger.warning(
             "CP-SAT could not find a feasible solution (status=%s) — falling back to greedy",
             status_name,
+        )
+        # Diagnostic: count the most likely culprits so we don't have to
+        # poke at logs blind.
+        _log_infeasibility_diagnostic(
+            ctx=ctx,
+            demands=demands,
+            candidates_by_demand=candidates_by_demand,
+            pre_pinned_assignments=pre_pinned_assignments,
+            pre_busy=pre_busy,
+            pre_rest_block=pre_rest_block,
         )
         return False
 
