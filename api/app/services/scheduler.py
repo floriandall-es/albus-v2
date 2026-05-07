@@ -1159,14 +1159,18 @@ def _solve_cpsat(
     for (d, slot_id, role_id, head) in demands:
         slot = ctx.slot_by_id[slot_id]
         cands = ctx.candidates_for_slot(slot, d, team_role_id=role_id)
-        # Drop any candidate already pre-pinned by a non-solver rule on
-        # this date — they're busy elsewhere. Also drop anyone owed a
-        # post-slot rest day from a pre-pinned shift the previous day.
-        if pre_busy or pre_rest_block:
+        # Filter out candidates owed a post_slot_rest from yesterday's
+        # pre-pinned shift (a real physical-rest constraint). DON'T
+        # filter out anyone who happens to be pre-pinned to some OTHER
+        # slot today: if their times don't overlap with this slot's
+        # times, they should still be eligible. The cross-slot
+        # time-overlap constraint added below catches actual time
+        # conflicts; using `pre_busy` as a blanket per-day filter here
+        # would re-introduce the old "one slot per person per day"
+        # overconstraint we explicitly removed in sprint 14.
+        if pre_rest_block:
             cands = [
-                pid
-                for pid in cands
-                if (pid, d) not in pre_busy and (pid, d) not in pre_rest_block
+                pid for pid in cands if (pid, d) not in pre_rest_block
             ]
         candidates_by_demand[(d, slot_id, role_id)] = cands
         for pid in cands:

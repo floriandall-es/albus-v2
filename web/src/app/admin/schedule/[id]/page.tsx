@@ -461,78 +461,82 @@ function BalanceStats({
   holidayDates: Set<string>;
 }) {
   const stats = useMemo(() => {
-    // person -> { total, weekend_holiday, perSlot: { name -> count } }
-    const byPerson = new Map<
-      number,
-      {
-        person_id: number;
-        person_name: string;
-        total: number;
-        we_or_holiday: number;
-        perSlot: Map<string, number>;
-      }
-    >();
+    // (slot_name, person_id) -> count, plus per-row totals + weekend/holiday
+    const persons = new Map<number, string>();
     const slotNames = new Set<string>();
+    const counts = new Map<string, Map<number, number>>(); // slot -> pid -> n
+    const weByPerson = new Map<number, number>();         // pid -> we/holiday count
     for (const a of assignments) {
       if (a.person_id === null || a.person_name === null) continue;
+      persons.set(a.person_id, a.person_name);
       slotNames.add(a.slot_name);
-      let row = byPerson.get(a.person_id);
+      let row = counts.get(a.slot_name);
       if (!row) {
-        row = {
-          person_id: a.person_id,
-          person_name: a.person_name,
-          total: 0,
-          we_or_holiday: 0,
-          perSlot: new Map(),
-        };
-        byPerson.set(a.person_id, row);
+        row = new Map();
+        counts.set(a.slot_name, row);
       }
-      row.total += 1;
-      const wd = new Date(a.date).getUTCDay(); // 0=Sun..6=Sat
+      row.set(a.person_id, (row.get(a.person_id) ?? 0) + 1);
+      const wd = new Date(a.date).getUTCDay();
       if (wd === 0 || wd === 6 || holidayDates.has(a.date)) {
-        row.we_or_holiday += 1;
+        weByPerson.set(a.person_id, (weByPerson.get(a.person_id) ?? 0) + 1);
       }
-      row.perSlot.set(a.slot_name, (row.perSlot.get(a.slot_name) ?? 0) + 1);
     }
-    const rows = Array.from(byPerson.values()).sort((a, b) =>
-      a.person_name.localeCompare(b.person_name),
+    const personsSorted = Array.from(persons.entries()).sort((a, b) =>
+      a[1].localeCompare(b[1]),
     );
     const slotNamesSorted = Array.from(slotNames).sort();
 
-    // Per-slot min/max for highlighting outliers.
+    // Per-slot (row) min/max across persons for highlighting.
     const minMaxBySlot = new Map<string, { min: number; max: number }>();
-    for (const name of slotNamesSorted) {
+    for (const slot of slotNamesSorted) {
+      const row = counts.get(slot)!;
       let mn = Infinity;
       let mx = -Infinity;
-      for (const r of rows) {
-        const v = r.perSlot.get(name) ?? 0;
+      for (const [pid] of personsSorted) {
+        const v = row.get(pid) ?? 0;
         if (v < mn) mn = v;
         if (v > mx) mx = v;
       }
-      minMaxBySlot.set(name, { min: mn, max: mx });
+      minMaxBySlot.set(slot, { min: mn, max: mx });
+    }
+
+    // Per-person totals + min/max across persons.
+    const totalByPerson = new Map<number, number>();
+    for (const [pid] of personsSorted) {
+      let s = 0;
+      for (const slot of slotNamesSorted) {
+        s += counts.get(slot)?.get(pid) ?? 0;
+      }
+      totalByPerson.set(pid, s);
     }
     let totalMin = Infinity;
     let totalMax = -Infinity;
+    for (const v of totalByPerson.values()) {
+      if (v < totalMin) totalMin = v;
+      if (v > totalMax) totalMax = v;
+    }
     let weMin = Infinity;
     let weMax = -Infinity;
-    for (const r of rows) {
-      if (r.total < totalMin) totalMin = r.total;
-      if (r.total > totalMax) totalMax = r.total;
-      if (r.we_or_holiday < weMin) weMin = r.we_or_holiday;
-      if (r.we_or_holiday > weMax) weMax = r.we_or_holiday;
+    for (const [pid] of personsSorted) {
+      const v = weByPerson.get(pid) ?? 0;
+      if (v < weMin) weMin = v;
+      if (v > weMax) weMax = v;
     }
     return {
-      rows,
+      personsSorted,
       slotNamesSorted,
+      counts,
       minMaxBySlot,
+      totalByPerson,
       totalMin,
       totalMax,
+      weByPerson,
       weMin,
       weMax,
     };
   }, [assignments, holidayDates]);
 
-  if (stats.rows.length === 0) return null;
+  if (stats.personsSorted.length === 0) return null;
 
   const cellClass = (
     v: number,
@@ -547,69 +551,37 @@ function BalanceStats({
   };
 
   return (
-    <div className="mt-6">
+    <div className="mt-6 inline-block max-w-full overflow-x-auto">
       <h2 className="mb-2 text-sm font-semibold text-gray-700">
         Reparto por persona
       </h2>
-      <div className="overflow-x-auto">
-        <Card>
-          <table className="w-full text-xs">
-            <thead className="border-b bg-gray-50 text-left text-gray-600">
-              <tr>
-                <th className="px-3 py-2 font-medium">Persona</th>
-                <th className="px-3 py-2 font-medium text-right">Total</th>
+      <Card>
+        <table className="text-xs">
+          <thead className="border-b bg-gray-50 text-left text-gray-600">
+            <tr>
+              <th className="px-3 py-2 font-medium">Turno</th>
+              {stats.personsSorted.map(([pid, name]) => (
                 <th
-                  className="px-3 py-2 font-medium text-right"
-                  title="Asignaciones en sábado, domingo o festivo"
+                  key={pid}
+                  className="px-3 py-2 font-medium text-right whitespace-nowrap"
                 >
-                  Fines de semana / festivos
+                  {name}
                 </th>
-                {stats.slotNamesSorted.map((name) => (
-                  <th
-                    key={name}
-                    className="px-3 py-2 font-medium text-right"
-                  >
-                    {name}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {stats.rows.map((r) => (
-                <tr key={r.person_id} className="border-b last:border-b-0">
-                  <td className="px-3 py-2">{r.person_name}</td>
-                  <td
-                    className={
-                      "px-3 py-2 text-right "
-                      + cellClass(
-                        r.total,
-                        stats.totalMin,
-                        stats.totalMax,
-                        stats.totalMin !== stats.totalMax,
-                      )
-                    }
-                  >
-                    {r.total}
-                  </td>
-                  <td
-                    className={
-                      "px-3 py-2 text-right "
-                      + cellClass(
-                        r.we_or_holiday,
-                        stats.weMin,
-                        stats.weMax,
-                        stats.weMin !== stats.weMax,
-                      )
-                    }
-                  >
-                    {r.we_or_holiday}
-                  </td>
-                  {stats.slotNamesSorted.map((name) => {
-                    const v = r.perSlot.get(name) ?? 0;
-                    const mm = stats.minMaxBySlot.get(name)!;
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {stats.slotNamesSorted.map((slot) => {
+              const row = stats.counts.get(slot)!;
+              const mm = stats.minMaxBySlot.get(slot)!;
+              return (
+                <tr key={slot} className="border-b">
+                  <td className="px-3 py-2 whitespace-nowrap">{slot}</td>
+                  {stats.personsSorted.map(([pid]) => {
+                    const v = row.get(pid) ?? 0;
                     return (
                       <td
-                        key={name}
+                        key={pid}
                         className={
                           "px-3 py-2 text-right "
                           + cellClass(v, mm.min, mm.max, mm.min !== mm.max)
@@ -620,16 +592,64 @@ function BalanceStats({
                     );
                   })}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      </div>
+              );
+            })}
+            <tr className="border-b bg-gray-50">
+              <td
+                className="px-3 py-2 font-medium whitespace-nowrap"
+                title="Asignaciones en sábado, domingo o festivo"
+              >
+                Fines de semana / festivos
+              </td>
+              {stats.personsSorted.map(([pid]) => {
+                const v = stats.weByPerson.get(pid) ?? 0;
+                return (
+                  <td
+                    key={pid}
+                    className={
+                      "px-3 py-2 text-right "
+                      + cellClass(
+                        v,
+                        stats.weMin,
+                        stats.weMax,
+                        stats.weMin !== stats.weMax,
+                      )
+                    }
+                  >
+                    {v}
+                  </td>
+                );
+              })}
+            </tr>
+            <tr className="bg-gray-50 font-medium">
+              <td className="px-3 py-2">Total</td>
+              {stats.personsSorted.map(([pid]) => {
+                const v = stats.totalByPerson.get(pid) ?? 0;
+                return (
+                  <td
+                    key={pid}
+                    className={
+                      "px-3 py-2 text-right "
+                      + cellClass(
+                        v,
+                        stats.totalMin,
+                        stats.totalMax,
+                        stats.totalMin !== stats.totalMax,
+                      )
+                    }
+                  >
+                    {v}
+                  </td>
+                );
+              })}
+            </tr>
+          </tbody>
+        </table>
+      </Card>
       <p className="mt-2 text-[11px] text-gray-500">
-        <span className="text-rose-700">Rojo</span>: máximo de la columna ·{" "}
+        <span className="text-rose-700">Rojo</span>: máximo de la fila ·{" "}
         <span className="text-emerald-700">verde</span>: mínimo. Diferencias
-        grandes pueden indicar desbalance — revisa reglas o asignaciones
-        manuales.
+        grandes indican desbalance.
       </p>
     </div>
   );

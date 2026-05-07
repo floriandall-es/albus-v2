@@ -125,13 +125,33 @@ def test_rotation_picks_deterministic(auth_client, client):
 
 def test_rotation_plus_solver_no_double_booking(auth_client, client):
     """Two slots: A=weekday rotation with 2 members, B=weekday solver.
-    The rotation pre-pins one of the two members per day; solver must put
-    the OTHER on slot B that day (no double-booking)."""
+    Both with times that OVERLAP — the rotation pre-pins one of the two
+    members per day; solver must put the OTHER on slot B that day
+    (no double-booking via the time-overlap constraint).
+
+    Slots without times set are treated as on-call and CAN coexist —
+    this test pins explicit overlapping times so the constraint
+    actually fires.
+    """
     _client, headers, _info = auth_client
     p1 = _onboard(client, headers, "p1@example.com", "P1")
     p2 = _onboard(client, headers, "p2@example.com", "P2")
-    s_a = _create_slot(client, headers, name="A", days_applied="weekdays")
-    s_b = _create_slot(client, headers, name="B", days_applied="weekdays")
+    s_a = _create_slot(
+        client,
+        headers,
+        name="A",
+        days_applied="weekdays",
+        start_time="08:00:00",
+        end_time="14:00:00",
+    )
+    s_b = _create_slot(
+        client,
+        headers,
+        name="B",
+        days_applied="weekdays",
+        start_time="10:00:00",
+        end_time="16:00:00",
+    )
     anchor = date(2026, 5, 4)
     client.put(
         f"/api/slots/{s_a['id']}/rules",
