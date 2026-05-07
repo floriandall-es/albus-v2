@@ -215,8 +215,9 @@ def test_rotation_team_per_position(auth_client, client):
             by_date.setdefault(a["date"], []).append(a["person_id"])
 
     # Position math: positions_sorted = [0,1,2,3].
-    # position = (b_idx + weeks) % P (sprint 17 — was weeks*K+b_idx).
+    # position = (rank + weeks*K) % P. Anchor=Mon → rank == b_idx.
     block_for_weekday = {0: 0, 1: 1, 2: 2, 3: 2, 4: 3}
+    K = 4
     P = 4
     for d_iso, got in by_date.items():
         d = date.fromisoformat(d_iso)
@@ -224,7 +225,7 @@ def test_rotation_team_per_position(auth_client, client):
             continue
         weeks = (d - anchor).days // 7
         b_idx = block_for_weekday[d.weekday()]
-        position_idx = (b_idx + weeks) % P
+        position_idx = (b_idx + weeks * K) % P
         assert len(got) == 3, f"{d_iso} got {got}"
         assert set(got) == set(teams[position_idx]), (
             f"{d_iso} expected team {teams[position_idx]} got {got}"

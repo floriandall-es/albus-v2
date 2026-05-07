@@ -294,21 +294,27 @@ class _Context:
     def rotation_persons_for(self, rule: SlotRule, d: date) -> list[int]:
         """Compute the rotation-assigned team for a rotation rule + date.
 
-        Cycle math (sprint 17 — was `(weeks*K + b_idx) % P` before, which
-        produced cross-week clustering when K and P didn't divide cleanly:
-        e.g. K=5 blocks, P=6 people meant Thu-week-0 and Fri-Sun-week-1
-        both landed on position 3, looking like one 4-day shift on the
-        same person):
+        Each block on the calendar advances the position by exactly 1.
+        "After Sunday comes the next person for Monday; after Monday
+        the next person for Tuesday." This includes spanning week
+        boundaries — Fri-Sun of week N gets pos X, Mon of week N+1
+        gets pos X+1.
 
-            b_idx = block whose bitmap covers d.weekday()
-            weeks = (d - anchor_date) // 7
-            position_idx = (b_idx + weeks) % P
+        Position is computed by ranking blocks in CALENDAR order
+        starting at anchor_date (not by the rule's authored b_idx,
+        which is anchor-independent). With anchor on Fri, the Fri-Sun
+        block is rank 0; Mon is rank 1; Tue rank 2; Wed rank 3; Thu
+        rank 4. Subsequent weeks continue: Fri-Sun w1 = rank 5,
+        Mon w1 = rank 6, etc.
 
-        Within any single week, the K blocks always map to distinct
-        positions 0..K-1 (offset by `weeks`). Each week the whole
-        assignment shifts by 1, so a person who did Mon this week does
-        Tue next week, etc. With P > K, P-K people rest each week and
-        the cycle length is P weeks.
+            position_idx = positions_sorted[(rank + w*K) % P]
+
+        Cycle length = lcm(P, K) / K weeks. With K=5 and P=6 that's
+        6 weeks — every person eventually does every block-type once.
+        Earlier formulas either advanced per-week (created a Mon-Tue
+        skip) or per-(week*K+b_idx) ignoring calendar order (clustered
+        same person on Thu w0 + Fri-Sun w1 because the b_idx ordering
+        didn't match the actual calendar sequence).
         """
         if rule.anchor_date is None:
             return []
@@ -325,17 +331,38 @@ class _Context:
                 break
         if b_idx is None:
             return []
-        # Distinct positions in the rotation (sorted ascending). With
-        # multi-person teams the position index space is sparse-by-id but
-        # dense-by-rank: positions are always 0..P-1 in valid configs but
-        # we don't rely on that — we work off observed values.
+        # Distinct positions in the rotation (sorted ascending).
         positions_sorted = sorted({m.position for m in members})
         p_count = len(positions_sorted)
         if p_count == 0:
             return []
+        # CALENDAR rank: how many blocks start before this one inside a
+        # single week, counting from the anchor's weekday. Anchor=Fri
+        # with blocks Mon, Tue, Wed, Thu, Fri-Sun gives ranks
+        # 1, 2, 3, 4, 0 respectively (Fri-Sun is the FIRST block to
+        # start in a week measured from Friday).
+        anchor_wd = rule.anchor_date.weekday()
+        block_first_weekday: list[int] = []
+        for b in blocks:
+            for w in range(7):
+                if b.days_bitmap & (1 << w):
+                    block_first_weekday.append(w)
+                    break
+            else:
+                block_first_weekday.append(0)
+        block_offset = [
+            (block_first_weekday[i] - anchor_wd) % 7 for i in range(len(blocks))
+        ]
+        sorted_block_indices = sorted(
+            range(len(blocks)), key=lambda i: block_offset[i]
+        )
+        rank_of_block = {bi: r for r, bi in enumerate(sorted_block_indices)}
+
         weeks = (d - rule.anchor_date).days // 7
+        k = len(blocks)
+        rank = rank_of_block[b_idx]
         # Python % is non-negative for negative dividends.
-        target_pos = positions_sorted[(b_idx + weeks) % p_count]
+        target_pos = positions_sorted[(rank + weeks * k) % p_count]
         # Sort the team within a position by member.id so emission order
         # is deterministic and the same team always lands in the same
         # demand slot. (Members are pre-loaded ordered by (position, id)
