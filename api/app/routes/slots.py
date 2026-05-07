@@ -387,7 +387,7 @@ def _validate_rules_in_tenant_persons(
         )
 
 
-def _validate_rules(rules: list[SlotRuleIn]) -> None:
+def _validate_rules(rules: list[SlotRuleIn], slot_headcount: int = 1) -> None:
     if not rules:
         raise HTTPException(
             status_code=400, detail="Debe haber al menos una regla por turno"
@@ -453,6 +453,7 @@ def _validate_rules(rules: list[SlotRuleIn]) -> None:
             # UNIQUE(rule_id, position, person_id), but we error here with
             # a friendlier Spanish message).
             seen_pos_person: set[tuple[int, int]] = set()
+            members_per_position: dict[int, int] = {}
             for m in r.rotation_members:
                 key = (m.position, m.person_id)
                 if key in seen_pos_person:
@@ -464,6 +465,23 @@ def _validate_rules(rules: list[SlotRuleIn]) -> None:
                         ),
                     )
                 seen_pos_person.add(key)
+                members_per_position[m.position] = (
+                    members_per_position.get(m.position, 0) + 1
+                )
+            # A position can hold at most `slot.headcount` persons. For
+            # single slots that's 1, so each position is exactly one
+            # person and the rotation cycles them across days.
+            for pos, n in members_per_position.items():
+                if n > slot_headcount:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"Regla {idx + 1}, posición {pos}: tiene"
+                            f" {n} personas pero el turno solo permite"
+                            f" {slot_headcount}. Crea más posiciones para"
+                            " que la rotación recorra a más personas."
+                        ),
+                    )
             # A person can appear in only one position of the rotation.
             # (Migration 0015 keeps UNIQUE(rule_id, person_id) for this.)
             persons = [m.person_id for m in r.rotation_members]
@@ -503,7 +521,7 @@ def replace_slot_rules(
 ) -> SlotOut:
     obj = _get_or_404(ctx, slot_id)
     rules = payload.rules
-    _validate_rules(rules)
+    _validate_rules(rules, slot_headcount=max(1, obj.headcount))
 
     # Validate person_ids belong to this tenant via Membership.
     person_ids: set[int] = set()

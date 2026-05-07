@@ -1125,12 +1125,26 @@ function RotationEditor({
               <div className="mb-1 flex items-center justify-between">
                 <span className="font-medium text-gray-700">
                   Posición {posIdx + 1}
+                  <span className="ml-1 text-gray-400 font-normal">
+                    ({members.length}/{headcount})
+                  </span>
                 </span>
                 <button
                   type="button"
                   onClick={() => addMemberToPosition(pos)}
                   disabled={
-                    team.length === 0 || allUsedPersonIds.size >= team.length
+                    team.length === 0
+                    || allUsedPersonIds.size >= team.length
+                    // A position can hold at most `headcount` persons —
+                    // a 1-person turno gets one person per position. To
+                    // add more people, add another POSITION (rotation
+                    // cycles through positions).
+                    || members.length >= headcount
+                  }
+                  title={
+                    members.length >= headcount
+                      ? `Esta posición ya tiene ${headcount} persona${headcount === 1 ? "" : "s"} (el máximo del turno). Añade otra posición para más personas en la rotación.`
+                      : undefined
                   }
                   className="text-blue-700 hover:underline disabled:text-gray-400 disabled:no-underline"
                 >

@@ -470,26 +470,125 @@ def _greedy_fallback(
         pool.sort(key=lambda pid: (counts[pid], pid))
         return pool[0]
 
+    def _pin_persons(rule: SlotRule, d: date) -> list[int] | None:
+        """Return the configured person_ids for a non-solver rule on date d,
+        or None if the rule is solver/manual (caller round-robins instead)."""
+        if rule.strategy == "fixed_weekly":
+            return list(ctx.fixed_weekly_persons(rule, d))
+        if rule.strategy == "rotation":
+            return list(ctx.rotation_persons_for(rule, d))
+        return None  # solver / manual → fall through to round-robin
+
     for d in ctx.dates:
         for slot in ctx.slots:
             if not _slot_applies(slot, d, ctx.holiday_dates):
                 continue
-            # Per-rule strategies aren't fully honoured by the greedy
-            # fallback (it doesn't know rotations or weekly pins). It
-            # still respects "no rule for this weekday → skip" so the
-            # admin's day coverage decisions hold.
             rule = ctx.rule_for(slot.id, d)
             if rule is None:
                 continue
 
             mode = slot.staffing_mode
+            # team_composition is solver-driven regardless of rule.strategy
+            # (matches CP-SAT behaviour).
+            if mode == "team_composition":
+                pinned = None
+            else:
+                pinned = _pin_persons(rule, d)
+
             if mode in ("single", "multiple_same"):
                 if (d, slot.id, None) in locked_keys:
                     continue
                 head = 1 if mode == "single" else max(1, slot.headcount)
-                cands = ctx.candidates_for_slot(slot, d)
                 picked: set[int] = set(pre_picked_per_day[d])
                 fresh: set[int] = set()
+
+                # Honour fixed_weekly / rotation pins first. Each configured
+                # person, in order, takes the next slot. If the configured
+                # person is busy already today (overlap with another slot
+                # they were greedy-assigned to), emit a NULL with a note.
+                emitted = 0
+                if pinned is not None:
+                    pinned = pinned[:head]  # never exceed headcount
+                    for cand in pinned:
+                        if cand in picked:
+                            db.add(
+                                Assignment(
+                                    tenant_id=ctx.tenant_id,
+                                    schedule_id=schedule.id,
+                                    slot_id=slot.id,
+                                    date=d,
+                                    person_id=None,
+                                    team_role_id=None,
+                                    notes="Persona fija ya asignada hoy",
+                                )
+                            )
+                            emitted += 1
+                            continue
+                        reason = ctx.eligibility_reason(cand, slot, d, None)
+                        if reason:
+                            db.add(
+                                Assignment(
+                                    tenant_id=ctx.tenant_id,
+                                    schedule_id=schedule.id,
+                                    slot_id=slot.id,
+                                    date=d,
+                                    person_id=None,
+                                    team_role_id=None,
+                                    notes=f"Persona configurada no disponible: {reason}",
+                                )
+                            )
+                            emitted += 1
+                            continue
+                        picked.add(cand)
+                        fresh.add(cand)
+                        counts[cand] += 1
+                        db.add(
+                            Assignment(
+                                tenant_id=ctx.tenant_id,
+                                schedule_id=schedule.id,
+                                slot_id=slot.id,
+                                date=d,
+                                person_id=cand,
+                                team_role_id=None,
+                            )
+                        )
+                        emitted += 1
+                    # If the rule pinned fewer people than headcount, pad
+                    # the remainder with explicit "pendiente" rows. Greedy
+                    # round-robin is NOT used here because the admin's
+                    # rule semantics are explicit ("only these people").
+                    for _ in range(head - emitted):
+                        db.add(
+                            Assignment(
+                                tenant_id=ctx.tenant_id,
+                                schedule_id=schedule.id,
+                                slot_id=slot.id,
+                                date=d,
+                                person_id=None,
+                                team_role_id=None,
+                                notes="Plaza adicional pendiente",
+                            )
+                        )
+                    pre_picked_per_day[d] |= fresh
+                    continue
+
+                # Solver / manual rule → round-robin pick from candidates.
+                if rule.strategy == "manual":
+                    for _ in range(head):
+                        db.add(
+                            Assignment(
+                                tenant_id=ctx.tenant_id,
+                                schedule_id=schedule.id,
+                                slot_id=slot.id,
+                                date=d,
+                                person_id=None,
+                                team_role_id=None,
+                                notes="Pendiente de asignar manualmente",
+                            )
+                        )
+                    continue
+
+                cands = ctx.candidates_for_slot(slot, d)
                 for _ in range(head):
                     pid = pick(cands, picked)
                     if pid is None:
