@@ -50,6 +50,13 @@ export default function ScheduleDetailPage() {
       router.replace(`/admin/schedule/${data.id}`);
     },
   });
+  const remove = useMutation({
+    mutationFn: () => api.deleteSchedule(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["schedules"] });
+      router.replace("/admin/schedule");
+    },
+  });
 
   const grid = useMemo(() => buildGrid(detail.data?.assignments ?? []), [
     detail.data,
@@ -89,6 +96,21 @@ export default function ScheduleDetailPage() {
                 disabled={publish.isPending}
               >
                 Publicar
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => {
+                  if (
+                    confirm(
+                      `¿Eliminar el borrador de ${s.period}? Esta acción no se puede deshacer.`,
+                    )
+                  ) {
+                    remove.mutate();
+                  }
+                }}
+                disabled={remove.isPending}
+              >
+                Eliminar
               </Button>
             </>
           )}

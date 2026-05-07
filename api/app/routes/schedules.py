@@ -185,6 +185,30 @@ def archive_schedule(
     return s
 
 
+@router.delete(
+    "/schedules/{schedule_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+def delete_schedule(
+    schedule_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> None:
+    """Delete a draft schedule. Cascades to its assignments. Published
+    or archived schedules cannot be deleted — archive them first if you
+    want them out of the active list."""
+    _require_admin(ctx)
+    s = ctx.db.get(Schedule, schedule_id)
+    if not s or s.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    if s.status != "draft":
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se pueden eliminar planificaciones en borrador",
+        )
+    scheduler.delete_draft(ctx.db, s)
+
+
 # ---------------------------------------------------------------------------
 # Manual assignment editing (Sprint 5 part B)
 # ---------------------------------------------------------------------------
