@@ -74,6 +74,7 @@ def _serialize_detail(ctx: RequestContext, schedule: Schedule) -> ScheduleDetail
         status=schedule.status,  # type: ignore[arg-type]
         generated_at=schedule.generated_at,
         published_at=schedule.published_at,
+        solver_used=schedule.solver_used,  # type: ignore[arg-type]
         created_at=schedule.created_at,
         assignments=assignments,
     )
