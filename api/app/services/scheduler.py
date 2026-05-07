@@ -479,8 +479,28 @@ def _greedy_fallback(
             return list(ctx.rotation_persons_for(rule, d))
         return None  # solver / manual → fall through to round-robin
 
+    # Two passes per day: first claim slots whose rule has explicit pins
+    # (fixed_weekly / rotation), then fill solver / manual slots with
+    # round-robin from whoever's left. Without this ordering, a greedy
+    # round-robin pick from an earlier slot could grab the very person a
+    # later rule has pinned — leaving the pinned slot empty with the
+    # confusing "Persona fija ya asignada hoy" note.
+    def _slot_priority(slot: Slot, d: date) -> int:
+        """Lower runs first. Pinned/rotation slots before round-robin."""
+        if slot.staffing_mode == "team_composition":
+            return 1  # always solver-driven
+        rule = ctx.rule_for(slot.id, d)
+        if rule is None:
+            return 1
+        if rule.strategy in ("fixed_weekly", "rotation"):
+            return 0
+        return 1
+
     for d in ctx.dates:
-        for slot in ctx.slots:
+        slots_in_priority_order = sorted(
+            ctx.slots, key=lambda s: (_slot_priority(s, d), s.id)
+        )
+        for slot in slots_in_priority_order:
             if not _slot_applies(slot, d, ctx.holiday_dates):
                 continue
             rule = ctx.rule_for(slot.id, d)
