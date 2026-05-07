@@ -70,6 +70,7 @@ export type AvailabilityBlock = {
 };
 
 export type ScheduleStatus = "draft" | "published" | "archived";
+export type SolverUsed = "cpsat" | "greedy";
 
 export type Schedule = {
   id: number;
@@ -78,6 +79,7 @@ export type Schedule = {
   status: ScheduleStatus;
   generated_at: string | null;
   published_at: string | null;
+  solver_used: SolverUsed | null;
   created_at: string;
 };
 

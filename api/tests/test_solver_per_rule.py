@@ -98,7 +98,7 @@ def test_rotation_picks_deterministic(auth_client, client):
     body = r.json()
 
     # Build expected: for each Mon-Thu in May 2026, compute expected pid.
-    K = 4
+    # Cycle: position = (b_idx + weeks) % N
     N = 4
     by_date: dict[str, list[int | None]] = {}
     for a in body["assignments"]:
@@ -111,7 +111,7 @@ def test_rotation_picks_deterministic(auth_client, client):
         if d.weekday() <= 3:
             weeks = (d - anchor).days // 7
             b_idx = d.weekday()
-            expected = members[(weeks * K + b_idx) % N]
+            expected = members[(b_idx + weeks) % N]
             assert pids == [expected], (
                 f"{d_iso} expected {expected} got {pids}"
             )

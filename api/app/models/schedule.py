@@ -38,6 +38,14 @@ class Schedule(Base):
     generated_by_membership_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("memberships.id", ondelete="SET NULL"), nullable=True
     )
+    # Which engine produced this schedule's assignments. Null = legacy
+    # (pre-0018 migration). "cpsat" = CP-SAT optimal/feasible solve;
+    # "greedy" = round-robin fallback (CP-SAT failed or unavailable).
+    # Surfaced in the UI so admins can tell when fairness/spread terms
+    # weren't applied.
+    solver_used: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )
     published_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

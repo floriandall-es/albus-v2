@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 
 ScheduleStatus = Literal["draft", "published", "archived"]
+SolverUsed = Literal["cpsat", "greedy"]
 
 
 class ScheduleOut(BaseModel):
@@ -14,6 +15,7 @@ class ScheduleOut(BaseModel):
     status: ScheduleStatus
     generated_at: datetime | None
     published_at: datetime | None
+    solver_used: SolverUsed | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

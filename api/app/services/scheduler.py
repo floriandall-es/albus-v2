@@ -294,16 +294,21 @@ class _Context:
     def rotation_persons_for(self, rule: SlotRule, d: date) -> list[int]:
         """Compute the rotation-assigned team for a rotation rule + date.
 
-        Sprint 15 generalized this from "single person per position" to
-        "team per position". The cycle math is unchanged:
+        Cycle math (sprint 17 — was `(weeks*K + b_idx) % P` before, which
+        produced cross-week clustering when K and P didn't divide cleanly:
+        e.g. K=5 blocks, P=6 people meant Thu-week-0 and Fri-Sun-week-1
+        both landed on position 3, looking like one 4-day shift on the
+        same person):
+
             b_idx = block whose bitmap covers d.weekday()
             weeks = (d - anchor_date) // 7
-            global = weeks * K + b_idx
-            position_idx = global % P
-        where P is the number of distinct positions. Returns the list of
-        person_ids assigned to that position, in stable id order so
-        downstream emission is deterministic. Returns [] for unconfigured
-        rules (no members / no matching block / no anchor).
+            position_idx = (b_idx + weeks) % P
+
+        Within any single week, the K blocks always map to distinct
+        positions 0..K-1 (offset by `weeks`). Each week the whole
+        assignment shifts by 1, so a person who did Mon this week does
+        Tue next week, etc. With P > K, P-K people rest each week and
+        the cycle length is P weeks.
         """
         if rule.anchor_date is None:
             return []
@@ -329,10 +334,8 @@ class _Context:
         if p_count == 0:
             return []
         weeks = (d - rule.anchor_date).days // 7
-        k = len(blocks)
-        global_idx = weeks * k + b_idx
         # Python % is non-negative for negative dividends.
-        target_pos = positions_sorted[global_idx % p_count]
+        target_pos = positions_sorted[(b_idx + weeks) % p_count]
         # Sort the team within a position by member.id so emission order
         # is deterministic and the same team always lands in the same
         # demand slot. (Members are pre-loaded ordered by (position, id)
@@ -1599,7 +1602,9 @@ def generate_draft(
     db.flush()
 
     ok = _solve_cpsat(db, ctx, schedule, locked=locked)
-    if not ok:
+    if ok:
+        schedule.solver_used = "cpsat"
+    else:
         # CP-SAT failed (typically INFEASIBLE). It writes pre-pins for
         # rotation/fixed_weekly rules BEFORE solving — those rows are
         # pending in the session. We need to wipe them before greedy runs
@@ -1615,6 +1620,7 @@ def generate_draft(
         ).delete(synchronize_session=False)
         db.flush()
         _greedy_fallback(db, ctx, schedule, locked=locked)
+        schedule.solver_used = "greedy"
 
     db.flush()
     return schedule

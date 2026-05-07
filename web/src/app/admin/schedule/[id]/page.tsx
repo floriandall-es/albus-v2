@@ -105,6 +105,23 @@ export default function ScheduleDetailPage() {
       </div>
       <p className="mb-4 text-sm text-gray-600">
         Estado: <span className="font-medium">{STATUS_LABEL[s.status]}</span>
+        {s.solver_used && (
+          <span
+            className={
+              "ml-3 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide "
+              + (s.solver_used === "cpsat"
+                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                : "bg-amber-50 text-amber-800 border border-amber-200")
+            }
+            title={
+              s.solver_used === "cpsat"
+                ? "CP-SAT: solver óptimo con equidad, descansos y reglas cruzadas aplicadas."
+                : "Greedy: respaldo round-robin. CP-SAT no encontró solución factible — equidad y restricciones suaves no se aplicaron."
+            }
+          >
+            {s.solver_used === "cpsat" ? "CP-SAT" : "Greedy (respaldo)"}
+          </span>
+        )}
         {isEditable && (
           <span className="ml-3 text-xs text-gray-500">
             (haz clic en una celda para editarla)
