@@ -149,7 +149,7 @@ export default function ScheduleDetailPage() {
               {slotRows.map((row) => (
                 <tr key={row.slot_id} className="border-b last:border-b-0">
                   <td className="sticky left-0 bg-white z-10 px-2 py-1 border-r font-medium">
-                    {row.slot_name}
+                    {row.display_name}
                   </td>
                   {dates.map((d) => {
                     const cell = row.cells[d] ?? [];
@@ -221,19 +221,42 @@ function buildGrid(assignments: Assignment[]) {
   const dates = Array.from(new Set(assignments.map((a) => a.date))).sort();
   const slotMap = new Map<
     number,
-    { slot_id: number; slot_name: string; cells: Record<string, Assignment[]> }
+    {
+      slot_id: number;
+      slot_name: string;
+      display_name: string;
+      cells: Record<string, Assignment[]>;
+    }
   >();
   for (const a of assignments) {
     let row = slotMap.get(a.slot_id);
     if (!row) {
-      row = { slot_id: a.slot_id, slot_name: a.slot_name, cells: {} };
+      row = {
+        slot_id: a.slot_id,
+        slot_name: a.slot_name,
+        display_name: a.slot_name,
+        cells: {},
+      };
       slotMap.set(a.slot_id, row);
     }
     if (!row.cells[a.date]) row.cells[a.date] = [];
     row.cells[a.date].push(a);
   }
+  // Disambiguate same-named slots so the user can tell them apart.
+  // (UNIQUE(tenant_id, lower(name)) is supposed to prevent this, but
+  // historical data may still contain duplicates — show #id rather than
+  // collapse them.)
+  const nameCounts = new Map<string, number>();
+  for (const row of slotMap.values()) {
+    nameCounts.set(row.slot_name, (nameCounts.get(row.slot_name) ?? 0) + 1);
+  }
+  for (const row of slotMap.values()) {
+    if ((nameCounts.get(row.slot_name) ?? 0) > 1) {
+      row.display_name = `${row.slot_name} · #${row.slot_id}`;
+    }
+  }
   const slotRows = Array.from(slotMap.values()).sort((a, b) =>
-    a.slot_name.localeCompare(b.slot_name),
+    a.display_name.localeCompare(b.display_name),
   );
   return { dates, slotRows };
 }

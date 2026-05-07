@@ -77,7 +77,10 @@ export default function SlotsPage() {
             <tbody>
               {list.data.map((s) => (
                 <tr key={s.id} className="border-b last:border-b-0">
-                  <td className="px-4 py-2">{s.name}</td>
+                  <td className="px-4 py-2">
+                    {s.name}
+                    <span className="ml-1 text-xs text-gray-400">#{s.id}</span>
+                  </td>
                   <td className="px-4 py-2">
                     {s.start_time && s.end_time
                       ? `${s.start_time}–${s.end_time}${s.crosses_midnight ? " (+1d)" : ""}`
