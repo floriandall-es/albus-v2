@@ -492,7 +492,11 @@ def _validate_rules(rules: list[SlotRuleIn], slot_headcount: int = 1) -> None:
                 )
         elif r.strategy == "fixed_weekly":
             seen_pin: set[tuple[int, int]] = set()
+            pins_per_weekday: dict[int, int] = {}
             for pidx, p in enumerate(r.weekly_pins):
+                pins_per_weekday[p.weekday] = (
+                    pins_per_weekday.get(p.weekday, 0) + 1
+                )
                 if not (r.days_bitmap & (1 << p.weekday)):
                     raise HTTPException(
                         status_code=400,
@@ -511,6 +515,21 @@ def _validate_rules(rules: list[SlotRuleIn], slot_headcount: int = 1) -> None:
                         ),
                     )
                 seen_pin.add(key)
+            # A weekday can hold at most `slot.headcount` pins. For a
+            # 1-person turno that's 1 person per weekday. To pin
+            # different people on different weekdays, use one pin per
+            # (weekday, person). Headcount stays the cap on parallel
+            # plazas, not on alternatives.
+            for wd, n in pins_per_weekday.items():
+                if n > slot_headcount:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"Regla {idx + 1}, día {wd}: tiene {n}"
+                            f" personas pero el turno solo permite"
+                            f" {slot_headcount}."
+                        ),
+                    )
 
 
 @router.put("/slots/{slot_id}/rules", response_model=SlotOut)

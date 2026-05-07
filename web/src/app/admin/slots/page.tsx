@@ -922,11 +922,29 @@ function FixedWeeklyEditor({
         return (
           <div key={d.bit} className="rounded border bg-white p-2 text-xs">
             <div className="mb-1 flex items-center justify-between">
-              <span className="font-medium text-gray-700">{d.long}</span>
+              <span className="font-medium text-gray-700">
+                {d.long}
+                <span className="ml-1 text-gray-400 font-normal">
+                  ({pinsForDay.length}/{headcount})
+                </span>
+              </span>
               <button
                 type="button"
                 onClick={() => addPin(d.bit)}
-                disabled={team.length === 0 || pinsForDay.length >= team.length}
+                disabled={
+                  team.length === 0
+                  || pinsForDay.length >= team.length
+                  // Same cap as rotation positions: a 1-person turno
+                  // gets 1 pinned person per weekday. To assign different
+                  // people across weekdays use one row per weekday; a
+                  // turno needing N people uses headcount=N.
+                  || pinsForDay.length >= headcount
+                }
+                title={
+                  pinsForDay.length >= headcount
+                    ? `Este día ya tiene ${headcount} persona${headcount === 1 ? "" : "s"} (el máximo del turno).`
+                    : undefined
+                }
                 className="text-blue-700 hover:underline disabled:text-gray-400 disabled:no-underline"
               >
                 + Añadir persona
