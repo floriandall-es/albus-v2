@@ -1426,14 +1426,19 @@ def generate_draft(
 
     ok = _solve_cpsat(db, ctx, schedule, locked=locked)
     if not ok:
-        # Wipe whatever the solver emitted (none, but be defensive) and
-        # try the greedy fallback.
-        for a in (
-            db.query(Assignment)
-            .filter(Assignment.schedule_id == schedule.id)
-            .all()
-        ):
-            db.delete(a)
+        # CP-SAT failed (typically INFEASIBLE). It writes pre-pins for
+        # rotation/fixed_weekly rules BEFORE solving — those rows are
+        # pending in the session. We need to wipe them before greedy runs
+        # or non-solver slots end up with both pre-pins + greedy picks.
+        #
+        # Session has autoflush=False (see app/db/session.py), so a plain
+        # db.query won't see pending adds and the wipe silently no-ops.
+        # Force a flush first so the pre-pins hit the DB, then bulk
+        # DELETE them by schedule_id.
+        db.flush()
+        db.query(Assignment).filter(
+            Assignment.schedule_id == schedule.id
+        ).delete(synchronize_session=False)
         db.flush()
         _greedy_fallback(db, ctx, schedule, locked=locked)
 
