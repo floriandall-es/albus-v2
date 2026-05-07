@@ -442,7 +442,15 @@ def _greedy_fallback(
     survive is honoured.
     """
     counts: Counter[int] = Counter()
-    pre_picked_per_day: dict[date, set[int]] = defaultdict(set)
+    # Per-person assignments so far: list of (date, slot) used to detect
+    # time-overlap conflicts when considering a new (slot, date). This
+    # replaces the older "one slot per person per day" set, which was
+    # wrong — a person can do consulta 08-14 AND on-call 22-08, those
+    # don't overlap in wall-clock time.
+    busy_by_person: dict[int, list[tuple[date, Slot]]] = defaultdict(list)
+    # Person → dates they're blocked on because the previous day's slot
+    # had post_slot_rest=True.
+    rest_block: dict[int, set[date]] = defaultdict(set)
     locked = locked or []
     for la in locked:
         db.add(
@@ -460,11 +468,40 @@ def _greedy_fallback(
         )
         if la.person_id is not None:
             counts[la.person_id] += 1
-            pre_picked_per_day[la.date].add(la.person_id)
+            slot_la = ctx.slot_by_id.get(la.slot_id)
+            if slot_la is not None:
+                busy_by_person[la.person_id].append((la.date, slot_la))
+                if slot_la.post_slot_rest:
+                    rest_block[la.person_id].add(la.date + timedelta(days=1))
     locked_keys = {(la.date, la.slot_id, la.team_role_id) for la in locked}
 
-    def pick(candidates: list[int], picked_today: set[int]) -> int | None:
-        pool = [p for p in candidates if p not in picked_today]
+    def conflicts_in_time(pid: int, slot: Slot, d: date) -> bool:
+        """True if pid is already in a slot whose times overlap with
+        (slot, d) on d-1, d, or d+1; or pid is owed post-shift rest on d;
+        or the new slot has post_slot_rest=True and pid is already in any
+        slot on d+1."""
+        if d in rest_block.get(pid, ()):
+            return True
+        for (d_other, slot_other) in busy_by_person.get(pid, ()):
+            if abs((d - d_other).days) > 1:
+                continue
+            if slots_overlap_in_time(slot, d, slot_other, d_other):
+                return True
+        if slot.post_slot_rest:
+            next_d = d + timedelta(days=1)
+            for (d_other, _slot_other) in busy_by_person.get(pid, ()):
+                if d_other == next_d:
+                    return True
+        return False
+
+    def record_assignment(pid: int, slot: Slot, d: date) -> None:
+        busy_by_person[pid].append((d, slot))
+        if slot.post_slot_rest:
+            rest_block[pid].add(d + timedelta(days=1))
+        counts[pid] += 1
+
+    def pick(candidates: list[int], slot: Slot, d: date) -> int | None:
+        pool = [p for p in candidates if not conflicts_in_time(p, slot, d)]
         if not pool:
             return None
         pool.sort(key=lambda pid: (counts[pid], pid))
@@ -519,18 +556,17 @@ def _greedy_fallback(
                 if (d, slot.id, None) in locked_keys:
                     continue
                 head = 1 if mode == "single" else max(1, slot.headcount)
-                picked: set[int] = set(pre_picked_per_day[d])
-                fresh: set[int] = set()
+                # Within a single (slot, date), the same person can't
+                # take two roles — guard with a local set on top of the
+                # cross-slot time-overlap logic.
+                picked_this_slot: set[int] = set()
 
-                # Honour fixed_weekly / rotation pins first. Each configured
-                # person, in order, takes the next slot. If the configured
-                # person is busy already today (overlap with another slot
-                # they were greedy-assigned to), emit a NULL with a note.
+                # Honour fixed_weekly / rotation pins first.
                 emitted = 0
                 if pinned is not None:
-                    pinned = pinned[:head]  # never exceed headcount
+                    pinned = pinned[:head]
                     for cand in pinned:
-                        if cand in picked:
+                        if cand in picked_this_slot:
                             db.add(
                                 Assignment(
                                     tenant_id=ctx.tenant_id,
@@ -539,7 +575,21 @@ def _greedy_fallback(
                                     date=d,
                                     person_id=None,
                                     team_role_id=None,
-                                    notes="Persona fija ya asignada hoy",
+                                    notes="Persona duplicada en pines",
+                                )
+                            )
+                            emitted += 1
+                            continue
+                        if conflicts_in_time(cand, slot, d):
+                            db.add(
+                                Assignment(
+                                    tenant_id=ctx.tenant_id,
+                                    schedule_id=schedule.id,
+                                    slot_id=slot.id,
+                                    date=d,
+                                    person_id=None,
+                                    team_role_id=None,
+                                    notes="Persona fija con solape horario o descanso pendiente",
                                 )
                             )
                             emitted += 1
@@ -559,9 +609,8 @@ def _greedy_fallback(
                             )
                             emitted += 1
                             continue
-                        picked.add(cand)
-                        fresh.add(cand)
-                        counts[cand] += 1
+                        picked_this_slot.add(cand)
+                        record_assignment(cand, slot, d)
                         db.add(
                             Assignment(
                                 tenant_id=ctx.tenant_id,
@@ -573,10 +622,6 @@ def _greedy_fallback(
                             )
                         )
                         emitted += 1
-                    # If the rule pinned fewer people than headcount, pad
-                    # the remainder with explicit "pendiente" rows. Greedy
-                    # round-robin is NOT used here because the admin's
-                    # rule semantics are explicit ("only these people").
                     for _ in range(head - emitted):
                         db.add(
                             Assignment(
@@ -589,10 +634,8 @@ def _greedy_fallback(
                                 notes="Plaza adicional pendiente",
                             )
                         )
-                    pre_picked_per_day[d] |= fresh
                     continue
 
-                # Solver / manual rule → round-robin pick from candidates.
                 if rule.strategy == "manual":
                     for _ in range(head):
                         db.add(
@@ -610,8 +653,12 @@ def _greedy_fallback(
 
                 cands = ctx.candidates_for_slot(slot, d)
                 for _ in range(head):
-                    pid = pick(cands, picked)
-                    if pid is None:
+                    pool = [
+                        p for p in cands
+                        if p not in picked_this_slot
+                        and not conflicts_in_time(p, slot, d)
+                    ]
+                    if not pool:
                         db.add(
                             Assignment(
                                 tenant_id=ctx.tenant_id,
@@ -624,9 +671,10 @@ def _greedy_fallback(
                             )
                         )
                         continue
-                    picked.add(pid)
-                    fresh.add(pid)
-                    counts[pid] += 1
+                    pool.sort(key=lambda pid: (counts[pid], pid))
+                    pid = pool[0]
+                    picked_this_slot.add(pid)
+                    record_assignment(pid, slot, d)
                     db.add(
                         Assignment(
                             tenant_id=ctx.tenant_id,
@@ -637,7 +685,6 @@ def _greedy_fallback(
                             team_role_id=None,
                         )
                     )
-                pre_picked_per_day[d] |= fresh
             elif mode == "team_composition":
                 roles = ctx.team_roles_by_slot.get(slot.id, [])
                 if not roles:
@@ -652,14 +699,21 @@ def _greedy_fallback(
                         )
                     )
                     continue
-                picked_for_slot: set[int] = set(pre_picked_per_day[d])
+                # Same-slot exclusivity: a person can fill at most one role
+                # of the same slot/date. Cross-slot conflicts go through
+                # conflicts_in_time().
+                picked_for_slot: set[int] = set()
                 for role in roles:
                     if (d, slot.id, role.id) in locked_keys:
                         continue
                     cands = ctx.candidates_for_slot(slot, d, team_role_id=role.id)
                     for _ in range(max(1, role.headcount)):
-                        pid = pick(cands, picked_for_slot)
-                        if pid is None:
+                        pool = [
+                            p for p in cands
+                            if p not in picked_for_slot
+                            and not conflicts_in_time(p, slot, d)
+                        ]
+                        if not pool:
                             db.add(
                                 Assignment(
                                     tenant_id=ctx.tenant_id,
@@ -672,8 +726,10 @@ def _greedy_fallback(
                                 )
                             )
                             continue
+                        pool.sort(key=lambda pid: (counts[pid], pid))
+                        pid = pool[0]
                         picked_for_slot.add(pid)
-                        counts[pid] += 1
+                        record_assignment(pid, slot, d)
                         db.add(
                             Assignment(
                                 tenant_id=ctx.tenant_id,
@@ -684,7 +740,6 @@ def _greedy_fallback(
                                 team_role_id=role.id,
                             )
                         )
-                pre_picked_per_day[d] |= picked_for_slot
 
 
 # ---------------------------------------------------------------------------
