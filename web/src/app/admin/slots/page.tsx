@@ -61,7 +61,14 @@ export default function SlotsPage() {
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
       {list.isError && <ErrorText>{(list.error as Error).message}</ErrorText>}
       {list.data && list.data.length === 0 && <Empty>Aún no hay turnos.</Empty>}
-      {list.data && list.data.length > 0 && (
+      {list.data && list.data.length > 0 && (() => {
+        // Only show the #id suffix when two slots share a name — keeps the
+        // list clean while still letting admins distinguish duplicates.
+        const nameCounts = new Map<string, number>();
+        for (const s of list.data) {
+          nameCounts.set(s.name, (nameCounts.get(s.name) ?? 0) + 1);
+        }
+        return (
         <Card>
           <table className="w-full text-sm">
             <thead className="border-b bg-gray-50 text-left text-gray-600">
@@ -79,7 +86,9 @@ export default function SlotsPage() {
                 <tr key={s.id} className="border-b last:border-b-0">
                   <td className="px-4 py-2">
                     {s.name}
-                    <span className="ml-1 text-xs text-gray-400">#{s.id}</span>
+                    {(nameCounts.get(s.name) ?? 0) > 1 && (
+                      <span className="ml-1 text-xs text-gray-400">#{s.id}</span>
+                    )}
                   </td>
                   <td className="px-4 py-2">
                     {s.start_time && s.end_time
@@ -107,7 +116,8 @@ export default function SlotsPage() {
             </tbody>
           </table>
         </Card>
-      )}
+        );
+      })()}
 
       {editing && (
         <SlotDialog
