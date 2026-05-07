@@ -591,7 +591,14 @@ def _greedy_fallback(
                 # cross-slot time-overlap logic.
                 picked_this_slot: set[int] = set()
 
-                # Honour fixed_weekly / rotation pins first.
+                # Honour fixed_weekly / rotation pins first. The admin
+                # named these people explicitly — pins are authoritative
+                # and override cross-slot time-overlap / post_slot_rest
+                # constraints. Those constraints only apply to solver
+                # picks (round-robin or CP-SAT). We still:
+                # - reject duplicates within the SAME (slot, date)
+                # - reject if the person can't physically take the slot
+                #   (pool / hard skill / availability block)
                 emitted = 0
                 if pinned is not None:
                     pinned = pinned[:head]
@@ -606,20 +613,6 @@ def _greedy_fallback(
                                     person_id=None,
                                     team_role_id=None,
                                     notes="Persona duplicada en pines",
-                                )
-                            )
-                            emitted += 1
-                            continue
-                        if conflicts_in_time(cand, slot, d):
-                            db.add(
-                                Assignment(
-                                    tenant_id=ctx.tenant_id,
-                                    schedule_id=schedule.id,
-                                    slot_id=slot.id,
-                                    date=d,
-                                    person_id=None,
-                                    team_role_id=None,
-                                    notes="Persona fija con solape horario o descanso pendiente",
                                 )
                             )
                             emitted += 1
@@ -640,6 +633,10 @@ def _greedy_fallback(
                             emitted += 1
                             continue
                         picked_this_slot.add(cand)
+                        # record_assignment still updates busy_by_person /
+                        # rest_block so subsequent SOLVER picks (lower
+                        # priority slots later in this day) can see the
+                        # pinned person is occupied.
                         record_assignment(cand, slot, d)
                         db.add(
                             Assignment(
