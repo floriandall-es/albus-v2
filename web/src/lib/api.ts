@@ -406,6 +406,21 @@ export const api = {
     }),
 
   me: () => request<MeResponse>("/api/me"),
+  updateProfile: (body: { name: string }) =>
+    request<Person>("/api/me/profile", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  changePassword: (body: { current_password: string; new_password: string }) =>
+    request<void>("/api/me/password", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  changeEmail: (body: { current_password: string; new_email: string }) =>
+    request<Person>("/api/me/email", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 
   // Categories
   listCategories: () => request<Category[]>("/api/categories"),
