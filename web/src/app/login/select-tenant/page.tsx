@@ -2,6 +2,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, type TenantPickerOption } from "@/lib/api";
 import { finalizeLogin, PRE_AUTH_KEY } from "../_utils";
 
@@ -12,6 +13,7 @@ type Stash = {
 
 export default function SelectTenantPage() {
   const router = useRouter();
+  const qc = useQueryClient();
   const [stash, setStash] = useState<Stash | null>(null);
   const [submitting, setSubmitting] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +45,7 @@ export default function SelectTenantPage() {
         tenant_id: tenantId,
       });
       sessionStorage.removeItem(PRE_AUTH_KEY);
-      finalizeLogin(res, router);
+      finalizeLogin(res, router, qc);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se ha podido continuar");
       setSubmitting(null);

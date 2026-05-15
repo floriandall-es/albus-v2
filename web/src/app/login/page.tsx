@@ -2,11 +2,13 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, isTenantSelectionResponse } from "@/lib/api";
 import { finalizeLogin, PRE_AUTH_KEY } from "./_utils";
 
 export default function LoginPage() {
   const router = useRouter();
+  const qc = useQueryClient();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +33,7 @@ export default function LoginPage() {
         router.push("/login/select-tenant");
         return;
       }
-      finalizeLogin(res, router);
+      finalizeLogin(res, router, qc);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se ha podido iniciar sesión");
     } finally {

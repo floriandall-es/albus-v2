@@ -3,13 +3,15 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, clearToken, getToken } from "@/lib/api";
+import { api, getToken } from "@/lib/api";
+import { useLogout } from "@/lib/use-logout";
 import { STEPS } from "./_steps";
 
 export default function OnboardingLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const qc = useQueryClient();
+  const logout = useLogout();
   const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
@@ -70,13 +72,7 @@ export default function OnboardingLayout({ children }: { children: ReactNode }) 
       </header>
       <main className="mx-auto max-w-3xl p-6">{children}</main>
       <footer className="mx-auto max-w-3xl px-6 pb-8 text-xs text-gray-400">
-        <button
-          onClick={() => {
-            clearToken();
-            router.replace("/login");
-          }}
-          className="underline"
-        >
+        <button onClick={logout} className="underline">
           Cerrar sesión
         </button>
       </footer>

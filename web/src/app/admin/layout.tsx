@@ -18,7 +18,8 @@ import {
   Users,
   type LucideIcon,
 } from "lucide-react";
-import { api, clearToken, getToken } from "@/lib/api";
+import { api, getToken } from "@/lib/api";
+import { useLogout } from "@/lib/use-logout";
 
 type NavSection = {
   title: string;
@@ -56,6 +57,7 @@ const NAV: NavSection[] = [
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const logout = useLogout();
   const pathname = usePathname();
   const [authChecked, setAuthChecked] = useState(false);
 
@@ -89,10 +91,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         <p className="text-sm text-red-600 mb-4">{(me.error as Error).message}</p>
         <button
           className="rounded-md border px-3 py-1 text-sm"
-          onClick={() => {
-            clearToken();
-            router.replace("/login");
-          }}
+          onClick={logout}
         >
           Iniciar sesión de nuevo
         </button>
@@ -165,10 +164,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           </div>
           <button
             className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-100"
-            onClick={() => {
-              clearToken();
-              router.replace("/login");
-            }}
+            onClick={logout}
           >
             <LogOut className="h-4 w-4 text-gray-400" />
             Cerrar sesión

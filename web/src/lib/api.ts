@@ -25,6 +25,10 @@ export function setToken(token: string): void {
 export function clearToken(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(TOKEN_KEY);
+  // Wipe any short-lived auth state too (pre-auth tokens during the
+  // tenant picker, tenant stash from a previous session, etc.). Without
+  // this, the next login can hit stale entries.
+  window.sessionStorage.clear();
 }
 
 export type Tenant = {
