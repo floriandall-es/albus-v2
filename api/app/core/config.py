@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     solver_max_seconds: int = 30
     solver_workers: int = 4
 
+    # Directory where profile photos land. Mounted from a host volume in
+    # prod (/srv/albus/avatars); in dev defaults to a sibling of the app.
+    avatars_dir: str = "/app/avatars"
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

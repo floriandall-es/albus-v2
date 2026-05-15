@@ -36,6 +36,11 @@ services:
       SMTP_FROM: ${SMTP_FROM}
       SMTP_USE_TLS: ${SMTP_USE_TLS}
       EMAIL_ENABLED: ${EMAIL_ENABLED}
+      AVATARS_DIR: /app/avatars
+    volumes:
+      # Profile photos uploaded by users. Host directory is created by
+      # bootstrap; back this up alongside the DB.
+      - /srv/albus/avatars:/app/avatars
     depends_on:
       db:
         condition: service_healthy

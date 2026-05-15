@@ -1,5 +1,8 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.routes import (
@@ -48,3 +51,13 @@ app.include_router(holidays.router, prefix="/api")
 app.include_router(availability.router, prefix="/api")
 app.include_router(schedules.router, prefix="/api")
 app.include_router(shift_swaps.router, prefix="/api")
+
+# Serve user-uploaded profile photos. The directory is mounted from a
+# host volume in prod (/srv/albus/avatars). We create it on startup so
+# fresh dev containers don't 500 on the first request.
+os.makedirs(settings.avatars_dir, exist_ok=True)
+app.mount(
+    "/api/avatars",
+    StaticFiles(directory=settings.avatars_dir),
+    name="avatars",
+)

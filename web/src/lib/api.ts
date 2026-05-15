@@ -1,6 +1,15 @@
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
+// Turn a relative avatar_url ("/api/avatars/12-abc.jpg") into the
+// browser-loadable absolute URL. Caller-side helper so every <img>
+// usage doesn't repeat the prefix glue.
+export function avatarSrc(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  return `${API_BASE_URL}${url}`;
+}
+
 const TOKEN_KEY = "albus_access_token";
 
 export function getToken(): string | null {
@@ -92,6 +101,7 @@ export type Assignment = {
   date: string;
   person_id: number | null;
   person_name: string | null;
+  person_avatar_url: string | null;
   team_role_id: number | null;
   team_role_label: string | null;
   notes: string | null;
@@ -114,6 +124,7 @@ export type Person = {
   email: string;
   name: string;
   locale: string | null;
+  avatar_url: string | null;
   created_at: string;
 };
 
@@ -473,6 +484,33 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  uploadAvatar: async (file: File): Promise<Person> => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const headers = new Headers();
+    const token = getToken();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    const res = await fetch(`${API_BASE_URL}/api/me/avatar`, {
+      method: "POST",
+      headers, // do NOT set Content-Type — browser fills it with boundary
+      body: fd,
+    });
+    if (!res.ok) {
+      let detail: unknown = res.statusText;
+      try {
+        const body = await res.json();
+        detail = body.detail ?? detail;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(
+        typeof detail === "string" ? detail : JSON.stringify(detail),
+      );
+    }
+    return res.json();
+  },
+  deleteAvatar: () =>
+    request<void>("/api/me/avatar", { method: "DELETE" }),
 
   // Categories
   listCategories: () => request<Category[]>("/api/categories"),

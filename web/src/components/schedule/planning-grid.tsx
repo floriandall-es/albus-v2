@@ -1,6 +1,6 @@
 "use client";
 import { useMemo } from "react";
-import type { Assignment } from "@/lib/api";
+import { avatarSrc, type Assignment } from "@/lib/api";
 
 // Shared planning grid: slot rows × date columns. Used by:
 // - admin schedule detail (interactive — cells open the editor on click)
@@ -157,7 +157,11 @@ export function PlanningGrid({
                         const content = (
                           <span className="inline-flex items-center gap-1.5 max-w-full">
                             {a.person_id !== null && a.person_name && (
-                              <Avatar name={a.person_name} mine={isMe} />
+                              <Avatar
+                                name={a.person_name}
+                                mine={isMe}
+                                imageUrl={a.person_avatar_url}
+                              />
                             )}
                             {a.locked_at && (
                               <LockIcon className="h-3 w-3 text-amber-600 shrink-0" />
@@ -316,13 +320,35 @@ function initialsOf(name: string): string {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
-function Avatar({ name, mine }: { name: string; mine: boolean }) {
+function Avatar({
+  name,
+  mine,
+  imageUrl,
+}: {
+  name: string;
+  mine: boolean;
+  imageUrl?: string | null;
+}) {
+  const ringClass = mine ? "ring-2 ring-brand-500 ring-offset-1" : "";
+  const src = avatarSrc(imageUrl ?? null);
+  if (src) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        className={
+          "h-5 w-5 shrink-0 rounded-full object-cover " + ringClass
+        }
+      />
+    );
+  }
   const p = paletteFor(name);
   return (
     <span
       className={
         "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold "
-        + (mine ? "ring-2 ring-brand-500 ring-offset-1" : "")
+        + ringClass
       }
       style={{ backgroundColor: p.bg, color: p.fg }}
       aria-hidden="true"

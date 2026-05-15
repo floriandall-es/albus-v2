@@ -64,6 +64,7 @@ class PersonOut(BaseModel):
     email: str
     name: str
     locale: str | None = None
+    avatar_url: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

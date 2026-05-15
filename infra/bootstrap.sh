@@ -53,7 +53,7 @@ usermod -aG docker "${DEPLOY_USER}"
 
 # 4. Directories
 echo "==> Creating directories under ${APP_ROOT}"
-mkdir -p "${APP_ROOT}"/{db,caddy/data,caddy/config,backups}
+mkdir -p "${APP_ROOT}"/{db,caddy/data,caddy/config,backups,avatars}
 chown -R "${DEPLOY_USER}:${DEPLOY_USER}" "${APP_ROOT}"
 chmod 750 "${APP_ROOT}"
 

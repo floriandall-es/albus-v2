@@ -30,6 +30,7 @@ class AssignmentOut(BaseModel):
     date: date
     person_id: int | None
     person_name: str | None
+    person_avatar_url: str | None = None
     team_role_id: int | None
     team_role_label: str | None
     notes: str | None

@@ -1,7 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, avatarSrc } from "@/lib/api";
 import {
   Button,
   Card,
@@ -24,6 +24,11 @@ export function ProfileCards() {
 
   return (
     <div className="space-y-6 max-w-xl">
+      <AvatarSection
+        name={me.data.person.name}
+        avatarUrl={me.data.person.avatar_url}
+        onSaved={invalidate}
+      />
       <ProfileSection
         initialName={me.data.person.name}
         onSaved={invalidate}
@@ -34,6 +39,122 @@ export function ProfileCards() {
       />
       <PasswordSection />
     </div>
+  );
+}
+
+function AvatarSection({
+  name,
+  avatarUrl,
+  onSaved,
+}: {
+  name: string;
+  avatarUrl: string | null;
+  onSaved: () => void;
+}) {
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(
+    null,
+  );
+
+  const upload = useMutation({
+    mutationFn: (file: File) => api.uploadAvatar(file),
+    onSuccess: () => {
+      setMsg({ kind: "ok", text: "Foto actualizada." });
+      onSaved();
+    },
+    onError: (e) =>
+      setMsg({ kind: "err", text: (e as Error).message ?? "Error" }),
+  });
+  const remove = useMutation({
+    mutationFn: () => api.deleteAvatar(),
+    onSuccess: () => {
+      setMsg({ kind: "ok", text: "Foto eliminada." });
+      onSaved();
+    },
+    onError: (e) =>
+      setMsg({ kind: "err", text: (e as Error).message ?? "Error" }),
+  });
+
+  // Initials fallback when there's no photo. Same logic as the planning
+  // grid avatar so the look is consistent.
+  const initial = name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join("")
+    .toUpperCase();
+  const src = avatarSrc(avatarUrl);
+
+  return (
+    <Card>
+      <div className="p-4 space-y-3">
+        <h2 className="text-sm font-semibold text-gray-700">
+          Foto de perfil
+        </h2>
+        <div className="flex items-center gap-4">
+          {src ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={src}
+              alt=""
+              className="h-16 w-16 rounded-full object-cover ring-1 ring-gray-200"
+            />
+          ) : (
+            <span className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-brand-100 text-brand-700 text-lg font-semibold ring-1 ring-gray-200">
+              {initial || "?"}
+            </span>
+          )}
+          <div className="flex flex-col gap-2 text-sm">
+            <div className="text-xs text-gray-500">
+              JPEG, PNG o WebP. Máximo 5 MB. La imagen se recortará a un
+              cuadrado y se redimensionará a 128×128.
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => fileRef.current?.click()}
+                disabled={upload.isPending}
+              >
+                {upload.isPending ? "Subiendo…" : src ? "Cambiar" : "Subir foto"}
+              </Button>
+              {src && (
+                <Button
+                  variant="danger"
+                  onClick={() => remove.mutate()}
+                  disabled={remove.isPending}
+                >
+                  Eliminar
+                </Button>
+              )}
+            </div>
+          </div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (!f) return;
+              setMsg(null);
+              upload.mutate(f);
+              // Reset so picking the same file twice still fires onChange.
+              e.target.value = "";
+            }}
+          />
+        </div>
+        {msg && (
+          <p
+            className={
+              "text-xs " +
+              (msg.kind === "ok" ? "text-emerald-700" : "text-red-700")
+            }
+          >
+            {msg.text}
+          </p>
+        )}
+      </div>
+    </Card>
   );
 }
 
