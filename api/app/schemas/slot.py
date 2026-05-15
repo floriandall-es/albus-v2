@@ -22,6 +22,9 @@ class SlotSkillRequiredIn(BaseModel):
     strength: SkillStrength = "hard"
 
 
+_HEX_COLOR = r"^#[0-9a-fA-F]{6}$"
+
+
 class SlotCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     department_id: int | None = None
@@ -36,6 +39,7 @@ class SlotCreate(BaseModel):
     counts_for_equity: bool = True
     guardia_type: str | None = Field(default=None, max_length=64)
     equity_group_key: str | None = Field(default=None, max_length=64)
+    color: str | None = Field(default=None, pattern=_HEX_COLOR)
     team_roles: list[SlotTeamRoleIn] = Field(default_factory=list)
     skills_required: list[SlotSkillRequiredIn] = Field(default_factory=list)
 
@@ -53,6 +57,7 @@ class SlotUpdate(BaseModel):
     post_slot_rest: bool | None = None
     counts_for_equity: bool | None = None
     guardia_type: str | None = Field(default=None, max_length=64)
+    color: str | None = Field(default=None, pattern=_HEX_COLOR)
     # If provided, replaces the existing team_roles / skills_required atomically.
     team_roles: list[SlotTeamRoleIn] | None = None
     skills_required: list[SlotSkillRequiredIn] | None = None
@@ -87,6 +92,7 @@ class SlotOut(BaseModel):
     counts_for_equity: bool
     guardia_type: str | None
     equity_group_key: str | None
+    color: str | None = None
     crosses_midnight: bool
     team_roles: list[SlotTeamRoleOut]
     skills_required: list[SlotSkillRequiredOut]

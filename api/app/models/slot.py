@@ -60,6 +60,9 @@ class Slot(Base):
     # per distinct equity_group_key (NULL is its own catch-all bucket). Has
     # no effect when counts_for_equity=False.
     equity_group_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 7-char hex color (#rrggbb) used by the UI to colour-code the slot
+    # row dot in the planning grid. Null = no dot.
+    color: Mapped[str | None] = mapped_column(String(7), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -26,6 +26,7 @@ class AssignmentOut(BaseModel):
     schedule_id: int
     slot_id: int
     slot_name: str
+    slot_color: str | None = None
     date: date
     person_id: int | None
     person_name: str | None

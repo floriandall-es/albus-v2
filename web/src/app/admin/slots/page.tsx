@@ -172,6 +172,7 @@ function SlotDialog({
   const [equityGroupKey, setEquityGroupKey] = useState<string>(
     initial?.equity_group_key ?? "",
   );
+  const [color, setColor] = useState<string | null>(initial?.color ?? null);
   const [teamRoles, setTeamRoles] = useState<TeamRoleDraft[]>(
     initial?.team_roles.map((r) => ({
       role_label: r.role_label,
@@ -215,6 +216,7 @@ function SlotDialog({
         counts_for_equity: countsEquity,
         guardia_type: guardiaType.trim() || null,
         equity_group_key: equityGroupKey.trim() || null,
+        color: color,
         start_time: startTime ? `${startTime}:00` : null,
         end_time: endTime ? `${endTime}:00` : null,
         team_roles: mode === "team_composition" ? teamRoles : [],
@@ -358,6 +360,15 @@ function SlotDialog({
             </p>
           </div>
         )}
+
+        <div>
+          <span className="text-sm font-medium text-gray-700">Color</span>
+          <SlotColorPicker value={color} onChange={setColor} />
+          <p className="mt-1 text-xs text-gray-500">
+            Punto coloreado junto al nombre del turno en la planificación.
+            Opcional.
+          </p>
+        </div>
 
         {mode === "team_composition" ? (
           <div className="border-t pt-3">
@@ -1219,6 +1230,72 @@ function RotationEditor({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// Curated swatch palette. Bigger range than the auto-pastels — admins
+// can group slots by their own logic (all guardias rose, all consultas
+// blue, etc.). "None" clears the colour back to null.
+const SLOT_COLORS = [
+  "#0d9488", // teal
+  "#3b82f6", // blue
+  "#6366f1", // indigo
+  "#8b5cf6", // violet
+  "#ec4899", // pink
+  "#f43f5e", // rose
+  "#f59e0b", // amber
+  "#10b981", // emerald
+  "#06b6d4", // cyan
+  "#64748b", // slate
+];
+
+function SlotColorPicker({
+  value,
+  onChange,
+}: {
+  value: string | null;
+  onChange: (v: string | null) => void;
+}) {
+  return (
+    <div className="mt-2 flex items-center gap-2 flex-wrap">
+      <button
+        type="button"
+        onClick={() => onChange(null)}
+        title="Sin color"
+        aria-label="Sin color"
+        className={
+          "relative h-6 w-6 rounded-full border bg-white "
+          + (value === null
+            ? "border-gray-900 ring-2 ring-offset-1 ring-brand-300"
+            : "border-gray-300")
+        }
+      >
+        <span
+          className="absolute inset-1 rounded-full border border-gray-300"
+          aria-hidden
+        />
+        <span
+          className="absolute left-0 top-1/2 -translate-y-1/2 h-px w-full bg-gray-400 rotate-45"
+          aria-hidden
+        />
+      </button>
+      {SLOT_COLORS.map((c) => (
+        <button
+          key={c}
+          type="button"
+          onClick={() => onChange(c)}
+          title={c}
+          aria-label={`Color ${c}`}
+          className={
+            "h-6 w-6 rounded-full border transition-transform "
+            + (value === c
+              ? "ring-2 ring-offset-1 ring-brand-400 border-gray-900 scale-110"
+              : "border-gray-300 hover:scale-110")
+          }
+          style={{ backgroundColor: c }}
+        />
+      ))}
     </div>
   );
 }

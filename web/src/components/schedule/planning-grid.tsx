@@ -115,10 +115,12 @@ export function PlanningGrid({
                 }
               >
                 <span className="flex items-center gap-2">
-                  <span
-                    className="h-2 w-2 rounded-full shrink-0"
-                    style={{ backgroundColor: slotDotColor(row.slot_name) }}
-                  />
+                  {row.color && (
+                    <span
+                      className="h-2 w-2 rounded-full shrink-0"
+                      style={{ backgroundColor: row.color }}
+                    />
+                  )}
                   <span>{row.display_name}</span>
                 </span>
               </td>
@@ -247,6 +249,7 @@ function buildGrid(assignments: Assignment[]) {
       slot_id: number;
       slot_name: string;
       display_name: string;
+      color: string | null;
       cells: Record<string, Assignment[]>;
     }
   >();
@@ -257,6 +260,7 @@ function buildGrid(assignments: Assignment[]) {
         slot_id: a.slot_id,
         slot_name: a.slot_name,
         display_name: a.slot_name,
+        color: a.slot_color ?? null,
         cells: {},
       };
       slotMap.set(a.slot_id, row);
@@ -303,10 +307,6 @@ function hashString(s: string): number {
 
 function paletteFor(name: string) {
   return AVATAR_PALETTE[hashString(name) % AVATAR_PALETTE.length];
-}
-
-function slotDotColor(slotName: string): string {
-  return paletteFor(slotName).fg;
 }
 
 function initialsOf(name: string): string {

@@ -185,6 +185,7 @@ def _serialize(ctx: RequestContext, slot: Slot) -> SlotOut:
         counts_for_equity=slot.counts_for_equity,
         guardia_type=slot.guardia_type,
         equity_group_key=slot.equity_group_key,
+        color=slot.color,
         crosses_midnight=slot.crosses_midnight,
         team_roles=[
             SlotTeamRoleOut(
@@ -289,6 +290,7 @@ def create_slot(
         counts_for_equity=payload.counts_for_equity,
         guardia_type=(payload.guardia_type or None),
         equity_group_key=(payload.equity_group_key or None),
+        color=(payload.color or None),
     )
     ctx.db.add(obj)
     try:
@@ -339,6 +341,9 @@ def update_slot(
     if "equity_group_key" in data:
         eg = data["equity_group_key"]
         data["equity_group_key"] = eg or None
+    if "color" in data:
+        c = data["color"]
+        data["color"] = c or None
     for k, v in data.items():
         setattr(obj, k, v)
     try:
