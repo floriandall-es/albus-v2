@@ -5,6 +5,7 @@ import {
   api,
   type Category,
   type DaysApplied,
+  type Pool,
   type Skill,
   type SkillStrength,
   type Slot,
@@ -45,6 +46,7 @@ export default function SlotsPage() {
   const cats = useQuery({ queryKey: ["categories"], queryFn: api.listCategories });
   const skills = useQuery({ queryKey: ["skills"], queryFn: api.listSkills });
   const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
+  const pools = useQuery({ queryKey: ["pools"], queryFn: api.listPools });
   const [editing, setEditing] = useState<Slot | "new" | null>(null);
 
   const del = useMutation({
@@ -68,6 +70,8 @@ export default function SlotsPage() {
         for (const s of list.data) {
           nameCounts.set(s.name, (nameCounts.get(s.name) ?? 0) + 1);
         }
+        const poolNameById = new Map<number, string>();
+        for (const p of pools.data ?? []) poolNameById.set(p.id, p.name);
         return (
         <Card>
           <table className="w-full text-sm">
@@ -78,6 +82,7 @@ export default function SlotsPage() {
                 <th className="px-4 py-2 font-medium">Días</th>
                 <th className="px-4 py-2 font-medium">Modo</th>
                 <th className="px-4 py-2 font-medium">Plazas</th>
+                <th className="px-4 py-2 font-medium">Unidad</th>
                 <th className="px-4 py-2 font-medium text-right">Acciones</th>
               </tr>
             </thead>
@@ -108,6 +113,11 @@ export default function SlotsPage() {
                           || s.headcount
                         : s.headcount}
                   </td>
+                  <td className="px-4 py-2 text-gray-600">
+                    {s.pool_id != null
+                      ? poolNameById.get(s.pool_id) ?? `#${s.pool_id}`
+                      : <span className="text-gray-400">—</span>}
+                  </td>
                   <td className="px-4 py-2 text-right space-x-2">
                     <Button variant="secondary" onClick={() => setEditing(s)}>
                       Editar
@@ -135,6 +145,7 @@ export default function SlotsPage() {
           categories={cats.data ?? []}
           skills={skills.data ?? []}
           team={team.data ?? []}
+          pools={pools.data ?? []}
           onClose={() => setEditing(null)}
         />
       )}
@@ -150,12 +161,14 @@ function SlotDialog({
   categories,
   skills,
   team,
+  pools,
   onClose,
 }: {
   initial: Slot | null;
   categories: Category[];
   skills: Skill[];
   team: TeamMember[];
+  pools: Pool[];
   onClose: () => void;
 }) {
   const qc = useQueryClient();
@@ -183,6 +196,10 @@ function SlotDialog({
     initial?.equity_group_key ?? "",
   );
   const [color, setColor] = useState<string | null>(initial?.color ?? null);
+  // `pool_id = null` means "any team member can cover this slot". When
+  // set, the scheduler restricts candidates to that pool's members
+  // (see scheduler.py — `if slot.pool_id is not None: …`).
+  const [poolId, setPoolId] = useState<number | null>(initial?.pool_id ?? null);
   const [teamRoles, setTeamRoles] = useState<TeamRoleDraft[]>(
     initial?.team_roles.map((r) => ({
       role_label: r.role_label,
@@ -247,6 +264,7 @@ function SlotDialog({
         guardia_type: guardiaType.trim() || null,
         equity_group_key: equityGroupKey.trim() || null,
         color: color,
+        pool_id: poolId,
         start_time: startTime ? `${startTime}:00` : null,
         end_time: endTime ? `${endTime}:00` : null,
         team_roles: mode === "team_composition" ? teamRoles : [],
@@ -371,6 +389,22 @@ function SlotDialog({
             onChange={setHeadcount}
           />
         )}
+        <div>
+          <Select
+            label="Unidad"
+            value={poolId ?? ""}
+            onChange={(v) => setPoolId(v === "" ? null : Number(v))}
+            options={[
+              { value: "", label: "— Sin unidad (cualquier persona) —" },
+              ...pools.map((p) => ({ value: p.id, label: p.name })),
+            ]}
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            Si seleccionas una unidad, solo sus miembros podrán cubrir este
+            turno. Déjalo en blanco para permitir a cualquier persona del
+            equipo.
+          </p>
+        </div>
         {/*
           Hidden from the basic editor (post_slot_rest, counts_for_equity,
           guardia_type) — see commit message. Existing values on saved
