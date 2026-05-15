@@ -188,6 +188,26 @@ def archive_schedule(
     return s
 
 
+@router.post(
+    "/schedules/{schedule_id}/unarchive", response_model=ScheduleOut
+)
+def unarchive_schedule(
+    schedule_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> Schedule:
+    _require_admin(ctx)
+    s = ctx.db.get(Schedule, schedule_id)
+    if not s or s.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    if s.status != "archived":
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se pueden desarchivar planificaciones archivadas",
+        )
+    scheduler.unarchive(ctx.db, s)
+    return s
+
+
 @router.delete(
     "/schedules/{schedule_id}",
     status_code=status.HTTP_204_NO_CONTENT,

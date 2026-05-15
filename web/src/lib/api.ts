@@ -775,6 +775,8 @@ export const api = {
     request<Schedule>(`/api/schedules/${id}/publish`, { method: "POST" }),
   archiveSchedule: (id: number) =>
     request<Schedule>(`/api/schedules/${id}/archive`, { method: "POST" }),
+  unarchiveSchedule: (id: number) =>
+    request<Schedule>(`/api/schedules/${id}/unarchive`, { method: "POST" }),
   deleteSchedule: (id: number) =>
     request<void>(`/api/schedules/${id}`, { method: "DELETE" }),
 

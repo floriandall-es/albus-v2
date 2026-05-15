@@ -45,6 +45,13 @@ export default function ScheduleDetailPage() {
     mutationFn: () => api.archiveSchedule(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["schedule", id] }),
   });
+  const unarchive = useMutation({
+    mutationFn: () => api.unarchiveSchedule(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["schedule", id] });
+      qc.invalidateQueries({ queryKey: ["schedules"] });
+    },
+  });
   const regenerate = useMutation({
     mutationFn: () => api.generateSchedule(detail.data!.period),
     onSuccess: (data) => {
@@ -134,6 +141,15 @@ export default function ScheduleDetailPage() {
               disabled={archive.isPending}
             >
               Archivar
+            </Button>
+          )}
+          {s.status === "archived" && (
+            <Button
+              variant="secondary"
+              onClick={() => unarchive.mutate()}
+              disabled={unarchive.isPending}
+            >
+              Desarchivar
             </Button>
           )}
         </div>

@@ -1816,3 +1816,17 @@ def archive(db: Session, schedule: Schedule) -> None:
         return
     schedule.status = "archived"
     db.flush()
+
+
+def unarchive(db: Session, schedule: Schedule) -> None:
+    """Flip archived → published. The schedule re-enters the live
+    /me/turnos dropdown and can again be swapped on.
+
+    Period-uniqueness still holds, so if the period already has a
+    *different* published schedule (shouldn't happen given the UNIQUE
+    constraint, but defensive) the caller gets the IntegrityError on
+    flush — surfacing it as a 409 from the route is fine."""
+    if schedule.status != "archived":
+        return
+    schedule.status = "published"
+    db.flush()
