@@ -1,7 +1,6 @@
 "use client";
 import { useMemo } from "react";
 import type { Assignment } from "@/lib/api";
-import { Card } from "@/components/admin/ui";
 
 // Shared planning grid: slot rows × date columns. Used by:
 // - admin schedule detail (interactive — cells open the editor on click)
@@ -43,88 +42,127 @@ export function PlanningGrid({
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <div className="overflow-x-auto">
-      <Card>
-        <table className="text-xs">
-          <thead className="border-b border-gray-200 bg-gray-50">
-            <tr>
-              <th className="sticky left-0 bg-gray-50 z-10 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 border-r border-gray-200 min-w-[180px]">
-                Turno
-              </th>
-              {grid.dates.map((d) => {
-                const isHoliday = holidayDates.has(d);
-                const dt = new Date(d);
-                const wd = dt.getDay();
-                const isWeekend = wd === 0 || wd === 6;
-                const isToday = d === today;
-                return (
-                  <th
-                    key={d}
-                    className={
-                      "px-1 py-2 font-medium text-center min-w-[80px] border-b-2 "
-                      + (isToday
-                        ? "border-brand-500 "
-                        : "border-transparent ")
-                      + (isHoliday
-                        ? "bg-amber-50 text-amber-900"
+    <div className="overflow-x-auto rounded-xl bg-white shadow-soft ring-1 ring-gray-200">
+      <table className="text-xs">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="sticky left-0 bg-gray-50 z-10 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 border-b border-r border-gray-200 min-w-[180px]">
+              Turno
+            </th>
+            {grid.dates.map((d) => {
+              const isHoliday = holidayDates.has(d);
+              const dt = new Date(d);
+              const wd = dt.getDay();
+              const isWeekend = wd === 0 || wd === 6;
+              const isToday = d === today;
+              return (
+                <th
+                  key={d}
+                  className={
+                    "px-1 py-2.5 text-center min-w-[84px] border-b "
+                    + (isToday
+                      ? "bg-brand-50 border-brand-200 "
+                      : isHoliday
+                        ? "bg-amber-50 border-amber-200 "
                         : isWeekend
-                          ? "bg-gray-50 text-gray-500"
-                          : "")
+                          ? "bg-gray-100/60 border-gray-200 "
+                          : "border-gray-200 ")
+                  }
+                >
+                  <div
+                    className={
+                      "text-sm font-semibold "
+                      + (isToday
+                        ? "text-brand-700"
+                        : isHoliday
+                          ? "text-amber-900"
+                          : isWeekend
+                            ? "text-gray-500"
+                            : "text-gray-900")
                     }
                   >
-                    <div className="text-sm font-semibold">{d.slice(8)}</div>
-                    <div className="font-normal text-[10px] uppercase tracking-wide">
-                      {["dom", "lun", "mar", "mié", "jue", "vie", "sáb"][wd]}
-                    </div>
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {grid.slotRows.map((row) => (
-              <tr
-                key={row.slot_id}
-                className="border-b border-gray-100 last:border-b-0"
+                    {d.slice(8)}
+                  </div>
+                  <div
+                    className={
+                      "font-medium text-[10px] uppercase tracking-wide "
+                      + (isToday
+                        ? "text-brand-600"
+                        : isHoliday
+                          ? "text-amber-700"
+                          : isWeekend
+                            ? "text-gray-400"
+                            : "text-gray-500")
+                    }
+                  >
+                    {["dom", "lun", "mar", "mié", "jue", "vie", "sáb"][wd]}
+                  </div>
+                </th>
+              );
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {grid.slotRows.map((row, rowIdx) => (
+            <tr
+              key={row.slot_id}
+              className={rowIdx % 2 === 1 ? "bg-gray-50/40" : ""}
+            >
+              <td
+                className={
+                  "sticky left-0 z-10 px-3 py-2 border-r border-gray-200 font-medium text-gray-800 "
+                  + (rowIdx % 2 === 1 ? "bg-gray-50/90" : "bg-white")
+                }
               >
-                <td className="sticky left-0 bg-white z-10 px-3 py-2 border-r border-gray-200 font-medium text-gray-800">
-                  {row.display_name}
-                </td>
-                {grid.dates.map((d) => {
-                  const cell = row.cells[d] ?? [];
-                  const empty =
-                    cell.length === 0
-                    || cell.every((a) => a.person_id === null);
-                  const hasMe =
-                    highlightPersonId !== null
-                    && cell.some((a) => a.person_id === highlightPersonId);
-                  return (
-                    <td
-                      key={d}
-                      className={
-                        "align-top px-1.5 py-2 "
-                        + (empty
-                          ? "bg-rose-50/60"
-                          : hasMe
-                            ? "bg-brand-50/70"
+                <span className="flex items-center gap-2">
+                  <span
+                    className="h-2 w-2 rounded-full shrink-0"
+                    style={{ backgroundColor: slotDotColor(row.slot_name) }}
+                  />
+                  <span>{row.display_name}</span>
+                </span>
+              </td>
+              {grid.dates.map((d) => {
+                const cell = row.cells[d] ?? [];
+                const empty =
+                  cell.length === 0
+                  || cell.every((a) => a.person_id === null);
+                const hasMe =
+                  highlightPersonId !== null
+                  && cell.some((a) => a.person_id === highlightPersonId);
+                const isToday = d === today;
+                return (
+                  <td
+                    key={d}
+                    className={
+                      "align-top px-1.5 py-2 border-b border-gray-100 "
+                      + (empty
+                        ? "bg-rose-50/70"
+                        : hasMe
+                          ? "bg-brand-50/70"
+                          : isToday
+                            ? "bg-brand-50/30"
                             : "")
-                      }
-                    >
-                      {cell.length === 0 ? (
-                        <span className="text-[11px] text-gray-300">—</span>
-                      ) : (
-                        cell.map((a) => {
-                          const isMe =
-                            highlightPersonId !== null
-                            && a.person_id === highlightPersonId;
-                          const content = (
-                            <span className="inline-flex items-center gap-1">
-                              {a.locked_at && (
-                                <LockIcon className="h-3 w-3 text-amber-600" />
-                              )}
-                              {a.swap_offer_id !== null && (
-                                <SwapIcon className="h-3 w-3 text-sky-600" />
-                              )}
+                    }
+                  >
+                    {cell.length === 0 ? (
+                      <span className="text-[11px] text-gray-300">—</span>
+                    ) : (
+                      cell.map((a) => {
+                        const isMe =
+                          highlightPersonId !== null
+                          && a.person_id === highlightPersonId;
+                        const content = (
+                          <span className="inline-flex items-center gap-1.5 max-w-full">
+                            {a.person_id !== null && a.person_name && (
+                              <Avatar name={a.person_name} mine={isMe} />
+                            )}
+                            {a.locked_at && (
+                              <LockIcon className="h-3 w-3 text-amber-600 shrink-0" />
+                            )}
+                            {a.swap_offer_id != null && (
+                              <SwapIcon className="h-3 w-3 text-sky-600 shrink-0" />
+                            )}
                               {a.person_id === null ? (
                                 <span className="text-rose-700 font-medium">
                                   Sin cubrir
@@ -154,7 +192,7 @@ export function PlanningGrid({
                             && (cellIsClickable
                               ? cellIsClickable(a)
                               : true);
-                          const swapTooltip = a.swap_offer_id !== null
+                          const swapTooltip = a.swap_offer_id != null
                             ? "Turno modificado por un cambio entre miembros"
                             : null;
                           const tooltip = [
@@ -197,7 +235,6 @@ export function PlanningGrid({
             ))}
           </tbody>
         </table>
-      </Card>
     </div>
   );
 }
@@ -240,6 +277,59 @@ function buildGrid(assignments: Assignment[]) {
     a.display_name.localeCompare(b.display_name),
   );
   return { dates, slotRows };
+}
+
+// Soft pastel palette for slot row dots + person avatar backgrounds.
+// Picked deterministically from a name so the same person/slot always
+// gets the same colour across re-renders and sessions.
+const AVATAR_PALETTE = [
+  { bg: "#fef3c7", fg: "#92400e" }, // amber
+  { bg: "#dbeafe", fg: "#1e40af" }, // blue
+  { bg: "#dcfce7", fg: "#166534" }, // green
+  { bg: "#fce7f3", fg: "#9d174d" }, // pink
+  { bg: "#e0e7ff", fg: "#3730a3" }, // indigo
+  { bg: "#ffe4e6", fg: "#9f1239" }, // rose
+  { bg: "#ccfbf1", fg: "#115e59" }, // teal
+  { bg: "#f3e8ff", fg: "#6b21a8" }, // purple
+];
+
+function hashString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+function paletteFor(name: string) {
+  return AVATAR_PALETTE[hashString(name) % AVATAR_PALETTE.length];
+}
+
+function slotDotColor(slotName: string): string {
+  return paletteFor(slotName).fg;
+}
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+function Avatar({ name, mine }: { name: string; mine: boolean }) {
+  const p = paletteFor(name);
+  return (
+    <span
+      className={
+        "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold "
+        + (mine ? "ring-2 ring-brand-500 ring-offset-1" : "")
+      }
+      style={{ backgroundColor: p.bg, color: p.fg }}
+      aria-hidden="true"
+    >
+      {initialsOf(name)}
+    </span>
+  );
 }
 
 function LockIcon({ className }: { className?: string }) {
