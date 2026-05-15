@@ -340,6 +340,22 @@ function PasswordSection() {
         onSubmit={(e) => {
           e.preventDefault();
           setMsg(null);
+          // Client-side guards mirror the API constraints so the user
+          // never sees the raw Pydantic 422. Order matters: the empty
+          // / length checks fire before the mismatch check because
+          // showing "must be 8 chars" is more actionable than
+          // "passwords don't match" when the user is still typing.
+          if (current.length === 0) {
+            setMsg({ kind: "err", text: "Introduce tu contraseña actual." });
+            return;
+          }
+          if (next.length < 8) {
+            setMsg({
+              kind: "err",
+              text: "La contraseña nueva debe tener al menos 8 caracteres.",
+            });
+            return;
+          }
           if (next !== confirm) {
             setMsg({ kind: "err", text: "Las contraseñas no coinciden." });
             return;

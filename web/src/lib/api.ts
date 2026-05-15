@@ -459,6 +459,74 @@ export type MeResponse = {
   counts: TenantSummaryCounts;
 };
 
+// Pydantic v2 error item we expect inside FastAPI's `detail` array for
+// 422 validation responses. We only consume a handful of keys — the
+// rest is ignored.
+type PydanticErrorItem = {
+  type?: string;
+  loc?: unknown[];
+  msg?: string;
+  ctx?: Record<string, unknown>;
+};
+
+// Map a single Pydantic v2 error item to a human-readable Spanish
+// sentence. The fallback (`item.msg`) handles anything we haven't
+// special-cased — better to surface SOMETHING legible than the raw
+// JSON blob we used to throw.
+function formatPydanticError(item: PydanticErrorItem): string {
+  const field = Array.isArray(item.loc)
+    // FastAPI prefixes locations with "body" / "query" / "path"; the
+    // user only cares about the leaf field name (e.g. "new_password").
+    ? String(item.loc[item.loc.length - 1] ?? "")
+    : "";
+  const fieldLabel: Record<string, string> = {
+    new_password: "La contraseña",
+    current_password: "La contraseña actual",
+    password: "La contraseña",
+    email: "El email",
+    name: "El nombre",
+  };
+  const subject = fieldLabel[field] ?? "Este campo";
+
+  switch (item.type) {
+    case "string_too_short": {
+      const min = Number(item.ctx?.min_length ?? 0) || 0;
+      return min
+        ? `${subject} debe tener al menos ${min} caracteres.`
+        : `${subject} es demasiado corto.`;
+    }
+    case "string_too_long": {
+      const max = Number(item.ctx?.max_length ?? 0) || 0;
+      return max
+        ? `${subject} no puede tener más de ${max} caracteres.`
+        : `${subject} es demasiado largo.`;
+    }
+    case "value_error":
+    case "value_error.email":
+      return `${subject} no es válido.`;
+    case "missing":
+      return `${subject} es obligatorio.`;
+    default:
+      return item.msg || "Datos inválidos.";
+  }
+}
+
+// Convert the raw `detail` field returned by the API into something
+// safe to drop into a UI error label. Strings pass through; arrays of
+// Pydantic items (FastAPI 422) are joined; anything else falls back to
+// JSON.stringify so we don't accidentally render `[object Object]`.
+function formatErrorDetail(detail: unknown, fallback: string): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const msgs = detail.map((d) => formatPydanticError(d as PydanticErrorItem));
+    return msgs.length ? msgs.join(" ") : fallback;
+  }
+  if (detail && typeof detail === "object") {
+    return JSON.stringify(detail);
+  }
+  return fallback;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body) headers.set("Content-Type", "application/json");
@@ -475,7 +543,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     } catch {
       /* ignore */
     }
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    throw new Error(formatErrorDetail(detail, res.statusText));
   }
   return (await res.json()) as T;
 }
@@ -539,9 +607,7 @@ export const api = {
       } catch {
         /* ignore */
       }
-      throw new Error(
-        typeof detail === "string" ? detail : JSON.stringify(detail),
-      );
+      throw new Error(formatErrorDetail(detail, res.statusText));
     }
     return res.json();
   },
