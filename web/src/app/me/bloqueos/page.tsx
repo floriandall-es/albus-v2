@@ -6,6 +6,7 @@ import {
   type AvailabilityBlock,
   type AvailabilityBlockType,
 } from "@/lib/api";
+import { DateRangeField } from "@/components/admin/date-range";
 
 const TYPE_LABEL: Record<AvailabilityBlockType, string> = {
   vacation: "Vacaciones",
@@ -150,26 +151,15 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
             save.mutate();
           }}
         >
-          <label className="block">
-            <span className="text-sm font-medium text-gray-700">Desde</span>
-            <input
-              type="date"
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-              required
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium text-gray-700">Hasta</span>
-            <input
-              type="date"
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-              required
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-            />
-          </label>
+          <DateRangeField
+            startDate={start}
+            endDate={end}
+            onChange={(s, e) => {
+              setStart(s);
+              setEnd(e);
+            }}
+            required
+          />
           <label className="block">
             <span className="text-sm font-medium text-gray-700">Tipo</span>
             <select

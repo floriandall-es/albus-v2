@@ -17,6 +17,7 @@ import {
   Select,
   TextField,
 } from "@/components/admin/ui";
+import { DateRangeField } from "@/components/admin/date-range";
 
 const TYPES: { value: AvailabilityBlockType; label: string }[] = [
   { value: "vacation", label: "Vacaciones" },
@@ -74,21 +75,31 @@ export default function AvailabilityPage() {
         }
       />
       <PendingApprovals />
-      <div className="mb-4 grid grid-cols-3 gap-3">
-        <Select
-          label="Persona"
-          value={personId}
-          onChange={(v) => setPersonId(v === "" ? "" : Number(v))}
-          options={[
-            { value: "", label: "— Todas —" },
-            ...((team.data ?? []).map((m: TeamMember) => ({
-              value: m.person_id,
-              label: m.person_name,
-            })) as { value: number | ""; label: string }[]),
-          ]}
-        />
-        <TextField label="Desde" type="date" value={from} onChange={setFrom} />
-        <TextField label="Hasta" type="date" value={to} onChange={setTo} />
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <div className="min-w-[200px]">
+          <Select
+            label="Persona"
+            value={personId}
+            onChange={(v) => setPersonId(v === "" ? "" : Number(v))}
+            options={[
+              { value: "", label: "— Todas —" },
+              ...((team.data ?? []).map((m: TeamMember) => ({
+                value: m.person_id,
+                label: m.person_name,
+              })) as { value: number | ""; label: string }[]),
+            ]}
+          />
+        </div>
+        <div className="flex-1 min-w-[320px]">
+          <DateRangeField
+            startDate={from}
+            endDate={to}
+            onChange={(s, e) => {
+              setFrom(s);
+              setTo(e);
+            }}
+          />
+        </div>
       </div>
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
       {list.data && list.data.length === 0 && (
@@ -218,8 +229,15 @@ function BlockModal({
           onChange={(v) => setPersonId(v === "" ? "" : Number(v))}
           options={team.map((m) => ({ value: m.person_id, label: m.person_name }))}
         />
-        <TextField label="Desde" type="date" value={start} onChange={setStart} />
-        <TextField label="Hasta" type="date" value={end} onChange={setEnd} />
+        <DateRangeField
+          startDate={start}
+          endDate={end}
+          onChange={(s, e) => {
+            setStart(s);
+            setEnd(e);
+          }}
+          required
+        />
         <Select
           label="Tipo"
           value={type}
