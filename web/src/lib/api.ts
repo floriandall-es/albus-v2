@@ -82,6 +82,26 @@ export type AvailabilityBlock = {
   created_at: string;
 };
 
+// Aggregated stats — one row per (person, slot, year-month) for the
+// admin charts page.
+export type StatsRow = {
+  person_id: number;
+  person_name: string;
+  person_avatar_url: string | null;
+  slot_id: number;
+  slot_name: string;
+  slot_color: string | null;
+  year_month: string; // "YYYY-MM"
+  count: number;
+  weekend_or_holiday_count: number;
+};
+
+export type StatsResponse = {
+  from_date: string;
+  to_date: string;
+  rows: StatsRow[];
+};
+
 // Sanitized public read-only absence row used by the planning grid's
 // Libre row. Backed by /api/availability/team-absences.
 export type TeamAbsence = {
@@ -651,6 +671,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  // Admin stats — aggregated assignment counts per (person, slot, ym).
+  statsAssignments: (params: { from: string; to: string }) => {
+    const qs = new URLSearchParams();
+    qs.set("from", params.from);
+    qs.set("to", params.to);
+    return request<StatsResponse>(
+      `/api/stats/assignments?${qs.toString()}`,
+    );
+  },
 
   // Team absences (public, read-only). Used by the Libre row in the
   // planning grid; visible to any authenticated user.

@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeftRight,
+  BarChart3,
   CalendarDays,
   CalendarOff,
   Clock,
@@ -31,6 +32,7 @@ const NAV: NavSection[] = [
     title: "Operativa",
     items: [
       { href: "/admin/schedule", label: "Planificación", icon: CalendarDays },
+      { href: "/admin/stats", label: "Estadísticas", icon: BarChart3 },
       { href: "/admin/swaps", label: "Cambios de turno", icon: ArrowLeftRight },
       { href: "/admin/availability", label: "Bloqueos", icon: CalendarOff },
     ],
