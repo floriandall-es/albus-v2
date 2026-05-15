@@ -97,6 +97,16 @@ export default function ScheduleDetailPage() {
 
   const s = detail.data;
   const isEditable = s.status === "draft";
+  // Surface mutation errors that until now were swallowed silently
+  // (e.g. unarchive failing → button briefly disables, nothing else).
+  // First non-null wins; refreshing detail.data implicitly clears the
+  // visible error after a successful retry.
+  const actionError =
+    (publish.error as Error | null)
+    ?? (archive.error as Error | null)
+    ?? (unarchive.error as Error | null)
+    ?? (regenerate.error as Error | null)
+    ?? (remove.error as Error | null);
   return (
     <>
       <div className="mb-6 flex flex-wrap items-center gap-3">
@@ -149,11 +159,16 @@ export default function ScheduleDetailPage() {
               onClick={() => unarchive.mutate()}
               disabled={unarchive.isPending}
             >
-              Desarchivar
+              {unarchive.isPending ? "Desarchivando…" : "Desarchivar"}
             </Button>
           )}
         </div>
       </div>
+      {actionError && (
+        <div className="mb-3">
+          <ErrorText>{actionError.message}</ErrorText>
+        </div>
+      )}
       <p className="mb-4 text-sm text-gray-600">
         Estado: <span className="font-medium">{STATUS_LABEL[s.status]}</span>
         {s.solver_used && (
