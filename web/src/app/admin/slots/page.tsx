@@ -96,8 +96,18 @@ export default function SlotsPage() {
                       : "—"}
                   </td>
                   <td className="px-4 py-2 text-gray-600">{s.days_applied}</td>
-                  <td className="px-4 py-2 text-gray-600">{s.staffing_mode}</td>
-                  <td className="px-4 py-2">{s.headcount}</td>
+                  <td className="px-4 py-2 text-gray-600">
+                    {STAFFING.find((m) => m.value === s.staffing_mode)?.label
+                      ?? s.staffing_mode}
+                  </td>
+                  <td className="px-4 py-2">
+                    {s.staffing_mode === "single"
+                      ? 1
+                      : s.staffing_mode === "team_composition"
+                        ? s.team_roles.reduce((a, r) => a + r.headcount, 0)
+                          || s.headcount
+                        : s.headcount}
+                  </td>
                   <td className="px-4 py-2 text-right space-x-2">
                     <Button variant="secondary" onClick={() => setEditing(s)}>
                       Editar
@@ -204,6 +214,26 @@ function SlotDialog({
 
   const save = useMutation({
     mutationFn: async () => {
+      // Derive the slot-level headcount from the mode so the list view
+      // (which renders slot.headcount as "Plazas") never disagrees with
+      // what the editor showed.
+      // - single: always 1
+      // - multiple_same: what the admin typed
+      // - team_composition: sum of role plazas (the per-role headcounts
+      //   are the source of truth; the solver ignores slot.headcount in
+      //   this mode anyway, this is purely a display sync).
+      let derivedHeadcount: number;
+      if (mode === "single") {
+        derivedHeadcount = 1;
+      } else if (mode === "team_composition") {
+        derivedHeadcount = Math.max(
+          1,
+          teamRoles.reduce((acc, r) => acc + (r.headcount || 0), 0),
+        );
+      } else {
+        derivedHeadcount = Math.max(1, Number(headcount) || 1);
+      }
+
       const body: SlotInput = {
         name,
         days_applied: days,
@@ -211,7 +241,7 @@ function SlotDialog({
         // (the back-end validates this and ignores it for non-custom days).
         custom_days_bitmap: days === "custom" ? customDaysBitmap : null,
         staffing_mode: mode,
-        headcount: Number(headcount),
+        headcount: derivedHeadcount,
         post_slot_rest: postRest,
         counts_for_equity: countsEquity,
         guardia_type: guardiaType.trim() || null,
@@ -308,13 +338,39 @@ function SlotDialog({
         {days === "custom" && (
           <CustomDaysPicker value={customDaysBitmap} onChange={setCustomDaysBitmap} />
         )}
-        <Select
-          label="Modo de plantilla"
-          value={mode}
-          onChange={(v) => v && setMode(v as StaffingMode)}
-          options={STAFFING.map((s) => ({ value: s.value, label: s.label }))}
-        />
-        <TextField label="Plazas" type="number" value={headcount} onChange={setHeadcount} />
+        <div>
+          <Select
+            label="Modo de plantilla"
+            value={mode}
+            onChange={(v) => {
+              if (!v) return;
+              const next = v as StaffingMode;
+              setMode(next);
+              // Keep headcount consistent with the mode so /admin/slots
+              // doesn't show stale numbers. Single → always 1.
+              // Team composition → the per-role plazas are the truth;
+              // we keep slot.headcount in sync with their sum below.
+              if (next === "single") setHeadcount("1");
+            }}
+            options={STAFFING.map((s) => ({ value: s.value, label: s.label }))}
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            {mode === "single" &&
+              "Una sola persona cubre el turno (1 plaza)."}
+            {mode === "multiple_same" &&
+              "Varias personas con el mismo perfil cubren el turno. Indica cuántas plazas."}
+            {mode === "team_composition" &&
+              "Equipo con varios roles. Define los roles abajo; cada uno tiene su propia plaza y categoría."}
+          </p>
+        </div>
+        {mode === "multiple_same" && (
+          <TextField
+            label="Plazas"
+            type="number"
+            value={headcount}
+            onChange={setHeadcount}
+          />
+        )}
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
