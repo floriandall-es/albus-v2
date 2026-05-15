@@ -154,8 +154,20 @@ export function PlanningGrid({
                         const isMe =
                           highlightPersonId !== null
                           && a.person_id === highlightPersonId;
+                        // When the user view sets a highlight, dim every
+                        // OTHER assignment so own shifts pop. No effect
+                        // on the admin grid (no highlight set there).
+                        const dim =
+                          highlightPersonId !== null
+                          && !isMe
+                          && a.person_id !== null;
                         const content = (
-                          <span className="inline-flex items-center gap-1.5 max-w-full">
+                          <span
+                            className={
+                              "inline-flex items-center gap-1.5 max-w-full "
+                              + (dim ? "opacity-60" : "")
+                            }
+                          >
                             {a.person_id !== null && a.person_name && (
                               <Avatar
                                 name={a.person_name}
