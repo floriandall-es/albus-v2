@@ -371,35 +371,13 @@ function SlotDialog({
             onChange={setHeadcount}
           />
         )}
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={postRest}
-            onChange={(e) => setPostRest(e.target.checked)}
-          />
-          Genera descanso post-guardia
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={countsEquity}
-            onChange={(e) => setCountsEquity(e.target.checked)}
-          />
-          Cuenta para equidad
-        </label>
-        <div>
-          <TextField
-            label="Tipo de guardia"
-            value={guardiaType}
-            onChange={setGuardiaType}
-            placeholder="presencial_24h"
-          />
-          <p className="mt-1 text-xs text-gray-500">
-            Si este turno es una guardia, indica el tipo (presencial_24h,
-            localizada, findes_festivos…). Solo personas con ese tipo en su
-            perfil podrán cubrirlo. Déjalo vacío si no es una guardia.
-          </p>
-        </div>
+        {/*
+          Hidden from the basic editor (post_slot_rest, counts_for_equity,
+          guardia_type) — see commit message. Existing values on saved
+          slots still drive the solver; new slots inherit the React
+          state defaults (false / true / "") because postRest /
+          countsEquity / guardiaType are never re-assigned by the form.
+        */}
         {countsEquity && (
           <div>
             <TextField
