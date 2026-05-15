@@ -121,34 +121,6 @@ export default function StatsPage() {
     });
   }, [q.data, slotMeta, fromDate, toDate]);
 
-  // Chart 2: per person, count per slot summed over the range. Grouped
-  // bars (one cluster per person, one bar per slot type).
-  const perPersonData = useMemo(() => {
-    const persons = new Map<number, { person_name: string }>();
-    for (const r of q.data?.rows ?? []) {
-      if (!persons.has(r.person_id)) {
-        persons.set(r.person_id, { person_name: r.person_name });
-      }
-    }
-    const list = Array.from(persons.entries()).map(([pid, info]) => {
-      const row: Record<string, number | string> = {
-        person: info.person_name,
-        _pid: pid,
-      };
-      for (const slot of slotMeta) row[slot.slot_name] = 0;
-      for (const r of q.data?.rows ?? []) {
-        if (r.person_id !== pid) continue;
-        row[r.slot_name] =
-          (row[r.slot_name] as number) + r.count;
-      }
-      return row;
-    });
-    list.sort((a, b) =>
-      String(a.person).localeCompare(String(b.person)),
-    );
-    return list;
-  }, [q.data, slotMeta]);
-
   // Chart 3: per person, weekend/holiday counts only.
   const weekendData = useMemo(() => {
     const persons = new Map<number, number>();
@@ -242,51 +214,14 @@ export default function StatsPage() {
             </ResponsiveContainer>
           </ChartCard>
 
-          <ChartCard
-            title="Turnos por persona y tipo"
-            subtitle="Reparto acumulado en el rango seleccionado."
-          >
-            <ResponsiveContainer
-              width="100%"
-              height={Math.max(280, perPersonData.length * 44)}
-            >
-              <BarChart
-                data={perPersonData}
-                layout="vertical"
-                margin={{ top: 12, right: 16, left: 60, bottom: 4 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis
-                  type="number"
-                  tick={{ fontSize: 11, fill: "#4b5563" }}
-                  allowDecimals={false}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="person"
-                  tick={{ fontSize: 11, fill: "#4b5563" }}
-                  width={120}
-                />
-                <Tooltip
-                  cursor={{ fill: "rgba(13,148,136,0.06)" }}
-                  contentStyle={{
-                    fontSize: 12,
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 8,
-                  }}
-                />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                {slotMeta.map((slot) => (
-                  <Bar
-                    key={slot.slot_name}
-                    dataKey={slot.slot_name}
-                    stackId="b"
-                    fill={slot.color}
-                  />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
+          {slotMeta.map((slot) => (
+            <PerSlotChart
+              key={slot.slot_name}
+              slot={slot}
+              rows={q.data!.rows}
+              months={monthsBetween(fromDate, toDate)}
+            />
+          ))}
 
           <ChartCard
             title="Fines de semana y festivos por persona"
@@ -338,8 +273,8 @@ function ChartCard({
   subtitle,
   children,
 }: {
-  title: string;
-  subtitle?: string;
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -352,6 +287,135 @@ function ChartCard({
         <div className="mt-3">{children}</div>
       </div>
     </Card>
+  );
+}
+
+// Generate N color stops from white-ish to the slot's base color, used
+// to shade per-month stacks within a single slot's chart. Older months
+// are paler, the most recent month is the slot's full color.
+function shadeStops(baseHex: string, count: number): string[] {
+  if (count <= 1) return [baseHex];
+  // Parse #rrggbb
+  const r = parseInt(baseHex.slice(1, 3), 16);
+  const g = parseInt(baseHex.slice(3, 5), 16);
+  const b = parseInt(baseHex.slice(5, 7), 16);
+  // From 80% lightness toward the base color.
+  const out: string[] = [];
+  for (let i = 0; i < count; i++) {
+    // t=0 → very light tint of base; t=1 → base.
+    const t = count === 1 ? 1 : 0.35 + (0.65 * i) / (count - 1);
+    const rr = Math.round(255 - (255 - r) * t);
+    const gg = Math.round(255 - (255 - g) * t);
+    const bb = Math.round(255 - (255 - b) * t);
+    out.push(
+      `#${rr.toString(16).padStart(2, "0")}${gg.toString(16).padStart(2, "0")}${bb.toString(16).padStart(2, "0")}`,
+    );
+  }
+  return out;
+}
+
+function PerSlotChart({
+  slot,
+  rows,
+  months,
+}: {
+  slot: { slot_id: number; slot_name: string; color: string };
+  rows: StatsRow[];
+  months: string[];
+}) {
+  // Pivot: one row per person, columns are months (count for THIS slot).
+  // Skip persons with zero count for this slot — keeps the chart tight.
+  const data = useMemo(() => {
+    const byPid = new Map<number, { person: string; total: number; cells: Record<string, number> }>();
+    for (const r of rows) {
+      if (r.slot_name !== slot.slot_name) continue;
+      let row = byPid.get(r.person_id);
+      if (!row) {
+        row = { person: r.person_name, total: 0, cells: {} };
+        byPid.set(r.person_id, row);
+      }
+      row.cells[r.year_month] = (row.cells[r.year_month] ?? 0) + r.count;
+      row.total += r.count;
+    }
+    const list = Array.from(byPid.values()).map((p) => {
+      const out: Record<string, number | string> = {
+        person: p.person,
+        total: p.total,
+      };
+      for (const m of months) out[m] = p.cells[m] ?? 0;
+      return out;
+    });
+    // Sort by total descending — heaviest contributor at top.
+    list.sort((a, b) => (b.total as number) - (a.total as number));
+    return list;
+  }, [rows, slot.slot_name, months]);
+
+  const shades = useMemo(
+    () => shadeStops(slot.color, months.length),
+    [slot.color, months.length],
+  );
+
+  if (data.length === 0) {
+    return null;
+  }
+
+  const total = data.reduce((acc, r) => acc + (r.total as number), 0);
+
+  return (
+    <ChartCard
+      title={
+        <span className="inline-flex items-center gap-2">
+          <span
+            className="h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: slot.color }}
+          />
+          {slot.slot_name}
+        </span>
+      }
+      subtitle={`${total} asignaciones · barras apiladas por mes (más oscuro = mes más reciente).`}
+    >
+      <ResponsiveContainer
+        width="100%"
+        height={Math.max(180, data.length * 36 + 60)}
+      >
+        <BarChart
+          data={data}
+          layout="vertical"
+          margin={{ top: 8, right: 20, left: 60, bottom: 4 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+          <XAxis
+            type="number"
+            tick={{ fontSize: 11, fill: "#4b5563" }}
+            allowDecimals={false}
+          />
+          <YAxis
+            type="category"
+            dataKey="person"
+            tick={{ fontSize: 11, fill: "#4b5563" }}
+            width={120}
+          />
+          <Tooltip
+            cursor={{ fill: "rgba(0,0,0,0.04)" }}
+            contentStyle={{
+              fontSize: 12,
+              border: "1px solid #e5e7eb",
+              borderRadius: 8,
+            }}
+          />
+          <Legend wrapperStyle={{ fontSize: 11 }} />
+          {months.map((m, i) => (
+            <Bar
+              key={m}
+              dataKey={m}
+              stackId="s"
+              fill={shades[i]}
+              name={m}
+            />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+    </ChartCard>
   );
 }
 
