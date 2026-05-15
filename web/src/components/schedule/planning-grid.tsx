@@ -311,7 +311,7 @@ export function PlanningGrid({
                       {absent.length === 0 ? (
                         <span className="text-[11px] text-gray-300">—</span>
                       ) : (
-                        <div className="flex flex-wrap items-center gap-1">
+                        <div className="flex flex-col gap-1">
                           {absent.map((m) => {
                             const isMe =
                               highlightPersonId !== null
@@ -319,13 +319,25 @@ export function PlanningGrid({
                             return (
                               <span
                                 key={m.person_id}
-                                title={`${m.person_name} · ${BLOCK_LABEL[m.block_type] ?? m.block_type}`}
+                                className="inline-flex items-center gap-1.5 leading-tight"
+                                title={
+                                  BLOCK_LABEL[m.block_type] ?? m.block_type
+                                }
                               >
                                 <Avatar
                                   name={m.person_name}
                                   mine={isMe}
                                   imageUrl={m.person_avatar_url}
                                 />
+                                <span
+                                  className={
+                                    isMe
+                                      ? "font-semibold text-brand-700"
+                                      : "text-gray-800"
+                                  }
+                                >
+                                  {m.person_name}
+                                </span>
                               </span>
                             );
                           })}
