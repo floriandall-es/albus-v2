@@ -666,12 +666,18 @@ def _notify_admins(
     if not responder or not requester:
         return
 
-    admin_persons = (
-        ctx.db.query(Person)
-        .join(Membership, Membership.person_id == Person.id)
-        .filter(Membership.roles.contains(["admin"]))
+    # Membership.roles is a generic ARRAY(String), which doesn't support
+    # SQLAlchemy's .contains() — that's only on postgresql.ARRAY. Fetch all
+    # memberships and filter in Python. Cheap: typical tenant has handfuls
+    # of memberships.
+    admin_persons: list[Person] = []
+    for m, p in (
+        ctx.db.query(Membership, Person)
+        .join(Person, Person.id == Membership.person_id)
         .all()
-    )
+    ):
+        if "admin" in (m.roles or []):
+            admin_persons.append(p)
     for admin_p in admin_persons:
         subject, body = swap_admin_notification_email(
             admin_name=admin_p.name,
