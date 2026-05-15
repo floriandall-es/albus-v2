@@ -34,6 +34,35 @@ export function Empty({ children }: { children: ReactNode }) {
   );
 }
 
+// Richer empty state: icon + headline + optional sub-line + optional CTA.
+// Used everywhere a list is empty to give the user a visible next step.
+export function EmptyState({
+  icon,
+  title,
+  description,
+  action,
+}: {
+  icon?: ReactNode;
+  title: string;
+  description?: ReactNode;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="rounded-xl bg-white shadow-soft ring-1 ring-gray-200 p-10 text-center">
+      {icon && (
+        <div className="mx-auto mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-50 text-brand-600">
+          {icon}
+        </div>
+      )}
+      <div className="text-sm font-medium text-gray-800">{title}</div>
+      {description && (
+        <div className="mt-1 text-sm text-gray-500">{description}</div>
+      )}
+      {action && <div className="mt-4 flex justify-center">{action}</div>}
+    </div>
+  );
+}
+
 export function Button({
   children,
   onClick,

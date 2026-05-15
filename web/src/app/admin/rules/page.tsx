@@ -100,7 +100,7 @@ function SuccessionSection({
       {successionRules.length > 0 && (
         <Card>
           <table className="w-full text-sm">
-            <thead className="border-b bg-gray-50 text-left text-gray-600">
+            <thead className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-4 py-2 font-medium">Después de</th>
                 <th className="px-4 py-2 font-medium">No se puede</th>
@@ -113,7 +113,7 @@ function SuccessionSection({
             </thead>
             <tbody>
               {successionRules.map((r) => (
-                <tr key={r.id} className="border-b last:border-b-0">
+                <tr key={r.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors">
                   <td className="px-4 py-2">
                     {slotById[r.after_slot_id]?.name ?? `#${r.after_slot_id}`}
                   </td>
@@ -322,7 +322,7 @@ function FrequencySection({
       {list.data && list.data.length > 0 && (
         <Card>
           <table className="w-full text-sm">
-            <thead className="border-b bg-gray-50 text-left text-gray-600">
+            <thead className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-4 py-2 font-medium">Turno</th>
                 <th className="px-4 py-2 font-medium">Periodo</th>
@@ -334,7 +334,7 @@ function FrequencySection({
             </thead>
             <tbody>
               {list.data.map((c) => (
-                <tr key={c.id} className="border-b last:border-b-0">
+                <tr key={c.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors">
                   <td className="px-4 py-2">
                     {slotById[c.slot_id]?.name ?? `#${c.slot_id}`}
                   </td>
@@ -547,7 +547,7 @@ function SameDaySection({
       {sameDay.length > 0 && (
         <Card>
           <table className="w-full text-sm">
-            <thead className="border-b bg-gray-50 text-left text-gray-600">
+            <thead className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-4 py-2 font-medium">Turno</th>
                 <th className="px-4 py-2 font-medium">No se puede combinar con</th>
@@ -558,7 +558,7 @@ function SameDaySection({
             </thead>
             <tbody>
               {sameDay.map((r) => (
-                <tr key={r.id} className="border-b last:border-b-0">
+                <tr key={r.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors">
                   <td className="px-4 py-2">
                     {slotById[r.after_slot_id]?.name ?? `#${r.after_slot_id}`}
                   </td>

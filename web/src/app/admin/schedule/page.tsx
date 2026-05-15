@@ -7,14 +7,22 @@ import { api, type Schedule } from "@/lib/api";
 import {
   Button,
   Card,
-  Empty,
+  EmptyState,
   ErrorText,
   PageHeader,
+  StatusPill,
 } from "@/components/admin/ui";
 import {
   MonthPicker,
   formatPeriod,
 } from "@/components/admin/month-picker";
+import { CalendarDays } from "lucide-react";
+
+const STATUS_TONE = {
+  draft: "warning",
+  published: "success",
+  archived: "neutral",
+} as const;
 
 const STATUS_LABEL: Record<string, string> = {
   draft: "Borrador",
@@ -62,32 +70,48 @@ export default function SchedulesPage() {
       <div className="mt-6">
         {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
         {list.data && list.data.length === 0 && (
-          <Empty>Aún no se ha generado ninguna planificación.</Empty>
+          <EmptyState
+            icon={<CalendarDays className="h-5 w-5" />}
+            title="Aún no hay ninguna planificación"
+            description="Elige un mes arriba y pulsa Generar para crear la primera."
+          />
         )}
         {list.data && list.data.length > 0 && (
           <Card>
             <table className="w-full text-sm">
-              <thead className="border-b bg-gray-50 text-left text-gray-600">
-                <tr>
-                  <th className="px-4 py-2 font-medium">Mes</th>
-                  <th className="px-4 py-2 font-medium">Estado</th>
-                  <th className="px-4 py-2 font-medium">Generada</th>
-                  <th className="px-4 py-2 font-medium text-right">Acciones</th>
+              <thead className="border-b border-gray-200 bg-gray-50 text-left">
+                <tr className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                  <th className="px-4 py-2.5">Mes</th>
+                  <th className="px-4 py-2.5">Estado</th>
+                  <th className="px-4 py-2.5">Generada</th>
+                  <th className="px-4 py-2.5 text-right">Acciones</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-100">
                 {list.data.map((s: Schedule) => (
-                  <tr key={s.id} className="border-b last:border-b-0">
-                    <td className="px-4 py-2">{formatPeriod(s.period)}</td>
-                    <td className="px-4 py-2">
-                      {STATUS_LABEL[s.status] ?? s.status}
+                  <tr
+                    key={s.id}
+                    className="hover:bg-gray-50/60 transition-colors"
+                  >
+                    <td className="px-4 py-3 font-medium text-gray-900">
+                      {formatPeriod(s.period)}
                     </td>
-                    <td className="px-4 py-2 text-gray-600">
+                    <td className="px-4 py-3">
+                      <StatusPill
+                        tone={
+                          STATUS_TONE[s.status as keyof typeof STATUS_TONE]
+                          ?? "neutral"
+                        }
+                      >
+                        {STATUS_LABEL[s.status] ?? s.status}
+                      </StatusPill>
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
                       {s.generated_at
                         ? new Date(s.generated_at).toLocaleString()
                         : "—"}
                     </td>
-                    <td className="px-4 py-2 text-right">
+                    <td className="px-4 py-3 text-right">
                       <Link href={`/admin/schedule/${s.id}`}>
                         <Button variant="secondary">Abrir</Button>
                       </Link>

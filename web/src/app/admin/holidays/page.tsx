@@ -122,7 +122,7 @@ export default function HolidaysPage() {
       {list.data && list.data.length > 0 && (
         <Card>
           <table className="w-full text-sm">
-            <thead className="border-b bg-gray-50 text-left text-gray-600">
+            <thead className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-4 py-2 font-medium">Fecha</th>
                 <th className="px-4 py-2 font-medium">Nombre</th>
@@ -133,7 +133,7 @@ export default function HolidaysPage() {
             </thead>
             <tbody>
               {list.data.map((h: Holiday) => (
-                <tr key={h.id} className="border-b last:border-b-0">
+                <tr key={h.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors">
                   <td className="px-4 py-2">{h.date}</td>
                   <td className="px-4 py-2">{h.name}</td>
                   <td className="px-4 py-2 text-gray-600">

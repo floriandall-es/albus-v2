@@ -35,7 +35,7 @@ export default function SkillsPage() {
       {list.data && list.data.length > 0 && (
         <Card>
           <table className="w-full text-sm">
-            <thead className="border-b bg-gray-50 text-left text-gray-600">
+            <thead className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-4 py-2 font-medium">Nombre</th>
                 <th className="px-4 py-2 font-medium">Descripción</th>
@@ -44,7 +44,7 @@ export default function SkillsPage() {
             </thead>
             <tbody>
               {list.data.map((s) => (
-                <tr key={s.id} className="border-b last:border-b-0">
+                <tr key={s.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors">
                   <td className="px-4 py-2">{s.name}</td>
                   <td className="px-4 py-2 text-gray-600">{s.description ?? ""}</td>
                   <td className="px-4 py-2 text-right space-x-2">

@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Assignment } from "@/lib/api";
 import { PlanningGrid } from "@/components/schedule/planning-grid";
 import { formatPeriod } from "@/components/admin/month-picker";
+import { EmptyState } from "@/components/admin/ui";
+import { CalendarDays } from "lucide-react";
 
 export default function TurnosPage() {
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
@@ -74,9 +76,11 @@ export default function TurnosPage() {
       </div>
 
       {publishedSchedules.length === 0 && (
-        <p className="text-sm text-gray-500">
-          Aún no hay ninguna planificación publicada.
-        </p>
+        <EmptyState
+          icon={<CalendarDays className="h-5 w-5" />}
+          title="Aún no hay planificación publicada"
+          description="Cuando el responsable publique un mes, lo verás aquí."
+        />
       )}
 
       {selectedId !== null && detail.isLoading && (

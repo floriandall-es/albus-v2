@@ -41,7 +41,7 @@ export default function PoolsPage() {
       {list.data && list.data.length > 0 && (
         <Card>
           <table className="w-full text-sm">
-            <thead className="border-b bg-gray-50 text-left text-gray-600">
+            <thead className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-4 py-2 font-medium">Nombre</th>
                 <th className="px-4 py-2 font-medium">Modo</th>
@@ -52,7 +52,7 @@ export default function PoolsPage() {
             </thead>
             <tbody>
               {list.data.map((p) => (
-                <tr key={p.id} className="border-b last:border-b-0">
+                <tr key={p.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors">
                   <td className="px-4 py-2">{p.name}</td>
                   <td className="px-4 py-2 capitalize">{p.membership_mode}</td>
                   <td className="px-4 py-2">{p.equity_independent ? "Sí" : "No"}</td>

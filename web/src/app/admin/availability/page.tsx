@@ -11,13 +11,16 @@ import {
   Button,
   Card,
   Empty,
+  EmptyState,
   ErrorText,
   Modal,
   PageHeader,
   Select,
+  StatusPill,
   TextField,
 } from "@/components/admin/ui";
 import { DateRangeField } from "@/components/admin/date-range";
+import { CalendarOff } from "lucide-react";
 
 const TYPES: { value: AvailabilityBlockType; label: string }[] = [
   { value: "vacation", label: "Vacaciones" },
@@ -31,11 +34,11 @@ const TYPE_LABEL: Record<string, string> = Object.fromEntries(
   TYPES.map((t) => [t.value, t.label]),
 );
 
-const STATUS_BADGE: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-800",
-  approved: "bg-green-100 text-green-800",
-  denied: "bg-red-100 text-red-800",
-};
+const STATUS_TONE = {
+  pending: "warning",
+  approved: "success",
+  denied: "danger",
+} as const;
 const STATUS_LABEL: Record<string, string> = {
   pending: "Pendiente",
   approved: "Aprobada",
@@ -103,7 +106,14 @@ export default function AvailabilityPage() {
       </div>
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
       {list.data && list.data.length === 0 && (
-        <Empty>No hay bloqueos en el rango seleccionado.</Empty>
+        <EmptyState
+          icon={<CalendarOff className="h-5 w-5" />}
+          title="No hay bloqueos en el rango seleccionado"
+          description="Ajusta los filtros o añade un bloqueo nuevo."
+          action={
+            <Button onClick={() => setAdding(true)}>Añadir bloqueo</Button>
+          }
+        />
       )}
       {list.data && list.data.length > 0 && (
         <Card>
@@ -129,13 +139,14 @@ export default function AvailabilityPage() {
                     {TYPE_LABEL[b.block_type] ?? b.block_type}
                   </td>
                   <td className="px-4 py-2">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                        STATUS_BADGE[b.status] ?? "bg-gray-100 text-gray-700"
-                      }`}
+                    <StatusPill
+                      tone={
+                        STATUS_TONE[b.status as keyof typeof STATUS_TONE]
+                        ?? "neutral"
+                      }
                     >
                       {STATUS_LABEL[b.status] ?? b.status}
-                    </span>
+                    </StatusPill>
                   </td>
                   <td className="px-4 py-2 text-gray-600">{b.notes ?? "—"}</td>
                   <td className="px-4 py-2 text-right space-x-2">

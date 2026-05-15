@@ -1,12 +1,14 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeftRight } from "lucide-react";
 import {
   api,
   type SwapAssignmentSummary,
   type SwapOffer,
   type SwapResponse,
 } from "@/lib/api";
+import { EmptyState, StatusPill } from "@/components/admin/ui";
 
 export default function SwapsPage() {
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
@@ -58,9 +60,11 @@ export default function SwapsPage() {
         </h2>
         <NewOfferButton myPersonId={myPersonId ?? null} />
         {partition.mine.length === 0 ? (
-          <p className="text-sm text-gray-500">
-            Aún no has pedido ningún cambio.
-          </p>
+          <EmptyState
+            icon={<ArrowLeftRight className="h-5 w-5" />}
+            title="Aún no has pedido ningún cambio"
+            description="Desde Mis turnos puedes hacer clic en uno de los tuyos para pedir cobertura."
+          />
         ) : (
           <div className="space-y-3">
             {partition.mine.map((o) => (
@@ -75,9 +79,11 @@ export default function SwapsPage() {
           Disponibles
         </h2>
         {partition.open.length === 0 ? (
-          <p className="text-sm text-gray-500">
-            Ningún compañero ha pedido cambio.
-          </p>
+          <EmptyState
+            icon={<ArrowLeftRight className="h-5 w-5" />}
+            title="Ningún compañero ha pedido cambio"
+            description="Cuando alguien ofrezca uno de sus turnos lo verás aquí."
+          />
         ) : (
           <div className="space-y-3">
             {partition.open.map((o) => (
@@ -126,15 +132,17 @@ function shiftLabel(a: SwapAssignmentSummary): string {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const cls: Record<string, string> = {
-    open: "bg-amber-100 text-amber-800",
-    pending: "bg-amber-100 text-amber-800",
-    fulfilled: "bg-emerald-100 text-emerald-800",
-    accepted: "bg-emerald-100 text-emerald-800",
-    cancelled: "bg-gray-200 text-gray-700",
-    declined: "bg-gray-200 text-gray-700",
-    withdrawn: "bg-gray-200 text-gray-700",
-  };
+  const tone = (
+    {
+      open: "warning",
+      pending: "warning",
+      fulfilled: "success",
+      accepted: "success",
+      cancelled: "neutral",
+      declined: "neutral",
+      withdrawn: "neutral",
+    } as const
+  )[status] ?? "neutral";
   const label: Record<string, string> = {
     open: "Abierta",
     pending: "Pendiente",
@@ -144,13 +152,7 @@ function StatusBadge({ status }: { status: string }) {
     declined: "Rechazada",
     withdrawn: "Retirada",
   };
-  return (
-    <span
-      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${cls[status] ?? "bg-gray-100 text-gray-700"}`}
-    >
-      {label[status] ?? status}
-    </span>
-  );
+  return <StatusPill tone={tone}>{label[status] ?? status}</StatusPill>;
 }
 
 // ---------------------------------------------------------------------------

@@ -49,7 +49,7 @@ export default function TeamPage() {
       {list.data && list.data.length > 0 && (
         <Card>
           <table className="w-full text-sm">
-            <thead className="border-b bg-gray-50 text-left text-gray-600">
+            <thead className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-4 py-2 font-medium">Nombre</th>
                 <th className="px-4 py-2 font-medium">Email</th>
@@ -62,7 +62,7 @@ export default function TeamPage() {
             </thead>
             <tbody>
               {list.data.map((m) => (
-                <tr key={m.id} className="border-b last:border-b-0">
+                <tr key={m.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors">
                   <td className="px-4 py-2">{m.person_name}</td>
                   <td className="px-4 py-2 text-gray-600">{m.person_email}</td>
                   <td className="px-4 py-2">{m.category_name ?? "—"}</td>
@@ -121,7 +121,7 @@ function PendingInvitations() {
       <h2 className="text-lg font-semibold mb-3">Invitaciones pendientes</h2>
       <Card>
         <table className="w-full text-sm">
-          <thead className="border-b bg-gray-50 text-left text-gray-600">
+          <thead className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
             <tr>
               <th className="px-4 py-2 font-medium">Email</th>
               <th className="px-4 py-2 font-medium">Nombre</th>
@@ -131,7 +131,7 @@ function PendingInvitations() {
           </thead>
           <tbody>
             {invs.data.map((inv: Invitation) => (
-              <tr key={inv.id} className="border-b last:border-b-0">
+              <tr key={inv.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors">
                 <td className="px-4 py-2">{inv.email}</td>
                 <td className="px-4 py-2">{inv.person_name}</td>
                 <td className="px-4 py-2 text-gray-600">

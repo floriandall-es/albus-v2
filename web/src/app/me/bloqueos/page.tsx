@@ -7,6 +7,8 @@ import {
   type AvailabilityBlockType,
 } from "@/lib/api";
 import { DateRangeField } from "@/components/admin/date-range";
+import { EmptyState, StatusPill } from "@/components/admin/ui";
+import { CalendarOff, Plus } from "lucide-react";
 
 const TYPE_LABEL: Record<AvailabilityBlockType, string> = {
   vacation: "Vacaciones",
@@ -16,11 +18,11 @@ const TYPE_LABEL: Record<AvailabilityBlockType, string> = {
   other: "Otro",
 };
 
-const STATUS_BADGE: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-800",
-  approved: "bg-green-100 text-green-800",
-  denied: "bg-red-100 text-red-800",
-};
+const STATUS_TONE = {
+  pending: "warning",
+  approved: "success",
+  denied: "danger",
+} as const;
 const STATUS_LABEL: Record<string, string> = {
   pending: "Pendiente",
   approved: "Aprobada",
@@ -42,74 +44,82 @@ export default function BloqueosPage() {
   return (
     <>
       <div className="mb-6 flex items-center gap-3">
-        <h1 className="text-2xl font-semibold">Mis bloqueos</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">
+          Mis bloqueos
+        </h1>
         <button
-          className="rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white shadow-soft hover:bg-brand-700"
           onClick={() => setOpen(true)}
         >
+          <Plus className="h-4 w-4" />
           Nueva solicitud
         </button>
       </div>
 
-      <p className="mb-4 text-sm text-gray-600">
+      <p className="mb-4 max-w-2xl text-sm text-gray-600">
         Pide bloqueos (vacaciones, baja, formación…) para días en los que
         no puedes trabajar. El admin revisa y aprueba o rechaza.
       </p>
 
-      <div className="max-w-2xl rounded-md border bg-white p-4">
-        {list.isLoading && (
-          <p className="text-sm text-gray-500">Cargando…</p>
-        )}
-        {list.data && list.data.length === 0 && (
-          <p className="text-sm text-gray-500">No has pedido bloqueos.</p>
-        )}
-        {list.data && list.data.length > 0 && (
-          <ul className="divide-y">
-            {list.data.map((b: AvailabilityBlock) => (
-              <li
-                key={b.id}
-                className="py-2 flex items-start justify-between gap-3"
-              >
-                <div className="text-sm">
-                  <div className="font-medium">
-                    {b.start_date} → {b.end_date}{" "}
-                    <span className="text-gray-500 font-normal">
-                      · {TYPE_LABEL[b.block_type] ?? b.block_type}
-                    </span>
+      {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
+      {list.data && list.data.length === 0 && (
+        <div className="max-w-2xl">
+          <EmptyState
+            icon={<CalendarOff className="h-5 w-5" />}
+            title="Aún no has pedido bloqueos"
+            description="Usa “Nueva solicitud” para reservar días libres."
+          />
+        </div>
+      )}
+      {list.data && list.data.length > 0 && (
+        <div className="max-w-2xl rounded-xl bg-white shadow-soft ring-1 ring-gray-200">
+          <ul className="divide-y divide-gray-100">
+            {list.data.map((b: AvailabilityBlock) => {
+              const tone =
+                STATUS_TONE[b.status as keyof typeof STATUS_TONE]
+                ?? "neutral";
+              return (
+                <li
+                  key={b.id}
+                  className="p-3 flex items-start justify-between gap-3"
+                >
+                  <div className="text-sm">
+                    <div className="font-medium">
+                      {b.start_date} → {b.end_date}{" "}
+                      <span className="text-gray-500 font-normal">
+                        · {TYPE_LABEL[b.block_type] ?? b.block_type}
+                      </span>
+                    </div>
+                    {b.notes && (
+                      <div className="text-xs text-gray-600 mt-0.5">
+                        {b.notes}
+                      </div>
+                    )}
+                    {b.status === "denied" && b.review_notes && (
+                      <div className="text-xs text-rose-700 mt-0.5">
+                        Motivo: {b.review_notes}
+                      </div>
+                    )}
                   </div>
-                  {b.notes && (
-                    <div className="text-xs text-gray-600 mt-0.5">
-                      {b.notes}
-                    </div>
-                  )}
-                  {b.status === "denied" && b.review_notes && (
-                    <div className="text-xs text-red-700 mt-0.5">
-                      Motivo: {b.review_notes}
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                      STATUS_BADGE[b.status] ?? "bg-gray-100 text-gray-700"
-                    }`}
-                  >
-                    {STATUS_LABEL[b.status] ?? b.status}
-                  </span>
-                  {b.status === "pending" && (
-                    <button
-                      className="text-xs text-red-700 hover:underline"
-                      onClick={() => del.mutate(b.id)}
-                    >
-                      Cancelar
-                    </button>
-                  )}
-                </div>
-              </li>
-            ))}
+                  <div className="flex shrink-0 items-center gap-2">
+                    <StatusPill tone={tone}>
+                      {STATUS_LABEL[b.status] ?? b.status}
+                    </StatusPill>
+                    {b.status === "pending" && (
+                      <button
+                        className="text-xs text-rose-700 hover:underline"
+                        onClick={() => del.mutate(b.id)}
+                      >
+                        Cancelar
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
-        )}
-      </div>
+        </div>
+      )}
 
       {open && <NewRequestModal onClose={() => setOpen(false)} />}
     </>

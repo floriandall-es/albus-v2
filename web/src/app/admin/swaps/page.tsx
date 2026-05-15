@@ -1,11 +1,18 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
+import { ArrowLeftRight } from "lucide-react";
 import {
   api,
   type SwapAssignmentSummary,
   type SwapOffer,
 } from "@/lib/api";
-import { Card, Empty, ErrorText, PageHeader } from "@/components/admin/ui";
+import {
+  Card,
+  EmptyState,
+  ErrorText,
+  PageHeader,
+  StatusPill,
+} from "@/components/admin/ui";
 
 export default function AdminSwapsPage() {
   const q = useQuery({
@@ -24,7 +31,11 @@ export default function AdminSwapsPage() {
       {q.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
       {q.isError && <ErrorText>{(q.error as Error).message}</ErrorText>}
       {q.data && q.data.length === 0 && (
-        <Empty>Aún no hay cambios de turno registrados.</Empty>
+        <EmptyState
+          icon={<ArrowLeftRight className="h-5 w-5" />}
+          title="Aún no hay cambios de turno"
+          description="Cuando los miembros del equipo intercambien turnos, aparecerán aquí."
+        />
       )}
       {q.data && q.data.length > 0 && (
         <Card>
@@ -111,21 +122,17 @@ function shiftLabel(a: SwapAssignmentSummary): string {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const cls: Record<string, string> = {
-    open: "bg-amber-100 text-amber-800",
-    fulfilled: "bg-emerald-100 text-emerald-800",
-    cancelled: "bg-gray-200 text-gray-700",
-  };
+  const tone = (
+    {
+      open: "warning",
+      fulfilled: "success",
+      cancelled: "neutral",
+    } as const
+  )[status] ?? "neutral";
   const label: Record<string, string> = {
     open: "Abierta",
     fulfilled: "Cumplida",
     cancelled: "Cancelada",
   };
-  return (
-    <span
-      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${cls[status] ?? "bg-gray-100 text-gray-700"}`}
-    >
-      {label[status] ?? status}
-    </span>
-  );
+  return <StatusPill tone={tone}>{label[status] ?? status}</StatusPill>;
 }

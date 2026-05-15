@@ -55,45 +55,57 @@ export default function SelectTenantPage() {
   }
 
   return (
-    <main className="mx-auto max-w-md p-8">
-      <div className="flex flex-col items-center mb-6">
-        <Image
-          src="/logo.jpeg"
-          alt="Trivu"
-          width={160}
-          height={160}
-          priority
-          className="h-32 w-auto"
-        />
+    <main className="min-h-screen flex items-center justify-center px-4 py-12 bg-gradient-to-b from-brand-50/50 to-gray-50">
+      <div className="w-full max-w-sm">
+        <div className="flex flex-col items-center mb-6">
+          <Image
+            src="/logo.jpeg"
+            alt="Trivu"
+            width={96}
+            height={96}
+            priority
+            className="h-20 w-20 rounded-2xl shadow-soft"
+          />
+          <div className="mt-3 text-2xl font-bold tracking-tight text-brand-700">
+            Trivu
+          </div>
+        </div>
+        <div className="rounded-2xl bg-white shadow-soft ring-1 ring-gray-200 p-6">
+          <h1 className="mb-1 text-lg font-semibold text-center text-gray-900">
+            Elige un servicio
+          </h1>
+          <p className="mb-5 text-sm text-gray-600 text-center">
+            Tienes acceso a varios servicios. Selecciona en cuál quieres entrar.
+          </p>
+          <ul className="space-y-2">
+            {stash.available_tenants.map((t) => (
+              <li key={t.id}>
+                <button
+                  type="button"
+                  onClick={() => pick(t.id)}
+                  disabled={submitting !== null}
+                  className="w-full text-left rounded-lg ring-1 ring-gray-200 px-4 py-3 hover:bg-brand-50/60 hover:ring-brand-200 disabled:opacity-50 transition-colors"
+                >
+                  <div className="font-medium text-gray-900">{t.name}</div>
+                  <div className="text-xs text-gray-500">{t.slug}</div>
+                  {submitting === t.id && (
+                    <div className="text-xs text-brand-700 mt-1">Entrando…</div>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {error && <p className="mt-4 text-sm text-rose-600">{error}</p>}
+        </div>
+        <p className="mt-4 text-center text-sm text-gray-600">
+          <a
+            className="text-brand-700 font-medium hover:underline"
+            href="/login"
+          >
+            Volver a iniciar sesión
+          </a>
+        </p>
       </div>
-      <h1 className="text-2xl font-semibold mb-2 text-center">Elige un servicio</h1>
-      <p className="text-sm text-gray-600 mb-6 text-center">
-        Tienes acceso a varios servicios. Selecciona en cuál quieres entrar.
-      </p>
-      <ul className="space-y-3">
-        {stash.available_tenants.map((t) => (
-          <li key={t.id}>
-            <button
-              type="button"
-              onClick={() => pick(t.id)}
-              disabled={submitting !== null}
-              className="w-full text-left rounded-md border border-gray-300 px-4 py-3 hover:bg-gray-50 disabled:opacity-50"
-            >
-              <div className="font-medium">{t.name}</div>
-              <div className="text-xs text-gray-500">{t.slug}</div>
-              {submitting === t.id && (
-                <div className="text-xs text-gray-500 mt-1">Entrando…</div>
-              )}
-            </button>
-          </li>
-        ))}
-      </ul>
-      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
-      <p className="mt-6 text-sm text-gray-600 text-center">
-        <a className="underline" href="/login">
-          Volver a iniciar sesión
-        </a>
-      </p>
     </main>
   );
 }

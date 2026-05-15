@@ -404,13 +404,13 @@ function BalanceStats({
       </h2>
       <Card>
         <table className="text-xs">
-          <thead className="border-b bg-gray-50 text-left text-gray-600">
-            <tr>
-              <th className="px-3 py-2 font-medium">Turno</th>
+          <thead className="border-b border-gray-200 bg-gray-50 text-left">
+            <tr className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+              <th className="px-3 py-2">Turno</th>
               {stats.personsSorted.map(([pid, name]) => (
                 <th
                   key={pid}
-                  className="px-3 py-2 font-medium text-right whitespace-nowrap"
+                  className="px-3 py-2 text-right whitespace-nowrap normal-case font-medium text-gray-700 text-xs tracking-normal"
                 >
                   {name}
                 </th>
