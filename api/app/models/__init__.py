@@ -23,6 +23,7 @@ from app.models.invitation import Invitation
 from app.models.holiday import Holiday
 from app.models.availability_block import AvailabilityBlock
 from app.models.schedule import Schedule, Assignment
+from app.models.shift_swap import ShiftSwapOffer, ShiftSwapResponse
 
 __all__ = [
     "Tenant",
@@ -50,4 +51,6 @@ __all__ = [
     "AvailabilityBlock",
     "Schedule",
     "Assignment",
+    "ShiftSwapOffer",
+    "ShiftSwapResponse",
 ]

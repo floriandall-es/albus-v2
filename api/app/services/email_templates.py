@@ -48,3 +48,115 @@ def invitation_email(
         f"— El equipo de Trivu\n"
     )
     return subject, body
+
+
+# ---------------------------------------------------------------------------
+# Shift swap notifications
+# ---------------------------------------------------------------------------
+
+
+def swap_offer_created_email(
+    *,
+    recipient_name: str,
+    requester_name: str,
+    slot_name: str,
+    shift_date: str,
+    notes: str | None,
+    app_url: str,
+) -> tuple[str, str]:
+    subject = f"{requester_name} pide cobertura para {slot_name} ({shift_date})"
+    note_block = f"\nNota: {notes}\n" if notes else ""
+    body = (
+        f"Hola {recipient_name},\n\n"
+        f"{requester_name} ha pedido cobertura para su turno:\n"
+        f"  · {slot_name} — {shift_date}\n"
+        f"{note_block}\n"
+        f"Puedes ofrecerte para cubrirlo o proponer un cambio aquí:\n"
+        f"{app_url}/me/swaps\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body
+
+
+def swap_response_email(
+    *,
+    requester_name: str,
+    responder_name: str,
+    kind: str,
+    slot_name: str,
+    shift_date: str,
+    swap_slot_name: str | None,
+    swap_date: str | None,
+    notes: str | None,
+    app_url: str,
+) -> tuple[str, str]:
+    action = "se ofrece a cubrir" if kind == "cover" else "propone un cambio"
+    subject = f"{responder_name} {action} tu turno de {shift_date}"
+    swap_block = (
+        f"\nTe ofrece a cambio: {swap_slot_name} — {swap_date}\n"
+        if kind == "swap" and swap_slot_name and swap_date
+        else ""
+    )
+    note_block = f"\nNota: {notes}\n" if notes else ""
+    body = (
+        f"Hola {requester_name},\n\n"
+        f"{responder_name} {action} tu turno:\n"
+        f"  · {slot_name} — {shift_date}\n"
+        f"{swap_block}{note_block}\n"
+        f"Revisa la propuesta y acéptala o recházala aquí:\n"
+        f"{app_url}/me/swaps\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body
+
+
+def swap_accepted_email(
+    *,
+    responder_name: str,
+    requester_name: str,
+    kind: str,
+    slot_name: str,
+    shift_date: str,
+    app_url: str,
+) -> tuple[str, str]:
+    subject = (
+        f"{requester_name} ha aceptado tu propuesta para {shift_date}"
+    )
+    explanation = (
+        "Has aceptado cubrir su turno."
+        if kind == "cover"
+        else "El cambio se ha aplicado."
+    )
+    body = (
+        f"Hola {responder_name},\n\n"
+        f"{requester_name} ha aceptado tu propuesta para:\n"
+        f"  · {slot_name} — {shift_date}\n\n"
+        f"{explanation}\n"
+        f"Consulta tu planificación actualizada:\n"
+        f"{app_url}/me/turnos\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body
+
+
+def swap_admin_notification_email(
+    *,
+    admin_name: str,
+    requester_name: str,
+    responder_name: str,
+    kind: str,
+    slot_name: str,
+    shift_date: str,
+    app_url: str,
+) -> tuple[str, str]:
+    action = "cubierto por" if kind == "cover" else "cambiado con"
+    subject = f"Cambio de turno: {requester_name} → {responder_name} ({shift_date})"
+    body = (
+        f"Hola {admin_name},\n\n"
+        f"Un cambio de turno se ha aplicado en tu equipo:\n"
+        f"  · {slot_name} — {shift_date}\n"
+        f"  · {requester_name} {action} {responder_name}\n\n"
+        f"Histórico:\n{app_url}/admin/swaps\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body

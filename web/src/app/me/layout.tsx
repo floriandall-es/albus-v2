@@ -7,6 +7,7 @@ import { api, clearToken, getToken } from "@/lib/api";
 
 const NAV: { href: string; label: string }[] = [
   { href: "/me/turnos", label: "Mis turnos" },
+  { href: "/me/swaps", label: "Cambios" },
   { href: "/me/bloqueos", label: "Mis bloqueos" },
   { href: "/me/settings", label: "Mi cuenta" },
 ];

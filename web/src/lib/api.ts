@@ -115,6 +115,54 @@ export type Person = {
   created_at: string;
 };
 
+// ---- Shift swaps ----------------------------------------------------------
+export type SwapOfferStatus = "open" | "fulfilled" | "cancelled";
+export type SwapResponseKind = "cover" | "swap";
+export type SwapResponseStatus =
+  | "pending"
+  | "accepted"
+  | "declined"
+  | "withdrawn";
+
+export type SwapAssignmentSummary = {
+  id: number;
+  schedule_id: number;
+  date: string;
+  slot_id: number;
+  slot_name: string;
+  person_id: number | null;
+  person_name: string | null;
+  team_role_label: string | null;
+};
+
+export type SwapResponse = {
+  id: number;
+  offer_id: number;
+  responder_membership_id: number;
+  responder_person_id: number;
+  responder_person_name: string;
+  kind: SwapResponseKind;
+  swap_assignment: SwapAssignmentSummary | null;
+  status: SwapResponseStatus;
+  notes: string | null;
+  created_at: string;
+  decided_at: string | null;
+};
+
+export type SwapOffer = {
+  id: number;
+  tenant_id: number;
+  assignment: SwapAssignmentSummary;
+  requested_by_membership_id: number;
+  requested_by_person_id: number;
+  requested_by_person_name: string;
+  status: SwapOfferStatus;
+  notes: string | null;
+  created_at: string;
+  closed_at: string | null;
+  responses: SwapResponse[];
+};
+
 export type Membership = {
   id: number;
   tenant_id: number;
@@ -629,6 +677,50 @@ export const api = {
     request<Schedule>(`/api/schedules/${id}/archive`, { method: "POST" }),
   deleteSchedule: (id: number) =>
     request<void>(`/api/schedules/${id}`, { method: "DELETE" }),
+
+  // Shift swaps
+  listSwapOffers: (opts?: { mine?: boolean; status?: SwapOfferStatus }) => {
+    const qs = new URLSearchParams();
+    if (opts?.mine) qs.set("mine", "true");
+    if (opts?.status) qs.set("status_", opts.status);
+    const q = qs.toString();
+    return request<SwapOffer[]>(`/api/swap-offers${q ? `?${q}` : ""}`);
+  },
+  createSwapOffer: (body: { assignment_id: number; notes?: string | null }) =>
+    request<SwapOffer>("/api/swap-offers", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  cancelSwapOffer: (id: number) =>
+    request<SwapOffer>(`/api/swap-offers/${id}/cancel`, { method: "POST" }),
+  respondToSwapOffer: (
+    id: number,
+    body: {
+      kind: SwapResponseKind;
+      swap_assignment_id?: number | null;
+      notes?: string | null;
+    },
+  ) =>
+    request<SwapResponse>(`/api/swap-offers/${id}/respond`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  acceptSwapResponse: (offerId: number, responseId: number) =>
+    request<SwapOffer>(
+      `/api/swap-offers/${offerId}/responses/${responseId}/accept`,
+      { method: "POST" },
+    ),
+  declineSwapResponse: (offerId: number, responseId: number) =>
+    request<SwapResponse>(
+      `/api/swap-offers/${offerId}/responses/${responseId}/decline`,
+      { method: "POST" },
+    ),
+  withdrawSwapResponse: (offerId: number, responseId: number) =>
+    request<SwapResponse>(
+      `/api/swap-offers/${offerId}/responses/${responseId}/withdraw`,
+      { method: "POST" },
+    ),
+  adminListSwaps: () => request<SwapOffer[]>("/api/admin/swaps"),
   patchAssignment: (
     scheduleId: number,
     assignmentId: number,

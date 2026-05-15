@@ -15,6 +15,7 @@ const NAV: { href: string; label: string }[] = [
   { href: "/admin/holidays", label: "Festivos" },
   { href: "/admin/availability", label: "Bloqueos" },
   { href: "/admin/schedule", label: "Planificación" },
+  { href: "/admin/swaps", label: "Cambios de turno" },
   { href: "/admin/settings", label: "Mi cuenta" },
 ];
 
