@@ -9,15 +9,13 @@ import {
   ErrorText,
   Modal,
   PageHeader,
-  Select,
   TextField,
 } from "@/components/admin/ui";
 
-const MODE_OPTIONS: { value: MembershipMode; label: string }[] = [
-  { value: "dedicated", label: "Dedicado" },
-  { value: "rotational", label: "Rotacional" },
-  { value: "mixed", label: "Mixto" },
-];
+// MODE_OPTIONS removed — `membership_mode` is descriptive metadata
+// the solver never reads, so it's hidden from the editor and the
+// list view. New pools default to "dedicated" (see PoolDialog state
+// init); existing values round-trip through the API untouched.
 
 export default function PoolsPage() {
   const qc = useQueryClient();
@@ -44,7 +42,6 @@ export default function PoolsPage() {
             <thead className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-4 py-2 font-medium">Nombre</th>
-                <th className="px-4 py-2 font-medium">Modo</th>
                 <th className="px-4 py-2 font-medium">Equidad propia</th>
                 <th className="px-4 py-2 font-medium">Miembros</th>
                 <th className="px-4 py-2 font-medium text-right">Acciones</th>
@@ -54,7 +51,6 @@ export default function PoolsPage() {
               {list.data.map((p) => (
                 <tr key={p.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors">
                   <td className="px-4 py-2">{p.name}</td>
-                  <td className="px-4 py-2 capitalize">{p.membership_mode}</td>
                   <td className="px-4 py-2">{p.equity_independent ? "Sí" : "No"}</td>
                   <td className="px-4 py-2">{p.member_count}</td>
                   <td className="px-4 py-2 text-right space-x-2">
@@ -156,12 +152,13 @@ function PoolDialog({ initial, onClose }: { initial: Pool | null; onClose: () =>
         }}
       >
         <TextField label="Nombre" value={name} onChange={setName} required />
-        <Select
-          label="Modo de pertenencia"
-          value={mode}
-          onChange={(v) => v && setMode(v as MembershipMode)}
-          options={MODE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
-        />
+        {/*
+          "Modo de pertenencia" (dedicated/rotational/mixed) is hidden:
+          it's descriptive metadata the solver never reads. The `mode`
+          state still drives the membership_mode value the API expects;
+          new pools inherit the "dedicated" default and existing pools
+          keep whatever they had.
+        */}
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
