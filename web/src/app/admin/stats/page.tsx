@@ -102,24 +102,41 @@ export default function StatsPage() {
     );
   }, [q.data]);
 
-  // Chart: per person, weekend/holiday counts only.
+  // Chart: per (person, month) weekend/holiday counts. Stacked by month
+  // the same way per-slot charts are.
   const weekendData = useMemo(() => {
-    const persons = new Map<number, number>();
+    const months = monthsBetween(fromDate, toDate);
+    const byPid = new Map<
+      number,
+      { person: string; total: number; cells: Record<string, number> }
+    >();
     for (const r of q.data?.rows ?? []) {
-      persons.set(
-        r.person_id,
-        (persons.get(r.person_id) ?? 0) + r.weekend_or_holiday_count,
-      );
+      if (r.weekend_or_holiday_count === 0) continue;
+      let row = byPid.get(r.person_id);
+      if (!row) {
+        row = { person: r.person_name, total: 0, cells: {} };
+        byPid.set(r.person_id, row);
+      }
+      row.cells[r.year_month] =
+        (row.cells[r.year_month] ?? 0) + r.weekend_or_holiday_count;
+      row.total += r.weekend_or_holiday_count;
     }
-    return Array.from(persons.entries())
-      .map(([pid, n]) => ({
-        person:
-          q.data?.rows.find((r) => r.person_id === pid)?.person_name
-          ?? `#${pid}`,
-        count: n,
-      }))
-      .sort((a, b) => a.person.localeCompare(b.person));
-  }, [q.data]);
+    const list = Array.from(byPid.values()).map((p) => {
+      const out: Record<string, number | string> = {
+        person: p.person,
+        total: p.total,
+      };
+      for (const m of months) out[m] = p.cells[m] ?? 0;
+      return out;
+    });
+    list.sort((a, b) => (b.total as number) - (a.total as number));
+    return { list, months };
+  }, [q.data, fromDate, toDate]);
+
+  const weekendShades = useMemo(
+    () => shadeStops("#f59e0b", weekendData.months.length),
+    [weekendData.months.length],
+  );
 
   const totalAssignments = useMemo(
     () =>
@@ -169,41 +186,61 @@ export default function StatsPage() {
           ))}
 
           <ChartCard
-            title="Fines de semana y festivos por persona"
-            subtitle="Solo cuenta las asignaciones en sábado, domingo o festivo."
+            title={
+              <span className="inline-flex items-center gap-2">
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+                Fines de semana y festivos
+              </span>
+            }
+            subtitle="Sábado, domingo o festivo · barras apiladas por mes (más oscuro = mes más reciente)."
           >
-            <ResponsiveContainer
-              width="100%"
-              height={Math.max(220, weekendData.length * 36)}
-            >
-              <BarChart
-                data={weekendData}
-                layout="vertical"
-                margin={{ top: 12, right: 16, left: 60, bottom: 4 }}
+            {weekendData.list.length === 0 ? (
+              <p className="text-sm text-gray-500">
+                Nadie ha trabajado fines de semana o festivos en este rango.
+              </p>
+            ) : (
+              <ResponsiveContainer
+                width="100%"
+                height={Math.max(180, weekendData.list.length * 36 + 60)}
               >
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis
-                  type="number"
-                  tick={{ fontSize: 11, fill: "#4b5563" }}
-                  allowDecimals={false}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="person"
-                  tick={{ fontSize: 11, fill: "#4b5563" }}
-                  width={120}
-                />
-                <Tooltip
-                  cursor={{ fill: "rgba(245,158,11,0.08)" }}
-                  contentStyle={{
-                    fontSize: 12,
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 8,
-                  }}
-                />
-                <Bar dataKey="count" fill="#f59e0b" />
-              </BarChart>
-            </ResponsiveContainer>
+                <BarChart
+                  data={weekendData.list}
+                  layout="vertical"
+                  margin={{ top: 8, right: 20, left: 60, bottom: 4 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis
+                    type="number"
+                    tick={{ fontSize: 11, fill: "#4b5563" }}
+                    allowDecimals={false}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="person"
+                    tick={{ fontSize: 11, fill: "#4b5563" }}
+                    width={120}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "rgba(245,158,11,0.08)" }}
+                    contentStyle={{
+                      fontSize: 12,
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 8,
+                    }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  {weekendData.months.map((m, i) => (
+                    <Bar
+                      key={m}
+                      dataKey={m}
+                      stackId="we"
+                      fill={weekendShades[i]}
+                      name={m}
+                    />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </ChartCard>
 
           <DetailTable rows={q.data.rows} slotMeta={slotMeta} />
