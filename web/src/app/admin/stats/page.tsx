@@ -19,7 +19,6 @@ import {
 } from "@/components/admin/ui";
 import {
   MonthPicker,
-  formatPeriod,
   isoFromMonthYear,
 } from "@/components/admin/month-picker";
 import { BarChart3 } from "lucide-react";
@@ -103,25 +102,7 @@ export default function StatsPage() {
     );
   }, [q.data]);
 
-  // Chart 1: per month, total per slot type. Stacked bars.
-  const perMonthData = useMemo(() => {
-    const months = monthsBetween(fromDate, toDate);
-    return months.map((ym) => {
-      const row: Record<string, number | string> = {
-        month: formatPeriod(ym + "-01"),
-        _ym: ym,
-      };
-      for (const slot of slotMeta) row[slot.slot_name] = 0;
-      for (const r of q.data?.rows ?? []) {
-        if (r.year_month !== ym) continue;
-        row[r.slot_name] =
-          (row[r.slot_name] as number) + r.count;
-      }
-      return row;
-    });
-  }, [q.data, slotMeta, fromDate, toDate]);
-
-  // Chart 3: per person, weekend/holiday counts only.
+  // Chart: per person, weekend/holiday counts only.
   const weekendData = useMemo(() => {
     const persons = new Map<number, number>();
     for (const r of q.data?.rows ?? []) {
@@ -178,42 +159,6 @@ export default function StatsPage() {
 
       {q.data && q.data.rows.length > 0 && (
         <div className="space-y-6">
-          <ChartCard
-            title="Asignaciones por mes y tipo de turno"
-            subtitle="Total de turnos cubiertos cada mes, apilados por tipo."
-          >
-            <ResponsiveContainer width="100%" height={320}>
-              <BarChart
-                data={perMonthData}
-                margin={{ top: 12, right: 16, left: 0, bottom: 4 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis
-                  dataKey="month"
-                  tick={{ fontSize: 11, fill: "#4b5563" }}
-                />
-                <YAxis tick={{ fontSize: 11, fill: "#4b5563" }} allowDecimals={false} />
-                <Tooltip
-                  cursor={{ fill: "rgba(13,148,136,0.06)" }}
-                  contentStyle={{
-                    fontSize: 12,
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 8,
-                  }}
-                />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                {slotMeta.map((slot) => (
-                  <Bar
-                    key={slot.slot_name}
-                    dataKey={slot.slot_name}
-                    stackId="a"
-                    fill={slot.color}
-                  />
-                ))}
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
-
           {slotMeta.map((slot) => (
             <PerSlotChart
               key={slot.slot_name}
