@@ -175,14 +175,33 @@ def _serialize_offer(
     )
 
 
-def _check_eligibility_for_slot(
-    ctx: RequestContext, person_id: int, target: Assignment
-) -> str | None:
-    """Mirror of scheduler eligibility. Returns reason or None.
+from datetime import timedelta as _td
 
-    Checks pool membership, hard skills, availability blocks, AND
-    cross-slot time-overlap against other assignments the person
-    already has on that date or the adjacent one.
+_ONE_DAY = _td(days=1)
+
+
+def _check_eligibility_for_slot(
+    ctx: RequestContext,
+    person_id: int,
+    target: Assignment,
+    *,
+    exclude_assignment_ids: set[int] | None = None,
+) -> str | None:
+    """Mirror of scheduler eligibility for a single person × slot × date.
+    Returns a Spanish reason if the person CAN'T take the assignment,
+    None if they can. Used at accept-time to reject swaps that would
+    violate solver constraints.
+
+    Covers:
+    - pool membership, hard skills, availability blocks (via scheduler)
+    - time-overlap with other PUBLISHED assignments on adjacent days
+    - post_slot_rest (yesterday's slot rests today, or today's rests
+      tomorrow and that conflicts)
+    - same-slot/date duplicate (same person already on this slot+date)
+    - same-day succession-rule (days_after=0) incompatibilities
+
+    `exclude_assignment_ids` lets the caller drop assignments that are
+    going AWAY in the swap (otherwise they'd self-conflict).
     """
     slot = ctx.db.get(Slot, target.slot_id)
     if slot is None:
@@ -200,9 +219,9 @@ def _check_eligibility_for_slot(
     if reason:
         return reason
 
-    # Time overlap with other PUBLISHED assignments the person already
-    # holds on adjacent days. Drafts don't count — the published
-    # schedule is what matters once a swap fulfils.
+    excluded = exclude_assignment_ids or set()
+
+    # All of this person's other PUBLISHED assignments on D-1, D, D+1.
     nearby = (
         ctx.db.query(Assignment, Schedule)
         .join(Schedule, Schedule.id == Assignment.schedule_id)
@@ -217,20 +236,89 @@ def _check_eligibility_for_slot(
         .all()
     )
     for other, _sched in nearby:
+        if other.id in excluded:
+            continue
         other_slot = ctx.db.get(Slot, other.slot_id)
         if other_slot is None:
             continue
+        # Same slot+date duplicate (e.g. team_composition with two roles)
+        if other.slot_id == target.slot_id and other.date == target.date:
+            return (
+                f"Ya tienes este turno asignado el "
+                f"{target.date.isoformat()}"
+            )
+        # Time overlap.
         if slots_overlap_in_time(slot, target.date, other_slot, other.date):
             return (
-                f"Solape horario con otro turno asignado el "
+                f"Solape horario con {other_slot.name} el "
                 f"{other.date.isoformat()}"
             )
+        # post_slot_rest: if THIS new slot has rest=True, person can't
+        # have ANY shift the next day. If a PRIOR slot has rest=True,
+        # person can't have THIS shift the next day.
+        if slot.post_slot_rest and other.date == target.date + _ONE_DAY:
+            return (
+                f"Este turno requiere descanso al día siguiente, "
+                f"y ya estás asignado al "
+                f"{other.date.isoformat()}"
+            )
+        if other_slot.post_slot_rest and other.date == target.date - _ONE_DAY:
+            return (
+                f"El turno del {other.date.isoformat()} requiere "
+                f"descanso al día siguiente"
+            )
+
+    # Same-day succession rules (days_after=0). The solver enforces
+    # these as hard constraints when severity='hard'; swaps must too.
+    from app.models import SlotSuccessionRule  # noqa: WPS433
+
+    same_day_rules = (
+        ctx.db.query(SlotSuccessionRule)
+        .filter(
+            SlotSuccessionRule.applies_to == "same_person",
+            SlotSuccessionRule.days_after == 0,
+            SlotSuccessionRule.severity == "hard",
+        )
+        .all()
+    )
+    if same_day_rules:
+        # All of person's PUBLISHED assignments same date (excluding
+        # target itself + excluded list).
+        same_date = (
+            ctx.db.query(Assignment, Schedule)
+            .join(Schedule, Schedule.id == Assignment.schedule_id)
+            .filter(
+                Assignment.person_id == person_id,
+                Schedule.status == "published",
+                Assignment.id != target.id,
+                Assignment.date == target.date,
+            )
+            .all()
+        )
+        other_slot_ids = {
+            a.slot_id for a, _s in same_date if a.id not in excluded
+        }
+        for r in same_day_rules:
+            if (
+                r.after_slot_id == target.slot_id
+                and r.forbid_slot_id in other_slot_ids
+            ) or (
+                r.forbid_slot_id == target.slot_id
+                and r.after_slot_id in other_slot_ids
+            ):
+                other_slot = ctx.db.get(
+                    Slot,
+                    r.forbid_slot_id
+                    if r.after_slot_id == target.slot_id
+                    else r.after_slot_id,
+                )
+                other_name = other_slot.name if other_slot else "otro turno"
+                return (
+                    f"Regla del mismo día: no se puede combinar con "
+                    f"{other_name}"
+                )
+
     return None
-
-
-from datetime import timedelta as _td
-
-_ONE_DAY = _td(days=1)
 
 
 def _published_or_400(ctx: RequestContext, a: Assignment) -> None:
@@ -426,8 +514,21 @@ def accept_response(
         raise HTTPException(status_code=400, detail="Respondedor inválido")
 
     # Re-check eligibility AT ACCEPT TIME — the schedule may have changed.
+    # For a SWAP, each person is GIVING UP their own assignment, so it
+    # shouldn't count as a self-conflict for the new shift they're taking.
+    swap_exclude_for_responder: set[int] = set()
+    swap_exclude_for_requester: set[int] = set()
+    if r.kind == "swap" and r.swap_assignment_id is not None:
+        # Responder is giving up `swap_assignment_id` (their old shift).
+        swap_exclude_for_responder.add(r.swap_assignment_id)
+        # Requester is giving up `original.id` (their old shift).
+        swap_exclude_for_requester.add(original.id)
+
     reason = _check_eligibility_for_slot(
-        ctx, responder_m.person_id, original
+        ctx,
+        responder_m.person_id,
+        original,
+        exclude_assignment_ids=swap_exclude_for_responder,
     )
     if reason:
         raise HTTPException(
@@ -448,7 +549,10 @@ def accept_response(
             )
         # Reverse check: asker must be eligible for responder's slot.
         reverse_reason = _check_eligibility_for_slot(
-            ctx, ctx.person.id, their_assignment
+            ctx,
+            ctx.person.id,
+            their_assignment,
+            exclude_assignment_ids=swap_exclude_for_requester,
         )
         if reverse_reason:
             raise HTTPException(
