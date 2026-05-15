@@ -104,21 +104,15 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen bg-gray-50">
       <aside className="w-60 shrink-0 border-r border-gray-200 bg-white flex flex-col">
-        <div className="flex items-center gap-2 px-4 py-4 border-b border-gray-100">
-          {/* Logo + brand wordmark */}
+        <div className="flex items-center gap-3 px-4 py-4 border-b border-gray-100">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/logo.jpeg"
-            alt=""
-            className="h-8 w-8 rounded-md object-cover"
+            alt="Trivu"
+            className="h-14 w-14 rounded-lg object-cover shadow-soft"
           />
-          <div className="leading-tight">
-            <div className="text-sm font-semibold text-brand-700">
-              Trivu
-            </div>
-            <div className="text-[11px] text-gray-500">
-              {me.data?.current_tenant.name}
-            </div>
+          <div className="text-sm font-medium text-gray-700 leading-tight">
+            {me.data?.current_tenant.name}
           </div>
         </div>
 
