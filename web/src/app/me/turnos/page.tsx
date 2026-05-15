@@ -41,7 +41,19 @@ export default function TurnosPage() {
       api.listHolidays(new Date(detail.data!.period).getFullYear()),
     enabled: !!detail.data,
   });
-  const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
+  const absences = useQuery({
+    queryKey: ["team-absences", detail.data?.period],
+    queryFn: () => {
+      const period = detail.data!.period;
+      const y = Number(period.slice(0, 4));
+      const m = Number(period.slice(5, 7));
+      const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      const from = `${period.slice(0, 7)}-01`;
+      const to = `${period.slice(0, 7)}-${String(last).padStart(2, "0")}`;
+      return api.listTeamAbsences({ from, to });
+    },
+    enabled: !!detail.data,
+  });
   const holidayDates = useMemo(
     () => new Set((holidays.data ?? []).map((h) => h.date)),
     [holidays.data],
@@ -101,7 +113,7 @@ export default function TurnosPage() {
             cellIsClickable={(a) =>
               a.person_id === me.data!.person.id && !a.locked_at
             }
-            teamMembers={team.data}
+            absences={absences.data}
           />
         </>
       )}

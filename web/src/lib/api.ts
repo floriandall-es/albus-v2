@@ -82,6 +82,17 @@ export type AvailabilityBlock = {
   created_at: string;
 };
 
+// Sanitized public read-only absence row used by the planning grid's
+// Libre row. Backed by /api/availability/team-absences.
+export type TeamAbsence = {
+  person_id: number;
+  person_name: string;
+  person_avatar_url: string | null;
+  start_date: string;
+  end_date: string;
+  block_type: AvailabilityBlockType;
+};
+
 export type ScheduleStatus = "draft" | "published" | "archived";
 export type SolverUsed = "cpsat" | "greedy";
 
@@ -640,6 +651,18 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  // Team absences (public, read-only). Used by the Libre row in the
+  // planning grid; visible to any authenticated user.
+  listTeamAbsences: (params?: { from?: string; to?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.from) qs.set("from", params.from);
+    if (params?.to) qs.set("to", params.to);
+    const q = qs.toString();
+    return request<TeamAbsence[]>(
+      `/api/availability/team-absences${q ? `?${q}` : ""}`,
+    );
+  },
 
   // Availability blocks
   listAvailabilityBlocks: (params?: {

@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.models import AvailabilityBlock, Membership, Person
 from app.routes.deps import RequestContext, get_current_context
 from app.schemas.availability import (
+    TeamAbsence,
     AvailabilityBlockCreate,
     AvailabilityBlockOut,
     AvailabilityBlockUpdate,
@@ -95,6 +96,42 @@ def list_blocks(
         q = q.filter(AvailabilityBlock.status == status_)
     rows = q.order_by(AvailabilityBlock.start_date.desc()).all()
     return [_serialize(b, p) for b, p in rows]
+
+
+@router.get(
+    "/availability/team-absences",
+    response_model=list[TeamAbsence],
+)
+def list_team_absences(
+    from_: date | None = Query(default=None, alias="from"),
+    to: date | None = None,
+    ctx: RequestContext = Depends(get_current_context),
+) -> list[TeamAbsence]:
+    """Sanitized read-only view of APPROVED availability blocks for the
+    whole tenant. Returned to any authenticated user — the team needs to
+    see who's on vacation / baja for the Libre row in the planning grid.
+    No notes / review notes are exposed; only what the row needs."""
+    q = (
+        ctx.db.query(AvailabilityBlock, Person)
+        .join(Person, Person.id == AvailabilityBlock.person_id)
+        .filter(AvailabilityBlock.status == "approved")
+    )
+    if from_ is not None:
+        q = q.filter(AvailabilityBlock.end_date >= from_)
+    if to is not None:
+        q = q.filter(AvailabilityBlock.start_date <= to)
+    rows = q.order_by(AvailabilityBlock.start_date).all()
+    return [
+        TeamAbsence(
+            person_id=b.person_id,
+            person_name=p.name,
+            person_avatar_url=p.avatar_url,
+            start_date=b.start_date,
+            end_date=b.end_date,
+            block_type=b.block_type,  # type: ignore[arg-type]
+        )
+        for b, p in rows
+    ]
 
 
 @router.post(

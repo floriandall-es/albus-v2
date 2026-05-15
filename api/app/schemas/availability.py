@@ -64,3 +64,15 @@ class AvailabilityRequestCreate(BaseModel):
 
 class AvailabilityDenyRequest(BaseModel):
     review_notes: str | None = Field(default=None, max_length=2000)
+
+
+class TeamAbsence(BaseModel):
+    """Sanitized public read-only view: just enough to render the Libre
+    row in the planning grid. No notes, no review_notes, no reviewer
+    metadata — visible to any authenticated user in the tenant."""
+    person_id: int
+    person_name: str
+    person_avatar_url: str | None = None
+    start_date: date
+    end_date: date
+    block_type: BlockType

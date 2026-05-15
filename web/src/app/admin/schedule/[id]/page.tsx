@@ -60,7 +60,21 @@ export default function ScheduleDetailPage() {
     },
   });
 
-  const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
+  const absences = useQuery({
+    queryKey: ["team-absences", detail.data?.period],
+    queryFn: () => {
+      const period = detail.data!.period;
+      // Bound the query to the schedule's month (a year fits in the
+      // browser cache anyway, but this keeps the payload tight).
+      const y = Number(period.slice(0, 4));
+      const m = Number(period.slice(5, 7));
+      const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      const from = `${period.slice(0, 7)}-01`;
+      const to = `${period.slice(0, 7)}-${String(last).padStart(2, "0")}`;
+      return api.listTeamAbsences({ from, to });
+    },
+    enabled: !!detail.data,
+  });
 
   const holidayDates = useMemo(
     () => new Set((holidays.data ?? []).map((h) => h.date)),
@@ -154,7 +168,7 @@ export default function ScheduleDetailPage() {
         assignments={s.assignments}
         holidayDates={holidayDates}
         onCellClick={isEditable ? (a) => setEditing(a) : undefined}
-        teamMembers={team.data}
+        absences={absences.data}
       />
 
       <BalanceStats

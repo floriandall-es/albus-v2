@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import {
   avatarSrc,
   type Assignment,
-  type TeamMember,
+  type TeamAbsence,
 } from "@/lib/api";
 
 // Shared planning grid: slot rows × date columns. Used by:
@@ -23,9 +23,10 @@ export type PlanningGridProps = {
    * be clickable. */
   cellIsClickable?: (a: Assignment) => boolean;
   highlightPersonId?: number | null;
-  /** When provided, the grid renders an extra "Libre" row at the bottom
-   * showing the team members NOT assigned to any slot that day. */
-  teamMembers?: TeamMember[];
+  /** Approved availability blocks (vacation, baja, formación, …)
+   * covering the displayed dates. When provided, an extra "Libre" row
+   * appears at the bottom with one avatar per absent person per day. */
+  absences?: TeamAbsence[];
 };
 
 export function PlanningGrid({
@@ -34,35 +35,39 @@ export function PlanningGrid({
   onCellClick,
   cellIsClickable,
   highlightPersonId = null,
-  teamMembers,
+  absences,
 }: PlanningGridProps) {
   const grid = useMemo(() => buildGrid(assignments), [assignments]);
   const interactive = !!onCellClick;
 
-  // For each date, list team members not assigned to ANY slot. A null
-  // person_id (Sin cubrir) doesn't count as "taken".
-  const libreByDate = useMemo(() => {
-    if (!teamMembers || teamMembers.length === 0) return null;
-    const assignedByDate = new Map<string, Set<number>>();
-    for (const a of assignments) {
-      if (a.person_id === null) continue;
-      let set = assignedByDate.get(a.date);
-      if (!set) {
-        set = new Set();
-        assignedByDate.set(a.date, set);
-      }
-      set.add(a.person_id);
-    }
-    const result = new Map<string, TeamMember[]>();
+  // Expand each absence range into a per-date list of absent persons.
+  // Same person can appear in multiple blocks; dedupe by person_id.
+  const absencesByDate = useMemo(() => {
+    if (!absences) return null;
+    const result = new Map<
+      string,
+      { person_id: number; person_name: string; person_avatar_url: string | null; block_type: string }[]
+    >();
     for (const d of grid.dates) {
-      const assigned = assignedByDate.get(d) ?? new Set();
-      const libre = teamMembers
-        .filter((m) => !assigned.has(m.person_id))
-        .sort((a, b) => a.person_name.localeCompare(b.person_name));
-      result.set(d, libre);
+      const items: typeof result extends Map<string, infer V> ? V : never = [];
+      const seen = new Set<number>();
+      for (const a of absences) {
+        if (a.start_date <= d && d <= a.end_date) {
+          if (seen.has(a.person_id)) continue;
+          seen.add(a.person_id);
+          items.push({
+            person_id: a.person_id,
+            person_name: a.person_name,
+            person_avatar_url: a.person_avatar_url,
+            block_type: a.block_type,
+          });
+        }
+      }
+      items.sort((x, y) => x.person_name.localeCompare(y.person_name));
+      result.set(d, items);
     }
     return result;
-  }, [assignments, teamMembers, grid.dates]);
+  }, [absences, grid.dates]);
 
   if (grid.slotRows.length === 0) {
     return (
@@ -284,7 +289,7 @@ export function PlanningGrid({
                 })}
               </tr>
             ))}
-            {libreByDate && (
+            {absencesByDate && (
               <tr className="bg-emerald-50/30 border-t-2 border-gray-200">
                 <td className="sticky left-0 z-10 bg-emerald-50/60 px-3 py-2 border-r border-gray-200 font-medium text-gray-800">
                   <span className="flex items-center gap-2">
@@ -293,7 +298,7 @@ export function PlanningGrid({
                   </span>
                 </td>
                 {grid.dates.map((d) => {
-                  const libre = libreByDate.get(d) ?? [];
+                  const absent = absencesByDate.get(d) ?? [];
                   const isToday = d === today;
                   return (
                     <td
@@ -303,18 +308,18 @@ export function PlanningGrid({
                         + (isToday ? "bg-brand-50/20 " : "")
                       }
                     >
-                      {libre.length === 0 ? (
+                      {absent.length === 0 ? (
                         <span className="text-[11px] text-gray-300">—</span>
                       ) : (
                         <div className="flex flex-wrap items-center gap-1">
-                          {libre.map((m) => {
+                          {absent.map((m) => {
                             const isMe =
                               highlightPersonId !== null
                               && m.person_id === highlightPersonId;
                             return (
                               <span
                                 key={m.person_id}
-                                title={m.person_name}
+                                title={`${m.person_name} · ${BLOCK_LABEL[m.block_type] ?? m.block_type}`}
                               >
                                 <Avatar
                                   name={m.person_name}
@@ -378,6 +383,14 @@ function buildGrid(assignments: Assignment[]) {
   );
   return { dates, slotRows };
 }
+
+const BLOCK_LABEL: Record<string, string> = {
+  vacation: "Vacaciones",
+  sick: "Baja médica",
+  training: "Formación",
+  personal: "Personal",
+  other: "Otro",
+};
 
 // Soft pastel palette for slot row dots + person avatar backgrounds.
 // Picked deterministically from a name so the same person/slot always
