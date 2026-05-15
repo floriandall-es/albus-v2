@@ -34,6 +34,7 @@ class AssignmentOut(BaseModel):
     notes: str | None
     locked_at: datetime | None = None
     locked_by_membership_id: int | None = None
+    swap_offer_id: int | None = None
 
 
 class AssignmentPatch(BaseModel):

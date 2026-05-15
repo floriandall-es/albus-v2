@@ -96,6 +96,7 @@ export type Assignment = {
   notes: string | null;
   locked_at: string | null;
   locked_by_membership_id: number | null;
+  swap_offer_id: number | null;
 };
 
 export type EligiblePerson = {

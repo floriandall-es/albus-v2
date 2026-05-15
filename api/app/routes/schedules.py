@@ -64,6 +64,7 @@ def _serialize_detail(ctx: RequestContext, schedule: Schedule) -> ScheduleDetail
             notes=a.notes,
             locked_at=a.locked_at,
             locked_by_membership_id=a.locked_by_membership_id,
+            swap_offer_id=a.swap_offer_id,
         )
         for a, s, p, tr in rows
     ]
@@ -253,6 +254,7 @@ def _serialize_assignment(ctx: RequestContext, a: Assignment) -> AssignmentOut:
         notes=a.notes,
         locked_at=a.locked_at,
         locked_by_membership_id=a.locked_by_membership_id,
+        swap_offer_id=a.swap_offer_id,
     )
 
 

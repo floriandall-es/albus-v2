@@ -81,6 +81,14 @@ class Assignment(Base):
     locked_by_membership_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("memberships.id", ondelete="SET NULL"), nullable=True
     )
+    # Set when an admin-applied OR member-initiated swap rewrites this
+    # row. Both sides of a swap get marked. Null otherwise. SET NULL on
+    # offer delete so audit cleanup doesn't blow assignments away.
+    swap_offer_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("shift_swap_offers.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

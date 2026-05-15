@@ -559,24 +559,15 @@ def accept_response(
                 status_code=400,
                 detail=f"No eres elegible para su turno: {reverse_reason}",
             )
-        # Swap the person_ids.
+        # Swap the person_ids and mark BOTH sides as swap-modified.
         original.person_id = responder_m.person_id
         their_assignment.person_id = ctx.person.id
-        original.notes = (
-            (original.notes or "")
-            + f" [swap #{o.id}]"
-        ).strip()
-        their_assignment.notes = (
-            (their_assignment.notes or "")
-            + f" [swap #{o.id}]"
-        ).strip()
+        original.swap_offer_id = o.id
+        their_assignment.swap_offer_id = o.id
     else:
         # Cover: responder takes the assignment.
         original.person_id = responder_m.person_id
-        original.notes = (
-            (original.notes or "")
-            + f" [cubierto via swap #{o.id}]"
-        ).strip()
+        original.swap_offer_id = o.id
 
     now = datetime.now(timezone.utc)
     r.status = "accepted"
