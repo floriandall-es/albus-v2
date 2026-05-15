@@ -10,6 +10,7 @@ import {
   Modal,
 } from "@/components/admin/ui";
 import { PlanningGrid } from "@/components/schedule/planning-grid";
+import { formatPeriod } from "@/components/admin/month-picker";
 
 const STATUS_LABEL: Record<string, string> = {
   draft: "Borrador",
@@ -76,7 +77,7 @@ export default function ScheduleDetailPage() {
   return (
     <>
       <div className="mb-6 flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold">{`Planificación · ${s.period}`}</h1>
+        <h1 className="text-2xl font-semibold">{`Planificación · ${formatPeriod(s.period)}`}</h1>
         <div className="flex gap-2">
           {s.status === "draft" && (
             <>
@@ -98,7 +99,7 @@ export default function ScheduleDetailPage() {
                 onClick={() => {
                   if (
                     confirm(
-                      `¿Eliminar el borrador de ${s.period}? Esta acción no se puede deshacer.`,
+                      `¿Eliminar el borrador de ${formatPeriod(s.period)}? Esta acción no se puede deshacer.`,
                     )
                   ) {
                     remove.mutate();

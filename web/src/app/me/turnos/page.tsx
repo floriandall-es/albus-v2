@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { PlanningGrid } from "@/components/schedule/planning-grid";
+import { formatPeriod } from "@/components/admin/month-picker";
 
 export default function TurnosPage() {
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
@@ -64,7 +65,7 @@ export default function TurnosPage() {
           >
             {publishedSchedules.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.period}
+                {formatPeriod(s.period)}
               </option>
             ))}
           </select>

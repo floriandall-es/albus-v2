@@ -10,8 +10,11 @@ import {
   Empty,
   ErrorText,
   PageHeader,
-  TextField,
 } from "@/components/admin/ui";
+import {
+  MonthPicker,
+  formatPeriod,
+} from "@/components/admin/month-picker";
 
 const STATUS_LABEL: Record<string, string> = {
   draft: "Borrador",
@@ -40,13 +43,8 @@ export default function SchedulesPage() {
       <PageHeader title="Planificación" />
       <Card>
         <div className="p-4 flex items-end gap-3">
-          <div className="w-56">
-            <TextField
-              label="Mes (primer día)"
-              type="date"
-              value={period}
-              onChange={setPeriod}
-            />
+          <div className="w-72">
+            <MonthPicker label="Mes" value={period} onChange={setPeriod} />
           </div>
           <Button
             onClick={() => generate.mutate()}
@@ -80,7 +78,7 @@ export default function SchedulesPage() {
               <tbody>
                 {list.data.map((s: Schedule) => (
                   <tr key={s.id} className="border-b last:border-b-0">
-                    <td className="px-4 py-2">{s.period}</td>
+                    <td className="px-4 py-2">{formatPeriod(s.period)}</td>
                     <td className="px-4 py-2">
                       {STATUS_LABEL[s.status] ?? s.status}
                     </td>
