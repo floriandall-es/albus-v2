@@ -14,6 +14,7 @@ class TeamMemberOut(BaseModel):
     person_name: str
     person_email: str
     person_locale: str | None
+    person_avatar_url: str | None = None
     roles: list[str]
     category_id: int | None
     category_name: str | None

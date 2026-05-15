@@ -1,6 +1,10 @@
 "use client";
 import { useMemo } from "react";
-import { avatarSrc, type Assignment } from "@/lib/api";
+import {
+  avatarSrc,
+  type Assignment,
+  type TeamMember,
+} from "@/lib/api";
 
 // Shared planning grid: slot rows × date columns. Used by:
 // - admin schedule detail (interactive — cells open the editor on click)
@@ -19,6 +23,9 @@ export type PlanningGridProps = {
    * be clickable. */
   cellIsClickable?: (a: Assignment) => boolean;
   highlightPersonId?: number | null;
+  /** When provided, the grid renders an extra "Libre" row at the bottom
+   * showing the team members NOT assigned to any slot that day. */
+  teamMembers?: TeamMember[];
 };
 
 export function PlanningGrid({
@@ -27,9 +34,35 @@ export function PlanningGrid({
   onCellClick,
   cellIsClickable,
   highlightPersonId = null,
+  teamMembers,
 }: PlanningGridProps) {
   const grid = useMemo(() => buildGrid(assignments), [assignments]);
   const interactive = !!onCellClick;
+
+  // For each date, list team members not assigned to ANY slot. A null
+  // person_id (Sin cubrir) doesn't count as "taken".
+  const libreByDate = useMemo(() => {
+    if (!teamMembers || teamMembers.length === 0) return null;
+    const assignedByDate = new Map<string, Set<number>>();
+    for (const a of assignments) {
+      if (a.person_id === null) continue;
+      let set = assignedByDate.get(a.date);
+      if (!set) {
+        set = new Set();
+        assignedByDate.set(a.date, set);
+      }
+      set.add(a.person_id);
+    }
+    const result = new Map<string, TeamMember[]>();
+    for (const d of grid.dates) {
+      const assigned = assignedByDate.get(d) ?? new Set();
+      const libre = teamMembers
+        .filter((m) => !assigned.has(m.person_id))
+        .sort((a, b) => a.person_name.localeCompare(b.person_name));
+      result.set(d, libre);
+    }
+    return result;
+  }, [assignments, teamMembers, grid.dates]);
 
   if (grid.slotRows.length === 0) {
     return (
@@ -251,6 +284,53 @@ export function PlanningGrid({
                 })}
               </tr>
             ))}
+            {libreByDate && (
+              <tr className="bg-emerald-50/30 border-t-2 border-gray-200">
+                <td className="sticky left-0 z-10 bg-emerald-50/60 px-3 py-2 border-r border-gray-200 font-medium text-gray-800">
+                  <span className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full shrink-0 bg-emerald-500" />
+                    <span>Libre</span>
+                  </span>
+                </td>
+                {grid.dates.map((d) => {
+                  const libre = libreByDate.get(d) ?? [];
+                  const isToday = d === today;
+                  return (
+                    <td
+                      key={d}
+                      className={
+                        "align-top px-1.5 py-2 border-b border-gray-100 "
+                        + (isToday ? "bg-brand-50/20 " : "")
+                      }
+                    >
+                      {libre.length === 0 ? (
+                        <span className="text-[11px] text-gray-300">—</span>
+                      ) : (
+                        <div className="flex flex-wrap items-center gap-1">
+                          {libre.map((m) => {
+                            const isMe =
+                              highlightPersonId !== null
+                              && m.person_id === highlightPersonId;
+                            return (
+                              <span
+                                key={m.person_id}
+                                title={m.person_name}
+                              >
+                                <Avatar
+                                  name={m.person_name}
+                                  mine={isMe}
+                                  imageUrl={m.person_avatar_url}
+                                />
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            )}
           </tbody>
         </table>
     </div>

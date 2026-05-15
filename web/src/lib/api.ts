@@ -359,6 +359,7 @@ export type TeamMember = {
   person_name: string;
   person_email: string;
   person_locale: string | null;
+  person_avatar_url: string | null;
   roles: string[];
   category_id: number | null;
   category_name: string | null;

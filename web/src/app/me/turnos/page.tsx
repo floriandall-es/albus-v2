@@ -41,6 +41,7 @@ export default function TurnosPage() {
       api.listHolidays(new Date(detail.data!.period).getFullYear()),
     enabled: !!detail.data,
   });
+  const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
   const holidayDates = useMemo(
     () => new Set((holidays.data ?? []).map((h) => h.date)),
     [holidays.data],
@@ -100,6 +101,7 @@ export default function TurnosPage() {
             cellIsClickable={(a) =>
               a.person_id === me.data!.person.id && !a.locked_at
             }
+            teamMembers={team.data}
           />
         </>
       )}

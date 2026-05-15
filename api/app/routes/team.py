@@ -15,6 +15,7 @@ def _serialize(m: Membership, person: Person, category: Category | None) -> Team
         person_name=person.name,
         person_email=person.email,
         person_locale=person.locale,
+        person_avatar_url=person.avatar_url,
         roles=list(m.roles),
         category_id=m.category_id,
         category_name=category.name if category else None,

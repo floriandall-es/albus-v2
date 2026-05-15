@@ -60,6 +60,8 @@ export default function ScheduleDetailPage() {
     },
   });
 
+  const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
+
   const holidayDates = useMemo(
     () => new Set((holidays.data ?? []).map((h) => h.date)),
     [holidays.data],
@@ -152,6 +154,7 @@ export default function ScheduleDetailPage() {
         assignments={s.assignments}
         holidayDates={holidayDates}
         onCellClick={isEditable ? (a) => setEditing(a) : undefined}
+        teamMembers={team.data}
       />
 
       <BalanceStats
