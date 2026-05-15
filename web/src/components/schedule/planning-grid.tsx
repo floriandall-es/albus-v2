@@ -14,6 +14,11 @@ export type PlanningGridProps = {
   assignments: Assignment[];
   holidayDates: Set<string>;
   onCellClick?: (a: Assignment) => void;
+  /** Only invoke onCellClick when this returns true. Defaults to true
+   * for all cells when onCellClick is provided. Useful for read-only-ish
+   * views where only specific cells (e.g. the current user's own) should
+   * be clickable. */
+  cellIsClickable?: (a: Assignment) => boolean;
   highlightPersonId?: number | null;
 };
 
@@ -21,6 +26,7 @@ export function PlanningGrid({
   assignments,
   holidayDates,
   onCellClick,
+  cellIsClickable,
   highlightPersonId = null,
 }: PlanningGridProps) {
   const grid = useMemo(() => buildGrid(assignments), [assignments]);
@@ -123,17 +129,26 @@ export function PlanningGrid({
                               )}
                             </span>
                           );
-                          if (interactive) {
+                          const clickable =
+                            interactive
+                            && (cellIsClickable
+                              ? cellIsClickable(a)
+                              : true);
+                          if (clickable) {
                             return (
                               <button
                                 type="button"
                                 key={a.id}
-                                onClick={() => onCellClick(a)}
+                                onClick={() => onCellClick!(a)}
                                 className={
-                                  "block w-full text-left leading-tight hover:bg-blue-50 rounded cursor-pointer "
+                                  "block w-full text-left leading-tight hover:bg-blue-100 rounded cursor-pointer "
                                   + (a.person_id === null ? "text-red-700" : "")
                                 }
-                                title={a.notes ?? ""}
+                                title={
+                                  isMe
+                                    ? "Haz clic para pedir cobertura para este turno"
+                                    : (a.notes ?? "")
+                                }
                               >
                                 {content}
                               </button>
