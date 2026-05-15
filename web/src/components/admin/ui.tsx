@@ -10,19 +10,25 @@ export function PageHeader({
 }) {
   return (
     <div className="flex items-center justify-between mb-6">
-      <h1 className="text-2xl font-semibold">{title}</h1>
+      <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
+        {title}
+      </h1>
       {action}
     </div>
   );
 }
 
 export function Card({ children }: { children: ReactNode }) {
-  return <div className="rounded-md border bg-white">{children}</div>;
+  return (
+    <div className="rounded-xl bg-white shadow-soft ring-1 ring-gray-200">
+      {children}
+    </div>
+  );
 }
 
 export function Empty({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-md border bg-white p-8 text-center text-sm text-gray-500">
+    <div className="rounded-xl bg-white shadow-soft ring-1 ring-gray-200 p-8 text-center text-sm text-gray-500">
       {children}
     </div>
   );
@@ -42,16 +48,48 @@ export function Button({
   disabled?: boolean;
 }) {
   const base =
-    "inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed";
+    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-1 disabled:opacity-50 disabled:cursor-not-allowed";
   const styles = {
-    primary: "bg-gray-900 text-white hover:bg-gray-700",
-    secondary: "border border-gray-300 bg-white text-gray-800 hover:bg-gray-50",
-    danger: "border border-red-300 text-red-700 hover:bg-red-50",
+    primary: "bg-brand-600 text-white hover:bg-brand-700 shadow-soft",
+    secondary:
+      "ring-1 ring-gray-300 bg-white text-gray-800 hover:bg-gray-50",
+    danger:
+      "ring-1 ring-rose-300 text-rose-700 bg-white hover:bg-rose-50",
   }[variant];
   return (
-    <button type={type} onClick={onClick} disabled={disabled} className={`${base} ${styles}`}>
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      className={`${base} ${styles}`}
+    >
       {children}
     </button>
+  );
+}
+
+// Standardised status pill — pass a `tone` and it picks the right palette.
+// Avoids the ad-hoc bg-amber-100/text-amber-800 sprinkled across pages.
+export function StatusPill({
+  tone,
+  children,
+}: {
+  tone: "success" | "warning" | "danger" | "info" | "neutral";
+  children: ReactNode;
+}) {
+  const styles = {
+    success: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+    warning: "bg-amber-50 text-amber-800 ring-amber-200",
+    danger: "bg-rose-50 text-rose-700 ring-rose-200",
+    info: "bg-sky-50 text-sky-700 ring-sky-200",
+    neutral: "bg-gray-100 text-gray-700 ring-gray-200",
+  }[tone];
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ${styles}`}
+    >
+      {children}
+    </span>
   );
 }
 

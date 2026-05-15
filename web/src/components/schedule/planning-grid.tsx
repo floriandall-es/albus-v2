@@ -40,33 +40,40 @@ export function PlanningGrid({
     );
   }
 
+  const today = new Date().toISOString().slice(0, 10);
+
   return (
     <div className="overflow-x-auto">
       <Card>
         <table className="text-xs">
-          <thead className="border-b bg-gray-50">
+          <thead className="border-b border-gray-200 bg-gray-50">
             <tr>
-              <th className="sticky left-0 bg-gray-50 z-10 px-2 py-1 text-left font-medium border-r min-w-[160px]">
-                Slot
+              <th className="sticky left-0 bg-gray-50 z-10 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 border-r border-gray-200 min-w-[180px]">
+                Turno
               </th>
               {grid.dates.map((d) => {
                 const isHoliday = holidayDates.has(d);
                 const dt = new Date(d);
                 const wd = dt.getDay();
                 const isWeekend = wd === 0 || wd === 6;
+                const isToday = d === today;
                 return (
                   <th
                     key={d}
-                    className={`px-1 py-1 font-medium text-center min-w-[80px] ${
-                      isHoliday
-                        ? "bg-amber-100 text-amber-900"
+                    className={
+                      "px-1 py-2 font-medium text-center min-w-[80px] border-b-2 "
+                      + (isToday
+                        ? "border-brand-500 "
+                        : "border-transparent ")
+                      + (isHoliday
+                        ? "bg-amber-50 text-amber-900"
                         : isWeekend
-                          ? "bg-gray-100 text-gray-600"
-                          : ""
-                    }`}
+                          ? "bg-gray-50 text-gray-500"
+                          : "")
+                    }
                   >
-                    <div>{d.slice(8)}</div>
-                    <div className="font-normal text-[10px]">
+                    <div className="text-sm font-semibold">{d.slice(8)}</div>
+                    <div className="font-normal text-[10px] uppercase tracking-wide">
                       {["dom", "lun", "mar", "mié", "jue", "vie", "sáb"][wd]}
                     </div>
                   </th>
@@ -76,8 +83,11 @@ export function PlanningGrid({
           </thead>
           <tbody>
             {grid.slotRows.map((row) => (
-              <tr key={row.slot_id} className="border-b last:border-b-0">
-                <td className="sticky left-0 bg-white z-10 px-2 py-1 border-r font-medium">
+              <tr
+                key={row.slot_id}
+                className="border-b border-gray-100 last:border-b-0"
+              >
+                <td className="sticky left-0 bg-white z-10 px-3 py-2 border-r border-gray-200 font-medium text-gray-800">
                   {row.display_name}
                 </td>
                 {grid.dates.map((d) => {
@@ -92,16 +102,16 @@ export function PlanningGrid({
                     <td
                       key={d}
                       className={
-                        "align-top px-1 py-1 "
+                        "align-top px-1.5 py-2 "
                         + (empty
-                          ? "bg-red-50"
+                          ? "bg-rose-50/60"
                           : hasMe
-                            ? "bg-blue-50"
+                            ? "bg-brand-50/70"
                             : "")
                       }
                     >
                       {cell.length === 0 ? (
-                        <span className="text-[10px] text-gray-400">—</span>
+                        <span className="text-[11px] text-gray-300">—</span>
                       ) : (
                         cell.map((a) => {
                           const isMe =
@@ -113,19 +123,26 @@ export function PlanningGrid({
                                 <LockIcon className="h-3 w-3 text-amber-600" />
                               )}
                               {a.swap_offer_id !== null && (
-                                <SwapIcon className="h-3 w-3 text-blue-600" />
+                                <SwapIcon className="h-3 w-3 text-sky-600" />
                               )}
                               {a.person_id === null ? (
-                                "Sin cubrir"
+                                <span className="text-rose-700 font-medium">
+                                  Sin cubrir
+                                </span>
                               ) : (
                                 <>
-                                  <span className={isMe ? "font-semibold" : ""}>
+                                  <span
+                                    className={
+                                      isMe
+                                        ? "font-semibold text-brand-700"
+                                        : "text-gray-800"
+                                    }
+                                  >
                                     {a.person_name}
                                   </span>
                                   {a.team_role_label && (
-                                    <span className="text-gray-500">
-                                      {" "}
-                                      · {a.team_role_label}
+                                    <span className="text-gray-400">
+                                      {" "}· {a.team_role_label}
                                     </span>
                                   )}
                                 </>
@@ -155,10 +172,7 @@ export function PlanningGrid({
                                 type="button"
                                 key={a.id}
                                 onClick={() => onCellClick!(a)}
-                                className={
-                                  "block w-full text-left leading-tight hover:bg-blue-100 rounded cursor-pointer "
-                                  + (a.person_id === null ? "text-red-700" : "")
-                                }
+                                className="block w-full text-left leading-tight rounded px-1 -mx-1 cursor-pointer hover:bg-brand-100/60 transition-colors"
                                 title={tooltip || undefined}
                               >
                                 {content}
@@ -168,10 +182,7 @@ export function PlanningGrid({
                           return (
                             <div
                               key={a.id}
-                              className={
-                                "block w-full text-left leading-tight "
-                                + (a.person_id === null ? "text-red-700" : "")
-                              }
+                              className="block w-full text-left leading-tight"
                               title={tooltip || undefined}
                             >
                               {content}

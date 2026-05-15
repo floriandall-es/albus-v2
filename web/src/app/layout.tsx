@@ -1,7 +1,14 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { Inter } from "next/font/google";
 import { QueryProvider } from "@/components/QueryProvider";
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
+});
 
 export const metadata: Metadata = {
   title: { default: "Trivu", template: "%s · Trivu" },
@@ -16,10 +23,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="es">
-      <body>
+    <html lang="es" className={inter.variable}>
+      <body className="font-sans antialiased text-gray-900">
         <QueryProvider>
-          <div className="min-h-screen">{children}</div>
+          <div className="min-h-screen bg-gray-50">{children}</div>
         </QueryProvider>
       </body>
     </html>
