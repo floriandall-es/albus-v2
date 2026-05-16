@@ -490,7 +490,10 @@ function initialsOf(name: string): string {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
-function Avatar({
+// Exported so other pages (e.g. the schedule detail's BalanceStats
+// table) can reuse the same look + initials-fallback for person
+// avatars without duplicating the styling.
+export function Avatar({
   name,
   mine,
   imageUrl,

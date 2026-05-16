@@ -15,7 +15,7 @@ import {
   Select,
   TextField,
 } from "@/components/admin/ui";
-import { PlanningGrid } from "@/components/schedule/planning-grid";
+import { Avatar, PlanningGrid } from "@/components/schedule/planning-grid";
 import { formatPeriod } from "@/components/admin/month-picker";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -425,13 +425,19 @@ function BalanceStats({
     type RowKey = { slot_name: string; team_role_label: string | null };
     const keyFor = (k: RowKey) =>
       `${k.slot_name}\x00${k.team_role_label ?? ""}`;
-    const persons = new Map<number, string>();
+    type PersonMeta = { name: string; avatar_url: string | null };
+    const persons = new Map<number, PersonMeta>();
     const rows = new Map<string, RowKey>();
     const counts = new Map<string, Map<number, number>>(); // key -> pid -> n
     const weByPerson = new Map<number, number>();          // pid -> we/holiday count
     for (const a of assignments) {
       if (a.person_id === null || a.person_name === null) continue;
-      persons.set(a.person_id, a.person_name);
+      if (!persons.has(a.person_id)) {
+        persons.set(a.person_id, {
+          name: a.person_name,
+          avatar_url: a.person_avatar_url ?? null,
+        });
+      }
       const rk: RowKey = {
         slot_name: a.slot_name,
         team_role_label: a.team_role_label ?? null,
@@ -450,7 +456,7 @@ function BalanceStats({
       }
     }
     const personsSorted = Array.from(persons.entries()).sort((a, b) =>
-      a[1].localeCompare(b[1]),
+      a[1].name.localeCompare(b[1].name),
     );
     const rowsSorted = Array.from(rows.values()).sort((a, b) => {
       const byName = a.slot_name.localeCompare(b.slot_name);
@@ -538,12 +544,19 @@ function BalanceStats({
           <thead className="border-b border-gray-200 bg-gray-50 text-left">
             <tr className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
               <th className="px-3 py-2">Turno</th>
-              {stats.personsSorted.map(([pid, name]) => (
+              {stats.personsSorted.map(([pid, meta]) => (
                 <th
                   key={pid}
                   className="px-3 py-2 text-right whitespace-nowrap normal-case font-medium text-gray-700 text-xs tracking-normal"
                 >
-                  {name}
+                  <span className="inline-flex items-center gap-1.5">
+                    <Avatar
+                      name={meta.name}
+                      mine={false}
+                      imageUrl={meta.avatar_url}
+                    />
+                    <span>{meta.name}</span>
+                  </span>
                 </th>
               ))}
             </tr>
