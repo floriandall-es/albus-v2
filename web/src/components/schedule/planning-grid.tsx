@@ -143,7 +143,7 @@ export function PlanningGrid({
         <tbody>
           {grid.slotRows.map((row, rowIdx) => (
             <tr
-              key={row.slot_id}
+              key={`${row.slot_id}|${row.team_role_label ?? ""}`}
               className={rowIdx % 2 === 1 ? "bg-gray-50/40" : ""}
             >
               <td
@@ -159,7 +159,14 @@ export function PlanningGrid({
                       style={{ backgroundColor: row.color }}
                     />
                   )}
-                  <span>{row.display_name}</span>
+                  <span className="flex flex-col leading-tight">
+                    <span>{row.display_name}</span>
+                    {row.team_role_label && (
+                      <span className="text-xs font-normal text-gray-500">
+                        {row.team_role_label}
+                      </span>
+                    )}
+                  </span>
                 </span>
               </td>
               {grid.dates.map((d) => {
@@ -224,22 +231,18 @@ export function PlanningGrid({
                                   Sin cubrir
                                 </span>
                               ) : (
-                                <>
-                                  <span
-                                    className={
-                                      isMe
-                                        ? "font-semibold text-brand-700"
-                                        : "text-gray-800"
-                                    }
-                                  >
-                                    {a.person_name}
-                                  </span>
-                                  {a.team_role_label && (
-                                    <span className="text-gray-400">
-                                      {" "}· {a.team_role_label}
-                                    </span>
-                                  )}
-                                </>
+                                // Sprint 16: the role label moved to
+                                // the left-column row header; cells
+                                // only show the person now.
+                                <span
+                                  className={
+                                    isMe
+                                      ? "font-semibold text-brand-700"
+                                      : "text-gray-800"
+                                  }
+                                >
+                                  {a.person_name}
+                                </span>
                               )}
                             </span>
                           );
@@ -356,43 +359,64 @@ export function PlanningGrid({
 
 function buildGrid(assignments: Assignment[]) {
   const dates = Array.from(new Set(assignments.map((a) => a.date))).sort();
-  const slotMap = new Map<
-    number,
-    {
-      slot_id: number;
-      slot_name: string;
-      display_name: string;
-      color: string | null;
-      cells: Record<string, Assignment[]>;
-    }
-  >();
+  // Sprint 16: rows are keyed by (slot_id, team_role_label) instead of
+  // just slot_id. A team_composition slot with three roles becomes
+  // three rows; the left column carries the role label and each cell
+  // contains only one assignment, instead of stuffing all roles into
+  // one super-row.
+  type GridRow = {
+    slot_id: number;
+    slot_name: string;
+    team_role_label: string | null;
+    display_name: string;
+    color: string | null;
+    cells: Record<string, Assignment[]>;
+  };
+  const rowMap = new Map<string, GridRow>();
+  const rowKey = (slot_id: number, role: string | null) =>
+    `${slot_id}|${role ?? ""}`;
   for (const a of assignments) {
-    let row = slotMap.get(a.slot_id);
+    const role = a.team_role_label ?? null;
+    const key = rowKey(a.slot_id, role);
+    let row = rowMap.get(key);
     if (!row) {
       row = {
         slot_id: a.slot_id,
         slot_name: a.slot_name,
+        team_role_label: role,
         display_name: a.slot_name,
         color: a.slot_color ?? null,
         cells: {},
       };
-      slotMap.set(a.slot_id, row);
+      rowMap.set(key, row);
     }
     if (!row.cells[a.date]) row.cells[a.date] = [];
     row.cells[a.date].push(a);
   }
-  const nameCounts = new Map<string, number>();
-  for (const row of slotMap.values()) {
-    nameCounts.set(row.slot_name, (nameCounts.get(row.slot_name) ?? 0) + 1);
+  // Disambiguate slots that share a name by appending "· #id". Count
+  // DISTINCT slot_ids per name — naively counting rows would over-fire
+  // here because the same slot now contributes one row per role.
+  const slotIdsByName = new Map<string, Set<number>>();
+  for (const row of rowMap.values()) {
+    const set = slotIdsByName.get(row.slot_name) ?? new Set<number>();
+    set.add(row.slot_id);
+    slotIdsByName.set(row.slot_name, set);
   }
-  for (const row of slotMap.values()) {
-    if ((nameCounts.get(row.slot_name) ?? 0) > 1) {
+  for (const row of rowMap.values()) {
+    if ((slotIdsByName.get(row.slot_name)?.size ?? 0) > 1) {
       row.display_name = `${row.slot_name} · #${row.slot_id}`;
     }
   }
-  const slotRows = Array.from(slotMap.values()).sort((a, b) =>
-    a.display_name.localeCompare(b.display_name),
-  );
+  const slotRows = Array.from(rowMap.values()).sort((a, b) => {
+    const byName = a.display_name.localeCompare(b.display_name);
+    if (byName !== 0) return byName;
+    // Same slot: keep the no-role row (rare — shouldn't coexist with
+    // role rows, but defensive) first, then alpha by role label so
+    // "Quirofano 1" precedes "Quirofano 2".
+    if (a.team_role_label === null && b.team_role_label !== null) return -1;
+    if (a.team_role_label !== null && b.team_role_label === null) return 1;
+    return (a.team_role_label ?? "").localeCompare(b.team_role_label ?? "");
+  });
   return { dates, slotRows };
 }
 
