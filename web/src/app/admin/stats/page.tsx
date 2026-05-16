@@ -5,6 +5,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  LabelList,
   Legend,
   ResponsiveContainer,
   Tooltip,
@@ -236,7 +237,15 @@ export default function StatsPage() {
                       stackId="we"
                       fill={weekendShades[i]}
                       name={m}
-                    />
+                    >
+                      <LabelList
+                        dataKey={m}
+                        position="center"
+                        fill={textColorForBg(weekendShades[i])}
+                        formatter={labelFormatter}
+                        style={{ fontSize: 11, fontWeight: 600 }}
+                      />
+                    </Bar>
                   ))}
                 </BarChart>
               </ResponsiveContainer>
@@ -273,6 +282,27 @@ function ChartCard({
 }
 
 // Generate N color stops from white-ish to the slot's base color, used
+// Pick a contrasting text color (white or dark gray) for a given
+// hex background, so in-bar labels stay readable across the full
+// shadeStops range — pale shades get dark text, dark shades white.
+// Uses the WCAG relative-luminance formula with a 0.55 cutoff,
+// which empirically gives good contrast against the teal /
+// amber / etc. palettes we use here.
+function textColorForBg(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return lum > 0.55 ? "#1f2937" : "#ffffff";
+}
+
+// Hide zero / very small segment labels — the bar is too thin to
+// fit a digit and the "0" just clutters the chart.
+const labelFormatter = (value: unknown) => {
+  const n = Number(value);
+  return n > 0 ? String(n) : "";
+};
+
 // to shade per-month stacks within a single slot's chart. Older months
 // are paler, the most recent month is the slot's full color.
 function shadeStops(baseHex: string, count: number): string[] {
@@ -393,7 +423,15 @@ function PerSlotChart({
               stackId="s"
               fill={shades[i]}
               name={m}
-            />
+            >
+              <LabelList
+                dataKey={m}
+                position="center"
+                fill={textColorForBg(shades[i])}
+                formatter={labelFormatter}
+                style={{ fontSize: 11, fontWeight: 600 }}
+              />
+            </Bar>
           ))}
         </BarChart>
       </ResponsiveContainer>
