@@ -105,7 +105,6 @@ function SuccessionSection({
                 <th className="px-4 py-2 font-medium">Después de</th>
                 <th className="px-4 py-2 font-medium">No se puede</th>
                 <th className="px-4 py-2 font-medium">Días</th>
-                <th className="px-4 py-2 font-medium">Aplica a</th>
                 <th className="px-4 py-2 font-medium">Severidad</th>
                 <th className="px-4 py-2 font-medium">Peso</th>
                 <th className="px-4 py-2 font-medium text-right">Acciones</th>
@@ -121,9 +120,6 @@ function SuccessionSection({
                     {slotById[r.forbid_slot_id]?.name ?? `#${r.forbid_slot_id}`}
                   </td>
                   <td className="px-4 py-2">{r.days_after}</td>
-                  <td className="px-4 py-2 text-gray-600">
-                    {r.applies_to === "same_person" ? "Misma persona" : "Equipo"}
-                  </td>
                   <td className="px-4 py-2">{SEVERITY_LABEL[r.severity]}</td>
                   <td className="px-4 py-2 text-gray-600">
                     {r.severity === "soft" ? r.weight : "—"}
@@ -243,17 +239,15 @@ function SuccessionDialog({
           min={1}
           max={14}
         />
-        <Select
-          label="Aplica a"
-          value="same_person"
-          onChange={() => {
-            /* whole_team disabled in v1 */
-          }}
-          options={[
-            { value: "same_person", label: "Misma persona" },
-            { value: "whole_team", label: "Todo el equipo (próximamente)" },
-          ]}
-        />
+        {/*
+          "Aplica a" select removed: the only valid value here is
+          "same_person" — the rule says "if THIS person does after_slot,
+          THIS person can't do forbid_slot for N days". The "whole_team"
+          option was a stub that never got built ("if anyone on the team
+          does X, no one on the team does Y") and would be a weird policy
+          even if it existed. The model column still defaults to
+          same_person server-side so old data continues to work.
+        */}
         <Select
           label="Severidad"
           value={severity}
