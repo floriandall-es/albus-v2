@@ -741,11 +741,21 @@ def _greedy_fallback(
                 # restrict the candidate pool to those people. Otherwise
                 # (rule.strategy == "solver" or "manual") fall back to
                 # all eligible candidates as before.
+                #
+                # If the team is smaller than the slot's total role
+                # headcount, strictly restricting would leave some
+                # roles uncoverable (same person can't fill two
+                # roles), so we drop the restriction and let solver
+                # picks cover the excess. Matches the CP-SAT
+                # graceful-degrade path.
                 team_pin: list[int] | None = None
                 if rule.strategy == "rotation":
                     team_pin = list(ctx.rotation_persons_for(rule, d))
                 elif rule.strategy == "fixed_weekly":
                     team_pin = list(ctx.fixed_weekly_persons(rule, d))
+                total_slot_head = sum(max(1, r.headcount) for r in roles)
+                if team_pin and len(team_pin) < total_slot_head:
+                    team_pin = None
                 team_pin_set = set(team_pin) if team_pin else None
 
                 # Same-slot exclusivity: a person can fill at most one
@@ -1177,8 +1187,32 @@ def _solve_cpsat(
                     team = list(ctx.fixed_weekly_persons(rule, d))
                 else:
                     team = []
-                if team:
+                # Sprint 16 patch: when the rotation/fixed_weekly team
+                # has fewer members than the slot's TOTAL role
+                # headcount, strictly restricting candidates to the
+                # team makes the model infeasible (same-slot
+                # exclusivity says one person can fill ≤ 1 role of a
+                # given slot/day; team of 1 can't cover 2 roles). The
+                # whole schedule then falls back to greedy. Detect
+                # the mismatch and skip the team restriction for this
+                # (slot, day) so CP-SAT can still solve — the slot
+                # gets filled by solver picks instead of the
+                # configured team. Admin sees this as "rotation
+                # respected when possible, free pick when not".
+                total_slot_head = sum(max(1, r.headcount) for r in roles)
+                if team and len(team) >= total_slot_head:
                     team_pinned_by_slot_day[(slot.id, d)] = team
+                elif team:
+                    logger.warning(
+                        "team_composition rotation team smaller than "
+                        "slot headcount (slot=%s date=%s team=%d, "
+                        "need=%d) — disabling team restriction for "
+                        "this date so CP-SAT stays feasible",
+                        slot.name,
+                        d.isoformat(),
+                        len(team),
+                        total_slot_head,
+                    )
                 for role in roles:
                     demands.append((d, slot.id, role.id, max(1, role.headcount)))
                     is_guardia_demand[(d, slot.id, role.id)] = bool(slot.guardia_type)
