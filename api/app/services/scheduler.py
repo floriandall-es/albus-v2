@@ -70,6 +70,11 @@ logger = logging.getLogger("app.scheduler")
 
 W_FAIRNESS = 10
 W_WEEKEND = 5
+# Sprint 16: per-role equity inside team_composition slots. Lower
+# than W_FAIRNESS so the slot-level total balance stays the
+# primary signal; this is a secondary "and the role split should
+# also be roughly even" objective.
+W_ROLE_BALANCE = 5
 W_SOFT_SKILL = 2
 W_GUARDIA_SPREAD = 3
 GUARDIA_MIN_GAP_DAYS = 4
@@ -1815,6 +1820,32 @@ def _solve_cpsat(
         _balance_term(buckets, W_FAIRNESS, f"eq_{safe}")
 
     _balance_term(weekend_total, W_WEEKEND, "weekend")
+
+    # Sprint 16: per-(slot, role) equity for team_composition slots.
+    # The slot-level equity above balances each person's TOTAL count
+    # for a slot, but the distribution across the slot's roles was
+    # free — so a person could disproportionately become "the
+    # Explante one" while their Trasplante total still matched
+    # everyone else's. This adds a soft term per (slot, role)
+    # bucket so role assignments also tend to spread evenly across
+    # the team. Lower weight than W_FAIRNESS so it never wins over
+    # slot-total balance, but enough to break ties.
+    role_equity: dict[tuple[int, int], dict[int, list]] = defaultdict(
+        lambda: {pid: [] for pid in person_ids_present}
+    )
+    for (d, slot_id, role_id, pid), var in x.items():
+        if role_id is None:
+            continue
+        slot = ctx.slot_by_id[slot_id]
+        if slot.staffing_mode != "team_composition":
+            continue
+        if not slot.counts_for_equity:
+            continue
+        role_equity[(slot_id, role_id)][pid].append(var)
+    for (slot_id, role_id), buckets in role_equity.items():
+        _balance_term(
+            buckets, W_ROLE_BALANCE, f"role_s{slot_id}_r{role_id}"
+        )
 
     # ---- Soft skill term: weight per missing soft skill per assignment. ----
     for (d, slot_id, role_id, pid), var in x.items():
