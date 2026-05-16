@@ -1,5 +1,4 @@
 "use client";
-import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -84,40 +83,47 @@ export default function SchedulesPage() {
                   <th className="px-4 py-2.5">Mes</th>
                   <th className="px-4 py-2.5">Estado</th>
                   <th className="px-4 py-2.5">Generada</th>
-                  <th className="px-4 py-2.5 text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {list.data.map((s: Schedule) => (
-                  <tr
-                    key={s.id}
-                    className="hover:bg-gray-50/60 transition-colors"
-                  >
-                    <td className="px-4 py-3 font-medium text-gray-900">
-                      {formatPeriod(s.period)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusPill
-                        tone={
-                          STATUS_TONE[s.status as keyof typeof STATUS_TONE]
-                          ?? "neutral"
+                {list.data.map((s: Schedule) => {
+                  const open = () => router.push(`/admin/schedule/${s.id}`);
+                  return (
+                    <tr
+                      key={s.id}
+                      onClick={open}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          open();
                         }
-                      >
-                        {STATUS_LABEL[s.status] ?? s.status}
-                      </StatusPill>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">
-                      {s.generated_at
-                        ? new Date(s.generated_at).toLocaleString()
-                        : "—"}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <Link href={`/admin/schedule/${s.id}`}>
-                        <Button variant="secondary">Abrir</Button>
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
+                      }}
+                      role="link"
+                      tabIndex={0}
+                      aria-label={`Abrir planificación de ${formatPeriod(s.period)}`}
+                      className="cursor-pointer hover:bg-brand-50/40 focus:bg-brand-50/40 focus:outline-none transition-colors"
+                    >
+                      <td className="px-4 py-3 font-medium text-gray-900">
+                        {formatPeriod(s.period)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusPill
+                          tone={
+                            STATUS_TONE[s.status as keyof typeof STATUS_TONE]
+                            ?? "neutral"
+                          }
+                        >
+                          {STATUS_LABEL[s.status] ?? s.status}
+                        </StatusPill>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">
+                        {s.generated_at
+                          ? new Date(s.generated_at).toLocaleString()
+                          : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </Card>
