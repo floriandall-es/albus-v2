@@ -96,9 +96,11 @@ export default function SlotsPage() {
                     )}
                   </td>
                   <td className="px-4 py-2">
-                    {s.start_time && s.end_time
-                      ? `${s.start_time}–${s.end_time}${s.crosses_midnight ? " (+1d)" : ""}`
-                      : "—"}
+                    {s.start_time && s.end_time ? (
+                      `${s.start_time}–${s.end_time}${s.crosses_midnight ? " (+1d)" : ""}`
+                    ) : (
+                      <span className="text-gray-500">Todo el día</span>
+                    )}
                   </td>
                   <td className="px-4 py-2 text-gray-600">{s.days_applied}</td>
                   <td className="px-4 py-2 text-gray-600">
@@ -175,6 +177,14 @@ function SlotDialog({
   const [name, setName] = useState(initial?.name ?? "");
   const [startTime, setStartTime] = useState(initial?.start_time?.slice(0, 5) ?? "");
   const [endTime, setEndTime] = useState(initial?.end_time?.slice(0, 5) ?? "");
+  // Two-mode schedule: "ranged" keeps the start/end time pickers and
+  // sends real times to the API; "all_day" hides them and the save
+  // payload sends null for both (which is how the solver expressed
+  // "any time / on-call" until now — without giving the admin a clear
+  // toggle). Initial mode follows whatever the slot already has.
+  const [scheduleMode, setScheduleMode] = useState<"ranged" | "all_day">(
+    initial?.start_time && initial?.end_time ? "ranged" : "all_day",
+  );
   const [days, setDays] = useState<DaysApplied>(initial?.days_applied ?? "all");
   // Bitmap convention: bit 0 = Monday … bit 6 = Sunday. Mirrors the
   // back-end check in the scheduler (Slot.custom_days_bitmap).
@@ -266,8 +276,14 @@ function SlotDialog({
         equity_group_key: equityGroupKey.trim() || null,
         color: color,
         pool_id: poolId,
-        start_time: startTime ? `${startTime}:00` : null,
-        end_time: endTime ? `${endTime}:00` : null,
+        // When scheduleMode = "all_day" both times stay null regardless
+        // of what the user previously typed (state is preserved so a
+        // toggle back to "ranged" doesn't lose values, but the save
+        // payload follows the active mode).
+        start_time:
+          scheduleMode === "ranged" && startTime ? `${startTime}:00` : null,
+        end_time:
+          scheduleMode === "ranged" && endTime ? `${endTime}:00` : null,
         team_roles: mode === "team_composition" ? teamRoles : [],
         skills_required: skillsRequired,
       };
@@ -344,9 +360,32 @@ function SlotDialog({
         }}
       >
         <TextField label="Nombre" value={name} onChange={setName} required />
-        <div className="grid grid-cols-2 gap-3">
-          <TextField label="Hora inicio" type="time" value={startTime} onChange={setStartTime} />
-          <TextField label="Hora fin" type="time" value={endTime} onChange={setEndTime} />
+        <div>
+          <span className="text-sm font-medium text-gray-700">Horario</span>
+          <div className="mt-1 flex flex-wrap gap-3 text-sm">
+            <label className="flex items-center gap-1.5">
+              <input
+                type="radio"
+                checked={scheduleMode === "ranged"}
+                onChange={() => setScheduleMode("ranged")}
+              />
+              Horario específico
+            </label>
+            <label className="flex items-center gap-1.5">
+              <input
+                type="radio"
+                checked={scheduleMode === "all_day"}
+                onChange={() => setScheduleMode("all_day")}
+              />
+              Todo el día
+            </label>
+          </div>
+          {scheduleMode === "ranged" && (
+            <div className="mt-2 grid grid-cols-2 gap-3">
+              <TextField label="Hora inicio" type="time" value={startTime} onChange={setStartTime} />
+              <TextField label="Hora fin" type="time" value={endTime} onChange={setEndTime} />
+            </div>
+          )}
         </div>
         <Select
           label="Días aplicados"
