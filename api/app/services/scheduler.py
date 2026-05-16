@@ -760,7 +760,16 @@ def _greedy_fallback(
 
                 # Same-slot exclusivity: a person can fill at most one
                 # role of the same slot/date. Cross-slot conflicts go
-                # through conflicts_in_time().
+                # through conflicts_in_time() — UNLESS this slot is
+                # admin-pinned via a team_pin (sprint 16 policy: the
+                # admin's placement wins over time-overlap with
+                # other admin-pinned slots). Greedy processes
+                # admin-pinned slots before solver slots, so at this
+                # point any cross-slot busy entry the team member
+                # has IS another admin pin; bypassing the check is
+                # safe and matches what the user explicitly asked
+                # for ("fixed days and rotation should just be put
+                # as defined by the user").
                 picked_for_slot: set[int] = set()
                 for role in roles:
                     if (d, slot.id, role.id) in locked_keys:
@@ -772,7 +781,10 @@ def _greedy_fallback(
                         pool = [
                             p for p in cands
                             if p not in picked_for_slot
-                            and not conflicts_in_time(p, slot, d)
+                            and (
+                                team_pin_set is not None
+                                or not conflicts_in_time(p, slot, d)
+                            )
                         ]
                         if not pool:
                             db.add(
@@ -1343,6 +1355,26 @@ def _solve_cpsat(
     for (pid, d_pin, s_pin) in pre_pinned_assignments:
         pre_pinned_by_person[pid].append((d_pin, s_pin))
 
+    # Sprint 16: per-person admin-control check used for both
+    # time-overlap and succession-rule bypasses. "Admin-controlled
+    # for P on (slot, day)" means either a direct pre-pin
+    # (rotation/fixed_weekly on single/multiple_same) OR membership
+    # in a team_pin (rotation/fixed_weekly on team_composition).
+    # Per user policy: when both sides of a conflict are
+    # admin-controlled, the admin's pin wins and the conflict is
+    # silenced — the placement happens exactly as defined.
+    prepin_by_sdp: set[tuple[int, date, int]] = set()
+    for (pid_, d_, s_) in pre_pinned_assignments:
+        prepin_by_sdp.add((s_, d_, pid_))
+
+    def _person_admin_controlled(slot_id: int, d: date, p: int) -> bool:
+        if (slot_id, d, p) in prepin_by_sdp:
+            return True
+        tp = team_pinned_by_slot_day.get((slot_id, d))
+        if tp is not None and p in tp:
+            return True
+        return False
+
     for pid, items in vars_by_person.items():
         # Solver-var vs solver-var pairs.
         for (d1, s1, v1), (d2, s2, v2) in itertools.combinations(items, 2):
@@ -1350,10 +1382,24 @@ def _solve_cpsat(
                 continue
             slot_a = ctx.slot_by_id[s1]
             slot_b = ctx.slot_by_id[s2]
-            if slots_overlap_in_time(slot_a, d1, slot_b, d2):
-                model.Add(v1 + v2 <= 1)
+            if not slots_overlap_in_time(slot_a, d1, slot_b, d2):
+                continue
+            # Skip when admin pinned both placements for this
+            # person — admin owns the conflict, two coexisting
+            # admin-pinned slots are allowed even if their wall-clock
+            # windows overlap.
+            if (
+                _person_admin_controlled(s1, d1, pid)
+                and _person_admin_controlled(s2, d2, pid)
+            ):
+                continue
+            model.Add(v1 + v2 <= 1)
         # Solver-var vs pre-pin pairs: pre-pin is forced =1 logically,
-        # so any overlapping solver var must be =0.
+        # so any overlapping solver var must be =0 — unless the
+        # solver var ALSO represents an admin-controlled placement
+        # (the person is in a team_pin for that solver-side slot),
+        # in which case admin pinned both sides and we let them
+        # coexist.
         for d_pin, s_pin in pre_pinned_by_person.get(pid, ()):
             slot_pin = ctx.slot_by_id.get(s_pin)
             if slot_pin is None:
@@ -1362,8 +1408,11 @@ def _solve_cpsat(
                 if abs((d_v - d_pin).days) > 1:
                     continue
                 slot_v = ctx.slot_by_id[s_v]
-                if slots_overlap_in_time(slot_pin, d_pin, slot_v, d_v):
-                    model.Add(v == 0)
+                if not slots_overlap_in_time(slot_pin, d_pin, slot_v, d_v):
+                    continue
+                if _person_admin_controlled(s_v, d_v, pid):
+                    continue
+                model.Add(v == 0)
 
     # ---- Hard: same-slot exclusivity. ---
     # A person can fill at most one role of the same slot on the same
@@ -1506,43 +1555,19 @@ def _solve_cpsat(
     for (d_, slot_id_, role_id_, pid_), var_ in x.items():
         vars_by_sdp[(slot_id_, d_, pid_)].append(var_)
 
-    # Pre-pin index for the same key.
-    prepin_by_sdp: set[tuple[int, date, int]] = set()
-    for (pid_, d_, s_) in pre_pinned_assignments:
-        prepin_by_sdp.add((s_, d_, pid_))
-
     # ---- Succession rules (same_person). ----
     # For each rule R: if person P works after_slot on day D, they
     # cannot (hard) / are penalized (soft) for working forbid_slot
     # on D' for D' in (D, D+R.days_after].
     #
-    # Sprint 16 policy: cross-slot rules fire when AT LEAST ONE side
-    # is solver-driven. When BOTH sides are admin-controlled (the
-    # admin has explicitly placed that person via a rotation /
-    # fixed_weekly rule), the rule is silenced — the admin's choice
-    # wins. Quoting the user: "rules should only apply to shifts
-    # distributed by the solver, fixed days and rotation should just
-    # be put as defined by the user."
-    #
-    # "Admin-controlled" for person P on (slot, day) means either:
-    #   - direct pre-pin (rotation/fixed_weekly on single/
-    #     multiple_same slots), captured in `prepin_by_sdp`; OR
-    #   - P is in the team_pin of a team_composition slot's
-    #     rotation/fixed_weekly rule, captured via
-    #     `team_pinned_by_slot_day`. Even though team_pin makes P a
-    #     CANDIDATE (not a forced assignment), the admin has
-    #     declared "this person belongs in this slot on this day",
-    #     so we treat it as admin-controlled.
+    # Sprint 16 policy: rules fire when AT LEAST ONE side is
+    # solver-driven. When BOTH sides are admin-controlled for the
+    # same person, the rule is silenced — the admin's choice wins.
+    # (`prepin_by_sdp` and `_person_admin_controlled` are defined
+    # earlier, alongside the time-overlap section, which uses the
+    # same admin-vs-solver gating.)
     period_dates_set = set(ctx.dates)
     person_ids_all = sorted(ctx.member_by_person_id.keys())
-
-    def _person_admin_controlled(slot_id: int, d: date, p: int) -> bool:
-        if (slot_id, d, p) in prepin_by_sdp:
-            return True
-        tp = team_pinned_by_slot_day.get((slot_id, d))
-        if tp is not None and p in tp:
-            return True
-        return False
 
     for rule in ctx.succession_rules:
         a_slot = rule.after_slot_id
