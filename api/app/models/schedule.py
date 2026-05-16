@@ -49,6 +49,16 @@ class Schedule(Base):
     published_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Sprint 16: tracking for the published → draft "reopen" action.
+    # Null on schedules that have never been reopened. The pair of
+    # fields lets the UI show a "Reabierta el X por Y" badge once a
+    # publication has been brought back for edits.
+    reopened_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    reopened_by_membership_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("memberships.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

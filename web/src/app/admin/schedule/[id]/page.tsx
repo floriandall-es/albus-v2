@@ -52,6 +52,13 @@ export default function ScheduleDetailPage() {
       qc.invalidateQueries({ queryKey: ["schedules"] });
     },
   });
+  const reopen = useMutation({
+    mutationFn: () => api.reopenSchedule(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["schedule", id] });
+      qc.invalidateQueries({ queryKey: ["schedules"] });
+    },
+  });
   const regenerate = useMutation({
     mutationFn: () => api.generateSchedule(detail.data!.period),
     onSuccess: (data) => {
@@ -105,6 +112,7 @@ export default function ScheduleDetailPage() {
     (publish.error as Error | null)
     ?? (archive.error as Error | null)
     ?? (unarchive.error as Error | null)
+    ?? (reopen.error as Error | null)
     ?? (regenerate.error as Error | null)
     ?? (remove.error as Error | null);
   return (
@@ -145,13 +153,30 @@ export default function ScheduleDetailPage() {
             </>
           )}
           {s.status === "published" && (
-            <Button
-              variant="secondary"
-              onClick={() => archive.mutate()}
-              disabled={archive.isPending}
-            >
-              Archivar
-            </Button>
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  if (
+                    confirm(
+                      "Reabrir esta planificación cancelará los cambios de turno pendientes y la quitará de la vista de los miembros hasta volver a publicarla. ¿Continuar?",
+                    )
+                  ) {
+                    reopen.mutate();
+                  }
+                }}
+                disabled={reopen.isPending}
+              >
+                {reopen.isPending ? "Reabriendo…" : "Reabrir"}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => archive.mutate()}
+                disabled={archive.isPending}
+              >
+                Archivar
+              </Button>
+            </>
           )}
           {s.status === "archived" && (
             <Button
@@ -171,6 +196,18 @@ export default function ScheduleDetailPage() {
       )}
       <p className="mb-4 text-sm text-gray-600">
         Estado: <span className="font-medium">{STATUS_LABEL[s.status]}</span>
+        {s.reopened_at && (
+          <span
+            className="ml-3 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide bg-amber-50 text-amber-800 border border-amber-200"
+            title={
+              "Esta planificación fue reabierta el "
+              + new Date(s.reopened_at).toLocaleString()
+              + ". Los miembros del equipo no la verán hasta que se publique de nuevo."
+            }
+          >
+            Reabierta
+          </span>
+        )}
         {s.solver_used && (
           <span
             className={

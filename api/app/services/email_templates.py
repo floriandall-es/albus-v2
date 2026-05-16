@@ -160,3 +160,55 @@ def swap_admin_notification_email(
         f"— El equipo de Trivu\n"
     )
     return subject, body
+
+
+# ---------------------------------------------------------------------------
+# Schedule reopen
+# ---------------------------------------------------------------------------
+
+
+def swap_cancelled_due_to_reopen_email(
+    *,
+    recipient_name: str,
+    slot_name: str,
+    shift_date: str,
+    period_label: str,
+    app_url: str,
+) -> tuple[str, str]:
+    """Sent to a member whose open swap offer got auto-cancelled
+    because an admin reopened the schedule for edits."""
+    subject = f"Tu cambio para {slot_name} ({shift_date}) ha sido cancelado"
+    body = (
+        f"Hola {recipient_name},\n\n"
+        f"La planificación de {period_label} ha sido reabierta por un "
+        f"administrador para hacer ajustes. Tu solicitud de cambio para:\n"
+        f"  · {slot_name} — {shift_date}\n\n"
+        f"se ha cancelado automáticamente. Cuando la planificación vuelva "
+        f"a publicarse podrás solicitar el cambio de nuevo si todavía lo "
+        f"necesitas.\n\n"
+        f"{app_url}/me/swaps\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body
+
+
+def schedule_reopened_member_email(
+    *,
+    recipient_name: str,
+    period_label: str,
+    app_url: str,
+) -> tuple[str, str]:
+    """Sent to every team member whose shifts disappeared from
+    /me/turnos when an admin reopened the schedule. Reassures them
+    the disappearance is temporary."""
+    subject = f"Planificación de {period_label} reabierta para ajustes"
+    body = (
+        f"Hola {recipient_name},\n\n"
+        f"Un administrador ha reabierto la planificación de "
+        f"{period_label} para hacer correcciones. Mientras esté en "
+        f"borrador no la verás en \"Mis turnos\". Recibirás un nuevo "
+        f"aviso en cuanto se vuelva a publicar.\n\n"
+        f"{app_url}/me/turnos\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body

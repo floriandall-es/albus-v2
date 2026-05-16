@@ -77,6 +77,7 @@ def _serialize_detail(ctx: RequestContext, schedule: Schedule) -> ScheduleDetail
         status=schedule.status,  # type: ignore[arg-type]
         generated_at=schedule.generated_at,
         published_at=schedule.published_at,
+        reopened_at=schedule.reopened_at,
         solver_used=schedule.solver_used,  # type: ignore[arg-type]
         created_at=schedule.created_at,
         assignments=assignments,
@@ -205,6 +206,116 @@ def unarchive_schedule(
             detail="Solo se pueden desarchivar planificaciones archivadas",
         )
     scheduler.unarchive(ctx.db, s)
+    return s
+
+
+@router.post(
+    "/schedules/{schedule_id}/reopen", response_model=ScheduleOut
+)
+def reopen_schedule(
+    schedule_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> Schedule:
+    """Flip published → draft so the admin can edit cells again. The
+    schedule disappears from /me/turnos until re-published.
+
+    Side effects:
+    - All open swap offers for the schedule's assignments get
+      cancelled; the requester gets an email saying so.
+    - Every team member with at least one assignment in this
+      schedule gets a heads-up email so they understand why the
+      planning disappeared from their view.
+    Email sending is best-effort — failures don't roll back the
+    status change."""
+    _require_admin(ctx)
+    s = ctx.db.get(Schedule, schedule_id)
+    if not s or s.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    if s.status != "published":
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se pueden reabrir planificaciones publicadas",
+        )
+
+    # Gather what we need BEFORE flipping status so we know who to
+    # notify. Imports are inside the function to avoid pulling email
+    # / swap models at module-import time.
+    from app.core.config import settings
+    from app.models.shift_swap import ShiftSwapOffer, ShiftSwapResponse
+    from app.services.email import send_email
+    from app.services.email_templates import (
+        schedule_reopened_member_email,
+        swap_cancelled_due_to_reopen_email,
+    )
+
+    # Open swap offers tied to assignments of this schedule.
+    open_offers = (
+        ctx.db.query(ShiftSwapOffer, Assignment, Slot, Person)
+        .join(Assignment, Assignment.id == ShiftSwapOffer.assignment_id)
+        .join(Slot, Slot.id == Assignment.slot_id)
+        .join(
+            Membership,
+            Membership.id == ShiftSwapOffer.requested_by_membership_id,
+        )
+        .join(Person, Person.id == Membership.person_id)
+        .filter(
+            Assignment.schedule_id == s.id,
+            ShiftSwapOffer.status == "open",
+        )
+        .all()
+    )
+    period_label = s.period.strftime("%B %Y")
+    app_url = settings.public_base_url
+    now = datetime.now(timezone.utc)
+
+    # Cancel each offer + any pending responses, send a notification
+    # to the requester.
+    for offer, assignment, slot_row, requester in open_offers:
+        offer.status = "cancelled"
+        offer.closed_at = now
+        (
+            ctx.db.query(ShiftSwapResponse)
+            .filter(
+                ShiftSwapResponse.offer_id == offer.id,
+                ShiftSwapResponse.status == "pending",
+            )
+            .update(
+                {"status": "withdrawn", "decided_at": now},
+                synchronize_session=False,
+            )
+        )
+        if requester.email:
+            subject, body = swap_cancelled_due_to_reopen_email(
+                recipient_name=requester.name,
+                slot_name=slot_row.name,
+                shift_date=assignment.date.isoformat(),
+                period_label=period_label,
+                app_url=app_url,
+            )
+            send_email(to=requester.email, subject=subject, body_text=body)
+
+    # Heads-up email to every distinct member with an assignment in
+    # this schedule.
+    member_rows = (
+        ctx.db.query(Person)
+        .join(Assignment, Assignment.person_id == Person.id)
+        .filter(Assignment.schedule_id == s.id)
+        .distinct()
+        .all()
+    )
+    for person in member_rows:
+        if not person.email:
+            continue
+        subject, body = schedule_reopened_member_email(
+            recipient_name=person.name,
+            period_label=period_label,
+            app_url=app_url,
+        )
+        send_email(to=person.email, subject=subject, body_text=body)
+
+    # Now flip the status (after enumerations so we still see the
+    # "published" assignments + open offers).
+    scheduler.reopen(ctx.db, s, membership_id=ctx.membership.id)
     return s
 
 

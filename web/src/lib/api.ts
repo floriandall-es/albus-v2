@@ -123,6 +123,7 @@ export type Schedule = {
   status: ScheduleStatus;
   generated_at: string | null;
   published_at: string | null;
+  reopened_at: string | null;
   solver_used: SolverUsed | null;
   created_at: string;
 };
@@ -843,6 +844,8 @@ export const api = {
     request<Schedule>(`/api/schedules/${id}/archive`, { method: "POST" }),
   unarchiveSchedule: (id: number) =>
     request<Schedule>(`/api/schedules/${id}/unarchive`, { method: "POST" }),
+  reopenSchedule: (id: number) =>
+    request<Schedule>(`/api/schedules/${id}/reopen`, { method: "POST" }),
   deleteSchedule: (id: number) =>
     request<void>(`/api/schedules/${id}`, { method: "DELETE" }),
 

@@ -2087,3 +2087,25 @@ def unarchive(db: Session, schedule: Schedule) -> None:
         return
     schedule.status = "published"
     db.flush()
+
+
+def reopen(
+    db: Session, schedule: Schedule, *, membership_id: int | None
+) -> None:
+    """Flip published → draft so an admin can edit cells. Records
+    `reopened_at` + `reopened_by_membership_id` so the audit trail
+    (and the UI badge) can show when and by whom the publication was
+    brought back. Idempotent: a non-published schedule is a no-op.
+
+    Side-effects intentionally NOT done here:
+    - Cancelling open swap offers + emailing affected members. The
+      caller (the route) handles that because it needs the SMTP
+      stack and the assignment list, which the scheduler service
+      shouldn't depend on. Keeping this function as a pure status
+      flip makes it trivially testable."""
+    if schedule.status != "published":
+        return
+    schedule.status = "draft"
+    schedule.reopened_at = datetime.now(timezone.utc)
+    schedule.reopened_by_membership_id = membership_id
+    db.flush()

@@ -15,6 +15,7 @@ class ScheduleOut(BaseModel):
     status: ScheduleStatus
     generated_at: datetime | None
     published_at: datetime | None
+    reopened_at: datetime | None = None
     solver_used: SolverUsed | None = None
     created_at: datetime
 
