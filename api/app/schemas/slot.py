@@ -93,6 +93,7 @@ class SlotOut(BaseModel):
     guardia_type: str | None
     equity_group_key: str | None
     color: str | None = None
+    position: int = 0
     crosses_midnight: bool
     team_roles: list[SlotTeamRoleOut]
     skills_required: list[SlotSkillRequiredOut]

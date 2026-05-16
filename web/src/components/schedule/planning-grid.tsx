@@ -396,6 +396,10 @@ function buildGrid(assignments: Assignment[]) {
   type GridRow = {
     slot_id: number;
     slot_name: string;
+    /** Admin-controlled order (see Slot.position). Mirrored from
+     * the first assignment we see for the slot — same value across
+     * all of that slot's role rows. */
+    slot_position: number;
     team_role_label: string | null;
     display_name: string;
     color: string | null;
@@ -412,6 +416,7 @@ function buildGrid(assignments: Assignment[]) {
       row = {
         slot_id: a.slot_id,
         slot_name: a.slot_name,
+        slot_position: a.slot_position ?? 0,
         team_role_label: role,
         display_name: a.slot_name,
         color: a.slot_color ?? null,
@@ -437,6 +442,12 @@ function buildGrid(assignments: Assignment[]) {
     }
   }
   const slotRows = Array.from(rowMap.values()).sort((a, b) => {
+    // Primary sort: admin-controlled position (sprint 17). Falls
+    // through to display_name + role label for deterministic order
+    // when two slots happen to share a position (rare).
+    if (a.slot_position !== b.slot_position) {
+      return a.slot_position - b.slot_position;
+    }
     const byName = a.display_name.localeCompare(b.display_name);
     if (byName !== 0) return byName;
     // Same slot: keep the no-role row (rare — shouldn't coexist with

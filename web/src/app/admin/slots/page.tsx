@@ -53,6 +53,20 @@ export default function SlotsPage() {
     mutationFn: (id: number) => api.deleteSlot(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["slots"] }),
   });
+  // Sprint 17: admin-controlled ordering. The endpoint returns the
+  // full reordered list; we drop it straight into the cache so the
+  // table updates without a refetch round-trip. queryKey must match
+  // what `list` uses above.
+  const move = useMutation({
+    mutationFn: ({ id, direction }: { id: number; direction: "up" | "down" }) =>
+      api.moveSlot(id, direction),
+    onSuccess: (data) => {
+      qc.setQueryData(["slots"], data);
+      // The planning grid also needs the new positions next time it
+      // refetches the schedule (slot_position is on Assignment now).
+      qc.invalidateQueries({ queryKey: ["schedule"] });
+    },
+  });
 
   return (
     <>
@@ -83,11 +97,12 @@ export default function SlotsPage() {
                 <th className="px-4 py-2 font-medium">Modo</th>
                 <th className="px-4 py-2 font-medium">Plazas</th>
                 <th className="px-4 py-2 font-medium">Unidad</th>
+                <th className="px-4 py-2 font-medium">Orden</th>
                 <th className="px-4 py-2 font-medium text-right">Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {list.data.map((s) => (
+              {list.data.map((s, idx) => (
                 <tr key={s.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors">
                   <td className="px-4 py-2">
                     {s.name}
@@ -119,6 +134,33 @@ export default function SlotsPage() {
                     {s.pool_id != null
                       ? poolNameById.get(s.pool_id) ?? `#${s.pool_id}`
                       : <span className="text-gray-400">—</span>}
+                  </td>
+                  <td className="px-4 py-2">
+                    <span className="inline-flex items-center gap-1">
+                      <button
+                        type="button"
+                        aria-label="Subir"
+                        title="Subir"
+                        disabled={idx === 0 || move.isPending}
+                        onClick={() => move.mutate({ id: s.id, direction: "up" })}
+                        className="h-6 w-6 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Bajar"
+                        title="Bajar"
+                        disabled={
+                          idx === (list.data?.length ?? 0) - 1
+                          || move.isPending
+                        }
+                        onClick={() => move.mutate({ id: s.id, direction: "down" })}
+                        className="h-6 w-6 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        ↓
+                      </button>
+                    </span>
                   </td>
                   <td className="px-4 py-2 text-right space-x-2">
                     <Button variant="secondary" onClick={() => setEditing(s)}>

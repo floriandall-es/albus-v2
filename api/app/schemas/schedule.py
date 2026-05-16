@@ -28,6 +28,10 @@ class AssignmentOut(BaseModel):
     slot_id: int
     slot_name: str
     slot_color: str | None = None
+    # Admin-controlled display order — same as Slot.position. Sent
+    # with every assignment so the planning grid can sort rows by
+    # it without needing a separate slot lookup.
+    slot_position: int = 0
     date: date
     person_id: int | None
     person_name: str | None

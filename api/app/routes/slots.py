@@ -1,4 +1,6 @@
+import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.exc import IntegrityError
 
 from app.models import (
@@ -267,7 +269,14 @@ def _replace_skills_required(
 
 @router.get("/slots", response_model=list[SlotOut])
 def list_slots(ctx: RequestContext = Depends(get_current_context)) -> list[SlotOut]:
-    rows = ctx.db.query(Slot).order_by(Slot.name).all()
+    # Admin-controlled order (sprint 17): position is the primary
+    # sort key, with name + id as deterministic tiebreakers in the
+    # (rare) case two slots end up with the same position.
+    rows = (
+        ctx.db.query(Slot)
+        .order_by(Slot.position, Slot.name, Slot.id)
+        .all()
+    )
     return [_serialize(ctx, r) for r in rows]
 
 
@@ -275,6 +284,10 @@ def list_slots(ctx: RequestContext = Depends(get_current_context)) -> list[SlotO
 def create_slot(
     payload: SlotCreate, ctx: RequestContext = Depends(get_current_context)
 ) -> SlotOut:
+    # Sprint 17: new slots land at the end of the admin's ordering.
+    # `max(position) + 1`; if there are no slots yet, position = 0.
+    max_pos = ctx.db.query(sa.func.max(Slot.position)).scalar()
+    next_pos = (max_pos + 1) if max_pos is not None else 0
     obj = Slot(
         tenant_id=ctx.tenant.id,
         name=payload.name,
@@ -291,6 +304,7 @@ def create_slot(
         guardia_type=(payload.guardia_type or None),
         equity_group_key=(payload.equity_group_key or None),
         color=(payload.color or None),
+        position=next_pos,
     )
     ctx.db.add(obj)
     try:
@@ -369,6 +383,48 @@ def delete_slot(slot_id: int, ctx: RequestContext = Depends(get_current_context)
     obj = _get_or_404(ctx, slot_id)
     ctx.db.delete(obj)
     ctx.db.flush()
+
+
+class _SlotMovePayload(BaseModel):
+    direction: str  # "up" or "down"
+
+
+@router.post("/slots/{slot_id}/move", response_model=list[SlotOut])
+def move_slot(
+    slot_id: int,
+    payload: _SlotMovePayload,
+    ctx: RequestContext = Depends(get_current_context),
+) -> list[SlotOut]:
+    """Swap a slot's position with its neighbor above ("up") or below
+    ("down"). At a boundary it's a no-op (returns the unchanged list).
+    Returns the full reordered slot list so the client can replace its
+    cache atomically without a follow-up GET."""
+    target = _get_or_404(ctx, slot_id)
+    if payload.direction not in ("up", "down"):
+        raise HTTPException(
+            status_code=422, detail="direction debe ser 'up' o 'down'"
+        )
+    ordered = (
+        ctx.db.query(Slot)
+        .order_by(Slot.position, Slot.name, Slot.id)
+        .all()
+    )
+    idx = next((i for i, s in enumerate(ordered) if s.id == target.id), -1)
+    if idx == -1:
+        raise HTTPException(status_code=404, detail="Slot not found")
+    if payload.direction == "up" and idx == 0:
+        return [_serialize(ctx, s) for s in ordered]
+    if payload.direction == "down" and idx == len(ordered) - 1:
+        return [_serialize(ctx, s) for s in ordered]
+    neighbor = ordered[idx - 1 if payload.direction == "up" else idx + 1]
+    target.position, neighbor.position = neighbor.position, target.position
+    ctx.db.flush()
+    new_order = (
+        ctx.db.query(Slot)
+        .order_by(Slot.position, Slot.name, Slot.id)
+        .all()
+    )
+    return [_serialize(ctx, s) for s in new_order]
 
 
 def _validate_rules_in_tenant_persons(

@@ -134,6 +134,9 @@ export type Assignment = {
   slot_id: number;
   slot_name: string;
   slot_color: string | null;
+  /** Mirror of Slot.position, set on the server-side serializer
+   * so the planning grid can sort rows without a second roundtrip. */
+  slot_position: number;
   date: string;
   person_id: number | null;
   person_name: string | null;
@@ -358,6 +361,9 @@ export type Slot = {
   guardia_type: string | null;
   equity_group_key: string | null;
   color: string | null;
+  /** Admin-controlled display order. Lower = earlier in the
+   * planning grid and the slot list. */
+  position: number;
   crosses_midnight: boolean;
   team_roles: SlotTeamRole[];
   skills_required: SlotSkillRequired[];
@@ -669,6 +675,11 @@ export const api = {
   updateSlot: (id: number, body: Partial<SlotInput>) =>
     request<Slot>(`/api/slots/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   deleteSlot: (id: number) => request<void>(`/api/slots/${id}`, { method: "DELETE" }),
+  moveSlot: (id: number, direction: "up" | "down") =>
+    request<Slot[]>(`/api/slots/${id}/move`, {
+      method: "POST",
+      body: JSON.stringify({ direction }),
+    }),
   replaceSlotRules: (id: number, rules: SlotRuleInput[]) =>
     request<Slot>(`/api/slots/${id}/rules`, {
       method: "PUT",
