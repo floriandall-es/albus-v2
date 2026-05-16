@@ -481,6 +481,12 @@ def _greedy_fallback(
     # Person → dates they're blocked on because the previous day's slot
     # had post_slot_rest=True.
     rest_block: dict[int, set[date]] = defaultdict(set)
+    # Sprint 16: per-(person, role) counter used by the team_composition
+    # branch to approximate Latin-square role rotation across consecutive
+    # team-pinned days. CP-SAT enforces this exactly via balance blocks;
+    # the greedy fallback only nudges by preferring the lowest-count
+    # role-person pairing.
+    role_counts: Counter[tuple[int, int]] = Counter()
     locked = locked or []
     for la in locked:
         db.add(
@@ -553,9 +559,9 @@ def _greedy_fallback(
     # later rule has pinned — leaving the pinned slot empty with the
     # confusing "Persona fija ya asignada hoy" note.
     def _slot_priority(slot: Slot, d: date) -> int:
-        """Lower runs first. Pinned/rotation slots before round-robin."""
-        if slot.staffing_mode == "team_composition":
-            return 1  # always solver-driven
+        """Lower runs first. Pinned/rotation slots before round-robin —
+        applies to both single/multiple_same AND team_composition slots
+        (sprint 16: the latter can now have a rule pinning a team)."""
         rule = ctx.rule_for(slot.id, d)
         if rule is None:
             return 1
@@ -575,8 +581,13 @@ def _greedy_fallback(
                 continue
 
             mode = slot.staffing_mode
-            # team_composition is solver-driven regardless of rule.strategy
-            # (matches CP-SAT behaviour).
+            # Sprint 16: pre-compute the team pin per (slot, date). For
+            # single/multiple_same slots the pin is applied directly as
+            # the assignment (round-robin within head). For
+            # team_composition we DON'T pre-pin — the team becomes the
+            # restricted candidate pool when the team_composition branch
+            # runs below, and a per-role least-used bias produces a
+            # Latin-square-ish rotation across consecutive days.
             if mode == "team_composition":
                 pinned = None
             else:
@@ -726,14 +737,27 @@ def _greedy_fallback(
                         )
                     )
                     continue
-                # Same-slot exclusivity: a person can fill at most one role
-                # of the same slot/date. Cross-slot conflicts go through
-                # conflicts_in_time().
+                # Sprint 16: when a rule pins a team for this date,
+                # restrict the candidate pool to those people. Otherwise
+                # (rule.strategy == "solver" or "manual") fall back to
+                # all eligible candidates as before.
+                team_pin: list[int] | None = None
+                if rule.strategy == "rotation":
+                    team_pin = list(ctx.rotation_persons_for(rule, d))
+                elif rule.strategy == "fixed_weekly":
+                    team_pin = list(ctx.fixed_weekly_persons(rule, d))
+                team_pin_set = set(team_pin) if team_pin else None
+
+                # Same-slot exclusivity: a person can fill at most one
+                # role of the same slot/date. Cross-slot conflicts go
+                # through conflicts_in_time().
                 picked_for_slot: set[int] = set()
                 for role in roles:
                     if (d, slot.id, role.id) in locked_keys:
                         continue
                     cands = ctx.candidates_for_slot(slot, d, team_role_id=role.id)
+                    if team_pin_set is not None:
+                        cands = [p for p in cands if p in team_pin_set]
                     for _ in range(max(1, role.headcount)):
                         pool = [
                             p for p in cands
@@ -753,10 +777,27 @@ def _greedy_fallback(
                                 )
                             )
                             continue
-                        pool.sort(key=lambda pid: (counts[pid], pid))
+                        # When a team is pinned, bias towards the
+                        # person who has done THIS role the fewest
+                        # times so far — this approximates the Latin-
+                        # square Friday-Saturday-Sunday role rotation
+                        # CP-SAT enforces exactly. When no team is
+                        # pinned, fall back to overall person counts
+                        # (existing behaviour).
+                        if team_pin_set is not None:
+                            pool.sort(
+                                key=lambda pid: (
+                                    role_counts[(pid, role.id)],
+                                    counts[pid],
+                                    pid,
+                                )
+                            )
+                        else:
+                            pool.sort(key=lambda pid: (counts[pid], pid))
                         pid = pool[0]
                         picked_for_slot.add(pid)
                         record_assignment(pid, slot, d)
+                        role_counts[(pid, role.id)] += 1
                         db.add(
                             Assignment(
                                 tenant_id=ctx.tenant_id,
@@ -949,6 +990,14 @@ def _solve_cpsat(
     # If a pre-pinned person worked a post_slot_rest slot on D, exclude
     # them from solver demands on D+1 too.
     pre_rest_block: set[tuple[int, date]] = set()
+    # Sprint 16: for team_composition slots, a rotation / fixed_weekly
+    # rule pins a TEAM (set of person_ids) to the slot for date D —
+    # the solver still decides which role each team member covers, but
+    # the candidate pool for every role demand on that (slot, date) is
+    # restricted to those team members. Consecutive dates with the same
+    # team form a "balance block" → see the Latin-square constraint
+    # added after the hard same-slot exclusivity below.
+    team_pinned_by_slot_day: dict[tuple[int, date], list[int]] = {}
 
     def _emit_team_prepin(
         slot: Slot,
@@ -1101,40 +1150,52 @@ def _solve_cpsat(
                 # Admin chose not to cover this weekday on this slot.
                 continue
             mode = slot.staffing_mode
-            # team_composition is always solver-driven regardless of rule
-            # strategy — per-role configuration via rules is out of scope.
-            effective_strategy = (
-                "solver" if mode == "team_composition" else rule.strategy
-            )
-            if effective_strategy == "solver":
-                if mode in ("single", "multiple_same"):
-                    head = 1 if mode == "single" else max(1, slot.headcount)
-                    demands.append((d, slot.id, None, head))
-                    is_guardia_demand[(d, slot.id, None)] = bool(slot.guardia_type)
-                elif mode == "team_composition":
-                    roles = ctx.team_roles_by_slot.get(slot.id, [])
-                    if not roles:
-                        db.add(
-                            Assignment(
-                                tenant_id=ctx.tenant_id,
-                                schedule_id=schedule.id,
-                                slot_id=slot.id,
-                                date=d,
-                                person_id=None,
-                                notes="Slot sin roles definidos",
-                            )
+            if mode == "team_composition":
+                # Sprint 16: team_composition slots are always
+                # solver-driven for role assignment, but a rotation /
+                # fixed_weekly rule can now restrict the candidate pool
+                # to a specific TEAM (set of people). The solver still
+                # decides which person covers which role; a Latin-square
+                # balance constraint added below makes the role
+                # distribution rotate within the block.
+                roles = ctx.team_roles_by_slot.get(slot.id, [])
+                if not roles:
+                    db.add(
+                        Assignment(
+                            tenant_id=ctx.tenant_id,
+                            schedule_id=schedule.id,
+                            slot_id=slot.id,
+                            date=d,
+                            person_id=None,
+                            notes="Slot sin roles definidos",
                         )
-                        continue
-                    for role in roles:
-                        demands.append((d, slot.id, role.id, max(1, role.headcount)))
-                        is_guardia_demand[(d, slot.id, role.id)] = bool(slot.guardia_type)
+                    )
+                    continue
+                if rule.strategy == "rotation":
+                    team = list(ctx.rotation_persons_for(rule, d))
+                elif rule.strategy == "fixed_weekly":
+                    team = list(ctx.fixed_weekly_persons(rule, d))
+                else:
+                    team = []
+                if team:
+                    team_pinned_by_slot_day[(slot.id, d)] = team
+                for role in roles:
+                    demands.append((d, slot.id, role.id, max(1, role.headcount)))
+                    is_guardia_demand[(d, slot.id, role.id)] = bool(slot.guardia_type)
+                continue
+
+            # Non-team_composition: rule.strategy dictates behaviour.
+            if rule.strategy == "solver":
+                head = 1 if mode == "single" else max(1, slot.headcount)
+                demands.append((d, slot.id, None, head))
+                is_guardia_demand[(d, slot.id, None)] = bool(slot.guardia_type)
             else:
-                # Non-solver strategies for single / multiple_same. A
-                # locked assignment for this (date, slot) pre-empts the
-                # rule pick — the lock wins. We rely on the locked-key
-                # set: if a lock exists, we let _solve_cpsat's lock
-                # branch handle emission (by adding a degenerate solver
-                # demand below).
+                # rotation / fixed_weekly / manual for single /
+                # multiple_same. A locked assignment for this
+                # (date, slot) pre-empts the rule pick — the lock wins.
+                # We rely on the locked-key set: if a lock exists, we
+                # let _solve_cpsat's lock branch handle emission (by
+                # adding a degenerate solver demand below).
                 if (d, slot.id, None) in locked_keys_set:
                     head = 1 if mode == "single" else max(1, slot.headcount)
                     demands.append((d, slot.id, None, head))
@@ -1172,6 +1233,18 @@ def _solve_cpsat(
             cands = [
                 pid for pid in cands if (pid, d) not in pre_rest_block
             ]
+        # Sprint 16: team-pin restriction on team_composition slots.
+        # If a rotation/fixed_weekly rule pinned a specific team for
+        # this (slot, date), only those people can fill any role of
+        # the slot that day. Ineligible team members are silently
+        # dropped here — the head==N constraint will then downsize
+        # the demand and emit NULL rows after the solve, so the admin
+        # sees the gap with the usual "No hay personal disponible"
+        # note.
+        team_pin = team_pinned_by_slot_day.get((slot_id, d))
+        if team_pin is not None:
+            team_set = set(team_pin)
+            cands = [pid for pid in cands if pid in team_set]
         candidates_by_demand[(d, slot_id, role_id)] = cands
         for pid in cands:
             x[(d, slot_id, role_id, pid)] = model.NewBoolVar(
@@ -1272,6 +1345,72 @@ def _solve_cpsat(
     for (pid, slot_id, d), vars_ in by_person_slot_day.items():
         if len(vars_) > 1:
             model.Add(sum(vars_) <= 1)
+
+    # ---- Hard: Latin-square role balance for team-pinned blocks. ----
+    # Sprint 16: a "balance block" is a maximal run of consecutive dates
+    # in ctx.dates where a team_composition slot has the SAME team
+    # pinned by a rotation/fixed_weekly rule. Within that block we
+    # require each (team member, role) pair to be covered ~uniformly:
+    # if block length k and team size n are equal, that's exactly one
+    # role per person per day → a Latin square (each person rotates
+    # through every role exactly once across the block). When k != n,
+    # each (person, role) pair is bounded by floor(k/n)..ceil(k/n).
+    #
+    # Ineligibility relaxes the constraint naturally — if person P
+    # can't take role R on any day of the block (no x-variable
+    # exists), the (P,R) constraint is skipped and other team members
+    # pick up the slack via the per-demand head==N constraint above.
+    by_slot_team_composition = [
+        s for s in ctx.slots if s.staffing_mode == "team_composition"
+    ]
+    for slot in by_slot_team_composition:
+        roles = ctx.team_roles_by_slot.get(slot.id, [])
+        if not roles:
+            continue
+        # Walk ctx.dates in order, grouping consecutive same-team dates.
+        current_team: tuple[int, ...] | None = None
+        current_dates: list[date] = []
+
+        def _emit_block(
+            team: tuple[int, ...] | None,
+            dates_: list[date],
+        ) -> None:
+            if not team or not dates_:
+                return
+            n = len(team)
+            k = len(dates_)
+            target_lo = k // n
+            target_hi = (k + n - 1) // n  # ceil(k/n)
+            for p in team:
+                for r in roles:
+                    vars_for_pair = [
+                        x[(d_, slot.id, r.id, p)]
+                        for d_ in dates_
+                        if (d_, slot.id, r.id, p) in x
+                    ]
+                    if not vars_for_pair:
+                        continue
+                    if target_lo == target_hi:
+                        model.Add(sum(vars_for_pair) == target_lo)
+                    else:
+                        model.Add(sum(vars_for_pair) >= target_lo)
+                        model.Add(sum(vars_for_pair) <= target_hi)
+
+        for d in ctx.dates:
+            team_for_day = team_pinned_by_slot_day.get((slot.id, d))
+            if team_for_day is None:
+                _emit_block(current_team, current_dates)
+                current_team = None
+                current_dates = []
+                continue
+            tt = tuple(team_for_day)
+            if current_team == tt:
+                current_dates.append(d)
+            else:
+                _emit_block(current_team, current_dates)
+                current_team = tt
+                current_dates = [d]
+        _emit_block(current_team, current_dates)
 
     # ---- Hard: post_slot_rest. ---
     # If slot S has post_slot_rest=True, anyone assigned on date D cannot

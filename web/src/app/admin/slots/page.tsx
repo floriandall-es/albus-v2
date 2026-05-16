@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
@@ -229,28 +229,26 @@ function SlotDialog({
     ],
   );
 
+  // The slot-level headcount the list view shows and the rules editor
+  // sizes positions against. Mirrors what save.mutate() commits below:
+  // - single: always 1
+  // - multiple_same: what the admin typed (≥ 1)
+  // - team_composition: sum of role plazas (so a rotation position is
+  //   a team of N matching the slot's total headcount → sprint 16
+  //   Latin-square per-role rotation)
+  const derivedHeadcount = useMemo<number>(() => {
+    if (mode === "single") return 1;
+    if (mode === "team_composition") {
+      return Math.max(
+        1,
+        teamRoles.reduce((acc, r) => acc + (r.headcount || 0), 0),
+      );
+    }
+    return Math.max(1, Number(headcount) || 1);
+  }, [mode, teamRoles, headcount]);
+
   const save = useMutation({
     mutationFn: async () => {
-      // Derive the slot-level headcount from the mode so the list view
-      // (which renders slot.headcount as "Plazas") never disagrees with
-      // what the editor showed.
-      // - single: always 1
-      // - multiple_same: what the admin typed
-      // - team_composition: sum of role plazas (the per-role headcounts
-      //   are the source of truth; the solver ignores slot.headcount in
-      //   this mode anyway, this is purely a display sync).
-      let derivedHeadcount: number;
-      if (mode === "single") {
-        derivedHeadcount = 1;
-      } else if (mode === "team_composition") {
-        derivedHeadcount = Math.max(
-          1,
-          teamRoles.reduce((acc, r) => acc + (r.headcount || 0), 0),
-        );
-      } else {
-        derivedHeadcount = Math.max(1, Number(headcount) || 1);
-      }
-
       const body: SlotInput = {
         name,
         days_applied: days,
@@ -258,6 +256,9 @@ function SlotDialog({
         // (the back-end validates this and ignores it for non-custom days).
         custom_days_bitmap: days === "custom" ? customDaysBitmap : null,
         staffing_mode: mode,
+        // See derivedHeadcount comment above the useMemo — the saved
+        // value mirrors what the editor showed so the list-view's
+        // "Plazas" column never disagrees with the per-mode UI.
         headcount: derivedHeadcount,
         post_slot_rest: postRest,
         counts_for_equity: countsEquity,
@@ -438,65 +439,60 @@ function SlotDialog({
           </p>
         </div>
 
-        {mode === "team_composition" ? (
-          <div className="border-t pt-3">
-            <h3 className="text-sm font-semibold mb-1">Reglas de asignación</h3>
-            <p className="rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
-              Las reglas por día (rotación, día fijo, manual) no se aplican a
-              turnos con composición de equipo. Para este turno la asignación
-              se hace siempre con el solver, respetando los roles definidos
-              abajo. Si necesitas estrategias por día para un turno con
-              equipo, créalo como dos turnos separados o pide la mejora de
-              reglas-por-rol.
+        <div className="border-t pt-3">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold">Reglas de asignación</h3>
+            <Button
+              variant="secondary"
+              onClick={() =>
+                setRules((cur) => [
+                  ...cur,
+                  {
+                    days_bitmap: 0,
+                    strategy: "solver",
+                    anchor_date: null,
+                    weekly_pins: [],
+                    rotation_blocks: [],
+                    rotation_members: [],
+                  },
+                ])
+              }
+            >
+              + Añadir regla
+            </Button>
+          </div>
+          {mode === "team_composition" && (
+            <p className="mb-2 rounded border border-brand-200 bg-brand-50 p-2 text-xs text-brand-800">
+              En este modo cada posición de la rotación / día fijo es un{" "}
+              <strong>equipo</strong> del tamaño total del turno (suma de las
+              plazas de todos los roles). El solver decide qué persona del
+              equipo cubre cada rol cada día, rotando los roles entre ellas
+              (Latin-square) a lo largo del bloque de días.
             </p>
-          </div>
-        ) : (
-          <div className="border-t pt-3">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold">Reglas de asignación</h3>
-              <Button
-                variant="secondary"
-                onClick={() =>
-                  setRules((cur) => [
-                    ...cur,
-                    {
-                      days_bitmap: 0,
-                      strategy: "solver",
-                      anchor_date: null,
-                      weekly_pins: [],
-                      rotation_blocks: [],
-                      rotation_members: [],
-                    },
-                  ])
-                }
-              >
-                + Añadir regla
-              </Button>
-            </div>
-            {ruleValidationError && (
-              <p className="mb-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
-                {ruleValidationError}
-              </p>
-            )}
-            {rules.map((r, i) => (
-              <RuleCard
-                key={i}
-                rule={r}
-                team={team}
-                headcount={Math.max(1, Number(headcount) || 1)}
-                allowedDaysBitmap={slotAllowedDaysBitmap(days, customDaysBitmap)}
-                onChange={(patch) =>
-                  setRules((cur) =>
-                    cur.map((rr, idx) => (idx === i ? { ...rr, ...patch } : rr)),
-                  )
-                }
-                onDelete={() =>
-                  setRules((cur) => cur.filter((_, idx) => idx !== i))
-                }
-              />
-            ))}
-          </div>
-        )}
+          )}
+          {ruleValidationError && (
+            <p className="mb-2 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
+              {ruleValidationError}
+            </p>
+          )}
+          {rules.map((r, i) => (
+            <RuleCard
+              key={i}
+              rule={r}
+              team={team}
+              headcount={derivedHeadcount}
+              allowedDaysBitmap={slotAllowedDaysBitmap(days, customDaysBitmap)}
+              onChange={(patch) =>
+                setRules((cur) =>
+                  cur.map((rr, idx) => (idx === i ? { ...rr, ...patch } : rr)),
+                )
+              }
+              onDelete={() =>
+                setRules((cur) => cur.filter((_, idx) => idx !== i))
+              }
+            />
+          ))}
+        </div>
 
         {mode === "team_composition" && (
           <div className="border-t pt-3">

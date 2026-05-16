@@ -353,3 +353,155 @@ def test_rotation_team_pre_pins_feed_overlap_constraint(auth_client, client):
     # check it didn't go unfilled.
     for d_iso, pids in y_by_date.items():
         assert any(p is not None for p in pids), f"{d_iso}: Y unfilled"
+
+
+def test_team_composition_weekend_rotation_latin_square(auth_client, client):
+    """Sprint 16: team_composition + weekend rotation rule pins a team
+    of N people for Fri+Sat+Sun and the solver rotates them across the
+    N roles so that within each weekend each person covers each role
+    exactly once (a 3×3 Latin square).
+
+    Setup:
+      - 6 people split into team A = {A1, A2, A3} and team B = {B1, B2, B3}.
+      - Slot "Trasplante", team_composition, 3 roles (Explante, Implante1,
+        Implante2), each headcount=1 → slot headcount = 3.
+      - Rotation rule on Fri+Sat+Sun (one grouped block), 2 positions
+        of 3 people each.
+
+    Asserts:
+      - Every weekend day's 3 assignments come from exactly one team
+        (no mixing across the Fri/Sat/Sun block).
+      - Within a single weekend, each team member appears in each of
+        the 3 roles exactly once.
+      - Teams alternate weekend-to-weekend.
+    """
+    _client, headers, _info = auth_client
+    team_a = [
+        _onboard(client, headers, f"la_a{i}@example.com", f"A{i}")
+        for i in range(3)
+    ]
+    team_b = [
+        _onboard(client, headers, f"la_b{i}@example.com", f"B{i}")
+        for i in range(3)
+    ]
+
+    # NB: "weekends_holidays" in days_applied means Sat/Sun + flagged
+    # holidays only. To cover Fri-Sun we need the slot to apply on
+    # Fridays too, which means days_applied="custom" with the explicit
+    # Fri+Sat+Sun bitmap.
+    fri_sat_sun_bitmap = 0b1110000  # bits 4,5,6 = Fri, Sat, Sun
+    s = _create_slot(
+        client,
+        headers,
+        name="Trasplante",
+        days_applied="custom",
+        custom_days_bitmap=fri_sat_sun_bitmap,
+        staffing_mode="team_composition",
+        headcount=3,
+        team_roles=[
+            {"role_label": "Explante", "headcount": 1, "category_ids": []},
+            {"role_label": "Implante1", "headcount": 1, "category_ids": []},
+            {"role_label": "Implante2", "headcount": 1, "category_ids": []},
+        ],
+    )
+    # Anchor on a Friday — block math gives rank=0 for the Fri-Sun
+    # grouped block; with one block (K=1) and P=2 positions, weekend N
+    # uses team[N % 2].
+    anchor = date(2026, 5, 1)  # Friday
+    fri_sun_mask = 0b1110000  # bits 4,5,6 = Fri, Sat, Sun
+    client.put(
+        f"/api/slots/{s['id']}/rules",
+        headers=headers,
+        json={
+            "rules": [
+                {
+                    "days_bitmap": fri_sun_mask,
+                    "strategy": "rotation",
+                    "anchor_date": anchor.isoformat(),
+                    "rotation_blocks": [
+                        {"position": 0, "days_bitmap": fri_sun_mask},
+                    ],
+                    "rotation_members": [
+                        *(
+                            {"position": 0, "person_id": pid}
+                            for pid in team_a
+                        ),
+                        *(
+                            {"position": 1, "person_id": pid}
+                            for pid in team_b
+                        ),
+                    ],
+                }
+            ]
+        },
+    )
+    r = client.post(
+        "/api/schedules/generate", headers=headers, json={"period": "2026-05-01"}
+    )
+    assert r.status_code in (200, 201), r.text
+    body = r.json()
+    assert body.get("solver_used") == "cpsat", (
+        "Latin-square enforcement runs in CP-SAT only — greedy fallback "
+        "is approximate. If solver_used is greedy here, something else "
+        "made CP-SAT infeasible and we should investigate that first."
+    )
+
+    # Group assignments by (year-week, weekday) → role-label → person.
+    # For each weekend "block" (the Fri-Sat-Sun triplet of an iso week)
+    # we collect a 3×3 mapping (day, role) → person.
+    by_block: dict[tuple[int, int], dict[tuple[str, str], int | None]] = {}
+    for a in body["assignments"]:
+        if a["slot_name"] != "Trasplante":
+            continue
+        d = date.fromisoformat(a["date"])
+        if d.weekday() < 4:
+            continue  # weekdays — rule doesn't apply
+        iso_year, iso_week, _ = d.isocalendar()
+        block_key = (iso_year, iso_week)
+        by_block.setdefault(block_key, {})[(a["date"], a["team_role_label"])] = (
+            a["person_id"]
+        )
+
+    assert len(by_block) >= 2, "need at least two weekends to test alternation"
+
+    seen_teams: list[frozenset[int]] = []
+    for block_key, grid in sorted(by_block.items()):
+        # All people in the block must belong to the same team.
+        people_in_block = {
+            p for p in grid.values() if p is not None
+        }
+        team_a_set = set(team_a)
+        team_b_set = set(team_b)
+        assert (
+            people_in_block <= team_a_set or people_in_block <= team_b_set
+        ), (
+            f"weekend {block_key}: mixed teams {people_in_block} "
+            f"(team_a={team_a_set}, team_b={team_b_set})"
+        )
+        # Within the block: each person covers each role exactly once.
+        # Build per-person role-counts.
+        roles = ("Explante", "Implante1", "Implante2")
+        per_person_roles: dict[int, list[str]] = {}
+        for (d_iso, role_label), pid in grid.items():
+            if pid is None:
+                continue
+            per_person_roles.setdefault(pid, []).append(role_label)
+        # 3 people, each must have covered all 3 roles.
+        assert len(per_person_roles) == 3, (
+            f"weekend {block_key}: expected 3 people, got "
+            f"{per_person_roles}"
+        )
+        for p, role_list in per_person_roles.items():
+            assert sorted(role_list) == sorted(roles), (
+                f"weekend {block_key} person {p}: roles {sorted(role_list)} "
+                f"not a Latin row over {sorted(roles)}"
+            )
+        seen_teams.append(frozenset(people_in_block))
+
+    # Teams alternate: no two consecutive weekends share the same team
+    # (with two positions and a per-weekend cycle, this must hold).
+    for i in range(1, len(seen_teams)):
+        assert seen_teams[i] != seen_teams[i - 1], (
+            f"weekends {i-1} and {i} both got team {seen_teams[i]}; "
+            "rotation didn't alternate"
+        )
