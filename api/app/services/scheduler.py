@@ -1516,22 +1516,33 @@ def _solve_cpsat(
     # cannot (hard) / are penalized (soft) for working forbid_slot
     # on D' for D' in (D, D+R.days_after].
     #
-    # Sprint 16 policy: cross-slot succession rules ONLY apply when
-    # both involved (slot, day) pairs are solver-driven. If either
-    # side has its rule.strategy as rotation or fixed_weekly, the
-    # admin explicitly pinned that slot's roster for that date; their
-    # choice wins and the succession rule is silenced for that pair.
-    # Quoting the user verbatim: "rules should only apply to shifts
+    # Sprint 16 policy: cross-slot rules fire when AT LEAST ONE side
+    # is solver-driven. When BOTH sides are admin-controlled (the
+    # admin has explicitly placed that person via a rotation /
+    # fixed_weekly rule), the rule is silenced — the admin's choice
+    # wins. Quoting the user: "rules should only apply to shifts
     # distributed by the solver, fixed days and rotation should just
     # be put as defined by the user."
+    #
+    # "Admin-controlled" for person P on (slot, day) means either:
+    #   - direct pre-pin (rotation/fixed_weekly on single/
+    #     multiple_same slots), captured in `prepin_by_sdp`; OR
+    #   - P is in the team_pin of a team_composition slot's
+    #     rotation/fixed_weekly rule, captured via
+    #     `team_pinned_by_slot_day`. Even though team_pin makes P a
+    #     CANDIDATE (not a forced assignment), the admin has
+    #     declared "this person belongs in this slot on this day",
+    #     so we treat it as admin-controlled.
     period_dates_set = set(ctx.dates)
     person_ids_all = sorted(ctx.member_by_person_id.keys())
 
-    def _slot_day_is_admin_pinned(slot_id: int, d: date) -> bool:
-        r = ctx.rule_for(slot_id, d)
-        if r is None:
-            return False
-        return r.strategy in ("rotation", "fixed_weekly")
+    def _person_admin_controlled(slot_id: int, d: date, p: int) -> bool:
+        if (slot_id, d, p) in prepin_by_sdp:
+            return True
+        tp = team_pinned_by_slot_day.get((slot_id, d))
+        if tp is not None and p in tp:
+            return True
+        return False
 
     for rule in ctx.succession_rules:
         a_slot = rule.after_slot_id
@@ -1544,26 +1555,19 @@ def _solve_cpsat(
                 Dp = D + timedelta(days=offset)
                 if Dp not in period_dates_set:
                     continue
-                # Silence the rule for this (D, Dp) when either side
-                # is admin-pinned. Even a single pinned side is
-                # enough — the admin's pin is non-negotiable.
-                if (
-                    _slot_day_is_admin_pinned(a_slot, D)
-                    or _slot_day_is_admin_pinned(b_slot, Dp)
-                ):
-                    continue
                 for P in person_ids_all:
                     a_vars = list(vars_by_sdp.get((a_slot, D, P), []))
                     b_vars = list(vars_by_sdp.get((b_slot, Dp, P), []))
                     a_pinned = (a_slot, D, P) in prepin_by_sdp
                     b_pinned = (b_slot, Dp, P) in prepin_by_sdp
 
-                    # If both sides are pre-pinned: schema-level conflict.
-                    # Skip — there's nothing the solver can do; admin
-                    # config conflict surfaces as a normal assignment
-                    # collision. (We don't try to silently break the
-                    # rotation here.)
-                    if a_pinned and b_pinned:
+                    # If BOTH sides are admin-controlled for P (direct
+                    # pre-pin or team_pin membership), skip — admin
+                    # owns both placements, rule is silenced.
+                    if (
+                        _person_admin_controlled(a_slot, D, P)
+                        and _person_admin_controlled(b_slot, Dp, P)
+                    ):
                         continue
                     # If pinned on the "after" side, the "before -> after"
                     # implication collapses to "forbid b". And vice versa.
