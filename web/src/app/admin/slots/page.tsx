@@ -429,6 +429,68 @@ function SlotDialog({
             onChange={setHeadcount}
           />
         )}
+        {mode === "team_composition" && (
+          <div className="border-t pt-3">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold">Roles del equipo</h3>
+              <Button variant="secondary" onClick={addTeamRole}>
+                + Añadir rol
+              </Button>
+            </div>
+            {teamRoles.length === 0 && (
+              <p className="text-xs text-gray-500">Sin roles. Añade al menos uno.</p>
+            )}
+            {teamRoles.map((r, i) => (
+              <div
+                key={i}
+                className="rounded-md border bg-gray-50 p-2 mb-2 space-y-2"
+              >
+                <div className="grid grid-cols-[1fr_5rem_auto] gap-2 items-end">
+                  <TextField
+                    label="Etiqueta"
+                    value={r.role_label}
+                    onChange={(v) => updateTeamRole(i, { role_label: v })}
+                  />
+                  <TextField
+                    label="Plazas"
+                    type="number"
+                    value={String(r.headcount)}
+                    onChange={(v) => updateTeamRole(i, { headcount: Number(v) || 1 })}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeTeamRole(i)}
+                    className="text-xs text-red-700 hover:underline pb-2"
+                  >
+                    Quitar
+                  </button>
+                </div>
+                <div>
+                  <span className="text-xs font-medium text-gray-700">
+                    Categorías que pueden cubrir este rol
+                  </span>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {categories.length === 0 && (
+                      <span className="text-xs text-gray-500">
+                        Crea categorías primero.
+                      </span>
+                    )}
+                    {categories.map((c) => (
+                      <label key={c.id} className="flex items-center gap-1 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={r.category_ids.includes(c.id)}
+                          onChange={() => toggleCategory(i, c.id)}
+                        />
+                        {c.name}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         <div>
           <Select
             label="Unidad"
@@ -532,69 +594,6 @@ function SlotDialog({
             />
           ))}
         </div>
-
-        {mode === "team_composition" && (
-          <div className="border-t pt-3">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-semibold">Roles del equipo</h3>
-              <Button variant="secondary" onClick={addTeamRole}>
-                + Añadir rol
-              </Button>
-            </div>
-            {teamRoles.length === 0 && (
-              <p className="text-xs text-gray-500">Sin roles. Añade al menos uno.</p>
-            )}
-            {teamRoles.map((r, i) => (
-              <div
-                key={i}
-                className="rounded-md border bg-gray-50 p-2 mb-2 space-y-2"
-              >
-                <div className="grid grid-cols-[1fr_5rem_auto] gap-2 items-end">
-                  <TextField
-                    label="Etiqueta"
-                    value={r.role_label}
-                    onChange={(v) => updateTeamRole(i, { role_label: v })}
-                  />
-                  <TextField
-                    label="Plazas"
-                    type="number"
-                    value={String(r.headcount)}
-                    onChange={(v) => updateTeamRole(i, { headcount: Number(v) || 1 })}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeTeamRole(i)}
-                    className="text-xs text-red-700 hover:underline pb-2"
-                  >
-                    Quitar
-                  </button>
-                </div>
-                <div>
-                  <span className="text-xs font-medium text-gray-700">
-                    Categorías que pueden cubrir este rol
-                  </span>
-                  <div className="mt-1 flex flex-wrap gap-2">
-                    {categories.length === 0 && (
-                      <span className="text-xs text-gray-500">
-                        Crea categorías primero.
-                      </span>
-                    )}
-                    {categories.map((c) => (
-                      <label key={c.id} className="flex items-center gap-1 text-xs">
-                        <input
-                          type="checkbox"
-                          checked={r.category_ids.includes(c.id)}
-                          onChange={() => toggleCategory(i, c.id)}
-                        />
-                        {c.name}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
 
         <div className="border-t pt-3">
           <div className="flex items-center justify-between mb-2">
