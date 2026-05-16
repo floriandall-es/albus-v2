@@ -38,14 +38,11 @@ class SlotSuccessionRule(Base):
             "severity IN ('hard','soft')",
             name="ck_succession_severity",
         ),
-        UniqueConstraint(
-            "tenant_id",
-            "after_slot_id",
-            "forbid_slot_id",
-            "days_after",
-            "applies_to",
-            name="uq_succession_unique",
-        ),
+        # The composite uniqueness covering the role filters is set up
+        # via a Postgres expression index in migration 0024 (it uses
+        # COALESCE to make NULL distinct from NULL). We omit the
+        # UniqueConstraint here so SQLAlchemy doesn't try to redeclare
+        # an incompatible one.
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -66,6 +63,20 @@ class SlotSuccessionRule(Base):
         ForeignKey("slots.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
+    )
+    # Sprint 17: optional sub-role filters. NULL means "any role of
+    # the named slot" (and is the only legal value when the slot is
+    # not team_composition). When set, the rule only fires when the
+    # specific team_role is the one involved.
+    after_team_role_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("slot_team_roles.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    forbid_team_role_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("slot_team_roles.id", ondelete="CASCADE"),
+        nullable=True,
     )
     days_after: Mapped[int] = mapped_column(Integer, nullable=False)
     applies_to: Mapped[str] = mapped_column(

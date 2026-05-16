@@ -14,6 +14,12 @@ FrequencyPeriod = Literal[
 class SlotSuccessionRuleIn(BaseModel):
     after_slot_id: int
     forbid_slot_id: int
+    # Sprint 17: optional sub-role filters. NULL means "any role of
+    # the named slot" (legacy behavior). Server validates that, when
+    # set, the role belongs to the named slot and the slot is
+    # team_composition.
+    after_team_role_id: int | None = None
+    forbid_team_role_id: int | None = None
     # 0 = same calendar day (incompatibility), 1+ = next-day-onwards
     # succession. Same data shape, two semantic flavors surfaced as
     # distinct rule types in the UI.
@@ -34,6 +40,8 @@ class SlotSuccessionRuleOut(BaseModel):
     tenant_id: int
     after_slot_id: int
     forbid_slot_id: int
+    after_team_role_id: int | None = None
+    forbid_team_role_id: int | None = None
     days_after: int
     applies_to: SuccessionAppliesTo
     severity: Severity

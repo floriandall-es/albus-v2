@@ -997,6 +997,10 @@ export type SlotSuccessionRule = {
   tenant_id: number;
   after_slot_id: number;
   forbid_slot_id: number;
+  /** Sprint 17: optional sub-role filter. NULL = the rule fires
+   * regardless of which role of the named slot was assigned. */
+  after_team_role_id: number | null;
+  forbid_team_role_id: number | null;
   days_after: number;
   applies_to: SuccessionAppliesTo;
   severity: DependencySeverity;
@@ -1007,6 +1011,8 @@ export type SlotSuccessionRule = {
 export type SlotSuccessionRuleInput = {
   after_slot_id: number;
   forbid_slot_id: number;
+  after_team_role_id?: number | null;
+  forbid_team_role_id?: number | null;
   days_after: number;
   applies_to?: SuccessionAppliesTo;
   severity?: DependencySeverity;

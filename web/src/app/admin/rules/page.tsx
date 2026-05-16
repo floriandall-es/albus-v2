@@ -111,13 +111,36 @@ function SuccessionSection({
               </tr>
             </thead>
             <tbody>
-              {successionRules.map((r) => (
+              {successionRules.map((r) => {
+                const afterRoleLabel =
+                  r.after_team_role_id != null
+                    ? slotById[r.after_slot_id]?.team_roles.find(
+                        (tr) => tr.id === r.after_team_role_id,
+                      )?.role_label
+                    : null;
+                const forbidRoleLabel =
+                  r.forbid_team_role_id != null
+                    ? slotById[r.forbid_slot_id]?.team_roles.find(
+                        (tr) => tr.id === r.forbid_team_role_id,
+                      )?.role_label
+                    : null;
+                return (
                 <tr key={r.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors">
                   <td className="px-4 py-2">
                     {slotById[r.after_slot_id]?.name ?? `#${r.after_slot_id}`}
+                    {afterRoleLabel && (
+                      <span className="ml-1 text-xs text-gray-500">
+                        · {afterRoleLabel}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-2">
                     {slotById[r.forbid_slot_id]?.name ?? `#${r.forbid_slot_id}`}
+                    {forbidRoleLabel && (
+                      <span className="ml-1 text-xs text-gray-500">
+                        · {forbidRoleLabel}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-2">{r.days_after}</td>
                   <td className="px-4 py-2">{SEVERITY_LABEL[r.severity]}</td>
@@ -138,7 +161,8 @@ function SuccessionSection({
                     </Button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </Card>
@@ -172,11 +196,24 @@ function SuccessionDialog({
   const [forbidSlotId, setForbidSlotId] = useState<number | "">(
     initial?.forbid_slot_id ?? "",
   );
+  // Sprint 17: optional sub-role filters. Stored as number | "" so the
+  // Select<number> component is happy; "" means "todos los roles".
+  const [afterRoleId, setAfterRoleId] = useState<number | "">(
+    initial?.after_team_role_id ?? "",
+  );
+  const [forbidRoleId, setForbidRoleId] = useState<number | "">(
+    initial?.forbid_team_role_id ?? "",
+  );
   const [daysAfter, setDaysAfter] = useState<number>(initial?.days_after ?? 1);
   const [severity, setSeverity] = useState<DependencySeverity>(
     initial?.severity ?? "hard",
   );
   const [weight, setWeight] = useState<number>(initial?.weight ?? 5);
+
+  // Helper: the slot object for a given id (for looking up team_roles
+  // and staffing_mode in the role selects below).
+  const slotById = (id: number | "") =>
+    id === "" ? null : slots.find((s) => s.id === id) ?? null;
 
   const save = useMutation({
     mutationFn: () => {
@@ -193,6 +230,8 @@ function SuccessionDialog({
       return api.createSuccessionRule({
         after_slot_id: afterSlotId,
         forbid_slot_id: forbidSlotId,
+        after_team_role_id: afterRoleId === "" ? null : afterRoleId,
+        forbid_team_role_id: forbidRoleId === "" ? null : forbidRoleId,
         days_after: daysAfter,
         applies_to: "same_person",
         severity,
@@ -206,6 +245,19 @@ function SuccessionDialog({
   });
 
   const slotOptions = slots.map((s) => ({ value: s.id, label: s.name }));
+
+  // Build the sub-role options for each side. Only relevant when the
+  // slot is team_composition and actually has roles defined.
+  const afterSlot = slotById(afterSlotId);
+  const forbidSlot = slotById(forbidSlotId);
+  const afterRoleOptions =
+    afterSlot && afterSlot.staffing_mode === "team_composition"
+      ? afterSlot.team_roles
+      : [];
+  const forbidRoleOptions =
+    forbidSlot && forbidSlot.staffing_mode === "team_composition"
+      ? forbidSlot.team_roles
+      : [];
 
   return (
     <Modal
@@ -223,15 +275,53 @@ function SuccessionDialog({
         <Select
           label="Después del turno"
           value={afterSlotId}
-          onChange={(v) => setAfterSlotId(v === "" ? "" : Number(v))}
+          onChange={(v) => {
+            const next = v === "" ? "" : Number(v);
+            // Reset the sub-role filter when the slot changes — the
+            // role id wouldn't belong to the new slot.
+            if (next !== afterSlotId) setAfterRoleId("");
+            setAfterSlotId(next);
+          }}
           options={[{ value: "", label: "—" }, ...slotOptions]}
         />
+        {afterRoleOptions.length > 0 && (
+          <Select
+            label="Subturno (opcional)"
+            value={afterRoleId}
+            onChange={(v) => setAfterRoleId(v === "" ? "" : Number(v))}
+            options={[
+              { value: "", label: "— Todos los roles —" },
+              ...afterRoleOptions.map((r) => ({
+                value: r.id,
+                label: r.role_label,
+              })),
+            ]}
+          />
+        )}
         <Select
           label="No se puede asignar"
           value={forbidSlotId}
-          onChange={(v) => setForbidSlotId(v === "" ? "" : Number(v))}
+          onChange={(v) => {
+            const next = v === "" ? "" : Number(v);
+            if (next !== forbidSlotId) setForbidRoleId("");
+            setForbidSlotId(next);
+          }}
           options={[{ value: "", label: "—" }, ...slotOptions]}
         />
+        {forbidRoleOptions.length > 0 && (
+          <Select
+            label="Subturno (opcional)"
+            value={forbidRoleId}
+            onChange={(v) => setForbidRoleId(v === "" ? "" : Number(v))}
+            options={[
+              { value: "", label: "— Todos los roles —" },
+              ...forbidRoleOptions.map((r) => ({
+                value: r.id,
+                label: r.role_label,
+              })),
+            ]}
+          />
+        )}
         <NumberField
           label="Durante (días, 1-14)"
           value={daysAfter}

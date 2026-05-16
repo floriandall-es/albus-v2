@@ -1574,9 +1574,38 @@ def _solve_cpsat(
     period_dates_set = set(ctx.dates)
     person_ids_all = sorted(ctx.member_by_person_id.keys())
 
+    def _side_vars_and_pin(
+        slot_id: int,
+        role_filter: int | None,
+        d: date,
+        person_id: int,
+    ) -> tuple[list, bool]:
+        """Sprint 17: when a succession rule is filtered to a specific
+        team_role, the side's vars/pin must be narrowed to that role.
+
+        - No role filter: full pre-existing semantics — vars summed
+          across all roles, prepin_by_sdp lookup is at the slot level.
+        - Role filter set: only the matching (date, slot, role,
+          person) solver var counts. Pre-pin tracking is irrelevant
+          for the team_composition + sub-role case because team_pin
+          is a candidate restriction, not a placement — we let the
+          solver var act as the "did this person take this role"
+          indicator and the pairwise constraint kicks in only when
+          the solver actually picks that role.
+        """
+        if role_filter is None:
+            return (
+                list(vars_by_sdp.get((slot_id, d, person_id), [])),
+                (slot_id, d, person_id) in prepin_by_sdp,
+            )
+        v = x.get((d, slot_id, role_filter, person_id))
+        return ([v] if v is not None else [], False)
+
     for rule in ctx.succession_rules:
         a_slot = rule.after_slot_id
         b_slot = rule.forbid_slot_id
+        a_role = rule.after_team_role_id
+        b_role = rule.forbid_team_role_id
         # days_after=0 = same-day incompatibility (UI labels this as a
         # distinct rule type). days_after>=1 = next-N-days succession.
         offsets = [0] if rule.days_after == 0 else range(1, rule.days_after + 1)
@@ -1586,10 +1615,8 @@ def _solve_cpsat(
                 if Dp not in period_dates_set:
                     continue
                 for P in person_ids_all:
-                    a_vars = list(vars_by_sdp.get((a_slot, D, P), []))
-                    b_vars = list(vars_by_sdp.get((b_slot, Dp, P), []))
-                    a_pinned = (a_slot, D, P) in prepin_by_sdp
-                    b_pinned = (b_slot, Dp, P) in prepin_by_sdp
+                    a_vars, a_pinned = _side_vars_and_pin(a_slot, a_role, D, P)
+                    b_vars, b_pinned = _side_vars_and_pin(b_slot, b_role, Dp, P)
 
                     # If BOTH sides are admin-controlled for P (direct
                     # pre-pin or team_pin membership), skip — admin
