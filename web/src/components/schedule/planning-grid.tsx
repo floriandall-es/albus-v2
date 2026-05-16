@@ -27,6 +27,11 @@ export type PlanningGridProps = {
    * covering the displayed dates. When provided, an extra "Libre" row
    * appears at the bottom with one avatar per absent person per day. */
   absences?: TeamAbsence[];
+  /** Admin-only: when provided, each Libre cell becomes clickable so
+   * the caller can pop an "add absence" modal for that date. Read-only
+   * views (/me/turnos) leave this undefined and the Libre row stays
+   * non-interactive. */
+  onAddAbsence?: (date: string) => void;
 };
 
 export function PlanningGrid({
@@ -36,6 +41,7 @@ export function PlanningGrid({
   cellIsClickable,
   highlightPersonId = null,
   absences,
+  onAddAbsence,
 }: PlanningGridProps) {
   const grid = useMemo(() => buildGrid(assignments), [assignments]);
   const interactive = !!onCellClick;
@@ -303,49 +309,71 @@ export function PlanningGrid({
                 {grid.dates.map((d) => {
                   const absent = absencesByDate.get(d) ?? [];
                   const isToday = d === today;
-                  return (
-                    <td
-                      key={d}
-                      className={
-                        "align-top px-1.5 py-2 border-b border-gray-100 "
-                        + (isToday ? "bg-brand-50/20 " : "")
-                      }
-                    >
-                      {absent.length === 0 ? (
-                        <span className="text-[11px] text-gray-300">—</span>
-                      ) : (
-                        <div className="flex flex-col gap-1">
-                          {absent.map((m) => {
-                            const isMe =
-                              highlightPersonId !== null
-                              && m.person_id === highlightPersonId;
-                            return (
+                  const cellContent =
+                    absent.length === 0 ? (
+                      <span className="text-[11px] text-gray-300">—</span>
+                    ) : (
+                      <div className="flex flex-col gap-1">
+                        {absent.map((m) => {
+                          const isMe =
+                            highlightPersonId !== null
+                            && m.person_id === highlightPersonId;
+                          return (
+                            <span
+                              key={m.person_id}
+                              className="inline-flex items-center gap-1.5 leading-tight"
+                              title={
+                                BLOCK_LABEL[m.block_type] ?? m.block_type
+                              }
+                            >
+                              <Avatar
+                                name={m.person_name}
+                                mine={isMe}
+                                imageUrl={m.person_avatar_url}
+                              />
                               <span
-                                key={m.person_id}
-                                className="inline-flex items-center gap-1.5 leading-tight"
-                                title={
-                                  BLOCK_LABEL[m.block_type] ?? m.block_type
+                                className={
+                                  isMe
+                                    ? "font-semibold text-brand-700"
+                                    : "text-gray-800"
                                 }
                               >
-                                <Avatar
-                                  name={m.person_name}
-                                  mine={isMe}
-                                  imageUrl={m.person_avatar_url}
-                                />
-                                <span
-                                  className={
-                                    isMe
-                                      ? "font-semibold text-brand-700"
-                                      : "text-gray-800"
-                                  }
-                                >
-                                  {m.person_name}
-                                </span>
+                                {m.person_name}
                               </span>
-                            );
-                          })}
-                        </div>
-                      )}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    );
+                  const baseCellClass =
+                    "align-top px-1.5 py-2 border-b border-gray-100 "
+                    + (isToday ? "bg-brand-50/20 " : "");
+                  if (onAddAbsence) {
+                    return (
+                      <td key={d} className={baseCellClass + "p-0"}>
+                        <button
+                          type="button"
+                          onClick={() => onAddAbsence(d)}
+                          title="Añadir persona ausente este día"
+                          className={
+                            "block w-full h-full text-left px-1.5 py-2 cursor-pointer "
+                            + "hover:bg-emerald-100/50 transition-colors group"
+                          }
+                        >
+                          {cellContent}
+                          <span
+                            className="block text-[10px] text-emerald-700/70 opacity-0 group-hover:opacity-100 mt-0.5"
+                            aria-hidden
+                          >
+                            + Añadir
+                          </span>
+                        </button>
+                      </td>
+                    );
+                  }
+                  return (
+                    <td key={d} className={baseCellClass}>
+                      {cellContent}
                     </td>
                   );
                 })}

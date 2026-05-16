@@ -2,12 +2,18 @@
 import { useParams, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type Assignment } from "@/lib/api";
+import {
+  api,
+  type Assignment,
+  type AvailabilityBlockType,
+} from "@/lib/api";
 import {
   Button,
   Card,
   ErrorText,
   Modal,
+  Select,
+  TextField,
 } from "@/components/admin/ui";
 import { PlanningGrid } from "@/components/schedule/planning-grid";
 import { formatPeriod } from "@/components/admin/month-picker";
@@ -24,6 +30,11 @@ export default function ScheduleDetailPage() {
   const qc = useQueryClient();
   const id = Number(params.id);
   const [editing, setEditing] = useState<Assignment | null>(null);
+  // Date the admin clicked on the Libre row, to open the
+  // "add absence" modal pre-filled with that day.
+  const [addingAbsenceDate, setAddingAbsenceDate] = useState<string | null>(
+    null,
+  );
 
   const detail = useQuery({
     queryKey: ["schedule", id],
@@ -237,6 +248,7 @@ export default function ScheduleDetailPage() {
         holidayDates={holidayDates}
         onCellClick={isEditable ? (a) => setEditing(a) : undefined}
         absences={absences.data}
+        onAddAbsence={(d) => setAddingAbsenceDate(d)}
       />
 
       <BalanceStats
@@ -249,6 +261,23 @@ export default function ScheduleDetailPage() {
           assignment={editing}
           scheduleId={id}
           onClose={() => setEditing(null)}
+        />
+      )}
+      {addingAbsenceDate && (
+        <AddAbsenceModal
+          date={addingAbsenceDate}
+          existingAbsentPersonIds={
+            new Set(
+              (absences.data ?? [])
+                .filter(
+                  (a) =>
+                    a.start_date <= addingAbsenceDate
+                    && addingAbsenceDate <= a.end_date,
+                )
+                .map((a) => a.person_id),
+            )
+          }
+          onClose={() => setAddingAbsenceDate(null)}
         />
       )}
     </>
@@ -615,5 +644,124 @@ function BalanceStats({
         grandes indican desbalance.
       </p>
     </div>
+  );
+}
+
+const ABSENCE_TYPE_OPTIONS: { value: AvailabilityBlockType; label: string }[] = [
+  { value: "vacation", label: "Vacaciones" },
+  { value: "sick", label: "Baja médica" },
+  { value: "training", label: "Formación" },
+  { value: "personal", label: "Personal" },
+  { value: "other", label: "Otro" },
+];
+
+function AddAbsenceModal({
+  date,
+  existingAbsentPersonIds,
+  onClose,
+}: {
+  date: string;
+  existingAbsentPersonIds: Set<number>;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
+  const [personId, setPersonId] = useState<number | "">("");
+  const [blockType, setBlockType] = useState<AvailabilityBlockType>("vacation");
+  const [notes, setNotes] = useState("");
+
+  // Show only people who aren't already marked absent on this date,
+  // so we don't end up with overlapping/duplicate blocks.
+  const candidates = (team.data ?? []).filter(
+    (m) => !existingAbsentPersonIds.has(m.person_id),
+  );
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.createAvailabilityBlock({
+        person_id: Number(personId),
+        start_date: date,
+        end_date: date,
+        block_type: blockType,
+        notes: notes.trim() || null,
+      }),
+    onSuccess: () => {
+      // The Libre row is fed by listTeamAbsences (keyed by period
+      // start), so invalidate that query family. Also invalidate
+      // the schedule itself in case future server logic needs to
+      // re-read assignments alongside absences.
+      qc.invalidateQueries({ queryKey: ["team-absences"] });
+      qc.invalidateQueries({ queryKey: ["availability-blocks"] });
+      onClose();
+    },
+  });
+
+  const formattedDate = new Date(date + "T00:00:00").toLocaleDateString(
+    "es-ES",
+    { weekday: "long", day: "numeric", month: "long", year: "numeric" },
+  );
+
+  return (
+    <Modal open={true} onClose={onClose} title="Añadir ausencia">
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (personId === "") return;
+          save.mutate();
+        }}
+      >
+        <p className="text-sm text-gray-600">
+          Día: <span className="font-medium text-gray-800">{formattedDate}</span>
+        </p>
+        <Select
+          label="Persona"
+          value={personId}
+          onChange={(v) => setPersonId(v === "" ? "" : Number(v))}
+          options={[
+            { value: "", label: "— Selecciona —" },
+            ...candidates.map((m) => ({
+              value: m.person_id,
+              label: m.person_name,
+            })),
+          ]}
+        />
+        {candidates.length === 0 && (
+          <p className="text-xs text-amber-700">
+            Todos los miembros del equipo ya tienen una ausencia registrada
+            para este día.
+          </p>
+        )}
+        <Select
+          label="Tipo"
+          value={blockType}
+          onChange={(v) => v && setBlockType(v as AvailabilityBlockType)}
+          options={ABSENCE_TYPE_OPTIONS.map((o) => ({
+            value: o.value,
+            label: o.label,
+          }))}
+        />
+        <TextField
+          label="Nota (opcional)"
+          value={notes}
+          onChange={setNotes}
+          placeholder="Visible para administradores"
+        />
+        {save.isError && (
+          <ErrorText>{(save.error as Error).message}</ErrorText>
+        )}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button
+            type="submit"
+            disabled={save.isPending || personId === ""}
+          >
+            {save.isPending ? "Guardando…" : "Añadir"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }
