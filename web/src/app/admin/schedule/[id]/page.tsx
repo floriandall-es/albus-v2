@@ -248,7 +248,14 @@ export default function ScheduleDetailPage() {
         holidayDates={holidayDates}
         onCellClick={isEditable ? (a) => setEditing(a) : undefined}
         absences={absences.data}
-        onAddAbsence={(d) => setAddingAbsenceDate(d)}
+        // Libre row only becomes interactive while the schedule is
+        // still a draft. Once published / archived the team has
+        // already seen the planning, so absence edits should go
+        // through /admin/availability (and ideally a reopen of the
+        // schedule).
+        onAbsenceCellClick={
+          isEditable ? (d) => setAddingAbsenceDate(d) : undefined
+        }
       />
 
       <BalanceStats
@@ -264,19 +271,8 @@ export default function ScheduleDetailPage() {
         />
       )}
       {addingAbsenceDate && (
-        <AddAbsenceModal
+        <ManageAbsencesModal
           date={addingAbsenceDate}
-          existingAbsentPersonIds={
-            new Set(
-              (absences.data ?? [])
-                .filter(
-                  (a) =>
-                    a.start_date <= addingAbsenceDate
-                    && addingAbsenceDate <= a.end_date,
-                )
-                .map((a) => a.person_id),
-            )
-          }
           onClose={() => setAddingAbsenceDate(null)}
         />
       )}
@@ -655,28 +651,41 @@ const ABSENCE_TYPE_OPTIONS: { value: AvailabilityBlockType; label: string }[] = 
   { value: "other", label: "Otro" },
 ];
 
-function AddAbsenceModal({
+function ManageAbsencesModal({
   date,
-  existingAbsentPersonIds,
   onClose,
 }: {
   date: string;
-  existingAbsentPersonIds: Set<number>;
   onClose: () => void;
 }) {
   const qc = useQueryClient();
   const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
+  // Pull the FULL availability_blocks for this date (admin endpoint —
+  // returns block ids, statuses, ranges; the public TeamAbsence shape
+  // is sanitized and doesn't include ids). Filter to approved blocks
+  // covering the date, since the Libre row only renders those.
+  const blocksQuery = useQuery({
+    queryKey: ["availability-blocks", "date", date],
+    queryFn: () =>
+      api.listAvailabilityBlocks({
+        from: date,
+        to: date,
+        status: "approved",
+      }),
+  });
   const [personId, setPersonId] = useState<number | "">("");
   const [blockType, setBlockType] = useState<AvailabilityBlockType>("vacation");
   const [notes, setNotes] = useState("");
 
-  // Show only people who aren't already marked absent on this date,
-  // so we don't end up with overlapping/duplicate blocks.
-  const candidates = (team.data ?? []).filter(
-    (m) => !existingAbsentPersonIds.has(m.person_id),
-  );
+  const invalidate = () => {
+    // The Libre row reads from listTeamAbsences; the manage modal
+    // reads from listAvailabilityBlocks. Bust both query families
+    // so the UI stays in sync after any add/remove.
+    qc.invalidateQueries({ queryKey: ["team-absences"] });
+    qc.invalidateQueries({ queryKey: ["availability-blocks"] });
+  };
 
-  const save = useMutation({
+  const add = useMutation({
     mutationFn: () =>
       api.createAvailabilityBlock({
         person_id: Number(personId),
@@ -686,82 +695,169 @@ function AddAbsenceModal({
         notes: notes.trim() || null,
       }),
     onSuccess: () => {
-      // The Libre row is fed by listTeamAbsences (keyed by period
-      // start), so invalidate that query family. Also invalidate
-      // the schedule itself in case future server logic needs to
-      // re-read assignments alongside absences.
-      qc.invalidateQueries({ queryKey: ["team-absences"] });
-      qc.invalidateQueries({ queryKey: ["availability-blocks"] });
-      onClose();
+      setPersonId("");
+      setNotes("");
+      invalidate();
     },
   });
+  const remove = useMutation({
+    mutationFn: (id: number) => api.deleteAvailabilityBlock(id),
+    onSuccess: invalidate,
+  });
+
+  const approvedBlocksForDay = (blocksQuery.data ?? []).filter(
+    (b) => b.start_date <= date && date <= b.end_date,
+  );
+  const existingPersonIds = new Set(approvedBlocksForDay.map((b) => b.person_id));
+
+  // Only offer people who don't ALREADY have an approved block on
+  // this date so the admin can't accidentally create overlaps.
+  const candidates = (team.data ?? []).filter(
+    (m) => !existingPersonIds.has(m.person_id),
+  );
 
   const formattedDate = new Date(date + "T00:00:00").toLocaleDateString(
     "es-ES",
     { weekday: "long", day: "numeric", month: "long", year: "numeric" },
   );
 
+  const confirmRemove = (blockId: number, label: string, isMultiDay: boolean, start: string, end: string) => {
+    const msg = isMultiDay
+      ? `${label} tiene una ausencia del ${start} al ${end}. ¿Quitarla entera? Esta acción afecta a todos los días del rango.`
+      : `¿Quitar la ausencia de ${label} el ${start}?`;
+    if (confirm(msg)) remove.mutate(blockId);
+  };
+
   return (
-    <Modal open={true} onClose={onClose} title="Añadir ausencia">
-      <form
-        className="space-y-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (personId === "") return;
-          save.mutate();
-        }}
-      >
+    <Modal open={true} onClose={onClose} title="Gestionar ausencias">
+      <div className="space-y-4">
         <p className="text-sm text-gray-600">
           Día: <span className="font-medium text-gray-800">{formattedDate}</span>
         </p>
-        <Select
-          label="Persona"
-          value={personId}
-          onChange={(v) => setPersonId(v === "" ? "" : Number(v))}
-          options={[
-            { value: "", label: "— Selecciona —" },
-            ...candidates.map((m) => ({
-              value: m.person_id,
-              label: m.person_name,
-            })),
-          ]}
-        />
-        {candidates.length === 0 && (
-          <p className="text-xs text-amber-700">
-            Todos los miembros del equipo ya tienen una ausencia registrada
-            para este día.
-          </p>
-        )}
-        <Select
-          label="Tipo"
-          value={blockType}
-          onChange={(v) => v && setBlockType(v as AvailabilityBlockType)}
-          options={ABSENCE_TYPE_OPTIONS.map((o) => ({
-            value: o.value,
-            label: o.label,
-          }))}
-        />
-        <TextField
-          label="Nota (opcional)"
-          value={notes}
-          onChange={setNotes}
-          placeholder="Visible para administradores"
-        />
-        {save.isError && (
-          <ErrorText>{(save.error as Error).message}</ErrorText>
-        )}
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="secondary" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button
-            type="submit"
-            disabled={save.isPending || personId === ""}
-          >
-            {save.isPending ? "Guardando…" : "Añadir"}
-          </Button>
+
+        {/* Current absences for this date with remove buttons. */}
+        <div>
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1">
+            Actualmente libres
+          </h3>
+          {blocksQuery.isLoading && (
+            <p className="text-sm text-gray-500">Cargando…</p>
+          )}
+          {blocksQuery.data && approvedBlocksForDay.length === 0 && (
+            <p className="text-xs text-gray-500">
+              Nadie está marcado como libre este día.
+            </p>
+          )}
+          {approvedBlocksForDay.length > 0 && (
+            <ul className="space-y-1">
+              {approvedBlocksForDay.map((b) => {
+                const isMultiDay = b.start_date !== b.end_date;
+                return (
+                  <li
+                    key={b.id}
+                    className="flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1.5 text-sm"
+                  >
+                    <span>
+                      <span className="font-medium text-gray-800">
+                        {b.person_name}
+                      </span>
+                      <span className="ml-2 text-xs text-gray-500">
+                        {ABSENCE_TYPE_OPTIONS.find(
+                          (o) => o.value === b.block_type,
+                        )?.label ?? b.block_type}
+                      </span>
+                      {isMultiDay && (
+                        <span className="ml-2 text-xs text-amber-700">
+                          ({b.start_date} → {b.end_date})
+                        </span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        confirmRemove(
+                          b.id,
+                          b.person_name,
+                          isMultiDay,
+                          b.start_date,
+                          b.end_date,
+                        )
+                      }
+                      disabled={remove.isPending}
+                      className="text-xs text-red-700 hover:underline disabled:text-gray-400 disabled:no-underline"
+                    >
+                      Quitar
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {remove.isError && (
+            <div className="mt-2">
+              <ErrorText>{(remove.error as Error).message}</ErrorText>
+            </div>
+          )}
         </div>
-      </form>
+
+        {/* Add-new form. */}
+        <form
+          className="space-y-3 border-t pt-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (personId === "") return;
+            add.mutate();
+          }}
+        >
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Añadir persona
+          </h3>
+          <Select
+            label="Persona"
+            value={personId}
+            onChange={(v) => setPersonId(v === "" ? "" : Number(v))}
+            options={[
+              { value: "", label: "— Selecciona —" },
+              ...candidates.map((m) => ({
+                value: m.person_id,
+                label: m.person_name,
+              })),
+            ]}
+          />
+          {candidates.length === 0 && (
+            <p className="text-xs text-amber-700">
+              Todos los miembros del equipo ya tienen una ausencia registrada
+              para este día.
+            </p>
+          )}
+          <Select
+            label="Tipo"
+            value={blockType}
+            onChange={(v) => v && setBlockType(v as AvailabilityBlockType)}
+            options={ABSENCE_TYPE_OPTIONS.map((o) => ({
+              value: o.value,
+              label: o.label,
+            }))}
+          />
+          <TextField
+            label="Nota (opcional)"
+            value={notes}
+            onChange={setNotes}
+            placeholder="Visible para administradores"
+          />
+          {add.isError && (
+            <ErrorText>{(add.error as Error).message}</ErrorText>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" onClick={onClose}>
+              Cerrar
+            </Button>
+            <Button type="submit" disabled={add.isPending || personId === ""}>
+              {add.isPending ? "Guardando…" : "Añadir"}
+            </Button>
+          </div>
+        </form>
+      </div>
     </Modal>
   );
 }

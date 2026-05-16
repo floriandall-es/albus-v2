@@ -27,11 +27,12 @@ export type PlanningGridProps = {
    * covering the displayed dates. When provided, an extra "Libre" row
    * appears at the bottom with one avatar per absent person per day. */
   absences?: TeamAbsence[];
-  /** Admin-only: when provided, each Libre cell becomes clickable so
-   * the caller can pop an "add absence" modal for that date. Read-only
-   * views (/me/turnos) leave this undefined and the Libre row stays
-   * non-interactive. */
-  onAddAbsence?: (date: string) => void;
+  /** Admin-only (and only when the schedule is editable). When
+   * provided, each Libre cell becomes clickable so the caller can pop
+   * a "manage absences for this date" modal — add and remove. The
+   * read-only views and the published/archived schedule view leave
+   * this undefined and the Libre row stays non-interactive. */
+  onAbsenceCellClick?: (date: string) => void;
 };
 
 export function PlanningGrid({
@@ -41,7 +42,7 @@ export function PlanningGrid({
   cellIsClickable,
   highlightPersonId = null,
   absences,
-  onAddAbsence,
+  onAbsenceCellClick,
 }: PlanningGridProps) {
   const grid = useMemo(() => buildGrid(assignments), [assignments]);
   const interactive = !!onCellClick;
@@ -348,13 +349,13 @@ export function PlanningGrid({
                   const baseCellClass =
                     "align-top px-1.5 py-2 border-b border-gray-100 "
                     + (isToday ? "bg-brand-50/20 " : "");
-                  if (onAddAbsence) {
+                  if (onAbsenceCellClick) {
                     return (
                       <td key={d} className={baseCellClass + "p-0"}>
                         <button
                           type="button"
-                          onClick={() => onAddAbsence(d)}
-                          title="Añadir persona ausente este día"
+                          onClick={() => onAbsenceCellClick(d)}
+                          title="Gestionar personas ausentes este día"
                           className={
                             "block w-full h-full text-left px-1.5 py-2 cursor-pointer "
                             + "hover:bg-emerald-100/50 transition-colors group"
@@ -365,7 +366,7 @@ export function PlanningGrid({
                             className="block text-[10px] text-emerald-700/70 opacity-0 group-hover:opacity-100 mt-0.5"
                             aria-hidden
                           >
-                            + Añadir
+                            Gestionar
                           </span>
                         </button>
                       </td>
