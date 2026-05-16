@@ -356,19 +356,30 @@ function BalanceStats({
   holidayDates: Set<string>;
 }) {
   const stats = useMemo(() => {
-    // (slot_name, person_id) -> count, plus per-row totals + weekend/holiday
+    // Sprint 16: rows are keyed by (slot_name, team_role_label) so a
+    // team_composition slot like Trasplante shows up as three rows
+    // (Explante / Implante 1 / Implante 2) instead of one aggregated
+    // row that hides whether the role rotation is balanced.
+    type RowKey = { slot_name: string; team_role_label: string | null };
+    const keyFor = (k: RowKey) =>
+      `${k.slot_name}\x00${k.team_role_label ?? ""}`;
     const persons = new Map<number, string>();
-    const slotNames = new Set<string>();
-    const counts = new Map<string, Map<number, number>>(); // slot -> pid -> n
-    const weByPerson = new Map<number, number>();         // pid -> we/holiday count
+    const rows = new Map<string, RowKey>();
+    const counts = new Map<string, Map<number, number>>(); // key -> pid -> n
+    const weByPerson = new Map<number, number>();          // pid -> we/holiday count
     for (const a of assignments) {
       if (a.person_id === null || a.person_name === null) continue;
       persons.set(a.person_id, a.person_name);
-      slotNames.add(a.slot_name);
-      let row = counts.get(a.slot_name);
+      const rk: RowKey = {
+        slot_name: a.slot_name,
+        team_role_label: a.team_role_label ?? null,
+      };
+      const ks = keyFor(rk);
+      if (!rows.has(ks)) rows.set(ks, rk);
+      let row = counts.get(ks);
       if (!row) {
         row = new Map();
-        counts.set(a.slot_name, row);
+        counts.set(ks, row);
       }
       row.set(a.person_id, (row.get(a.person_id) ?? 0) + 1);
       const wd = new Date(a.date).getUTCDay();
@@ -379,12 +390,21 @@ function BalanceStats({
     const personsSorted = Array.from(persons.entries()).sort((a, b) =>
       a[1].localeCompare(b[1]),
     );
-    const slotNamesSorted = Array.from(slotNames).sort();
+    const rowsSorted = Array.from(rows.values()).sort((a, b) => {
+      const byName = a.slot_name.localeCompare(b.slot_name);
+      if (byName !== 0) return byName;
+      // Same slot: keep the no-role row first (rare — shouldn't
+      // coexist with role rows, but defensive), then alpha by role.
+      if (a.team_role_label === null && b.team_role_label !== null) return -1;
+      if (a.team_role_label !== null && b.team_role_label === null) return 1;
+      return (a.team_role_label ?? "").localeCompare(b.team_role_label ?? "");
+    });
 
-    // Per-slot (row) min/max across persons for highlighting.
-    const minMaxBySlot = new Map<string, { min: number; max: number }>();
-    for (const slot of slotNamesSorted) {
-      const row = counts.get(slot)!;
+    // Per-row min/max across persons for highlighting.
+    const minMaxByRow = new Map<string, { min: number; max: number }>();
+    for (const rk of rowsSorted) {
+      const ks = keyFor(rk);
+      const row = counts.get(ks)!;
       let mn = Infinity;
       let mx = -Infinity;
       for (const [pid] of personsSorted) {
@@ -392,15 +412,15 @@ function BalanceStats({
         if (v < mn) mn = v;
         if (v > mx) mx = v;
       }
-      minMaxBySlot.set(slot, { min: mn, max: mx });
+      minMaxByRow.set(ks, { min: mn, max: mx });
     }
 
     // Per-person totals + min/max across persons.
     const totalByPerson = new Map<number, number>();
     for (const [pid] of personsSorted) {
       let s = 0;
-      for (const slot of slotNamesSorted) {
-        s += counts.get(slot)?.get(pid) ?? 0;
+      for (const rk of rowsSorted) {
+        s += counts.get(keyFor(rk))?.get(pid) ?? 0;
       }
       totalByPerson.set(pid, s);
     }
@@ -419,9 +439,10 @@ function BalanceStats({
     }
     return {
       personsSorted,
-      slotNamesSorted,
+      rowsSorted,
+      keyFor,
       counts,
-      minMaxBySlot,
+      minMaxByRow,
       totalByPerson,
       totalMin,
       totalMax,
@@ -466,12 +487,22 @@ function BalanceStats({
             </tr>
           </thead>
           <tbody>
-            {stats.slotNamesSorted.map((slot) => {
-              const row = stats.counts.get(slot)!;
-              const mm = stats.minMaxBySlot.get(slot)!;
+            {stats.rowsSorted.map((rk) => {
+              const ks = stats.keyFor(rk);
+              const row = stats.counts.get(ks)!;
+              const mm = stats.minMaxByRow.get(ks)!;
               return (
-                <tr key={slot} className="border-b">
-                  <td className="px-3 py-2 whitespace-nowrap">{slot}</td>
+                <tr key={ks} className="border-b">
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <span className="flex flex-col leading-tight">
+                      <span>{rk.slot_name}</span>
+                      {rk.team_role_label && (
+                        <span className="text-[10px] font-normal text-gray-500">
+                          {rk.team_role_label}
+                        </span>
+                      )}
+                    </span>
+                  </td>
                   {stats.personsSorted.map(([pid]) => {
                     const v = row.get(pid) ?? 0;
                     return (
