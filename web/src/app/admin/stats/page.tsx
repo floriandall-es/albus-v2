@@ -223,7 +223,9 @@ export default function StatsPage() {
                 <BarChart
                   data={weekendData.list}
                   layout="vertical"
-                  margin={{ top: 8, right: 20, left: 60, bottom: 4 }}
+                  // Right margin bumped to leave room for the per-row
+                  // total label past the bar end.
+                  margin={{ top: 8, right: 44, left: 60, bottom: 4 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis
@@ -261,6 +263,15 @@ export default function StatsPage() {
                         formatter={labelFormatter}
                         style={{ fontSize: 11, fontWeight: 600 }}
                       />
+                      {i === weekendData.months.length - 1 && (
+                        <LabelList
+                          dataKey="total"
+                          position="right"
+                          fill="#1f2937"
+                          formatter={labelFormatter}
+                          style={{ fontSize: 11, fontWeight: 700 }}
+                        />
+                      )}
                     </Bar>
                   ))}
                 </BarChart>
@@ -424,7 +435,9 @@ function PerSlotChart({
         <BarChart
           data={data}
           layout="vertical"
-          margin={{ top: 8, right: 20, left: 60, bottom: 4 }}
+          // Right margin bumped from 20 to 44 to leave room for the
+          // bold per-row TOTAL label rendered just past the bar end.
+          margin={{ top: 8, right: 44, left: 60, bottom: 4 }}
         >
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
           <XAxis
@@ -462,6 +475,20 @@ function PerSlotChart({
                 formatter={labelFormatter}
                 style={{ fontSize: 11, fontWeight: 600 }}
               />
+              {/* Row total — attached to the LAST bar in the stack
+                  so position="right" lands just past the bar's
+                  cumulative tip. dataKey="total" pulls the
+                  pre-computed sum from the row, NOT the segment
+                  value. */}
+              {i === months.length - 1 && (
+                <LabelList
+                  dataKey="total"
+                  position="right"
+                  fill="#1f2937"
+                  formatter={labelFormatter}
+                  style={{ fontSize: 11, fontWeight: 700 }}
+                />
+              )}
             </Bar>
           ))}
         </BarChart>
