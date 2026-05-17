@@ -1040,6 +1040,9 @@ export type SlotFrequencyCap = {
   id: number;
   tenant_id: number;
   slot_id: number;
+  /** Sprint 17: optional sub-role filter. NULL = the cap counts
+   * every assignment to the slot regardless of role. */
+  team_role_id: number | null;
   period: FrequencyPeriod;
   max_count: number;
   severity: DependencySeverity;
@@ -1049,6 +1052,7 @@ export type SlotFrequencyCap = {
 
 export type SlotFrequencyCapInput = {
   slot_id: number;
+  team_role_id?: number | null;
   period: FrequencyPeriod;
   max_count: number;
   severity?: DependencySeverity;

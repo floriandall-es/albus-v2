@@ -417,10 +417,22 @@ function FrequencySection({
               </tr>
             </thead>
             <tbody>
-              {list.data.map((c) => (
+              {list.data.map((c) => {
+                const roleLabel =
+                  c.team_role_id != null
+                    ? slotById[c.slot_id]?.team_roles.find(
+                        (tr) => tr.id === c.team_role_id,
+                      )?.role_label
+                    : null;
+                return (
                 <tr key={c.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors">
                   <td className="px-4 py-2">
                     {slotById[c.slot_id]?.name ?? `#${c.slot_id}`}
+                    {roleLabel && (
+                      <span className="ml-1 text-xs text-gray-500">
+                        · {roleLabel}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-2">{PERIOD_LABEL[c.period]}</td>
                   <td className="px-4 py-2">{c.max_count}</td>
@@ -442,7 +454,8 @@ function FrequencySection({
                     </Button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </Card>
@@ -471,6 +484,9 @@ function FrequencyDialog({
 }) {
   const qc = useQueryClient();
   const [slotId, setSlotId] = useState<number | "">(initial?.slot_id ?? "");
+  const [roleId, setRoleId] = useState<number | "">(
+    initial?.team_role_id ?? "",
+  );
   const [period, setPeriod] = useState<FrequencyPeriod>(
     initial?.period ?? "rolling_7",
   );
@@ -479,6 +495,14 @@ function FrequencyDialog({
     initial?.severity ?? "hard",
   );
   const [weight, setWeight] = useState<number>(initial?.weight ?? 5);
+
+  const slotById = (id: number | "") =>
+    id === "" ? null : slots.find((s) => s.id === id) ?? null;
+  const currentSlot = slotById(slotId);
+  const roleOptions =
+    currentSlot && currentSlot.staffing_mode === "team_composition"
+      ? currentSlot.team_roles
+      : [];
 
   const save = useMutation({
     mutationFn: () => {
@@ -492,6 +516,7 @@ function FrequencyDialog({
       if (slotId === "") throw new Error("Selecciona un turno");
       return api.createFrequencyCap({
         slot_id: slotId,
+        team_role_id: roleId === "" ? null : roleId,
         period,
         max_count: maxCount,
         severity,
@@ -523,8 +548,26 @@ function FrequencyDialog({
           <Select
             label="Turno"
             value={slotId}
-            onChange={(v) => setSlotId(v === "" ? "" : Number(v))}
+            onChange={(v) => {
+              const next = v === "" ? "" : Number(v);
+              if (next !== slotId) setRoleId("");
+              setSlotId(next);
+            }}
             options={[{ value: "", label: "—" }, ...slotOptions]}
+          />
+        )}
+        {!initial && roleOptions.length > 0 && (
+          <Select
+            label="Subturno (opcional)"
+            value={roleId}
+            onChange={(v) => setRoleId(v === "" ? "" : Number(v))}
+            options={[
+              { value: "", label: "— Todos los roles —" },
+              ...roleOptions.map((r) => ({
+                value: r.id,
+                label: r.role_label,
+              })),
+            ]}
           />
         )}
         {!initial && (

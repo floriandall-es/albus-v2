@@ -253,13 +253,17 @@ def create_frequency_cap(
     ctx: RequestContext = Depends(get_current_context),
 ) -> SlotFrequencyCapOut:
     _require_admin(ctx)
-    _slot_or_422(ctx, payload.slot_id, "slot_id")
+    slot = _slot_or_422(ctx, payload.slot_id, "slot_id")
+    _validate_team_role(ctx, payload.team_role_id, slot, "team_role_id")
 
     existing = (
         ctx.db.query(SlotFrequencyCap)
         .filter(
             SlotFrequencyCap.slot_id == payload.slot_id,
             SlotFrequencyCap.period == payload.period,
+            SlotFrequencyCap.team_role_id.is_(payload.team_role_id)
+            if payload.team_role_id is None
+            else SlotFrequencyCap.team_role_id == payload.team_role_id,
         )
         .first()
     )
@@ -270,6 +274,7 @@ def create_frequency_cap(
     obj = SlotFrequencyCap(
         tenant_id=ctx.tenant.id,
         slot_id=payload.slot_id,
+        team_role_id=payload.team_role_id,
         period=payload.period,
         max_count=payload.max_count,
         severity=payload.severity,
@@ -280,17 +285,6 @@ def create_frequency_cap(
         ctx.db.flush()
     except IntegrityError:
         ctx.db.rollback()
-        winner = (
-            ctx.db.query(SlotFrequencyCap)
-            .filter(
-                SlotFrequencyCap.slot_id == payload.slot_id,
-                SlotFrequencyCap.period == payload.period,
-            )
-            .first()
-        )
-        if winner:
-            response.status_code = status.HTTP_200_OK
-            return SlotFrequencyCapOut.model_validate(winner)
         raise HTTPException(status_code=409, detail="Conflicto al crear el límite")
     ctx.db.refresh(obj)
     response.status_code = status.HTTP_201_CREATED

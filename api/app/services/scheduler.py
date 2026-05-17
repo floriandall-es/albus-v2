@@ -258,10 +258,13 @@ class _Context:
         # period. Look back rolling_28 days max — that's the longest
         # supported window. Drafts don't count (they're tentative).
         lookback_start = period_start - timedelta(days=28)
+        # Sprint 17: key includes team_role_id (nullable) so frequency
+        # caps can look up role-filtered prior counts without losing
+        # the slot-wide view. Slot-wide callers sum over the role
+        # dimension via prior_published_count() below.
         self.prior_published_counts: dict[
-            tuple[int, int, date], int
+            tuple[int, int, int | None, date], int
         ] = defaultdict(int)
-        # (person_id, slot_id, date) -> count (always 0 or 1 in practice).
         prior = (
             db.query(Assignment)
             .join(Schedule, Assignment.schedule_id == Schedule.id)
@@ -272,8 +275,31 @@ class _Context:
             .all()
         )
         for a in prior:
-            key = (a.person_id, a.slot_id, a.date)
+            key = (a.person_id, a.slot_id, a.team_role_id, a.date)
             self.prior_published_counts[key] += 1
+
+    def prior_published_count(
+        self,
+        person_id: int,
+        slot_id: int,
+        role_filter: int | None,
+        d: date,
+    ) -> int:
+        """Sprint 17: look up prior published count for a person on
+        a slot/date. When `role_filter` is set, only that role
+        counts; otherwise sum across all roles (the legacy
+        slot-wide behavior)."""
+        if role_filter is not None:
+            return self.prior_published_counts.get(
+                (person_id, slot_id, role_filter, d), 0
+            )
+        total = 0
+        # Sum the (person, slot, *, date) slice. Small dict; the
+        # full scan is fine.
+        for (pid, sid, _rid, dd), n in self.prior_published_counts.items():
+            if pid == person_id and sid == slot_id and dd == d:
+                total += n
+        return total
 
     def is_blocked(self, person_id: int, d: date) -> bool:
         for s, e in self.blocks_by_person.get(person_id, ()):
@@ -1704,19 +1730,40 @@ def _solve_cpsat(
 
     for cap in ctx.frequency_caps:
         windows = _cap_windows(cap.period)
+        # Sprint 17: per-role frequency caps. When cap.team_role_id is
+        # set, only vars / prior counts for that specific role of the
+        # slot count toward the cap — "max 4 Cirujano-1 per week per
+        # person", not "max 4 Quirófano per week per person".
+        role_filter = cap.team_role_id
         for anchor, days in windows:
             for P in person_ids_all:
                 window_vars: list = []
                 for d_ in days:
-                    if d_ in period_dates_set:
-                        window_vars.extend(vars_by_sdp.get((cap.slot_id, d_, P), []))
-                # Pre-pinned in-period assignments to that slot count.
-                prior_in_period = sum(
-                    1
-                    for d_ in days
-                    if d_ in period_dates_set
-                    and (cap.slot_id, d_, P) in prepin_by_sdp
-                )
+                    if d_ not in period_dates_set:
+                        continue
+                    if role_filter is None:
+                        window_vars.extend(
+                            vars_by_sdp.get((cap.slot_id, d_, P), [])
+                        )
+                    else:
+                        v = x.get((d_, cap.slot_id, role_filter, P))
+                        if v is not None:
+                            window_vars.append(v)
+                # Pre-pinned in-period assignments to that slot count
+                # — but only when the cap is slot-wide. Role-filtered
+                # caps on team_composition slots never get a pre-pin
+                # from team_pin (team_pin is a candidate restriction,
+                # not a placement), so role-level base is always 0
+                # for the in-period contribution; the solver vars
+                # carry the full signal.
+                prior_in_period = 0
+                if role_filter is None:
+                    prior_in_period = sum(
+                        1
+                        for d_ in days
+                        if d_ in period_dates_set
+                        and (cap.slot_id, d_, P) in prepin_by_sdp
+                    )
                 # Pre-existing published assignments OUTSIDE the period
                 # (only meaningful for rolling windows that look back).
                 prior_outside = 0
@@ -1724,8 +1771,8 @@ def _solve_cpsat(
                     for d_ in days:
                         if d_ in period_dates_set:
                             continue
-                        prior_outside += ctx.prior_published_counts.get(
-                            (P, cap.slot_id, d_), 0
+                        prior_outside += ctx.prior_published_count(
+                            P, cap.slot_id, role_filter, d_
                         )
                 base = prior_in_period + prior_outside
                 if not window_vars and base == 0:

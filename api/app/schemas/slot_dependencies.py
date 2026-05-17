@@ -53,6 +53,10 @@ class SlotSuccessionRuleOut(BaseModel):
 
 class SlotFrequencyCapIn(BaseModel):
     slot_id: int
+    # Sprint 17: optional sub-role filter. NULL means slot-wide cap
+    # (the legacy behavior). Server validates it belongs to the slot
+    # and that the slot is team_composition.
+    team_role_id: int | None = None
     period: FrequencyPeriod
     max_count: int = Field(ge=0, le=1000)
     severity: Severity = "hard"
@@ -69,6 +73,7 @@ class SlotFrequencyCapOut(BaseModel):
     id: int
     tenant_id: int
     slot_id: int
+    team_role_id: int | None = None
     period: FrequencyPeriod
     max_count: int
     severity: Severity

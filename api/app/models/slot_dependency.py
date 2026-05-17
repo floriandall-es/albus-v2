@@ -98,9 +98,11 @@ class SlotFrequencyCap(Base):
         ),
         CheckConstraint("max_count >= 0", name="ck_freqcap_max_count"),
         CheckConstraint("severity IN ('hard','soft')", name="ck_freqcap_severity"),
-        UniqueConstraint(
-            "tenant_id", "slot_id", "period", name="uq_freqcap_unique"
-        ),
+        # Composite uniqueness covering team_role_id lives in a
+        # Postgres expression index (migration 0026) that COALESCEs
+        # the nullable role to -1 so NULL means "distinct slot-wide
+        # cap". We omit the SQLAlchemy UniqueConstraint here so the
+        # ORM doesn't try to redeclare an incompatible one.
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -115,6 +117,14 @@ class SlotFrequencyCap(Base):
         ForeignKey("slots.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
+    )
+    # Sprint 17: optional sub-role filter. NULL means "any role of
+    # the named slot" (legacy behavior; the only legal value when
+    # the slot is not team_composition).
+    team_role_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("slot_team_roles.id", ondelete="CASCADE"),
+        nullable=True,
     )
     period: Mapped[str] = mapped_column(String(24), nullable=False)
     max_count: Mapped[int] = mapped_column(Integer, nullable=False)
