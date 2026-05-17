@@ -42,19 +42,50 @@ router = APIRouter()
 @router.get("/me", response_model=MeResponse)
 def me(ctx: RequestContext = Depends(get_current_context)) -> MeResponse:
     db = ctx.db
-    # These queries flow through RLS — they will only return rows for the
-    # tenant_id set via SET LOCAL app.tenant_id in the deps. If RLS is missing
-    # or the SET wasn't applied, this endpoint would over-return; the
-    # tenant-isolation tests assert the opposite.
-    memberships = db.query(Membership).filter(Membership.person_id == ctx.person.id).all()
-    role_types = db.query(RoleType).all()
-    departments = db.query(Department).all()
+    tid = ctx.tenant.id
+    # Defense in depth: both RLS (via set_tenant in get_current_context)
+    # AND an explicit tenant_id filter on every query below. RLS is the
+    # actual security gate; the explicit filter is a backstop that
+    # would catch any accidental RLS misconfiguration before it leaks.
+    # The two layers MUST agree — disagreement points at a config bug.
+    memberships = (
+        db.query(Membership)
+        .filter(
+            Membership.person_id == ctx.person.id,
+            Membership.tenant_id == tid,
+        )
+        .all()
+    )
+    role_types = db.query(RoleType).filter(RoleType.tenant_id == tid).all()
+    departments = (
+        db.query(Department).filter(Department.tenant_id == tid).all()
+    )
 
     counts = TenantSummaryCounts(
-        categories=int(db.query(func.count(Category.id)).scalar() or 0),
-        pools=int(db.query(func.count(Pool.id)).scalar() or 0),
-        skills=int(db.query(func.count(Skill.id)).scalar() or 0),
-        slots=int(db.query(func.count(Slot.id)).scalar() or 0),
+        categories=int(
+            db.query(func.count(Category.id))
+            .filter(Category.tenant_id == tid)
+            .scalar()
+            or 0
+        ),
+        pools=int(
+            db.query(func.count(Pool.id))
+            .filter(Pool.tenant_id == tid)
+            .scalar()
+            or 0
+        ),
+        skills=int(
+            db.query(func.count(Skill.id))
+            .filter(Skill.tenant_id == tid)
+            .scalar()
+            or 0
+        ),
+        slots=int(
+            db.query(func.count(Slot.id))
+            .filter(Slot.tenant_id == tid)
+            .scalar()
+            or 0
+        ),
     )
 
     return MeResponse(
