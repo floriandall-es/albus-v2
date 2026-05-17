@@ -1,10 +1,11 @@
 """Invitation flow.
 
-The raw token is generated server-side and sent back to the inviter ONCE
-(in the response and the API logs, since email is stubbed). Only the bcrypt
-hash is persisted. Lookup is O(N) over active invitations because bcrypt
-prevents indexing on the hash — that's fine at our scale; if it ever isn't,
-we'd switch to a public-id lookup column + bcrypt verify on the secret.
+The raw token is generated server-side and sent back to the inviter ONCE.
+Two hashes are persisted per row:
+- token_hash: bcrypt(raw_token), used for constant-time equality check.
+- token_lookup: HMAC-SHA256(secret, raw_token), indexed + unique. The
+  public lookup endpoint recomputes this from the user-supplied token
+  and uses it for an O(1) RLS-gated row select. No cross-tenant scan.
 """
 
 from __future__ import annotations
@@ -13,10 +14,10 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.core.security import (
     create_access_token,
     hash_password,
@@ -35,7 +36,11 @@ from app.schemas.invitation import (
     InviteCreateResponse,
 )
 from app.services.invitations import create_invitation as create_invitation_service
-from app.services.invitations import is_already_member, send_invitation_email
+from app.services.invitations import (
+    invitation_token_lookup,
+    is_already_member,
+    send_invitation_email,
+)
 
 logger = logging.getLogger("app.invitations")
 
@@ -194,59 +199,65 @@ def _public_db():
 
 
 def _find_invitation_by_token(db: Session, raw_token: str) -> Invitation | None:
-    """Find a non-superseded Invitation matching the bcrypt-hashed token.
+    """Find a non-superseded Invitation matching the user-supplied token.
 
-    Linear scan over candidates — there's no index-friendly way to look up a
-    bcrypt hash, but we narrow first by status (active, unexpired). At our
-    expected scale this is fine.
+    Sprint 17: indexed RLS-gated lookup. No cross-tenant table scan, no
+    migrations-role bypass.
+
+    Flow:
+    1. Compute HMAC-SHA256(secret, raw_token) — this is the row's
+       indexed `token_lookup` column.
+    2. SET LOCAL app.invitation_lookup = <hash>. The RLS policy
+       `rls_invitations_public_lookup` then permits SELECTing exactly
+       the row whose `token_lookup` matches — at most one row by
+       UNIQUE constraint.
+    3. bcrypt-verify the user's raw token against `token_hash` as
+       defense-in-depth (in case the lookup secret leaks, attackers
+       still need the raw token; in case of a hash collision, bcrypt
+       rejects it).
+    4. Switch the session to the tenant's RLS context for callers
+       that want to mutate the row.
+
+    Returns None for empty, oversized, or non-matching tokens.
     """
     if not raw_token or len(raw_token) > 256:
         return None
     now = datetime.now(timezone.utc)
-    # We need to read invitations across tenants — temporarily disable RLS by
-    # NOT setting app.tenant_id (the policy denies all rows). The migrations
-    # role bypasses RLS, the runtime role does not. So the runtime can't do
-    # this scan. Workaround: open a new connection and use a brief
-    # cross-tenant SECURITY-DEFINER-style escape — for Sprint 3 we accept
-    # using the migrations role for token lookup. To avoid leaking that role,
-    # we keep the engine local and dispose immediately.
-    from sqlalchemy import create_engine
+    lookup = invitation_token_lookup(raw_token)
 
-    admin_engine = create_engine(settings.database_url, future=True)
+    # Set the session var that the public-lookup RLS policy reads,
+    # scoped to this transaction. Bound parameter so a hostile token
+    # can't escape (though `lookup` is a hex digest, so the question
+    # is moot).
+    db.execute(text("SELECT set_config('app.invitation_lookup', :v, true)"), {"v": lookup})
+
+    inv = (
+        db.query(Invitation)
+        .filter(
+            Invitation.token_lookup == lookup,
+            Invitation.accepted_at.is_(None),
+            Invitation.revoked_at.is_(None),
+            Invitation.expires_at > now,
+        )
+        .first()
+    )
+    if inv is None:
+        return None
+    # Defense in depth: even though we just matched on a deterministic
+    # HMAC, also bcrypt-verify the raw token. Two independent crypto
+    # primitives both have to agree.
     try:
-        with admin_engine.connect() as conn:
-            rows = conn.execute(
-                # Raw select so we don't need ORM session bound to this engine.
-                # SQLAlchemy text() with named params.
-                __import__("sqlalchemy").text(
-                    """
-                    SELECT id, tenant_id, email, person_name, token_hash,
-                           expires_at, accepted_at, revoked_at,
-                           category_id, roles, created_at,
-                           created_by_membership_id
-                    FROM invitations
-                    WHERE accepted_at IS NULL
-                      AND revoked_at IS NULL
-                      AND expires_at > :now
-                    """
-                ),
-                {"now": now},
-            ).all()
-    finally:
-        admin_engine.dispose()
-
-    for row in rows:
-        try:
-            if pwd_context.verify(raw_token, row.token_hash):
-                # Re-fetch via the ORM session so callers can mutate it.
-                inv = db.get(Invitation, row.id)
-                # The ORM read above goes through RLS, which (with no tenant set)
-                # returns None. Set tenant context and re-fetch.
-                set_tenant(db, row.tenant_id)
-                return db.get(Invitation, row.id)
-        except Exception:
-            continue
-    return None
+        if not pwd_context.verify(raw_token, inv.token_hash):
+            return None
+    except Exception:
+        return None
+    # Switch the session into the invitation's tenant so subsequent
+    # writes by the caller go through the normal tenant-scoped RLS
+    # policies. Also clear the public-lookup setting — we don't want
+    # to keep it active for the rest of the request.
+    db.execute(text("SELECT set_config('app.invitation_lookup', '', true)"))
+    set_tenant(db, inv.tenant_id)
+    return inv
 
 
 @router.get("/invitations/by-token/{raw_token}", response_model=InvitationPublicView)

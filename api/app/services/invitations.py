@@ -8,6 +8,8 @@ for the same (tenant, email)" rule live in one place.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import logging
 import secrets
 from dataclasses import dataclass
@@ -24,6 +26,19 @@ from app.services.email_templates import invitation_email
 logger = logging.getLogger("app.invitations")
 
 INVITE_TTL = timedelta(days=7)
+
+
+def invitation_token_lookup(raw_token: str) -> str:
+    """HMAC-SHA256(secret, raw_token) hex digest. Deterministic, so
+    the public lookup endpoint can recompute it from the user-supplied
+    token and find the row in O(1). The key lives in
+    settings.invitation_lookup_secret — rotating it invalidates every
+    pending invitation."""
+    return hmac.new(
+        settings.invitation_lookup_secret.encode("utf-8"),
+        raw_token.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
 
 
 @dataclass
@@ -109,12 +124,14 @@ def create_invitation(
 
     raw_token = secrets.token_urlsafe(32)
     token_hash = pwd_context.hash(raw_token)
+    token_lookup = invitation_token_lookup(raw_token)
 
     inv = Invitation(
         tenant_id=tenant_id,
         email=email,
         person_name=person_name,
         token_hash=token_hash,
+        token_lookup=token_lookup,
         expires_at=now + INVITE_TTL,
         created_by_membership_id=created_by_membership_id,
         category_id=category_id,

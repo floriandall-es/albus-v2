@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     jwt_secret: str = "change-me-in-prod-this-is-only-for-dev"
     jwt_algorithm: str = "HS256"
     jwt_ttl_minutes: int = 60
+    # HMAC key for the invitation token-lookup hash. Has to be set
+    # in prod via INVITATION_LOOKUP_SECRET. If it ever rotates, all
+    # pending invitations become inaccessible — recipients must be
+    # re-sent fresh invites. Rotate alongside JWT_SECRET on a
+    # compromise.
+    invitation_lookup_secret: str = "change-me-in-prod-invite-lookup"
     # TTL for the short-lived pre-auth token issued during the multi-tenant
     # login picker flow. 5 minutes is plenty for "user clicks a tenant card"
     # but tight enough that a leaked token isn't a long-term threat.
