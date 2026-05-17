@@ -154,6 +154,16 @@ export default function StatsPage() {
     () => shadeStops("#f59e0b", weekendData.months.length),
     [weekendData.months.length],
   );
+  // Same trailing-empty-month workaround as PerSlotChart — anchor the
+  // total label to the last bar with actual data so Recharts doesn't
+  // skip the LabelList on a zero-width segment.
+  const weekendLastIdx = useMemo(() => {
+    for (let i = weekendData.months.length - 1; i >= 0; i--) {
+      const m = weekendData.months[i];
+      if (weekendData.list.some((r) => (r[m] as number) > 0)) return i;
+    }
+    return -1;
+  }, [weekendData]);
 
   const totalAssignments = useMemo(
     () =>
@@ -263,7 +273,7 @@ export default function StatsPage() {
                         formatter={labelFormatter}
                         style={{ fontSize: 11, fontWeight: 600 }}
                       />
-                      {i === weekendData.months.length - 1 && (
+                      {i === weekendLastIdx && (
                         <LabelList
                           dataKey="total"
                           position="right"
@@ -402,6 +412,20 @@ function PerSlotChart({
     [slot.color, months.length],
   );
 
+  // Index of the last month with at least one non-zero cell across
+  // the chart. We anchor the per-row total label to THAT bar instead
+  // of always to months[length-1] — otherwise selecting a range with
+  // a trailing empty month (e.g. Aug when no data exists yet) makes
+  // Recharts skip the label entirely because the host <Bar> has
+  // zero-width segments for every row.
+  const lastIdxWithData = useMemo(() => {
+    for (let i = months.length - 1; i >= 0; i--) {
+      const m = months[i];
+      if (data.some((r) => (r[m] as number) > 0)) return i;
+    }
+    return -1;
+  }, [data, months]);
+
   if (data.length === 0) {
     return null;
   }
@@ -475,12 +499,12 @@ function PerSlotChart({
                 formatter={labelFormatter}
                 style={{ fontSize: 11, fontWeight: 600 }}
               />
-              {/* Row total — attached to the LAST bar in the stack
-                  so position="right" lands just past the bar's
-                  cumulative tip. dataKey="total" pulls the
-                  pre-computed sum from the row, NOT the segment
-                  value. */}
-              {i === months.length - 1 && (
+              {/* Row total — anchored to the last bar that has data
+                  across the chart, not blindly to months[length-1].
+                  Recharts skips LabelList rendering for bars whose
+                  segment is zero-width, so attaching to a trailing
+                  empty month would make the total disappear. */}
+              {i === lastIdxWithData && (
                 <LabelList
                   dataKey="total"
                   position="right"
