@@ -20,6 +20,7 @@ from app.models import (
     Person,
     Schedule,
     Slot,
+    SlotTeamRole,
 )
 from app.routes.deps import RequestContext, get_current_context
 from app.schemas.stats import StatsResponse, StatsRow
@@ -59,10 +60,11 @@ def stats_assignments(
     }
 
     rows = (
-        ctx.db.query(Assignment, Person, Slot)
+        ctx.db.query(Assignment, Person, Slot, SlotTeamRole)
         .join(Schedule, Schedule.id == Assignment.schedule_id)
         .join(Person, Person.id == Assignment.person_id)
         .join(Slot, Slot.id == Assignment.slot_id)
+        .outerjoin(SlotTeamRole, SlotTeamRole.id == Assignment.team_role_id)
         .filter(
             Schedule.status.in_(["published", "archived"]),
             Assignment.date.between(from_, to),
@@ -71,25 +73,30 @@ def stats_assignments(
         .all()
     )
 
-    # Aggregate in Python — saves writing SQL that's fiddly across
-    # dialects, and the volume is small (a tenant's annual stats max).
-    Bucket = tuple[int, int, str]  # (person_id, slot_id, year_month)
+    # Sprint 17: aggregation bucket now includes team_role_id (nullable)
+    # so team_composition slots break down per sub-role. Volume is small
+    # enough that pivoting in Python is still fine.
+    Bucket = tuple[int, int, int | None, str]
+    # (person_id, slot_id, team_role_id, year_month)
     counts: dict[Bucket, int] = defaultdict(int)
     weekend_counts: dict[Bucket, int] = defaultdict(int)
     person_info: dict[int, tuple[str, str | None]] = {}
     slot_info: dict[int, tuple[str, str | None]] = {}
+    role_label_by_id: dict[int, str] = {}
 
-    for a, p, s in rows:
+    for a, p, s, tr in rows:
         ym = a.date.strftime("%Y-%m")
-        key: Bucket = (p.id, s.id, ym)
+        key: Bucket = (p.id, s.id, a.team_role_id, ym)
         counts[key] += 1
         if a.date.weekday() >= 5 or a.date in holiday_dates:
             weekend_counts[key] += 1
         person_info[p.id] = (p.name, p.avatar_url)
         slot_info[s.id] = (s.name, s.color)
+        if tr is not None:
+            role_label_by_id[tr.id] = tr.role_label
 
     out: list[StatsRow] = []
-    for (pid, sid, ym), n in counts.items():
+    for (pid, sid, rid, ym), n in counts.items():
         pname, pavatar = person_info[pid]
         sname, scolor = slot_info[sid]
         out.append(
@@ -100,11 +107,22 @@ def stats_assignments(
                 slot_id=sid,
                 slot_name=sname,
                 slot_color=scolor,
+                team_role_id=rid,
+                team_role_label=role_label_by_id.get(rid) if rid else None,
                 year_month=ym,
                 count=n,
-                weekend_or_holiday_count=weekend_counts.get((pid, sid, ym), 0),
+                weekend_or_holiday_count=weekend_counts.get(
+                    (pid, sid, rid, ym), 0
+                ),
             )
         )
-    out.sort(key=lambda r: (r.year_month, r.slot_name, r.person_name))
+    out.sort(
+        key=lambda r: (
+            r.year_month,
+            r.slot_name,
+            r.team_role_label or "",
+            r.person_name,
+        )
+    )
 
     return StatsResponse(from_date=from_, to_date=to, rows=out)

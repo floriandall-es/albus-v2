@@ -82,8 +82,11 @@ export type AvailabilityBlock = {
   created_at: string;
 };
 
-// Aggregated stats — one row per (person, slot, year-month) for the
-// admin charts page.
+// Aggregated stats — one row per (person, slot, team_role, year-month)
+// for the admin charts page. team_role_id/label are null for single /
+// multiple_same slots, in which case each slot renders as one chart;
+// team_composition slots have a row per role and render one chart per
+// (slot, role) pair.
 export type StatsRow = {
   person_id: number;
   person_name: string;
@@ -91,6 +94,8 @@ export type StatsRow = {
   slot_id: number;
   slot_name: string;
   slot_color: string | null;
+  team_role_id: number | null;
+  team_role_label: string | null;
   year_month: string; // "YYYY-MM"
   count: number;
   weekend_or_holiday_count: number;

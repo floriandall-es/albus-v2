@@ -82,25 +82,41 @@ export default function StatsPage() {
 
   // Pivot rows by slot for chart legends + color mapping.
   const slotMeta = useMemo(() => {
-    const m = new Map<
-      string,
-      { slot_id: number; slot_name: string; color: string }
-    >();
+    // Sprint 17: chart key is (slot_id, team_role_id) so team_composition
+    // slots split into one chart per sub-role. The key string mirrors
+    // what BalanceStats uses on the schedule detail.
+    type ChartMeta = {
+      key: string;
+      slot_id: number;
+      slot_name: string;
+      team_role_id: number | null;
+      team_role_label: string | null;
+      color: string;
+    };
+    const m = new Map<string, ChartMeta>();
     let idx = 0;
     for (const r of q.data?.rows ?? []) {
-      if (m.has(r.slot_name)) continue;
-      m.set(r.slot_name, {
+      const key = `${r.slot_id}|${r.team_role_id ?? ""}`;
+      if (m.has(key)) continue;
+      m.set(key, {
+        key,
         slot_id: r.slot_id,
         slot_name: r.slot_name,
+        team_role_id: r.team_role_id,
+        team_role_label: r.team_role_label,
         color:
           r.slot_color
           ?? FALLBACK_PALETTE[idx % FALLBACK_PALETTE.length],
       });
       idx += 1;
     }
-    return Array.from(m.values()).sort((a, b) =>
-      a.slot_name.localeCompare(b.slot_name),
-    );
+    return Array.from(m.values()).sort((a, b) => {
+      const byName = a.slot_name.localeCompare(b.slot_name);
+      if (byName !== 0) return byName;
+      if (a.team_role_label === null && b.team_role_label !== null) return -1;
+      if (a.team_role_label !== null && b.team_role_label === null) return 1;
+      return (a.team_role_label ?? "").localeCompare(b.team_role_label ?? "");
+    });
   }, [q.data]);
 
   // Chart: per (person, month) weekend/holiday counts. Stacked by month
@@ -179,7 +195,7 @@ export default function StatsPage() {
         <div className="space-y-6">
           {slotMeta.map((slot) => (
             <PerSlotChart
-              key={slot.slot_name}
+              key={slot.key}
               slot={slot}
               rows={q.data!.rows}
               months={monthsBetween(fromDate, toDate)}
@@ -331,16 +347,24 @@ function PerSlotChart({
   rows,
   months,
 }: {
-  slot: { slot_id: number; slot_name: string; color: string };
+  slot: {
+    slot_id: number;
+    slot_name: string;
+    team_role_id: number | null;
+    team_role_label: string | null;
+    color: string;
+  };
   rows: StatsRow[];
   months: string[];
 }) {
-  // Pivot: one row per person, columns are months (count for THIS slot).
-  // Skip persons with zero count for this slot — keeps the chart tight.
+  // Pivot: one row per person, columns are months (count for THIS
+  // slot/role). Skip persons with zero count for this slot to keep
+  // the chart tight.
   const data = useMemo(() => {
     const byPid = new Map<number, { person: string; total: number; cells: Record<string, number> }>();
     for (const r of rows) {
-      if (r.slot_name !== slot.slot_name) continue;
+      if (r.slot_id !== slot.slot_id) continue;
+      if ((r.team_role_id ?? null) !== slot.team_role_id) continue;
       let row = byPid.get(r.person_id);
       if (!row) {
         row = { person: r.person_name, total: 0, cells: {} };
@@ -360,7 +384,7 @@ function PerSlotChart({
     // Sort by total descending — heaviest contributor at top.
     list.sort((a, b) => (b.total as number) - (a.total as number));
     return list;
-  }, [rows, slot.slot_name, months]);
+  }, [rows, slot.slot_id, slot.team_role_id, months]);
 
   const shades = useMemo(
     () => shadeStops(slot.color, months.length),
@@ -381,7 +405,14 @@ function PerSlotChart({
             className="h-2.5 w-2.5 rounded-full"
             style={{ backgroundColor: slot.color }}
           />
-          {slot.slot_name}
+          <span>
+            {slot.slot_name}
+            {slot.team_role_label && (
+              <span className="ml-1 text-xs font-normal text-gray-500">
+                · {slot.team_role_label}
+              </span>
+            )}
+          </span>
         </span>
       }
       subtitle={`${total} asignaciones · barras apiladas por mes (más oscuro = mes más reciente).`}
@@ -444,11 +475,18 @@ function DetailTable({
   slotMeta,
 }: {
   rows: StatsRow[];
-  slotMeta: { slot_id: number; slot_name: string; color: string }[];
+  slotMeta: {
+    key: string;
+    slot_id: number;
+    slot_name: string;
+    team_role_id: number | null;
+    team_role_label: string | null;
+    color: string;
+  }[];
 }) {
-  // Pivot to person × slot totals for a precise readout under the
-  // charts. Mirrors the BalanceStats panel idea but spans the whole
-  // range instead of one schedule.
+  // Pivot to person × (slot, role) totals for a precise readout
+  // under the charts. Mirrors the BalanceStats panel idea but spans
+  // the whole range instead of one schedule.
   const persons = useMemo(() => {
     const m = new Map<number, string>();
     for (const r of rows) m.set(r.person_id, r.person_name);
@@ -458,9 +496,10 @@ function DetailTable({
   }, [rows]);
 
   const totalBy = useMemo(() => {
-    const t = new Map<string, number>(); // `${pid}|${slot_name}`
+    const t = new Map<string, number>(); // `${pid}|${chart_key}`
     for (const r of rows) {
-      const k = `${r.person_id}|${r.slot_name}`;
+      const chartKey = `${r.slot_id}|${r.team_role_id ?? ""}`;
+      const k = `${r.person_id}|${chartKey}`;
       t.set(k, (t.get(k) ?? 0) + r.count);
     }
     return t;
@@ -485,15 +524,22 @@ function DetailTable({
                 <th className="px-3 py-2">Persona</th>
                 {slotMeta.map((s) => (
                   <th
-                    key={s.slot_name}
+                    key={s.key}
                     className="px-3 py-2 text-right whitespace-nowrap"
                   >
-                    <span className="inline-flex items-center gap-1 normal-case font-medium text-gray-700 text-xs tracking-normal">
+                    <span className="inline-flex items-start gap-1 normal-case font-medium text-gray-700 text-xs tracking-normal">
                       <span
-                        className="h-2 w-2 rounded-full"
+                        className="h-2 w-2 mt-1.5 rounded-full"
                         style={{ backgroundColor: s.color }}
                       />
-                      {s.slot_name}
+                      <span className="flex flex-col leading-tight">
+                        <span>{s.slot_name}</span>
+                        {s.team_role_label && (
+                          <span className="text-[10px] font-normal text-gray-500">
+                            {s.team_role_label}
+                          </span>
+                        )}
+                      </span>
                     </span>
                   </th>
                 ))}
@@ -507,10 +553,10 @@ function DetailTable({
                     {name}
                   </td>
                   {slotMeta.map((s) => {
-                    const v = totalBy.get(`${pid}|${s.slot_name}`) ?? 0;
+                    const v = totalBy.get(`${pid}|${s.key}`) ?? 0;
                     return (
                       <td
-                        key={s.slot_name}
+                        key={s.key}
                         className={
                           "px-3 py-2 text-right "
                           + (v ? "text-gray-800" : "text-gray-300")
