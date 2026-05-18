@@ -1,12 +1,15 @@
 import io
 import os
 import secrets
+from datetime import date, timedelta
 
 from fastapi import (
     APIRouter,
     Depends,
     File,
     HTTPException,
+    Query,
+    Response,
     UploadFile,
     status,
 )
@@ -22,14 +25,17 @@ from app.core.security import (
     verify_password,
 )
 from app.models import (
+    Assignment,
     Category,
     Department,
     Membership,
     Person,
     Pool,
     RoleType,
+    Schedule,
     Skill,
     Slot,
+    SlotTeamRole,
 )
 from app.routes.deps import RequestContext, get_current_context
 from app.schemas.auth import (
@@ -132,6 +138,143 @@ def update_profile(
     ctx.person.last_name = last_name
     ctx.db.flush()
     return ctx.person
+
+
+# ---------------------------------------------------------------------------
+# Calendar export — one-shot .ics download of the member's own published
+# shifts in a date range, optionally narrowed to a subset of slot ids.
+# Members can import the file into Apple / Google / Outlook Calendar.
+# ---------------------------------------------------------------------------
+
+# Cap the export window. Two years is comfortably more than any realistic
+# member ever asks for and keeps the response a handful of KB. Mostly
+# this is a guardrail against a typo'd range pulling the world.
+MAX_ICS_RANGE_DAYS = 366 * 2
+
+
+@router.get("/me/shifts.ics")
+def get_my_shifts_ics(
+    date_from: date = Query(..., alias="from"),
+    date_to: date = Query(..., alias="to"),
+    slot_ids: str | None = Query(
+        default=None,
+        description=(
+            "Optional comma-separated list of slot ids to include. "
+            "Omit to export every slot type the member is assigned to."
+        ),
+    ),
+    ctx: RequestContext = Depends(get_current_context),
+) -> Response:
+    from app.services.ics import IcsEvent, build_member_calendar
+
+    if date_to < date_from:
+        raise HTTPException(
+            status_code=400,
+            detail="El rango está invertido: 'hasta' es anterior a 'desde'.",
+        )
+    if (date_to - date_from) > timedelta(days=MAX_ICS_RANGE_DAYS):
+        raise HTTPException(
+            status_code=400,
+            detail="El rango es demasiado amplio (máximo 2 años).",
+        )
+
+    slot_id_filter: set[int] | None = None
+    if slot_ids:
+        try:
+            slot_id_filter = {
+                int(piece) for piece in slot_ids.split(",") if piece.strip()
+            }
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="slot_ids debe ser una lista de enteros separados por comas.",
+            ) from None
+        # An empty parsed set means the caller filtered everything out
+        # explicitly. Honour that by returning an empty calendar — saves
+        # a round-trip + matches the user's mental model ("uncheck all
+        # → empty file").
+        if not slot_id_filter:
+            slot_id_filter = set()
+
+    # Only PUBLISHED schedules — drafts are admin-only. Joining via
+    # Assignment.schedule_id keeps RLS happy (same tenant) and lets us
+    # filter on status in one query.
+    q = (
+        ctx.db.query(Assignment, Slot, SlotTeamRole)
+        .join(Schedule, Schedule.id == Assignment.schedule_id)
+        .join(Slot, Slot.id == Assignment.slot_id)
+        .outerjoin(SlotTeamRole, SlotTeamRole.id == Assignment.team_role_id)
+        .filter(
+            Assignment.tenant_id == ctx.tenant.id,
+            Assignment.person_id == ctx.person.id,
+            Assignment.date >= date_from,
+            Assignment.date <= date_to,
+            Schedule.status == "published",
+        )
+        .order_by(Assignment.date, Slot.position, Assignment.id)
+    )
+    rows = q.all()
+    if slot_id_filter is not None:
+        rows = [r for r in rows if r[0].slot_id in slot_id_filter]
+
+    events = [
+        IcsEvent(
+            assignment_id=a.id,
+            shift_date=a.date,
+            slot_name=s.name,
+            role_label=r.role_label if r is not None else None,
+            start_time=s.start_time,
+            end_time=s.end_time,
+        )
+        for (a, s, r) in rows
+    ]
+
+    # Person name preference: legacy `name` is always populated, but
+    # first_name reads better in the calendar title when available.
+    person_display = (
+        ctx.person.first_name or ctx.person.name or ctx.person.email
+    )
+    # PRODID host + UID host. The UID's @host suffix only matters for
+    # collision avoidance across distinct calendars; the public hostname
+    # is the right anchor. Parse from public_base_url (e.g.
+    # "https://trivu.net" → "trivu.net"). Falls back to "trivu.net" if
+    # the env var is unset / malformed.
+    from urllib.parse import urlparse
+    host = urlparse(settings.public_base_url).hostname or "trivu.net"
+
+    ics_text = build_member_calendar(
+        events=events,
+        tenant_name=ctx.tenant.name,
+        person_name=person_display,
+        host=host,
+    )
+    filename = _ics_filename(person_display, date_from, date_to)
+    return Response(
+        content=ics_text,
+        media_type="text/calendar; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            # Calendars sometimes aggressively cache; nudge them to
+            # re-fetch on the next manual re-download. (Subscription
+            # URLs would set this differently; this is the one-shot
+            # download path.)
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+def _ics_filename(person: str, frm: date, to: date) -> str:
+    # ASCII-safe slug — Content-Disposition with quoted filename plays
+    # nicely with most clients only when ASCII. The export still
+    # contains the full UTF-8 name inside the .ics body.
+    slug_chars = []
+    for ch in person.lower():
+        if ch.isascii() and (ch.isalnum() or ch in "-_"):
+            slug_chars.append(ch)
+        elif ch == " ":
+            slug_chars.append("-")
+    slug = "".join(slug_chars).strip("-_") or "turnos"
+    return f"turnos-{slug}-{frm.isoformat()}-{to.isoformat()}.ics"
 
 
 @router.post("/me/password", status_code=status.HTTP_204_NO_CONTENT)

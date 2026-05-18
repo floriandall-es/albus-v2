@@ -1008,6 +1008,53 @@ export const api = {
     request<EligiblePerson[]>(
       `/api/schedules/${scheduleId}/assignments/${assignmentId}/eligible-persons`,
     ),
+  /** Download the member's own shifts as an iCalendar (.ics) file.
+   * Range is inclusive on both ends; optional slot_ids narrows the
+   * export to a subset of slot types. Auth via Bearer header, so we
+   * fetch + blob + trigger a synthetic <a download> click instead of
+   * window.open-ing the URL. */
+  downloadMyShiftsIcs: async (params: {
+    from: string;
+    to: string;
+    slotIds?: number[];
+  }) => {
+    const token = getToken();
+    const headers: HeadersInit = {};
+    if (token) (headers as Record<string, string>).Authorization = `Bearer ${token}`;
+    const q = new URLSearchParams({ from: params.from, to: params.to });
+    if (params.slotIds && params.slotIds.length > 0) {
+      q.set("slot_ids", params.slotIds.join(","));
+    }
+    const res = await fetch(
+      `${API_BASE_URL}/api/me/shifts.ics?${q.toString()}`,
+      { headers },
+    );
+    if (!res.ok) {
+      let detail: unknown = res.statusText;
+      try {
+        const body = await res.json();
+        detail = body.detail ?? detail;
+      } catch {
+        /* binary response, no JSON */
+      }
+      throw new Error(
+        typeof detail === "string" ? detail : "Error generando calendario",
+      );
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get("Content-Disposition");
+    const match = cd?.match(/filename="([^"]+)"/);
+    const filename = match?.[1] ?? `turnos.ics`;
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objectUrl);
+  },
+
   /** Fetch the schedule PDF (full month, same for admin and members),
    * then trigger a browser download with the server-suggested
    * filename. Auth via Bearer header, so we can't just window.open

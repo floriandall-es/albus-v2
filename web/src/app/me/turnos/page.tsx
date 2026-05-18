@@ -5,10 +5,11 @@ import { api, type Assignment } from "@/lib/api";
 import { PlanningGrid } from "@/components/schedule/planning-grid";
 import { formatPeriod } from "@/components/admin/month-picker";
 import { Button, EmptyState, ErrorText } from "@/components/admin/ui";
-import { CalendarDays, List, LayoutGrid } from "lucide-react";
+import { CalendarDays, CalendarPlus, List, LayoutGrid } from "lucide-react";
 import { todayIso as getTodayIso } from "@/lib/dates";
 import { ShiftSection } from "@/components/me/shift-list";
 import { RequestCoverageModal } from "@/components/me/request-coverage-modal";
+import { CalendarExportModal } from "@/components/me/calendar-export-modal";
 
 // Persisted user preference. localStorage key kept short + namespaced.
 const VIEW_STORAGE_KEY = "trivu.me.turnos.view";
@@ -30,6 +31,7 @@ export default function TurnosPage() {
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [swapTarget, setSwapTarget] = useState<Assignment | null>(null);
+  const [calendarOpen, setCalendarOpen] = useState(false);
   // View toggle persisted across sessions. Defaults to "list" — the
   // personal upcoming-shifts view is the right answer for ~95% of
   // member visits. Grid stays one click away for the diehards who
@@ -129,6 +131,14 @@ export default function TurnosPage() {
             >
               {downloadPdf.isPending ? "Generando PDF…" : "Descargar PDF"}
             </Button>
+            <Button
+              variant="secondary"
+              onClick={() => setCalendarOpen(true)}
+              disabled={selectedId === null}
+            >
+              <CalendarPlus className="h-3.5 w-3.5" />
+              Añadir al calendario
+            </Button>
           </>
         )}
       </div>
@@ -185,6 +195,15 @@ export default function TurnosPage() {
         <RequestCoverageModal
           assignment={swapTarget}
           onClose={() => setSwapTarget(null)}
+        />
+      )}
+
+      {calendarOpen && (
+        <CalendarExportModal
+          myAssignments={(detail.data?.assignments ?? []).filter(
+            (a) => a.person_id === me.data!.person.id,
+          )}
+          onClose={() => setCalendarOpen(false)}
         />
       )}
     </>
