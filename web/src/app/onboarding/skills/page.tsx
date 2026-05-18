@@ -21,7 +21,7 @@ export default function SkillsStep() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-2">Paso 2 — Competencias</h2>
+      <h2 className="text-2xl font-semibold mb-2">Paso 3 — Competencias</h2>
       <p className="text-sm text-gray-600 mb-6">
         Añade competencias clave de tu equipo (ej. Cirugía mínimamente invasiva,
         Trasplante…). Puedes saltar este paso si todos hacen lo mismo.

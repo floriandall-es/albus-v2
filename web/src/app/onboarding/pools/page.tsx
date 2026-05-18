@@ -32,7 +32,7 @@ export default function PoolsStep() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-2">Paso 3 — Unidades</h2>
+      <h2 className="text-2xl font-semibold mb-2">Paso 4 — Unidades</h2>
       <p className="text-sm text-gray-600 mb-6">
         ¿Tu servicio se divide en unidades? (ej. REA, Trasplantes). Si todo el equipo
         funciona como una sola unidad, puedes saltar este paso.

@@ -31,6 +31,8 @@ export function clearToken(): void {
   window.sessionStorage.clear();
 }
 
+export type PresetKind = "quirurgico" | "medico" | "otro";
+
 export type Tenant = {
   id: number;
   slug: string;
@@ -41,6 +43,9 @@ export type Tenant = {
   region_code: string | null;
   created_at: string;
   onboarding_completed_at: string | null;
+  /** Onboarding template chosen on the new first wizard step.
+   * Null on tenants created before the preset selector shipped. */
+  preset_kind: PresetKind | null;
 };
 
 export type HolidaySource = "national" | "regional" | "custom";
@@ -798,6 +803,11 @@ export const api = {
   // Onboarding
   completeOnboarding: () =>
     request<Tenant>("/api/onboarding/complete", { method: "POST" }),
+  setOnboardingPreset: (kind: PresetKind) =>
+    request<Tenant>("/api/onboarding/preset", {
+      method: "POST",
+      body: JSON.stringify({ kind }),
+    }),
 
   // Tenant defaults
   updateTenantDefaults: (body: {

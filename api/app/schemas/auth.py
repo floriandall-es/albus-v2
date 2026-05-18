@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -60,6 +60,9 @@ class TenantOut(BaseModel):
     region_code: str | None = None
     created_at: datetime
     onboarding_completed_at: datetime | None = None
+    # Set by the onboarding preset step. One of 'quirurgico' / 'medico'
+    # / 'otro'. Null on tenants created before this feature shipped.
+    preset_kind: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -163,3 +166,9 @@ class EmailChangeRequested(BaseModel):
     happens via POST /me/email/confirm after the user clicks it."""
     new_email: EmailStr
     sent_to: EmailStr
+
+
+class SetPresetRequest(BaseModel):
+    """Body for POST /onboarding/preset. Literal-typed so FastAPI
+    rejects unknown kinds with a 422 before our code runs."""
+    kind: Literal["quirurgico", "medico", "otro"]

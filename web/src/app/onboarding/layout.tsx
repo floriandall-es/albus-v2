@@ -82,7 +82,7 @@ export default function OnboardingLayout({ children }: { children: ReactNode }) 
 
 function Stepper({ currentIdx }: { currentIdx: number }) {
   return (
-    <ol className="flex items-center gap-2 text-xs">
+    <ol className="flex flex-wrap items-center gap-y-1.5 gap-x-2 text-xs">
       {STEPS.map((s, i) => {
         const active = i === currentIdx;
         const done = i < currentIdx;

@@ -22,3 +22,11 @@ class Tenant(Base):
     onboarding_completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Onboarding template chosen on the new first wizard step.
+    # One of: 'quirurgico' / 'medico' / 'otro' (validated by a CHECK
+    # constraint in migration 0029). Null on tenants created before
+    # the preset selector shipped — treated as "otro" by any code
+    # that reads this for default-suggestion logic.
+    preset_kind: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )
