@@ -8,6 +8,12 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential libpq-dev curl \
+    # WeasyPrint deps for the schedule PDF export. WeasyPrint shells out
+    # to these libs at runtime; without them the import works but
+    # write_pdf() crashes with a confusing "cairo not found" message.
+    libpango-1.0-0 libpangoft2-1.0-0 libcairo2 \
+    libgdk-pixbuf-2.0-0 libffi-dev shared-mime-info \
+    fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/requirements.txt

@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Assignment } from "@/lib/api";
 import { PlanningGrid } from "@/components/schedule/planning-grid";
 import { formatPeriod } from "@/components/admin/month-picker";
-import { EmptyState } from "@/components/admin/ui";
+import { Button, EmptyState, ErrorText } from "@/components/admin/ui";
 import { CalendarDays } from "lucide-react";
 
 export default function TurnosPage() {
@@ -23,6 +23,9 @@ export default function TurnosPage() {
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [swapTarget, setSwapTarget] = useState<Assignment | null>(null);
+  const downloadPdf = useMutation({
+    mutationFn: (id: number) => api.downloadSchedulePdf(id),
+  });
   useEffect(() => {
     if (selectedId !== null) return;
     if (publishedSchedules.length === 0) return;
@@ -74,19 +77,35 @@ export default function TurnosPage() {
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold">Planificación</h1>
         {publishedSchedules.length > 0 && (
-          <select
-            value={selectedId ?? ""}
-            onChange={(e) => setSelectedId(Number(e.target.value))}
-            className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
-          >
-            {publishedSchedules.map((s) => (
-              <option key={s.id} value={s.id}>
-                {formatPeriod(s.period)}
-              </option>
-            ))}
-          </select>
+          <>
+            <select
+              value={selectedId ?? ""}
+              onChange={(e) => setSelectedId(Number(e.target.value))}
+              className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
+            >
+              {publishedSchedules.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {formatPeriod(s.period)}
+                </option>
+              ))}
+            </select>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                if (selectedId !== null) downloadPdf.mutate(selectedId);
+              }}
+              disabled={selectedId === null || downloadPdf.isPending}
+            >
+              {downloadPdf.isPending ? "Generando PDF…" : "Descargar PDF"}
+            </Button>
+          </>
         )}
       </div>
+      {downloadPdf.isError && (
+        <div className="mb-3">
+          <ErrorText>{(downloadPdf.error as Error).message}</ErrorText>
+        </div>
+      )}
 
       {publishedSchedules.length === 0 && (
         <EmptyState

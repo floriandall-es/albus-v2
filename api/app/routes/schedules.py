@@ -8,10 +8,12 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.models import (
     Assignment,
+    AvailabilityBlock,
+    Holiday,
     Membership,
     Person,
     Schedule,
@@ -29,6 +31,13 @@ from app.schemas.schedule import (
 )
 from app.services import scheduler
 from app.services.scheduler import _Context, is_eligible
+from app.services.pdf import (
+    PdfAbsence,
+    build_absences_by_date,
+    build_rows_from_assignments,
+    render_schedule_pdf,
+    schedule_pdf_filename,
+)
 
 router = APIRouter()
 
@@ -105,6 +114,106 @@ def get_schedule(
     if not s or s.tenant_id != ctx.tenant.id:
         raise HTTPException(status_code=404, detail="Schedule not found")
     return _serialize_detail(ctx, s)
+
+
+@router.get("/schedules/{schedule_id}/pdf")
+def get_schedule_pdf(
+    schedule_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> Response:
+    """Render the full schedule as a landscape PDF. Same content for
+    admins and members; the only access difference is that members
+    can't download a DRAFT (admin-only until published)."""
+    s = ctx.db.get(Schedule, schedule_id)
+    if not s or s.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    is_admin = "admin" in ctx.membership.roles
+    if s.status == "draft" and not is_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="La planificación todavía está en borrador",
+        )
+
+    # Pull the same assignment + slot + person + role tuple shape that
+    # _serialize_detail uses, so build_rows_from_assignments can pivot
+    # the data exactly like the planning grid does.
+    rows = (
+        ctx.db.query(Assignment, Slot, Person, SlotTeamRole)
+        .join(Slot, Slot.id == Assignment.slot_id)
+        .outerjoin(Person, Person.id == Assignment.person_id)
+        .outerjoin(SlotTeamRole, SlotTeamRole.id == Assignment.team_role_id)
+        .filter(Assignment.schedule_id == s.id)
+        .order_by(Assignment.date, Assignment.slot_id, Assignment.id)
+        .all()
+    )
+    pdf_rows = build_rows_from_assignments(rows)
+
+    # Approved absences covering the schedule's month — fed into the
+    # Libre row, same as the on-screen grid.
+    period_start = date(s.period.year, s.period.month, 1)
+    if s.period.month == 12:
+        period_end_exclusive = date(s.period.year + 1, 1, 1)
+    else:
+        period_end_exclusive = date(s.period.year, s.period.month + 1, 1)
+    absence_rows = (
+        ctx.db.query(AvailabilityBlock, Person)
+        .join(Person, Person.id == AvailabilityBlock.person_id)
+        .filter(
+            AvailabilityBlock.status == "approved",
+            AvailabilityBlock.start_date < period_end_exclusive,
+            AvailabilityBlock.end_date >= period_start,
+        )
+        .all()
+    )
+
+    class _AbsenceView:
+        # Tiny shim so build_absences_by_date can use the same attr
+        # names it already expects. Saves loading a Pydantic schema.
+        def __init__(self, block: AvailabilityBlock, person: Person):
+            self.person_id = block.person_id
+            self.person_name = person.name
+            self.start_date = block.start_date
+            self.end_date = block.end_date
+            self.block_type = block.block_type
+
+    absences = [_AbsenceView(b, p) for b, p in absence_rows]
+
+    import calendar as _cal
+    last_day = _cal.monthrange(s.period.year, s.period.month)[1]
+    month_dates = [
+        date(s.period.year, s.period.month, d) for d in range(1, last_day + 1)
+    ]
+    absences_by_date = build_absences_by_date(absences, month_dates)
+
+    # Holidays for the year — the planning grid uses these for the
+    # red weekday tint; the PDF reuses them for the same effect.
+    holiday_rows = (
+        ctx.db.query(Holiday)
+        .filter(
+            Holiday.date >= period_start,
+            Holiday.date < period_end_exclusive,
+        )
+        .all()
+    )
+    holiday_dates = {h.date for h in holiday_rows}
+
+    pdf_bytes = render_schedule_pdf(
+        schedule_period=s.period,
+        schedule_status=s.status,
+        rows=pdf_rows,
+        absences_by_date=absences_by_date,
+        holiday_dates=holiday_dates,
+        tenant_name=ctx.tenant.name,
+        generated_at=datetime.now(timezone.utc),
+    )
+    filename = schedule_pdf_filename(s.period)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
 
 
 @router.post(

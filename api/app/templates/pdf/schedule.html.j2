@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Planificación · {{ period_label }}</title>
+<style>
+  @page {
+    size: A4 landscape;
+    margin: 12mm 10mm 10mm 10mm;
+    @bottom-center {
+      content: "Trivu · " counter(page) " / " counter(pages);
+      font-family: 'DejaVu Sans', sans-serif;
+      font-size: 8pt;
+      color: #6b7280;
+    }
+  }
+  body {
+    font-family: 'DejaVu Sans', sans-serif;
+    color: #1f2937;
+    font-size: 8pt;
+  }
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 10mm;
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 4mm;
+    margin-bottom: 4mm;
+  }
+  .header img.logo {
+    width: 18mm;
+    height: 18mm;
+    border-radius: 4mm;
+    object-fit: cover;
+  }
+  .header .titles {
+    display: flex;
+    flex-direction: column;
+  }
+  .header .h1 {
+    font-size: 16pt;
+    font-weight: 700;
+    color: #111827;
+  }
+  .header .meta {
+    font-size: 9pt;
+    color: #6b7280;
+    margin-top: 1mm;
+  }
+  .header .meta .pill {
+    display: inline-block;
+    padding: 0.5mm 2mm;
+    border-radius: 1.5mm;
+    background: #f3f4f6;
+    color: #374151;
+    font-weight: 600;
+    margin-left: 2mm;
+    font-size: 8pt;
+  }
+  table.grid {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    margin-bottom: 6mm;
+  }
+  table.grid th, table.grid td {
+    border: 0.3pt solid #e5e7eb;
+    padding: 1mm 1mm;
+    vertical-align: top;
+    overflow: hidden;
+  }
+  table.grid thead th {
+    background: #f9fafb;
+    font-weight: 600;
+    text-align: center;
+    font-size: 7.5pt;
+    color: #4b5563;
+  }
+  table.grid thead th.day-num {
+    font-size: 9pt;
+    color: #111827;
+    padding-bottom: 0;
+  }
+  table.grid thead th.weekday {
+    font-size: 7pt;
+    color: #6b7280;
+    text-transform: uppercase;
+    padding-top: 0;
+    padding-bottom: 1.5mm;
+  }
+  table.grid thead th.is-weekend { color: #9ca3af; }
+  table.grid thead th.is-holiday { color: #b45309; }
+  table.grid td.slot-cell {
+    text-align: left;
+    background: #ffffff;
+    padding-left: 2mm;
+    width: 30mm;
+  }
+  table.grid td.slot-cell .slot-name {
+    font-weight: 600;
+    font-size: 8pt;
+    color: #111827;
+  }
+  table.grid td.slot-cell .role {
+    font-size: 7pt;
+    color: #6b7280;
+    margin-top: 0.5mm;
+  }
+  table.grid td.slot-cell .dot {
+    display: inline-block;
+    width: 1.5mm;
+    height: 1.5mm;
+    border-radius: 50%;
+    margin-right: 1mm;
+    vertical-align: middle;
+  }
+  table.grid td.day-cell {
+    text-align: left;
+    font-size: 7pt;
+    line-height: 1.25;
+  }
+  table.grid td.day-cell .person {
+    display: block;
+    color: #1f2937;
+  }
+  table.grid td.day-cell .role {
+    color: #9ca3af;
+    font-size: 6.5pt;
+  }
+  table.grid td.day-cell.empty {
+    color: #d1d5db;
+    text-align: center;
+  }
+  table.grid tr.libre td {
+    background: #f0fdf4;
+  }
+  table.grid tr.libre td.slot-cell {
+    background: #ecfdf5;
+  }
+  table.grid tr.libre td.slot-cell .slot-name {
+    color: #065f46;
+  }
+  table.grid tr.libre td.day-cell {
+    color: #064e3b;
+  }
+  /* Force a page break between the two chunks if there's more than one. */
+  .chunk-spacer {
+    height: 6mm;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <img class="logo" src="{{ logo_url }}" alt="Trivu" />
+  <div class="titles">
+    <div class="h1">Planificación · {{ period_label }}</div>
+    <div class="meta">
+      {{ tenant_name }}
+      <span class="pill">{{ status_label }}</span>
+      · Generado {{ generated_at }}
+    </div>
+  </div>
+</div>
+
+{% for chunk in chunks %}
+<table class="grid">
+  <colgroup>
+    <col style="width: 30mm" />
+    {% for d in chunk.dates %}
+    <col />
+    {% endfor %}
+  </colgroup>
+  <thead>
+    <tr>
+      <th rowspan="2" class="slot-cell">Turno</th>
+      {% for d in chunk.dates %}
+      <th class="day-num {% if d.is_holiday %}is-holiday{% elif d.is_weekend %}is-weekend{% endif %}">
+        {{ d.day }}
+      </th>
+      {% endfor %}
+    </tr>
+    <tr>
+      {% for d in chunk.dates %}
+      <th class="weekday {% if d.is_holiday %}is-holiday{% elif d.is_weekend %}is-weekend{% endif %}">
+        {{ d.weekday }}
+      </th>
+      {% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in chunk.rows %}
+    <tr>
+      <td class="slot-cell">
+        {% if row.color %}<span class="dot" style="background: {{ row.color }};"></span>{% endif %}
+        <span class="slot-name">{{ row.slot_name }}</span>
+        {% if row.team_role_label %}
+        <div class="role">{{ row.team_role_label }}</div>
+        {% endif %}
+      </td>
+      {% for cell in row.cells %}
+      {% if cell|length == 0 %}
+      <td class="day-cell empty">—</td>
+      {% else %}
+      <td class="day-cell">
+        {% for entry in cell %}
+        <span class="person">{{ entry.person_name }}</span>
+        {% endfor %}
+      </td>
+      {% endif %}
+      {% endfor %}
+    </tr>
+    {% endfor %}
+    {# Libre row #}
+    {% if chunk.absences %}
+    <tr class="libre">
+      <td class="slot-cell">
+        <span class="slot-name">Libre</span>
+      </td>
+      {% for cell in chunk.absences %}
+      {% if cell|length == 0 %}
+      <td class="day-cell empty">—</td>
+      {% else %}
+      <td class="day-cell">
+        {% for entry in cell %}
+        <span class="person">{{ entry.person_name }}</span>
+        {% endfor %}
+      </td>
+      {% endif %}
+      {% endfor %}
+    </tr>
+    {% endif %}
+  </tbody>
+</table>
+
+{% if not loop.last %}
+<div class="chunk-spacer"></div>
+{% endif %}
+{% endfor %}
+
+</body>
+</html>

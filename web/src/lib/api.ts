@@ -931,6 +931,41 @@ export const api = {
     request<EligiblePerson[]>(
       `/api/schedules/${scheduleId}/assignments/${assignmentId}/eligible-persons`,
     ),
+  /** Fetch the schedule PDF (full month, same for admin and members),
+   * then trigger a browser download with the server-suggested
+   * filename. Auth via Bearer header, so we can't just window.open
+   * the URL. */
+  downloadSchedulePdf: async (scheduleId: number) => {
+    const token = getToken();
+    const headers: HeadersInit = {};
+    if (token) (headers as Record<string, string>).Authorization = `Bearer ${token}`;
+    const res = await fetch(
+      `${API_BASE_URL}/api/schedules/${scheduleId}/pdf`,
+      { headers },
+    );
+    if (!res.ok) {
+      let detail: unknown = res.statusText;
+      try {
+        const body = await res.json();
+        detail = body.detail ?? detail;
+      } catch {
+        /* binary response, no JSON */
+      }
+      throw new Error(typeof detail === "string" ? detail : "Error generando PDF");
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get("Content-Disposition");
+    const match = cd?.match(/filename="([^"]+)"/);
+    const filename = match?.[1] ?? `planificacion.pdf`;
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objectUrl);
+  },
 
   // Bulk invite (CSV)
   bulkInvitePreview: async (file: File) => {

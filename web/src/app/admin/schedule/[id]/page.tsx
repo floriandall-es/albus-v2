@@ -117,6 +117,9 @@ export default function ScheduleDetailPage() {
   const isEditable = s.status === "draft";
   // Surface mutation errors that until now were swallowed silently
   // (e.g. unarchive failing → button briefly disables, nothing else).
+  const downloadPdf = useMutation({
+    mutationFn: () => api.downloadSchedulePdf(id),
+  });
   // First non-null wins; refreshing detail.data implicitly clears the
   // visible error after a successful retry.
   const actionError =
@@ -125,7 +128,8 @@ export default function ScheduleDetailPage() {
     ?? (unarchive.error as Error | null)
     ?? (reopen.error as Error | null)
     ?? (regenerate.error as Error | null)
-    ?? (remove.error as Error | null);
+    ?? (remove.error as Error | null)
+    ?? (downloadPdf.error as Error | null);
   return (
     <>
       <div className="mb-6 flex flex-wrap items-center gap-3">
@@ -198,6 +202,13 @@ export default function ScheduleDetailPage() {
               {unarchive.isPending ? "Desarchivando…" : "Desarchivar"}
             </Button>
           )}
+          <Button
+            variant="secondary"
+            onClick={() => downloadPdf.mutate()}
+            disabled={downloadPdf.isPending}
+          >
+            {downloadPdf.isPending ? "Generando PDF…" : "Descargar PDF"}
+          </Button>
         </div>
       </div>
       {actionError && (
