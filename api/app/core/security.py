@@ -64,3 +64,42 @@ def decode_pre_auth_token(token: str) -> dict[str, Any]:
     if not payload.get("person_id"):
         raise jwt.InvalidTokenError("Malformed pre-auth token")
     return payload
+
+
+def create_email_change_token(
+    *, person_id: int, new_email: str
+) -> str:
+    """Self-contained JWT carrying the email change request. Sent in
+    the confirmation link to the NEW address; the recipient clicking
+    it is the proof of address ownership we want.
+
+    Bound to the specific `new_email` so an intercepted token can
+    only ever apply that one change — no swapping to a different
+    address. Cannot be used as a bearer credential (kind ≠ access)."""
+    now = datetime.now(timezone.utc)
+    payload: dict[str, Any] = {
+        "kind": "email_change",
+        "person_id": person_id,
+        "new_email": new_email,
+        "iat": int(now.timestamp()),
+        "exp": int(
+            (
+                now
+                + timedelta(hours=settings.email_change_ttl_hours)
+            ).timestamp()
+        ),
+    }
+    return jwt.encode(
+        payload, settings.jwt_secret, algorithm=settings.jwt_algorithm
+    )
+
+
+def decode_email_change_token(token: str) -> dict[str, Any]:
+    payload = jwt.decode(
+        token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
+    )
+    if payload.get("kind") != "email_change":
+        raise jwt.InvalidTokenError("Not an email-change token")
+    if not payload.get("person_id") or not payload.get("new_email"):
+        raise jwt.InvalidTokenError("Malformed email-change token")
+    return payload

@@ -595,11 +595,23 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  /** Kicks off the email-change flow. The actual swap doesn't
+   * happen here — the server emails a confirmation link to the new
+   * address. Response includes which address received the link. */
   changeEmail: (body: { current_password: string; new_email: string }) =>
-    request<Person>("/api/me/email", {
+    request<{ new_email: string; sent_to: string }>("/api/me/email", {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  /** Apply the email change after the user clicks the confirmation
+   * link. Requires both the active session AND the token from the
+   * link — the session ensures the original account holder is the
+   * one finishing the flow even if the link gets forwarded. */
+  confirmEmailChange: (token: string) =>
+    request<Person>(
+      `/api/me/email/confirm?token=${encodeURIComponent(token)}`,
+      { method: "POST" },
+    ),
   uploadAvatar: async (file: File): Promise<Person> => {
     const fd = new FormData();
     fd.append("file", file);

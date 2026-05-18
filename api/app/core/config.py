@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     # login picker flow. 5 minutes is plenty for "user clicks a tenant card"
     # but tight enough that a leaked token isn't a long-term threat.
     pre_auth_ttl_minutes: int = 5
+    # TTL for the email-change confirmation link sent to the NEW
+    # address. 24h matches typical "verify your email" UX (recipient
+    # may read it on a phone, switch devices, etc.) while keeping the
+    # exposure window short.
+    email_change_ttl_hours: int = 24
     cors_origins: str = "http://localhost:3000"
     # Used to build invite accept URLs. In dev this points at the web service
     # exposed on the host; in prod it's the public domain.

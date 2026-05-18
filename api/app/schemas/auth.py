@@ -144,3 +144,11 @@ class PasswordChangeRequest(BaseModel):
 class EmailChangeRequest(BaseModel):
     current_password: str
     new_email: EmailStr
+
+
+class EmailChangeRequested(BaseModel):
+    """Response shape for POST /me/email — the email is NOT yet
+    changed. Confirmation link sent to new_email; the actual swap
+    happens via POST /me/email/confirm after the user clicks it."""
+    new_email: EmailStr
+    sent_to: EmailStr

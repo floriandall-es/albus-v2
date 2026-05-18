@@ -214,6 +214,32 @@ def schedule_reopened_member_email(
     return subject, body
 
 
+def email_change_confirm_email(
+    *,
+    recipient_name: str,
+    new_email: str,
+    current_email: str,
+    confirm_url: str,
+    ttl_hours: int,
+) -> tuple[str, str]:
+    """Sent to the NEW email address. Clicking the link is the only
+    way to actually apply the change — until the user confirms, the
+    account keeps its current email."""
+    subject = "Confirma tu nuevo email de Trivu"
+    body = (
+        f"Hola {recipient_name},\n\n"
+        f"Has solicitado cambiar el email de tu cuenta Trivu de "
+        f"{current_email} a {new_email}. Para aplicar el cambio, "
+        f"confirma desde esta dirección:\n\n"
+        f"{confirm_url}\n\n"
+        f"El enlace caduca en {ttl_hours} horas. Si no has sido tú "
+        f"quien ha solicitado este cambio, ignora este correo — tu "
+        f"cuenta sigue usando {current_email}.\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body
+
+
 def schedule_published_member_email(
     *,
     recipient_name: str,

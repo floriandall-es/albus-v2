@@ -242,9 +242,18 @@ function EmailSection({
         current_password: pwd,
         new_email: email.trim().toLowerCase(),
       }),
-    onSuccess: () => {
+    onSuccess: (resp) => {
       setPwd("");
-      setMsg({ kind: "ok", text: "Email actualizado." });
+      setMsg({
+        kind: "ok",
+        text:
+          `Te hemos enviado un correo de verificación a ${resp.sent_to}. `
+          + `Confirma desde el enlace para aplicar el cambio. El email actual `
+          + `seguirá activo hasta entonces.`,
+      });
+      // Reset the form field back to the current email so the UI
+      // reflects that no swap has happened yet.
+      setEmail(initialEmail);
       onSaved();
     },
     onError: (e) =>
@@ -290,17 +299,17 @@ function EmailSection({
           >
             {save.isPending ? "Guardando…" : "Cambiar email"}
           </Button>
-          {msg && (
-            <span
-              className={
-                "text-xs " +
-                (msg.kind === "ok" ? "text-emerald-700" : "text-red-700")
-              }
-            >
-              {msg.text}
-            </span>
-          )}
         </div>
+        {msg && (
+          <p
+            className={
+              "text-xs leading-relaxed " +
+              (msg.kind === "ok" ? "text-emerald-700" : "text-red-700")
+            }
+          >
+            {msg.text}
+          </p>
+        )}
       </form>
     </Card>
   );

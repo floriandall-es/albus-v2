@@ -15,7 +15,12 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
-from app.core.security import hash_password, verify_password
+from app.core.security import (
+    create_email_change_token,
+    decode_email_change_token,
+    hash_password,
+    verify_password,
+)
 from app.models import (
     Category,
     Department,
@@ -29,6 +34,7 @@ from app.models import (
 from app.routes.deps import RequestContext, get_current_context
 from app.schemas.auth import (
     EmailChangeRequest,
+    EmailChangeRequested,
     MeResponse,
     PasswordChangeRequest,
     PersonOut,
@@ -133,12 +139,21 @@ def change_password(
     ctx.db.flush()
 
 
-@router.post("/me/email", response_model=PersonOut)
+@router.post("/me/email", response_model=EmailChangeRequested)
 def change_email(
     payload: EmailChangeRequest,
     ctx: RequestContext = Depends(get_current_context),
-) -> Person:
-    if not verify_password(payload.current_password, ctx.person.hashed_password):
+) -> EmailChangeRequested:
+    """Start an email-change flow. The email is NOT swapped here —
+    a JWT-bound confirmation link is sent to the new address. The
+    user must open that link (= prove they control the new
+    address) before the change is applied. Defends against
+    post-compromise account hijack: an attacker who steals a
+    session can't quietly rewrite the recovery email to their own.
+    """
+    if not verify_password(
+        payload.current_password, ctx.person.hashed_password
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Contraseña actual incorrecta",
@@ -148,6 +163,99 @@ def change_email(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El email nuevo es igual al actual",
+        )
+    # Conflict pre-check. There's still a TOCTOU window between
+    # this and the eventual confirm — the confirm endpoint re-checks
+    # before applying — but rejecting here gives clearer immediate
+    # feedback in the UI.
+    other = (
+        ctx.db.query(Person)
+        .filter(func.lower(Person.email) == new_email, Person.id != ctx.person.id)
+        .first()
+    )
+    if other is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ya existe una cuenta con ese email",
+        )
+
+    token = create_email_change_token(
+        person_id=ctx.person.id, new_email=new_email
+    )
+    confirm_url = (
+        f"{settings.public_base_url.rstrip('/')}/confirm-email?token={token}"
+    )
+
+    # Lazy import keeps the email service / templates out of the
+    # module load path, same pattern as the schedule reopen flow.
+    from app.services.email import send_email
+    from app.services.email_templates import email_change_confirm_email
+
+    subject, body = email_change_confirm_email(
+        recipient_name=ctx.person.name,
+        new_email=new_email,
+        current_email=ctx.person.email,
+        confirm_url=confirm_url,
+        ttl_hours=settings.email_change_ttl_hours,
+    )
+    send_email(to=new_email, subject=subject, body_text=body)
+
+    return EmailChangeRequested(new_email=new_email, sent_to=new_email)
+
+
+@router.post("/me/email/confirm", response_model=PersonOut)
+def confirm_email_change(
+    token: str,
+    ctx: RequestContext = Depends(get_current_context),
+) -> Person:
+    """Apply the email change after the user clicks the confirmation
+    link in the new address's inbox.
+
+    The endpoint REQUIRES a logged-in session (Bearer) plus the
+    token, and validates that the token's person_id matches the
+    session's. Two reasons:
+    - Belt + braces — the token alone proves address ownership;
+      adding the session ensures only the original account holder
+      can complete the change. A forwarded link, on its own, gets
+      nothing.
+    - The /me path naturally requires the session, so this is
+      consistent with the rest of the user surface.
+    """
+    import jwt as _jwt
+
+    try:
+        payload = decode_email_change_token(token)
+    except _jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=400, detail="El enlace de confirmación ha caducado"
+        )
+    except _jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=400, detail="Enlace de confirmación inválido"
+        )
+    if payload.get("person_id") != ctx.person.id:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Inicia sesión con la cuenta a la que pertenece el cambio "
+                "y vuelve a abrir el enlace"
+            ),
+        )
+    new_email = str(payload["new_email"]).strip().lower()
+    if new_email == ctx.person.email:
+        # Idempotent — the user opened the link twice, no-op.
+        return ctx.person
+    # Re-check uniqueness in case someone else claimed the email
+    # between the request and the confirmation.
+    other = (
+        ctx.db.query(Person)
+        .filter(func.lower(Person.email) == new_email, Person.id != ctx.person.id)
+        .first()
+    )
+    if other is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ya existe una cuenta con ese email",
         )
     ctx.person.email = new_email
     try:
