@@ -15,8 +15,14 @@ Pillow==10.3.0
 # PDF export of monthly schedules — HTML template + Jinja2 renders +
 # WeasyPrint converts to PDF. System deps (cairo / pango / etc) are
 # installed in the Dockerfile.
+#
+# pydyf must be pinned explicitly: WeasyPrint 62.3 calls APIs that
+# were removed in pydyf 0.11.0 (notably Stream.transform()). Without
+# this pin the resolver picks the latest pydyf and `write_pdf()`
+# blows up with "super object has no attribute 'transform'".
 Jinja2==3.1.4
 WeasyPrint==62.3
+pydyf==0.10.0
 pytest==8.2.0
 pytest-asyncio==0.23.6
 asgi-lifespan==2.1.0
