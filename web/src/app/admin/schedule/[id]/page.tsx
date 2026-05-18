@@ -84,6 +84,9 @@ export default function ScheduleDetailPage() {
       router.replace("/admin/schedule");
     },
   });
+  const downloadPdf = useMutation({
+    mutationFn: () => api.downloadSchedulePdf(id),
+  });
 
   const absences = useQuery({
     queryKey: ["team-absences", detail.data?.period],
@@ -117,9 +120,6 @@ export default function ScheduleDetailPage() {
   const isEditable = s.status === "draft";
   // Surface mutation errors that until now were swallowed silently
   // (e.g. unarchive failing → button briefly disables, nothing else).
-  const downloadPdf = useMutation({
-    mutationFn: () => api.downloadSchedulePdf(id),
-  });
   // First non-null wins; refreshing detail.data implicitly clears the
   // visible error after a successful retry.
   const actionError =
