@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeftRight,
@@ -11,7 +11,8 @@ import {
 } from "lucide-react";
 import { api, personFirstName, type Assignment } from "@/lib/api";
 import { Card } from "@/components/admin/ui";
-import { NextShiftBanner } from "@/components/me/next-shift-banner";
+import { ShiftSection } from "@/components/me/shift-list";
+import { RequestCoverageModal } from "@/components/me/request-coverage-modal";
 import { todayIso, tomorrowIso } from "@/lib/dates";
 
 /**
@@ -21,7 +22,8 @@ import { todayIso, tomorrowIso } from "@/lib/dates";
  *
  * - Greeting with their first name.
  * - Today's shifts (if any), then tomorrow's shifts (if any), each
- *   rendered with the same NextShiftBanner look as on /me/turnos.
+ *   rendered with the same ShiftSection rows as on /me/turnos so
+ *   the design is consistent across the two pages.
  * - Four quick-access cards mirroring the sidebar (Mis turnos,
  *   Cambios, Mis bloqueos, Mi cuenta).
  *
@@ -34,6 +36,7 @@ export default function MeHome() {
     queryKey: ["schedules"],
     queryFn: api.listSchedules,
   });
+  const [swapTarget, setSwapTarget] = useState<Assignment | null>(null);
 
   // Members only see published schedules.
   const publishedSchedules = useMemo(() => {
@@ -122,15 +125,32 @@ export default function MeHome() {
         </p>
       </header>
 
-      {/* Today / tomorrow shifts — only the cards that have content. */}
+      {/* Today / tomorrow shifts — same row design as /me/turnos so
+          the look is consistent. Click a row to pedir cobertura. */}
       {anyShifts && (
-        <section className="mb-8 space-y-3">
-          {todayShifts.map((a) => (
-            <NextShiftBanner key={a.id} shift={a} title="Hoy" />
-          ))}
-          {tomorrowShifts.map((a) => (
-            <NextShiftBanner key={a.id} shift={a} title="Mañana" />
-          ))}
+        <section className="mb-8 space-y-4">
+          {todayShifts.length > 0 && (
+            <ShiftSection
+              title="Hoy"
+              items={todayShifts}
+              todayIso={todayIsoStr}
+              onClickShift={(a) => {
+                if (a.locked_at) return;
+                setSwapTarget(a);
+              }}
+            />
+          )}
+          {tomorrowShifts.length > 0 && (
+            <ShiftSection
+              title="Mañana"
+              items={tomorrowShifts}
+              todayIso={todayIsoStr}
+              onClickShift={(a) => {
+                if (a.locked_at) return;
+                setSwapTarget(a);
+              }}
+            />
+          )}
         </section>
       )}
 
@@ -184,6 +204,13 @@ export default function MeHome() {
           />
         </div>
       </section>
+
+      {swapTarget && (
+        <RequestCoverageModal
+          assignment={swapTarget}
+          onClose={() => setSwapTarget(null)}
+        />
+      )}
     </>
   );
 }

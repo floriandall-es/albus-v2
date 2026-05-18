@@ -1,0 +1,204 @@
+"use client";
+import { Lock } from "lucide-react";
+import { type Assignment } from "@/lib/api";
+import {
+  MONTH_SHORT_ES,
+  WEEKDAY_LONG_ES,
+  formatHours,
+} from "@/lib/dates";
+
+/**
+ * Shared shift-list primitives used by both /me (Inicio dashboard)
+ * and /me/turnos (full month list). Same look, same click behavior —
+ * one place to keep them consistent.
+ *
+ * ShiftSection renders a labelled card list. Pass an array of
+ * assignments and an onClick handler; locked shifts render as
+ * non-interactive rows with a small "Bloqueado" badge.
+ */
+
+export function ShiftSection({
+  title,
+  items,
+  emptyText,
+  todayIso,
+  dimmed = false,
+  onClickShift,
+}: {
+  title: string;
+  items: Assignment[];
+  /** Show this gray-text card when `items` is empty. Omit to
+   * collapse empty sections silently. */
+  emptyText?: string;
+  todayIso: string;
+  /** Render the rows in a muted style — used for the "Pasados"
+   * section on /me/turnos. */
+  dimmed?: boolean;
+  onClickShift: (a: Assignment) => void;
+}) {
+  if (items.length === 0) {
+    if (!emptyText) return null;
+    return (
+      <div>
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+          {title}
+        </h2>
+        <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200 text-sm text-gray-500">
+          {emptyText}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+        {title}
+      </h2>
+      <ul className="divide-y divide-gray-100 rounded-xl bg-white ring-1 ring-gray-200 overflow-hidden">
+        {items.map((a) => (
+          <ShiftRow
+            key={a.id}
+            a={a}
+            todayIso={todayIso}
+            dimmed={dimmed}
+            onClick={onClickShift}
+          />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ShiftRow({
+  a,
+  todayIso,
+  dimmed,
+  onClick,
+}: {
+  a: Assignment;
+  todayIso: string;
+  dimmed: boolean;
+  onClick: (a: Assignment) => void;
+}) {
+  const isToday = a.date === todayIso;
+  const isLocked = !!a.locked_at;
+  // The list item is a button when clickable (not locked); plain
+  // div otherwise. Either way it sits 44px+ tall for touch targets.
+  const body = (
+    <div className="flex items-center gap-4 px-4 py-3">
+      <DateBlock dateIso={a.date} highlight={isToday} dimmed={dimmed} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span
+            className={
+              "text-base font-semibold "
+              + (dimmed ? "text-gray-500" : "text-gray-900")
+            }
+          >
+            {a.slot_name}
+          </span>
+          {a.team_role_label && (
+            <span className="text-sm text-gray-500">
+              · {a.team_role_label}
+            </span>
+          )}
+          {isLocked && (
+            <span
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700"
+              title="Turno bloqueado por el administrador"
+            >
+              <Lock className="h-3 w-3" />
+              Bloqueado
+            </span>
+          )}
+        </div>
+        <ShiftTimeBadge a={a} inline />
+      </div>
+      {!isLocked && (
+        <span className="hidden sm:inline text-xs text-brand-700 group-hover:underline">
+          Pedir cobertura →
+        </span>
+      )}
+    </div>
+  );
+  if (isLocked) {
+    return <li className="bg-white">{body}</li>;
+  }
+  return (
+    <li className="bg-white group hover:bg-brand-50/30 transition-colors">
+      <button
+        type="button"
+        onClick={() => onClick(a)}
+        className="block w-full text-left"
+        aria-label={`Pedir cobertura para ${a.slot_name} el ${a.date}`}
+      >
+        {body}
+      </button>
+    </li>
+  );
+}
+
+function DateBlock({
+  dateIso,
+  highlight,
+  dimmed,
+}: {
+  dateIso: string;
+  highlight: boolean;
+  dimmed: boolean;
+}) {
+  // Parse local-date safely (avoid the JS Date timezone trap for
+  // YYYY-MM-DD strings, which the engine treats as UTC midnight).
+  const [yy, mm, dd] = dateIso.split("-").map(Number);
+  const d = new Date(yy, mm - 1, dd);
+  const weekday = WEEKDAY_LONG_ES[d.getDay()].slice(0, 3);
+  const dayNum = String(d.getDate()).padStart(2, "0");
+  const monthShort = MONTH_SHORT_ES[d.getMonth()];
+  return (
+    <div
+      className={
+        "shrink-0 w-14 text-center rounded-lg border px-1 py-1.5 "
+        + (highlight
+          ? "border-brand-300 bg-brand-50 text-brand-700"
+          : dimmed
+            ? "border-gray-200 bg-gray-50 text-gray-400"
+            : "border-gray-200 bg-white text-gray-700")
+      }
+    >
+      <div className="text-[10px] uppercase tracking-wide">{weekday}</div>
+      <div
+        className={
+          "text-xl font-bold leading-none "
+          + (highlight
+            ? "text-brand-800"
+            : dimmed
+              ? "text-gray-500"
+              : "text-gray-900")
+        }
+      >
+        {dayNum}
+      </div>
+      <div className="text-[10px] uppercase">{monthShort}</div>
+    </div>
+  );
+}
+
+function ShiftTimeBadge({
+  a,
+  inline = false,
+}: {
+  a: Assignment;
+  inline?: boolean;
+}) {
+  const hours = formatHours(a.slot_start_time, a.slot_end_time);
+  if (!hours) return null;
+  return (
+    <span
+      className={
+        (inline ? "mt-0.5 block " : "ml-2 inline ") + "text-xs text-gray-500"
+      }
+    >
+      {hours}
+    </span>
+  );
+}
