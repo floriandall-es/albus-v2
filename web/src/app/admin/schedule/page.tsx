@@ -29,6 +29,16 @@ const STATUS_LABEL: Record<string, string> = {
   archived: "Archivada",
 };
 
+// Plain-language explainer rendered next to each status pill so
+// non-technical admins immediately understand what the status
+// implies for their team. Visibility is the part that confuses
+// the most.
+const STATUS_SUBTITLE: Record<string, string> = {
+  draft: "solo tú la ves",
+  published: "visible para el equipo",
+  archived: "ya no visible para el equipo",
+};
+
 export default function SchedulesPage() {
   const router = useRouter();
   const qc = useQueryClient();
@@ -107,14 +117,21 @@ export default function SchedulesPage() {
                         {formatPeriod(s.period)}
                       </td>
                       <td className="px-4 py-3">
-                        <StatusPill
-                          tone={
-                            STATUS_TONE[s.status as keyof typeof STATUS_TONE]
-                            ?? "neutral"
-                          }
-                        >
-                          {STATUS_LABEL[s.status] ?? s.status}
-                        </StatusPill>
+                        <span className="inline-flex items-center gap-2">
+                          <StatusPill
+                            tone={
+                              STATUS_TONE[s.status as keyof typeof STATUS_TONE]
+                              ?? "neutral"
+                            }
+                          >
+                            {STATUS_LABEL[s.status] ?? s.status}
+                          </StatusPill>
+                          {STATUS_SUBTITLE[s.status] && (
+                            <span className="text-xs text-gray-500">
+                              {STATUS_SUBTITLE[s.status]}
+                            </span>
+                          )}
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-gray-600">
                         {s.generated_at

@@ -24,6 +24,15 @@ const STATUS_LABEL: Record<string, string> = {
   archived: "Archivada",
 };
 
+// Plain-language explainer rendered next to the bold status word
+// so non-technical admins can tell at a glance what changes for
+// the team in each state. See also: /admin/schedule list view.
+const STATUS_SUBTITLE: Record<string, string> = {
+  draft: "solo tú la ves",
+  published: "visible para el equipo",
+  archived: "ya no visible para el equipo",
+};
+
 export default function ScheduleDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -217,6 +226,11 @@ export default function ScheduleDetailPage() {
       )}
       <p className="mb-4 text-sm text-gray-600">
         Estado: <span className="font-medium">{STATUS_LABEL[s.status]}</span>
+        {STATUS_SUBTITLE[s.status] && (
+          <span className="ml-1 text-gray-500">
+            · {STATUS_SUBTITLE[s.status]}
+          </span>
+        )}
         {s.reopened_at && (
           <span
             className="ml-3 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide bg-amber-50 text-amber-800 border border-amber-200"
