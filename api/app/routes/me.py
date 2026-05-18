@@ -30,10 +30,8 @@ from app.models import (
     Department,
     Membership,
     Person,
-    Pool,
     RoleType,
     Schedule,
-    Skill,
     Slot,
     SlotTeamRole,
 )
@@ -77,18 +75,6 @@ def me(ctx: RequestContext = Depends(get_current_context)) -> MeResponse:
         categories=int(
             db.query(func.count(Category.id))
             .filter(Category.tenant_id == tid)
-            .scalar()
-            or 0
-        ),
-        pools=int(
-            db.query(func.count(Pool.id))
-            .filter(Pool.tenant_id == tid)
-            .scalar()
-            or 0
-        ),
-        skills=int(
-            db.query(func.count(Skill.id))
-            .filter(Skill.tenant_id == tid)
             .scalar()
             or 0
         ),

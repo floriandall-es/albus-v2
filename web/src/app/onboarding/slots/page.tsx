@@ -146,7 +146,7 @@ export default function SlotsStep() {
       api.createSlot({
         ...t,
         team_roles: [],
-        skills_required: [],
+        allowed_person_ids: [],
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["slots"] }),
   });
@@ -161,7 +161,7 @@ export default function SlotsStep() {
         post_slot_rest: false,
         counts_for_equity: true,
         team_roles: [],
-        skills_required: [],
+        allowed_person_ids: [],
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["slots"] });
@@ -193,7 +193,7 @@ export default function SlotsStep() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-2">Paso 5 — Turnos</h2>
+      <h2 className="text-2xl font-semibold mb-2">Paso 3 — Turnos</h2>
       <p className="text-sm text-gray-600 mb-3">
         Define los turnos típicos de tu servicio. Marca los habituales y/o añade
         los tuyos abajo. Por defecto cada turno se asigna automáticamente con el

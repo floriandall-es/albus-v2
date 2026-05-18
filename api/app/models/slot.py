@@ -39,9 +39,9 @@ class Slot(Base):
     department_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    pool_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("pools.id", ondelete="SET NULL"), nullable=True, index=True
-    )
+    # `pool_id` lived here before migration 0030. Pools were collapsed
+    # into slot_allowed_persons; restricting which people can do a slot
+    # is now a direct list of person ids on the slot itself.
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     start_time: Mapped[time | None] = mapped_column(Time, nullable=True)
     end_time: Mapped[time | None] = mapped_column(Time, nullable=True)
@@ -121,11 +121,22 @@ class SlotTeamRoleCategory(Base):
     )
 
 
-class SlotSkillRequired(Base):
-    __tablename__ = "slot_skills_required"
+class SlotAllowedPerson(Base):
+    """Per-slot allow-list. If a slot has zero rows, anyone in the
+    tenant team is eligible (modulo the other filters: categories
+    per-role, guardia type, availability blocks, etc.). If a slot
+    has one or more rows, ONLY those persons are eligible.
+
+    Replaces the pre-0030 trio of mechanisms (pool_id on slot, pool
+    memberships, slot_skills_required + person_skills). Same job,
+    one table.
+    """
+
+    __tablename__ = "slot_allowed_persons"
     __table_args__ = (
-        UniqueConstraint("slot_id", "skill_id", name="uq_slot_skills_slot_skill"),
-        CheckConstraint("strength IN ('hard','soft')", name="ck_slot_skills_strength"),
+        UniqueConstraint(
+            "slot_id", "person_id", name="uq_slot_allowed_persons_slot_person"
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -135,10 +146,9 @@ class SlotSkillRequired(Base):
     slot_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("slots.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    skill_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("skills.id", ondelete="CASCADE"), nullable=False, index=True
+    person_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("persons.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    strength: Mapped[str] = mapped_column(String(8), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

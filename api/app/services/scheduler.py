@@ -11,9 +11,9 @@ Hard constraints (model rejects any solution that breaks them):
   person_id=NULL "Sin cubrir" rows).
 - A person works at most one slot per date.
 - Eligibility filters (the model only creates an x-variable when ALL hold):
-  pool membership (if slot.pool_id), hard skills, team-role categories,
-  guardia_type matching Membership.guardia_types[], approved availability
-  blocks, does_guardias respected for guardia-typed slots.
+  slot allow-list (if any rows in slot_allowed_persons), team-role
+  categories, guardia_type matching Membership.guardia_types[], approved
+  availability blocks, does_guardias respected for guardia-typed slots.
 - post_slot_rest=True: assignment on day D forbids any assignment on D+1.
 - Locked assignments (Sprint 5 part B) are pinned: the variable is forced
   to 1 and competing variables on the same (date, slot, role) are forced
@@ -24,7 +24,6 @@ Soft objective (minimize):
   FTE-weighted (max - min of count*100/fte_pct, weight 10).
 - Weekend balance: same idea but only counting weekend/holiday work
   (weight 5).
-- Soft skill misses: weight 2 per missing soft skill on each assignment.
 - Guardia spread: penalize same-person guardias <4 days apart (weight 3).
 
 Weights are module constants — tune in code for now.
@@ -46,16 +45,14 @@ from app.models import (
     AvailabilityBlock,
     Holiday,
     Membership,
-    PersonSkill,
-    PoolMembership,
     Schedule,
     Slot,
+    SlotAllowedPerson,
     SlotFrequencyCap,
     SlotRule,
     SlotRuleRotationBlock,
     SlotRuleRotationMember,
     SlotRuleWeeklyPin,
-    SlotSkillRequired,
     SlotSuccessionRule,
     SlotTeamRole,
     SlotTeamRoleCategory,
@@ -75,7 +72,6 @@ W_WEEKEND = 5
 # primary signal; this is a secondary "and the role split should
 # also be roughly even" objective.
 W_ROLE_BALANCE = 5
-W_SOFT_SKILL = 2
 W_GUARDIA_SPREAD = 3
 GUARDIA_MIN_GAP_DAYS = 4
 
@@ -176,21 +172,12 @@ class _Context:
         for trc in db.query(SlotTeamRoleCategory).all():
             self.team_role_categories[trc.slot_team_role_id].add(trc.category_id)
 
-        self.slot_hard_skills: dict[int, set[int]] = defaultdict(set)
-        self.slot_soft_skills: dict[int, set[int]] = defaultdict(set)
-        for ssr in db.query(SlotSkillRequired).all():
-            if ssr.strength == "hard":
-                self.slot_hard_skills[ssr.slot_id].add(ssr.skill_id)
-            elif ssr.strength == "soft":
-                self.slot_soft_skills[ssr.slot_id].add(ssr.skill_id)
-
-        self.person_skills: dict[int, set[int]] = defaultdict(set)
-        for ps in db.query(PersonSkill).all():
-            self.person_skills[ps.person_id].add(ps.skill_id)
-
-        self.pool_members: dict[int, set[int]] = defaultdict(set)
-        for pm in db.query(PoolMembership).all():
-            self.pool_members[pm.pool_id].add(pm.person_id)
+        # Per-slot allow-list (the post-0030 unified eligibility filter).
+        # A slot with NO rows here = "Todo el equipo" / no restriction.
+        # A slot with one or more rows = ONLY those persons are eligible.
+        self.slot_allowed_persons: dict[int, set[int]] = defaultdict(set)
+        for sap in db.query(SlotAllowedPerson).all():
+            self.slot_allowed_persons[sap.slot_id].add(sap.person_id)
 
         # Per-slot assignment rules. Each slot has 1+ non-overlapping rules
         # over weekdays; each rule has its own strategy (solver, fixed_weekly,
@@ -411,12 +398,6 @@ class _Context:
         """Return the pinned person_ids for the (rule, weekday) pair."""
         return list(self.weekly_pins_by_rule.get(rule.id, {}).get(d.weekday(), []))
 
-    def has_required_skills(self, person_id: int, slot_id: int) -> bool:
-        needed = self.slot_hard_skills.get(slot_id)
-        if not needed:
-            return True
-        return needed.issubset(self.person_skills.get(person_id, set()))
-
     # -- Eligibility, used by both solver and the manual-edit endpoint. ---
 
     def eligibility_reason(
@@ -432,13 +413,10 @@ class _Context:
         m = self.member_by_person_id.get(person_id)
         if not m:
             return "La persona no es miembro activo del equipo"
-        # Pool scope.
-        if slot.pool_id is not None:
-            if person_id not in self.pool_members.get(slot.pool_id, set()):
-                return "La persona no pertenece al pool de este slot"
-        # Hard skills.
-        if not self.has_required_skills(person_id, slot.id):
-            return "Le faltan skills obligatorias para este slot"
+        # Slot allow-list (post-0030 replacement for pool + skill filters).
+        allowed = self.slot_allowed_persons.get(slot.id)
+        if allowed and person_id not in allowed:
+            return "La persona no está en el equipo autorizado para este turno"
         # Team-role categories.
         if team_role_id is not None:
             cats = self.team_role_categories.get(team_role_id)
@@ -1921,14 +1899,9 @@ def _solve_cpsat(
             buckets, W_ROLE_BALANCE, f"role_s{slot_id}_r{role_id}"
         )
 
-    # ---- Soft skill term: weight per missing soft skill per assignment. ----
-    for (d, slot_id, role_id, pid), var in x.items():
-        soft = ctx.slot_soft_skills.get(slot_id, set())
-        if not soft:
-            continue
-        missing = soft - ctx.person_skills.get(pid, set())
-        if missing:
-            obj_terms.append(W_SOFT_SKILL * len(missing) * var)
+    # (Migration 0030 removed the soft-skill objective term. With Skills
+    # gone there's no soft-skill concept; eligibility is the slot's
+    # allow-list, which is hard-only by design.)
 
     # ---- Guardia spread: penalize same-person guardia assignments < 4d apart. ----
     # We approximate by: for each pair of guardia variables for the same

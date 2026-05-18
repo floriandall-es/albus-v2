@@ -6,13 +6,12 @@ from sqlalchemy.exc import IntegrityError
 from app.models import (
     Category,
     Membership,
-    Skill,
     Slot,
+    SlotAllowedPerson,
     SlotRule,
     SlotRuleRotationBlock,
     SlotRuleRotationMember,
     SlotRuleWeeklyPin,
-    SlotSkillRequired,
     SlotTeamRole,
     SlotTeamRoleCategory,
 )
@@ -20,8 +19,6 @@ from app.routes.deps import RequestContext, get_current_context
 from app.schemas.slot import (
     SlotCreate,
     SlotOut,
-    SlotSkillRequiredIn,
-    SlotSkillRequiredOut,
     SlotTeamRoleIn,
     SlotTeamRoleOut,
     SlotUpdate,
@@ -77,14 +74,24 @@ def _validate_categories(ctx: RequestContext, ids: list[int]) -> None:
         )
 
 
-def _validate_skills(ctx: RequestContext, ids: list[int]) -> None:
+def _validate_allowed_persons(ctx: RequestContext, ids: list[int]) -> None:
+    """Every person_id in the allow-list must currently be a member
+    of THIS tenant. Person rows aren't tenant-scoped but Memberships
+    are; checking membership is the right tenant boundary."""
     if not ids:
         return
-    found = ctx.db.query(Skill.id).filter(Skill.id.in_(ids)).all()
+    found = (
+        ctx.db.query(Membership.person_id)
+        .filter(Membership.person_id.in_(ids), Membership.tenant_id == ctx.tenant.id)
+        .all()
+    )
     found_ids = {row[0] for row in found}
     missing = [i for i in ids if i not in found_ids]
     if missing:
-        raise HTTPException(status_code=422, detail=f"Unknown skill_ids: {missing}")
+        raise HTTPException(
+            status_code=422,
+            detail=f"Personas no pertenecen a este equipo: {sorted(missing)}",
+        )
 
 
 def _serialize(ctx: RequestContext, slot: Slot) -> SlotOut:
@@ -105,10 +112,10 @@ def _serialize(ctx: RequestContext, slot: Slot) -> SlotOut:
     for rc in role_categories:
         cats_by_role.setdefault(rc.slot_team_role_id, []).append(rc.category_id)
 
-    skills = (
-        ctx.db.query(SlotSkillRequired)
-        .filter(SlotSkillRequired.slot_id == slot.id)
-        .order_by(SlotSkillRequired.id)
+    allowed_rows = (
+        ctx.db.query(SlotAllowedPerson)
+        .filter(SlotAllowedPerson.slot_id == slot.id)
+        .order_by(SlotAllowedPerson.id)
         .all()
     )
 
@@ -175,7 +182,6 @@ def _serialize(ctx: RequestContext, slot: Slot) -> SlotOut:
         id=slot.id,
         tenant_id=slot.tenant_id,
         department_id=slot.department_id,
-        pool_id=slot.pool_id,
         name=slot.name,
         start_time=slot.start_time,
         end_time=slot.end_time,
@@ -188,6 +194,7 @@ def _serialize(ctx: RequestContext, slot: Slot) -> SlotOut:
         guardia_type=slot.guardia_type,
         equity_group_key=slot.equity_group_key,
         color=slot.color,
+        position=slot.position,
         crosses_midnight=slot.crosses_midnight,
         team_roles=[
             SlotTeamRoleOut(
@@ -198,10 +205,7 @@ def _serialize(ctx: RequestContext, slot: Slot) -> SlotOut:
             )
             for r in team_roles
         ],
-        skills_required=[
-            SlotSkillRequiredOut(id=s.id, skill_id=s.skill_id, strength=s.strength)  # type: ignore[arg-type]
-            for s in skills
-        ],
+        allowed_person_ids=sorted({a.person_id for a in allowed_rows}),
         rules=rules_out,
         created_at=slot.created_at,
     )
@@ -236,32 +240,29 @@ def _replace_team_roles(
     ctx.db.flush()
 
 
-def _replace_skills_required(
-    ctx: RequestContext, slot: Slot, skills_required: list[SlotSkillRequiredIn]
+def _replace_allowed_persons(
+    ctx: RequestContext, slot: Slot, person_ids: list[int]
 ) -> None:
+    """Atomically replace the slot's allow-list. Empty list = clear
+    (= "Todo el equipo" / no restriction). Caller pre-validates that
+    the person ids belong to this tenant."""
     existing = (
-        ctx.db.query(SlotSkillRequired)
-        .filter(SlotSkillRequired.slot_id == slot.id)
+        ctx.db.query(SlotAllowedPerson)
+        .filter(SlotAllowedPerson.slot_id == slot.id)
         .all()
     )
-    for s in existing:
-        ctx.db.delete(s)
+    for row in existing:
+        ctx.db.delete(row)
     ctx.db.flush()
-    _validate_skills(ctx, [s.skill_id for s in skills_required])
-    seen: set[int] = set()
-    for sr in skills_required:
-        if sr.skill_id in seen:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Duplicate skill_id in skills_required: {sr.skill_id}",
-            )
-        seen.add(sr.skill_id)
+    _validate_allowed_persons(ctx, person_ids)
+    # De-dupe input — the unique constraint enforces this at DB level
+    # but we'd rather return a clean 422 than catch IntegrityError.
+    for pid in dict.fromkeys(person_ids):
         ctx.db.add(
-            SlotSkillRequired(
+            SlotAllowedPerson(
                 tenant_id=ctx.tenant.id,
                 slot_id=slot.id,
-                skill_id=sr.skill_id,
-                strength=sr.strength,
+                person_id=pid,
             )
         )
     ctx.db.flush()
@@ -292,7 +293,6 @@ def create_slot(
         tenant_id=ctx.tenant.id,
         name=payload.name,
         department_id=payload.department_id,
-        pool_id=payload.pool_id,
         start_time=payload.start_time,
         end_time=payload.end_time,
         days_applied=payload.days_applied,
@@ -314,7 +314,7 @@ def create_slot(
         raise HTTPException(status_code=409, detail="Slot name already exists")
 
     _replace_team_roles(ctx, obj, payload.team_roles)
-    _replace_skills_required(ctx, obj, payload.skills_required)
+    _replace_allowed_persons(ctx, obj, payload.allowed_person_ids)
     # Default rule: solver, position 0. The rule's days_bitmap is
     # derived from slot.days_applied so the admin doesn't have to
     # reconcile two day-scopes for a brand-new slot. Custom-day slots
@@ -347,7 +347,7 @@ def update_slot(
     obj = _get_or_404(ctx, slot_id)
     data = payload.model_dump(exclude_unset=True)
     team_roles = data.pop("team_roles", None)
-    skills_required = data.pop("skills_required", None)
+    allowed_person_ids = data.pop("allowed_person_ids", None)
     if "guardia_type" in data:
         # Normalize empty string to None so the column reflects "not a guardia".
         gt = data["guardia_type"]
@@ -370,10 +370,8 @@ def update_slot(
         _replace_team_roles(
             ctx, obj, [SlotTeamRoleIn.model_validate(r) for r in team_roles]
         )
-    if skills_required is not None:
-        _replace_skills_required(
-            ctx, obj, [SlotSkillRequiredIn.model_validate(s) for s in skills_required]
-        )
+    if allowed_person_ids is not None:
+        _replace_allowed_persons(ctx, obj, list(allowed_person_ids))
     ctx.db.refresh(obj)
     return _serialize(ctx, obj)
 

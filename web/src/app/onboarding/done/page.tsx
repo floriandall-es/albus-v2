@@ -9,8 +9,6 @@ export default function DoneStep() {
   const router = useRouter();
   const qc = useQueryClient();
   const cats = useQuery({ queryKey: ["categories"], queryFn: api.listCategories });
-  const skills = useQuery({ queryKey: ["skills"], queryFn: api.listSkills });
-  const pools = useQuery({ queryKey: ["pools"], queryFn: api.listPools });
   const slots = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
   const invs = useQuery({ queryKey: ["invitations"], queryFn: api.listInvitations });
 
@@ -26,23 +24,19 @@ export default function DoneStep() {
 
   const counts = {
     categories: cats.data?.length ?? 0,
-    skills: skills.data?.length ?? 0,
-    pools: pools.data?.length ?? 0,
     slots: slots.data?.length ?? 0,
     invites: invs.data?.length ?? 0,
   };
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-2">Paso 7 — Resumen</h2>
+      <h2 className="text-2xl font-semibold mb-2">Paso 5 — Resumen</h2>
       <p className="text-sm text-gray-600 mb-6">
         Esto es lo que has configurado:
       </p>
 
       <ul className="rounded-md border bg-white divide-y text-sm mb-6">
         <SummaryRow label="Categorías" value={counts.categories} />
-        <SummaryRow label="Competencias" value={counts.skills} />
-        <SummaryRow label="Unidades" value={counts.pools} />
         <SummaryRow label="Turnos" value={counts.slots} />
         <SummaryRow label="Invitaciones pendientes" value={counts.invites} />
       </ul>

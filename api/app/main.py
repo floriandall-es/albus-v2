@@ -14,10 +14,8 @@ from app.routes import (
     invitations,
     me,
     onboarding,
-    pools,
     schedules,
     shift_swaps,
-    skills,
     slot_dependencies,
     slots,
     stats,
@@ -40,8 +38,6 @@ app.include_router(health.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(me.router, prefix="/api")
 app.include_router(categories.router, prefix="/api")
-app.include_router(pools.router, prefix="/api")
-app.include_router(skills.router, prefix="/api")
 app.include_router(slots.router, prefix="/api")
 app.include_router(slot_dependencies.router, prefix="/api")
 app.include_router(team.router, prefix="/api")

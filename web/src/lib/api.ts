@@ -302,52 +302,14 @@ export type Category = {
   created_at: string;
 };
 
-export type MembershipMode = "dedicated" | "rotational" | "mixed";
-
-export type Pool = {
-  id: number;
-  tenant_id: number;
-  department_id: number | null;
-  name: string;
-  membership_mode: MembershipMode;
-  equity_independent: boolean;
-  member_count: number;
-  created_at: string;
-};
-
-export type PoolMember = {
-  id: number;
-  person_id: number;
-  person_name: string;
-  person_email: string;
-  created_at: string;
-};
-
-export type PoolDetail = Pool & { members: PoolMember[] };
-
-export type Skill = {
-  id: number;
-  tenant_id: number;
-  name: string;
-  description: string | null;
-  created_at: string;
-};
-
 export type DaysApplied = "all" | "weekdays" | "weekends_holidays" | "custom";
 export type StaffingMode = "single" | "multiple_same" | "team_composition";
-export type SkillStrength = "hard" | "soft";
 
 export type SlotTeamRole = {
   id: number;
   role_label: string;
   headcount: number;
   category_ids: number[];
-};
-
-export type SlotSkillRequired = {
-  id: number;
-  skill_id: number;
-  strength: SkillStrength;
 };
 
 export type SlotRuleStrategy = "solver" | "fixed_weekly" | "rotation" | "manual";
@@ -395,7 +357,6 @@ export type Slot = {
   id: number;
   tenant_id: number;
   department_id: number | null;
-  pool_id: number | null;
   name: string;
   start_time: string | null;
   end_time: string | null;
@@ -413,7 +374,11 @@ export type Slot = {
   position: number;
   crosses_midnight: boolean;
   team_roles: SlotTeamRole[];
-  skills_required: SlotSkillRequired[];
+  /** Person ids in the slot's allow-list. Empty = "Todo el equipo"
+   * (no restriction). Non-empty = ONLY these persons can be
+   * assigned to this slot. Replaces the pre-0030 pool_id +
+   * skills_required mechanisms. */
+  allowed_person_ids: number[];
   rules: SlotRule[];
   created_at: string;
 };
@@ -421,7 +386,6 @@ export type Slot = {
 export type SlotInput = {
   name: string;
   department_id?: number | null;
-  pool_id?: number | null;
   start_time?: string | null;
   end_time?: string | null;
   days_applied: DaysApplied;
@@ -434,7 +398,9 @@ export type SlotInput = {
   equity_group_key?: string | null;
   color?: string | null;
   team_roles: { role_label: string; headcount: number; category_ids: number[] }[];
-  skills_required: { skill_id: number; strength: SkillStrength }[];
+  /** Empty = no restriction; non-empty = only these persons may be
+   * assigned to this slot. */
+  allowed_person_ids: number[];
 };
 
 export type TeamMember = {
@@ -469,8 +435,6 @@ export type TeamMemberUpdate = {
 
 export type TenantSummaryCounts = {
   categories: number;
-  pools: number;
-  skills: number;
   slots: number;
 };
 
@@ -702,41 +666,6 @@ export const api = {
   ) => request<Category>(`/api/categories/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   deleteCategory: (id: number) =>
     request<void>(`/api/categories/${id}`, { method: "DELETE" }),
-
-  // Pools
-  listPools: () => request<Pool[]>("/api/pools"),
-  getPool: (id: number) => request<PoolDetail>(`/api/pools/${id}`),
-  createPool: (body: {
-    name: string;
-    department_id?: number | null;
-    membership_mode: MembershipMode;
-    equity_independent: boolean;
-  }) => request<Pool>("/api/pools", { method: "POST", body: JSON.stringify(body) }),
-  updatePool: (
-    id: number,
-    body: {
-      name?: string;
-      department_id?: number | null;
-      membership_mode?: MembershipMode;
-      equity_independent?: boolean;
-    },
-  ) => request<Pool>(`/api/pools/${id}`, { method: "PUT", body: JSON.stringify(body) }),
-  deletePool: (id: number) => request<void>(`/api/pools/${id}`, { method: "DELETE" }),
-  addPoolMember: (id: number, person_id: number) =>
-    request<PoolMember>(`/api/pools/${id}/members`, {
-      method: "POST",
-      body: JSON.stringify({ person_id }),
-    }),
-  removePoolMember: (id: number, person_id: number) =>
-    request<void>(`/api/pools/${id}/members/${person_id}`, { method: "DELETE" }),
-
-  // Skills
-  listSkills: () => request<Skill[]>("/api/skills"),
-  createSkill: (body: { name: string; description?: string | null }) =>
-    request<Skill>("/api/skills", { method: "POST", body: JSON.stringify(body) }),
-  updateSkill: (id: number, body: { name?: string; description?: string | null }) =>
-    request<Skill>(`/api/skills/${id}`, { method: "PUT", body: JSON.stringify(body) }),
-  deleteSkill: (id: number) => request<void>(`/api/skills/${id}`, { method: "DELETE" }),
 
   // Slots
   listSlots: () => request<Slot[]>("/api/slots"),

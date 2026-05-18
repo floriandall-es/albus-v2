@@ -5,9 +5,6 @@ import {
   api,
   type Category,
   type DaysApplied,
-  type Pool,
-  type Skill,
-  type SkillStrength,
   type Slot,
   type SlotInput,
   type SlotRule,
@@ -45,9 +42,7 @@ export default function SlotsPage() {
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
   const cats = useQuery({ queryKey: ["categories"], queryFn: api.listCategories });
-  const skills = useQuery({ queryKey: ["skills"], queryFn: api.listSkills });
   const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
-  const pools = useQuery({ queryKey: ["pools"], queryFn: api.listPools });
   const [editing, setEditing] = useState<Slot | "new" | null>(null);
 
   const del = useMutation({
@@ -85,8 +80,6 @@ export default function SlotsPage() {
         for (const s of list.data) {
           nameCounts.set(s.name, (nameCounts.get(s.name) ?? 0) + 1);
         }
-        const poolNameById = new Map<number, string>();
-        for (const p of pools.data ?? []) poolNameById.set(p.id, p.name);
         return (
         <Card>
           <table className="w-full text-sm">
@@ -97,7 +90,7 @@ export default function SlotsPage() {
                 <th className="px-4 py-2 font-medium">Días</th>
                 <th className="px-4 py-2 font-medium">Modo</th>
                 <th className="px-4 py-2 font-medium">Plazas</th>
-                <th className="px-4 py-2 font-medium">Unidad</th>
+                <th className="px-4 py-2 font-medium">Equipo autorizado</th>
                 <th className="px-4 py-2 font-medium">Orden</th>
                 <th className="px-4 py-2 font-medium text-right">Acciones</th>
               </tr>
@@ -132,9 +125,11 @@ export default function SlotsPage() {
                         : s.headcount}
                   </td>
                   <td className="px-4 py-2 text-gray-600">
-                    {s.pool_id != null
-                      ? poolNameById.get(s.pool_id) ?? `#${s.pool_id}`
-                      : <span className="text-gray-400">—</span>}
+                    {s.allowed_person_ids.length === 0 ? (
+                      <span className="text-gray-400">Todo el equipo</span>
+                    ) : (
+                      <span>{s.allowed_person_ids.length} personas</span>
+                    )}
                   </td>
                   <td className="px-4 py-2">
                     <span className="inline-flex items-center gap-1">
@@ -188,9 +183,7 @@ export default function SlotsPage() {
         <SlotDialog
           initial={editing === "new" ? null : editing}
           categories={cats.data ?? []}
-          skills={skills.data ?? []}
           team={team.data ?? []}
-          pools={pools.data ?? []}
           onClose={() => setEditing(null)}
         />
       )}
@@ -199,21 +192,16 @@ export default function SlotsPage() {
 }
 
 type TeamRoleDraft = { role_label: string; headcount: number; category_ids: number[] };
-type SkillDraft = { skill_id: number; strength: SkillStrength };
 
 function SlotDialog({
   initial,
   categories,
-  skills,
   team,
-  pools,
   onClose,
 }: {
   initial: Slot | null;
   categories: Category[];
-  skills: Skill[];
   team: TeamMember[];
-  pools: Pool[];
   onClose: () => void;
 }) {
   const qc = useQueryClient();
@@ -249,21 +237,17 @@ function SlotDialog({
     initial?.equity_group_key ?? "",
   );
   const [color, setColor] = useState<string | null>(initial?.color ?? null);
-  // `pool_id = null` means "any team member can cover this slot". When
-  // set, the scheduler restricts candidates to that pool's members
-  // (see scheduler.py — `if slot.pool_id is not None: …`).
-  const [poolId, setPoolId] = useState<number | null>(initial?.pool_id ?? null);
+  // Allow-list: empty = "Todo el equipo" (no restriction). Non-empty
+  // = only these person ids may be assigned. Replaces the pre-0030
+  // pool_id + skills_required mechanisms.
+  const [allowedPersonIds, setAllowedPersonIds] = useState<number[]>(
+    initial?.allowed_person_ids ?? [],
+  );
   const [teamRoles, setTeamRoles] = useState<TeamRoleDraft[]>(
     initial?.team_roles.map((r) => ({
       role_label: r.role_label,
       headcount: r.headcount,
       category_ids: r.category_ids,
-    })) ?? [],
-  );
-  const [skillsRequired, setSkillsRequired] = useState<SkillDraft[]>(
-    initial?.skills_required.map((s) => ({
-      skill_id: s.skill_id,
-      strength: s.strength,
     })) ?? [],
   );
   const [rules, setRules] = useState<RuleDraft[]>(
@@ -318,7 +302,6 @@ function SlotDialog({
         guardia_type: guardiaType.trim() || null,
         equity_group_key: equityGroupKey.trim() || null,
         color: color,
-        pool_id: poolId,
         // When scheduleMode = "all_day" both times stay null regardless
         // of what the user previously typed (state is preserved so a
         // toggle back to "ranged" doesn't lose values, but the save
@@ -328,7 +311,7 @@ function SlotDialog({
         end_time:
           scheduleMode === "ranged" && endTime ? `${endTime}:00` : null,
         team_roles: mode === "team_composition" ? teamRoles : [],
-        skills_required: skillsRequired,
+        allowed_person_ids: allowedPersonIds,
       };
       const slot = initial
         ? await api.updateSlot(initial.id, body)
@@ -379,18 +362,12 @@ function SlotDialog({
     );
   }
 
-  function addSkill() {
-    const used = new Set(skillsRequired.map((s) => s.skill_id));
-    const next = skills.find((s) => !used.has(s.id));
-    if (next) setSkillsRequired((cur) => [...cur, { skill_id: next.id, strength: "hard" }]);
-  }
-  function updateSkill(i: number, patch: Partial<SkillDraft>) {
-    setSkillsRequired((cur) =>
-      cur.map((s, idx) => (idx === i ? { ...s, ...patch } : s)),
+  function togglePerson(personId: number) {
+    setAllowedPersonIds((cur) =>
+      cur.includes(personId)
+        ? cur.filter((id) => id !== personId)
+        : [...cur, personId],
     );
-  }
-  function removeSkill(i: number) {
-    setSkillsRequired((cur) => cur.filter((_, idx) => idx !== i));
   }
 
   return (
@@ -544,25 +521,12 @@ function SlotDialog({
             ))}
           </div>
         )}
-        <div>
-          <Select
-            label="Restringir a una sub-unidad"
-            hint={
-              <>
-                Si tu servicio se divide en sub-unidades (p.ej.
-                trasplantes, oncología), restringe este turno a una de
-                ellas. Solo los miembros de esa unidad podrán cubrirlo.
-                Por defecto, cualquier miembro del equipo puede.
-              </>
-            }
-            value={poolId ?? ""}
-            onChange={(v) => setPoolId(v === "" ? null : Number(v))}
-            options={[
-              { value: "", label: "— Cualquier persona del equipo —" },
-              ...pools.map((p) => ({ value: p.id, label: p.name })),
-            ]}
-          />
-        </div>
+        <AllowedPersonsSection
+          team={team}
+          allowedPersonIds={allowedPersonIds}
+          setAllowedPersonIds={setAllowedPersonIds}
+          togglePerson={togglePerson}
+        />
         {/*
           Hidden from the basic editor (post_slot_rest, counts_for_equity,
           guardia_type) — see commit message. Existing values on saved
@@ -651,44 +615,6 @@ function SlotDialog({
                 setRules((cur) => cur.filter((_, idx) => idx !== i))
               }
             />
-          ))}
-        </div>
-
-        <div className="border-t pt-3">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold">Competencias requeridas</h3>
-            <Button variant="secondary" onClick={addSkill} disabled={skills.length === 0}>
-              + Añadir competencia
-            </Button>
-          </div>
-          {skills.length === 0 && (
-            <p className="text-xs text-gray-500">Crea competencias primero.</p>
-          )}
-          {skillsRequired.map((s, i) => (
-            <div key={i} className="grid grid-cols-[1fr_8rem_auto] gap-2 items-end mb-2">
-              <Select
-                label="Competencia"
-                value={s.skill_id}
-                onChange={(v) => v !== "" && updateSkill(i, { skill_id: Number(v) })}
-                options={skills.map((sk) => ({ value: sk.id, label: sk.name }))}
-              />
-              <Select
-                label="Fuerza"
-                value={s.strength}
-                onChange={(v) => v && updateSkill(i, { strength: v as SkillStrength })}
-                options={[
-                  { value: "hard", label: "Obligatoria" },
-                  { value: "soft", label: "Preferida" },
-                ]}
-              />
-              <button
-                type="button"
-                onClick={() => removeSkill(i)}
-                className="text-xs text-red-700 hover:underline pb-2"
-              >
-                Quitar
-              </button>
-            </div>
           ))}
         </div>
 
@@ -1457,6 +1383,97 @@ function SlotColorPicker({
           style={{ backgroundColor: c }}
         />
       ))}
+    </div>
+  );
+}
+
+/**
+ * "Equipo autorizado" picker. Two modes:
+ *  - Empty list → "Todo el equipo" (no restriction; every active
+ *    member is eligible).
+ *  - Non-empty → only the checked persons are eligible.
+ *
+ * Replaces the pre-0030 pool dropdown + skills-required block. The
+ * solver reads slot_allowed_persons; if rows exist, only those
+ * persons clear the eligibility filter.
+ */
+function AllowedPersonsSection({
+  team,
+  allowedPersonIds,
+  setAllowedPersonIds,
+  togglePerson,
+}: {
+  team: TeamMember[];
+  allowedPersonIds: number[];
+  setAllowedPersonIds: (ids: number[]) => void;
+  togglePerson: (personId: number) => void;
+}) {
+  const isUnrestricted = allowedPersonIds.length === 0;
+  // Sort by name so the checklist stays scannable.
+  const sortedTeam = [...team].sort((a, b) =>
+    a.person_name.localeCompare(b.person_name, "es"),
+  );
+  return (
+    <div className="border-t pt-3">
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <h3 className="text-sm font-semibold">Equipo autorizado</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Por defecto cualquier miembro puede cubrir este turno. Si
+            sólo algunas personas deben poder hacerlo, márcalas aquí.
+          </p>
+        </div>
+        {!isUnrestricted && (
+          <button
+            type="button"
+            onClick={() => setAllowedPersonIds([])}
+            className="text-xs text-gray-600 hover:underline"
+          >
+            Permitir a todo el equipo
+          </button>
+        )}
+      </div>
+      <ul className="rounded-md border bg-white divide-y divide-gray-100 max-h-56 overflow-y-auto">
+        {sortedTeam.map((m) => {
+          const checked = allowedPersonIds.includes(m.person_id);
+          return (
+            <li key={m.person_id}>
+              <label className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50">
+                <input
+                  type="checkbox"
+                  checked={isUnrestricted || checked}
+                  onChange={() => togglePerson(m.person_id)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <span className={isUnrestricted ? "text-gray-700" : "text-gray-900"}>
+                  {m.person_name}
+                </span>
+                {m.category_name && (
+                  <span className="text-xs text-gray-500">
+                    · {m.category_name}
+                  </span>
+                )}
+              </label>
+            </li>
+          );
+        })}
+        {team.length === 0 && (
+          <li className="px-3 py-2 text-xs text-gray-500">
+            Aún no hay miembros en el equipo.
+          </li>
+        )}
+      </ul>
+      {isUnrestricted ? (
+        <p className="mt-1 text-xs text-gray-500">
+          <span className="font-medium text-gray-700">Todo el equipo</span>{" "}
+          puede cubrir este turno.
+        </p>
+      ) : (
+        <p className="mt-1 text-xs text-gray-500">
+          Sólo <span className="font-medium text-gray-700">{allowedPersonIds.length} personas</span>{" "}
+          autorizadas.
+        </p>
+      )}
     </div>
   );
 }

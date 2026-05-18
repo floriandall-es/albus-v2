@@ -50,7 +50,7 @@ export default function TeamStep() {
   return (
     <div>
       <div className="flex items-start justify-between mb-2">
-        <h2 className="text-2xl font-semibold">Paso 6 — Equipo</h2>
+        <h2 className="text-2xl font-semibold">Paso 4 — Equipo</h2>
         <Button variant="secondary" onClick={() => setBulkOpen(true)}>
           Importar CSV
         </Button>

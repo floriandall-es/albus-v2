@@ -4,13 +4,11 @@ from app.models.membership import Membership
 from app.models.department import Department
 from app.models.role_type import RoleType
 from app.models.category import Category
-from app.models.pool import Pool, PoolMembership
-from app.models.skill import Skill, PersonSkill
 from app.models.slot import (
     Slot,
+    SlotAllowedPerson,
     SlotTeamRole,
     SlotTeamRoleCategory,
-    SlotSkillRequired,
 )
 from app.models.slot_rule import (
     SlotRule,
@@ -32,14 +30,10 @@ __all__ = [
     "Department",
     "RoleType",
     "Category",
-    "Pool",
-    "PoolMembership",
-    "Skill",
-    "PersonSkill",
     "Slot",
+    "SlotAllowedPerson",
     "SlotTeamRole",
     "SlotTeamRoleCategory",
-    "SlotSkillRequired",
     "SlotRule",
     "SlotRuleWeeklyPin",
     "SlotRuleRotationBlock",

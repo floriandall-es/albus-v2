@@ -127,8 +127,6 @@ class AuthResponse(BaseModel):
 
 class TenantSummaryCounts(BaseModel):
     categories: int
-    pools: int
-    skills: int
     slots: int
 
 
