@@ -4,33 +4,37 @@
 <meta charset="utf-8" />
 <title>Planificación · {{ period_label }}</title>
 <style>
+  /* Page setup tuned to fit a typical month (~10 slot rows incl.
+     team_role splits) on a single landscape A4. With more rows
+     WeasyPrint will paginate automatically. Tight but readable —
+     bumping any of these breaks single-page fit. */
   @page {
     size: A4 landscape;
-    margin: 12mm 10mm 10mm 10mm;
+    margin: 8mm 8mm 8mm 8mm;
     @bottom-center {
       content: "Trivu · " counter(page) " / " counter(pages);
       font-family: 'DejaVu Sans', sans-serif;
-      font-size: 8pt;
-      color: #6b7280;
+      font-size: 7pt;
+      color: #9ca3af;
     }
   }
   body {
     font-family: 'DejaVu Sans', sans-serif;
     color: #1f2937;
-    font-size: 8pt;
+    font-size: 7pt;
   }
   .header {
     display: flex;
     align-items: center;
-    gap: 10mm;
+    gap: 6mm;
     border-bottom: 1px solid #e5e7eb;
-    padding-bottom: 4mm;
-    margin-bottom: 4mm;
+    padding-bottom: 2mm;
+    margin-bottom: 3mm;
   }
   .header img.logo {
-    width: 18mm;
-    height: 18mm;
-    border-radius: 4mm;
+    width: 12mm;
+    height: 12mm;
+    border-radius: 2.5mm;
     object-fit: cover;
   }
   .header .titles {
@@ -38,86 +42,88 @@
     flex-direction: column;
   }
   .header .h1 {
-    font-size: 16pt;
+    font-size: 13pt;
     font-weight: 700;
     color: #111827;
+    line-height: 1.1;
   }
   .header .meta {
-    font-size: 9pt;
+    font-size: 8pt;
     color: #6b7280;
-    margin-top: 1mm;
+    margin-top: 0.5mm;
   }
   .header .meta .pill {
     display: inline-block;
-    padding: 0.5mm 2mm;
-    border-radius: 1.5mm;
+    padding: 0.3mm 1.5mm;
+    border-radius: 1.2mm;
     background: #f3f4f6;
     color: #374151;
     font-weight: 600;
-    margin-left: 2mm;
-    font-size: 8pt;
+    margin-left: 1.5mm;
+    font-size: 7pt;
   }
   table.grid {
     width: 100%;
     border-collapse: collapse;
     table-layout: fixed;
-    margin-bottom: 6mm;
+    margin-bottom: 3mm;
   }
   table.grid th, table.grid td {
     border: 0.3pt solid #e5e7eb;
-    padding: 1mm 1mm;
+    padding: 0.6mm 0.8mm;
     vertical-align: top;
     overflow: hidden;
+    line-height: 1.15;
   }
   table.grid thead th {
     background: #f9fafb;
     font-weight: 600;
     text-align: center;
-    font-size: 7.5pt;
+    font-size: 6.5pt;
     color: #4b5563;
   }
   table.grid thead th.day-num {
-    font-size: 9pt;
+    font-size: 8pt;
     color: #111827;
     padding-bottom: 0;
   }
   table.grid thead th.weekday {
-    font-size: 7pt;
+    font-size: 6pt;
     color: #6b7280;
     text-transform: uppercase;
     padding-top: 0;
-    padding-bottom: 1.5mm;
+    padding-bottom: 0.8mm;
   }
   table.grid thead th.is-weekend { color: #9ca3af; }
   table.grid thead th.is-holiday { color: #b45309; }
   table.grid td.slot-cell {
     text-align: left;
     background: #ffffff;
-    padding-left: 2mm;
-    width: 30mm;
+    padding-left: 1.5mm;
+    width: 26mm;
   }
   table.grid td.slot-cell .slot-name {
     font-weight: 600;
-    font-size: 8pt;
+    font-size: 7pt;
     color: #111827;
   }
   table.grid td.slot-cell .role {
-    font-size: 7pt;
+    font-size: 6pt;
     color: #6b7280;
-    margin-top: 0.5mm;
+    margin-top: 0.2mm;
   }
   table.grid td.slot-cell .dot {
     display: inline-block;
-    width: 1.5mm;
-    height: 1.5mm;
+    width: 1.2mm;
+    height: 1.2mm;
     border-radius: 50%;
-    margin-right: 1mm;
+    margin-right: 0.8mm;
     vertical-align: middle;
   }
   table.grid td.day-cell {
     text-align: left;
-    font-size: 7pt;
-    line-height: 1.25;
+    font-size: 6.5pt;
+    line-height: 1.1;
   }
   table.grid td.day-cell .person {
     display: block;
@@ -125,7 +131,7 @@
   }
   table.grid td.day-cell .role {
     color: #9ca3af;
-    font-size: 6.5pt;
+    font-size: 5.5pt;
   }
   table.grid td.day-cell.empty {
     color: #d1d5db;
@@ -143,9 +149,11 @@
   table.grid tr.libre td.day-cell {
     color: #064e3b;
   }
-  /* Force a page break between the two chunks if there's more than one. */
+  /* Tight gap between the two chunks. WeasyPrint will still break
+     to a new page if the second chunk doesn't fit; nothing to do
+     manually here. */
   .chunk-spacer {
-    height: 6mm;
+    height: 2mm;
   }
 </style>
 </head>
@@ -211,8 +219,12 @@
       {% endfor %}
     </tr>
     {% endfor %}
-    {# Libre row #}
-    {% if chunk.absences %}
+    {# Libre row — render only if at least one absence falls in this
+       chunk's date range. Otherwise we'd be eating a row of vertical
+       space for an all-dashes line, which can be the difference
+       between fitting one page and spilling. #}
+    {% set has_absences = chunk.absences | selectattr("0") | list %}
+    {% if has_absences %}
     <tr class="libre">
       <td class="slot-cell">
         <span class="slot-name">Libre</span>
