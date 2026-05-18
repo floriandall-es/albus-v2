@@ -125,6 +125,8 @@ def list_team_absences(
         TeamAbsence(
             person_id=b.person_id,
             person_name=p.name,
+            person_first_name=p.first_name,
+            person_last_name=p.last_name,
             person_avatar_url=p.avatar_url,
             start_date=b.start_date,
             end_date=b.end_date,

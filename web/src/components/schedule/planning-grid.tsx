@@ -2,6 +2,7 @@
 import { useMemo } from "react";
 import {
   avatarSrc,
+  personLastName,
   type Assignment,
   type TeamAbsence,
 } from "@/lib/api";
@@ -53,7 +54,13 @@ export function PlanningGrid({
     if (!absences) return null;
     const result = new Map<
       string,
-      { person_id: number; person_name: string; person_avatar_url: string | null; block_type: string }[]
+      {
+        person_id: number;
+        person_name: string;
+        person_last_name: string | null;
+        person_avatar_url: string | null;
+        block_type: string;
+      }[]
     >();
     for (const d of grid.dates) {
       const items: typeof result extends Map<string, infer V> ? V : never = [];
@@ -65,6 +72,7 @@ export function PlanningGrid({
           items.push({
             person_id: a.person_id,
             person_name: a.person_name,
+            person_last_name: a.person_last_name,
             person_avatar_url: a.person_avatar_url,
             block_type: a.block_type,
           });
@@ -241,6 +249,10 @@ export function PlanningGrid({
                                 // Sprint 16: the role label moved to
                                 // the left-column row header; cells
                                 // only show the person now.
+                                // Sprint 18: render the last name in
+                                // the tight grid cells — falls back
+                                // to the legacy full name when the
+                                // person hasn't filled in the split.
                                 <span
                                   className={
                                     isMe
@@ -248,7 +260,10 @@ export function PlanningGrid({
                                       : "text-gray-800"
                                   }
                                 >
-                                  {a.person_name}
+                                  {personLastName({
+                                    name: a.person_name ?? "",
+                                    last_name: a.person_last_name,
+                                  })}
                                 </span>
                               )}
                             </span>
@@ -339,7 +354,10 @@ export function PlanningGrid({
                                     : "text-gray-800"
                                 }
                               >
-                                {m.person_name}
+                                {personLastName({
+                                  name: m.person_name,
+                                  last_name: m.person_last_name,
+                                })}
                               </span>
                             </span>
                           );

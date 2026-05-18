@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
+  personLastName,
   type Assignment,
   type AvailabilityBlockType,
 } from "@/lib/api";
@@ -493,8 +494,16 @@ function BalanceStats({
     for (const a of assignments) {
       if (a.person_id === null || a.person_name === null) continue;
       if (!persons.has(a.person_id)) {
-        persons.set(a.person_id, {
+        // Render the LAST name in the BalanceStats header for the
+        // same reason the planning grid uses it: tight columns. The
+        // helper falls back to a heuristic split of `name` when
+        // last_name isn't populated yet.
+        const lastName = personLastName({
           name: a.person_name,
+          last_name: a.person_last_name,
+        });
+        persons.set(a.person_id, {
+          name: lastName,
           avatar_url: a.person_avatar_url ?? null,
         });
       }

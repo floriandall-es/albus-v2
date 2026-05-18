@@ -7,7 +7,8 @@ import { api, setToken } from "@/lib/api";
 export default function SignupPage() {
   const router = useRouter();
   const [tenantName, setTenantName] = useState("");
-  const [personName, setPersonName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +21,8 @@ export default function SignupPage() {
     try {
       const res = await api.signup({
         tenant_name: tenantName,
-        person_name: personName,
+        first_name: firstName,
+        last_name: lastName,
         email,
         password,
       });
@@ -66,8 +68,15 @@ export default function SignupPage() {
             />
             <Field
               label="Tu nombre"
-              value={personName}
-              onChange={setPersonName}
+              value={firstName}
+              onChange={setFirstName}
+              placeholder="ej. Gabriel"
+            />
+            <Field
+              label="Apellidos"
+              value={lastName}
+              onChange={setLastName}
+              placeholder="ej. Pérez García"
             />
             <Field
               label="Email"

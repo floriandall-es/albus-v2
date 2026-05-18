@@ -12,7 +12,7 @@ import {
   Stethoscope,
   Users,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, personFirstName } from "@/lib/api";
 import { Card } from "@/components/admin/ui";
 import { formatPeriod } from "@/components/admin/month-picker";
 
@@ -69,7 +69,7 @@ export default function AdminDashboard() {
       teamCount,
       publishedCount,
       draftCount,
-      firstName: (me.data?.person.name ?? "").split(/\s+/)[0] ?? "",
+      firstName: me.data ? personFirstName(me.data.person) : "",
       nextSchedule,
     };
   }, [me.data, team.data, schedules.data]);

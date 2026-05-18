@@ -6,7 +6,12 @@ from pydantic import BaseModel, EmailStr, Field
 
 class SignupRequest(BaseModel):
     tenant_name: str = Field(min_length=1, max_length=255)
-    person_name: str = Field(min_length=1, max_length=255)
+    # `person_name` is the legacy single-field name. Kept for backward
+    # compatibility with older clients; the server derives it from
+    # first_name + last_name when both are provided.
+    person_name: str | None = Field(default=None, max_length=255)
+    first_name: str | None = Field(default=None, max_length=255)
+    last_name: str | None = Field(default=None, max_length=255)
     email: EmailStr
     password: str = Field(min_length=8, max_length=255)
     # ISO 3166-1 alpha-2. Defaults to ES — Trivu's v1 launch market. Used as
@@ -63,6 +68,8 @@ class PersonOut(BaseModel):
     id: int
     email: str
     name: str
+    first_name: str | None = None
+    last_name: str | None = None
     locale: str | None = None
     avatar_url: str | None = None
     created_at: datetime
@@ -131,9 +138,13 @@ class MeResponse(BaseModel):
     counts: TenantSummaryCounts
 
 
-# Profile self-management.
+# Profile self-management. `name` retained for backward compat with the
+# legacy single-field flow; new clients send first_name + last_name and
+# the server composes `name` from them.
 class ProfileUpdateRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=255)
+    name: str | None = Field(default=None, max_length=255)
+    first_name: str | None = Field(default=None, max_length=255)
+    last_name: str | None = Field(default=None, max_length=255)
 
 
 class PasswordChangeRequest(BaseModel):

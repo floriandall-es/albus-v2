@@ -296,7 +296,16 @@ def accept_invitation(
 
     person = db.query(Person).filter(Person.email == inv.email).first()
     created_person = False
-    display_name = (payload.person_name or inv.person_name).strip()
+    # Compose the canonical name from whatever the invitee provided.
+    # Falls back to the invitation's `person_name` if neither
+    # split fields nor a legacy `person_name` came in the payload.
+    from app.services.person_name import compose_name
+
+    composed_name, first_name, last_name = compose_name(
+        name=payload.person_name or inv.person_name,
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+    )
 
     if person:
         # Existing user: check they're not already a member of THIS tenant.
@@ -310,14 +319,16 @@ def accept_invitation(
         )
         if already:
             raise HTTPException(status_code=400, detail="Already a member")
-        # Don't change existing user's password. We could update display name
-        # if they pass one, but linking accounts cross-tenant should leave the
-        # canonical name alone. Skip the update.
+        # Don't change existing user's password or canonical name —
+        # linking accounts cross-tenant should leave their previously-
+        # set profile alone. Skip the update.
     else:
         person = Person(
             email=inv.email,
             hashed_password=hash_password(payload.password),
-            name=display_name,
+            name=composed_name,
+            first_name=first_name,
+            last_name=last_name,
         )
         db.add(person)
         db.flush()

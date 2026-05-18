@@ -112,6 +112,8 @@ export type StatsResponse = {
 export type TeamAbsence = {
   person_id: number;
   person_name: string;
+  person_first_name: string | null;
+  person_last_name: string | null;
   person_avatar_url: string | null;
   start_date: string;
   end_date: string;
@@ -145,6 +147,8 @@ export type Assignment = {
   date: string;
   person_id: number | null;
   person_name: string | null;
+  person_first_name: string | null;
+  person_last_name: string | null;
   person_avatar_url: string | null;
   team_role_id: number | null;
   team_role_label: string | null;
@@ -166,11 +170,40 @@ export type ScheduleDetail = Schedule & {
 export type Person = {
   id: number;
   email: string;
+  /** Canonical display string. Always populated on the server; the
+   * split fields below are nullable on rows from before the split. */
   name: string;
+  first_name: string | null;
+  last_name: string | null;
   locale: string | null;
   avatar_url: string | null;
   created_at: string;
 };
+
+/** Friendly first-name for salutations ("Hola, Gabriel"). Falls back
+ * to the first whitespace-separated token of `name` for rows that
+ * haven't been re-saved with the split fields. */
+export function personFirstName(p: {
+  name: string;
+  first_name?: string | null;
+}): string {
+  if (p.first_name && p.first_name.trim()) return p.first_name.trim();
+  const head = p.name.trim().split(/\s+/)[0];
+  return head ?? p.name;
+}
+
+/** Last name(s) for tight columns (planning grid, BalanceStats). Falls
+ * back to everything-after-the-first-word of `name`; if `name` is a
+ * single word, returns it (typical legacy "last name only" tenants). */
+export function personLastName(p: {
+  name: string;
+  last_name?: string | null;
+}): string {
+  if (p.last_name && p.last_name.trim()) return p.last_name.trim();
+  const parts = p.name.trim().split(/\s+/);
+  if (parts.length <= 1) return p.name;
+  return parts.slice(1).join(" ");
+}
 
 // ---- Shift swaps ----------------------------------------------------------
 export type SwapOfferStatus = "open" | "fulfilled" | "cancelled";
@@ -563,7 +596,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const api = {
   signup: (body: {
     tenant_name: string;
-    person_name: string;
+    /** Legacy single-field name. Sprint 18+ clients should send
+     * first_name + last_name; server composes `person_name` from
+     * the parts. Kept here so older / scripted callers don't break. */
+    person_name?: string;
+    first_name?: string;
+    last_name?: string;
     email: string;
     password: string;
   }) => request<AuthResponse>("/api/signup", { method: "POST", body: JSON.stringify(body) }),
@@ -585,7 +623,14 @@ export const api = {
     }),
 
   me: () => request<MeResponse>("/api/me"),
-  updateProfile: (body: { name: string }) =>
+  updateProfile: (body: {
+    /** Legacy single-field name. Sprint 18+ clients should send
+     * first_name + last_name instead; the server composes `name`
+     * from them. */
+    name?: string;
+    first_name?: string;
+    last_name?: string;
+  }) =>
     request<Person>("/api/me/profile", {
       method: "PUT",
       body: JSON.stringify(body),
@@ -730,7 +775,17 @@ export const api = {
   // Public invite acceptance (no auth)
   getInvitationByToken: (token: string) =>
     request<InvitationPublicView>(`/api/invitations/by-token/${encodeURIComponent(token)}`),
-  acceptInvitation: (token: string, body: { password: string; person_name?: string }) =>
+  acceptInvitation: (
+    token: string,
+    body: {
+      password: string;
+      /** Legacy single-field name. Sprint 18+ invitees should send
+       * first_name + last_name; server composes the legacy field. */
+      person_name?: string;
+      first_name?: string;
+      last_name?: string;
+    },
+  ) =>
     request<AuthResponse>(
       `/api/invitations/by-token/${encodeURIComponent(token)}/accept`,
       { method: "POST", body: JSON.stringify(body) },

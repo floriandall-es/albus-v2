@@ -17,6 +17,7 @@ from app.core.security import (
 )
 from app.db.session import get_db, set_tenant
 from app.models import Membership, Person, Tenant
+from app.services.person_name import compose_name
 from app.schemas.auth import (
     AuthResponse,
     LoginRequest,
@@ -111,10 +112,22 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthRespons
     # table. tenants/persons are not under RLS so the order before flush is fine.
     set_tenant(db, tenant.id)
 
+    name, first_name, last_name = compose_name(
+        name=payload.person_name,
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+    )
+    if not name:
+        raise HTTPException(
+            status_code=422,
+            detail="Indica al menos el nombre",
+        )
     person = Person(
         email=payload.email.lower(),
         hashed_password=hash_password(payload.password),
-        name=payload.person_name,
+        name=name,
+        first_name=first_name,
+        last_name=last_name,
     )
     db.add(person)
     db.flush()

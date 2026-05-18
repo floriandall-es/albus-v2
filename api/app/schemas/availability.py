@@ -72,6 +72,10 @@ class TeamAbsence(BaseModel):
     metadata — visible to any authenticated user in the tenant."""
     person_id: int
     person_name: str
+    # Split-name fields so the Libre row can show just the last name,
+    # consistent with the rest of the planning grid.
+    person_first_name: str | None = None
+    person_last_name: str | None = None
     person_avatar_url: str | None = None
     start_date: date
     end_date: date

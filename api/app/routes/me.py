@@ -115,7 +115,21 @@ def update_profile(
     payload: ProfileUpdateRequest,
     ctx: RequestContext = Depends(get_current_context),
 ) -> Person:
-    ctx.person.name = payload.name.strip()
+    from app.services.person_name import compose_name
+
+    name, first_name, last_name = compose_name(
+        name=payload.name,
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+    )
+    if not name:
+        raise HTTPException(
+            status_code=422,
+            detail="Indica al menos el nombre",
+        )
+    ctx.person.name = name
+    ctx.person.first_name = first_name
+    ctx.person.last_name = last_name
     ctx.db.flush()
     return ctx.person
 

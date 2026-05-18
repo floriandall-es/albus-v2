@@ -31,6 +31,8 @@ export function ProfileCards() {
       />
       <ProfileSection
         initialName={me.data.person.name}
+        initialFirstName={me.data.person.first_name}
+        initialLastName={me.data.person.last_name}
         onSaved={invalidate}
       />
       <EmailSection
@@ -160,22 +162,36 @@ function AvatarSection({
 
 function ProfileSection({
   initialName,
+  initialFirstName,
+  initialLastName,
   onSaved,
 }: {
   initialName: string;
+  initialFirstName: string | null;
+  initialLastName: string | null;
   onSaved: () => void;
 }) {
-  const [name, setName] = useState(initialName);
+  // Sprint 18: split-name fields. The legacy single `name` is kept
+  // in the response for backward compatibility but the form
+  // collects first + last. The server composes `name` server-side
+  // from the two parts.
+  const [firstName, setFirstName] = useState(initialFirstName ?? "");
+  const [lastName, setLastName] = useState(initialLastName ?? "");
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(
     null,
   );
 
   useEffect(() => {
-    setName(initialName);
-  }, [initialName]);
+    setFirstName(initialFirstName ?? "");
+    setLastName(initialLastName ?? "");
+  }, [initialFirstName, initialLastName]);
 
   const save = useMutation({
-    mutationFn: () => api.updateProfile({ name: name.trim() }),
+    mutationFn: () =>
+      api.updateProfile({
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+      }),
     onSuccess: () => {
       setMsg({ kind: "ok", text: "Nombre actualizado." });
       onSaved();
@@ -183,6 +199,10 @@ function ProfileSection({
     onError: (e) =>
       setMsg({ kind: "err", text: (e as Error).message ?? "Error" }),
   });
+
+  const dirty =
+    firstName.trim() !== (initialFirstName ?? "").trim()
+    || lastName.trim() !== (initialLastName ?? "").trim();
 
   return (
     <Card>
@@ -195,11 +215,35 @@ function ProfileSection({
         }}
       >
         <h2 className="text-sm font-semibold text-gray-700">Perfil</h2>
-        <TextField label="Nombre" value={name} onChange={setName} required />
+        {!initialFirstName && !initialLastName && (
+          <p className="text-xs text-gray-500">
+            Estás registrado como <span className="font-medium">{initialName}</span>.
+            Indica nombre y apellidos por separado para que el sistema pueda
+            saludarte por tu nombre y mostrar tus apellidos en la
+            planificación.
+          </p>
+        )}
+        <TextField
+          label="Nombre"
+          value={firstName}
+          onChange={setFirstName}
+          required
+        />
+        <TextField
+          label="Apellidos"
+          value={lastName}
+          onChange={setLastName}
+          required
+        />
         <div className="flex items-center gap-3">
           <Button
             type="submit"
-            disabled={save.isPending || name.trim() === initialName}
+            disabled={
+              save.isPending
+              || !dirty
+              || firstName.trim().length === 0
+              || lastName.trim().length === 0
+            }
           >
             {save.isPending ? "Guardando…" : "Guardar nombre"}
           </Button>

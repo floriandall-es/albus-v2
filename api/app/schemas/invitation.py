@@ -46,7 +46,13 @@ class InvitationPublicView(BaseModel):
 
 class InviteAcceptRequest(BaseModel):
     password: str = Field(min_length=8, max_length=255)
+    # Sprint 18: split-name flow. Old clients keep using person_name;
+    # new clients send first_name + last_name and the server composes
+    # both `person_name` (the legacy single field) and stores the
+    # split values too.
     person_name: str | None = Field(default=None, min_length=1, max_length=255)
+    first_name: str | None = Field(default=None, max_length=255)
+    last_name: str | None = Field(default=None, max_length=255)
 
 
 # The response is the same shape as login — frontend can drop the user

@@ -35,6 +35,11 @@ class AssignmentOut(BaseModel):
     date: date
     person_id: int | None
     person_name: str | None
+    # Split-name fields for tight UI columns. Both nullable because
+    # legacy person rows haven't filled them in yet; the frontend
+    # helpers fall back to splitting `person_name` heuristically.
+    person_first_name: str | None = None
+    person_last_name: str | None = None
     person_avatar_url: str | None = None
     team_role_id: int | None
     team_role_label: str | None

@@ -17,20 +17,28 @@ export default function AcceptInvitePage() {
     enabled: !!token,
   });
 
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [prefillDone, setPrefillDone] = useState(false);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
 
-  // When preview loads, prefill name
-  if (preview.data && name === "") {
-    setName(preview.data.person_name);
+  // When preview loads, prefill the name fields with a best-effort
+  // split of the invitation's `person_name` (whatever the admin
+  // typed when sending the invite). The invitee can correct it.
+  if (preview.data && !prefillDone) {
+    const tokens = preview.data.person_name.trim().split(/\s+/);
+    setFirstName(tokens[0] ?? "");
+    setLastName(tokens.slice(1).join(" "));
+    setPrefillDone(true);
   }
 
   const accept = useMutation({
     mutationFn: () =>
       api.acceptInvitation(token, {
         password,
-        person_name: name || undefined,
+        first_name: firstName.trim() || undefined,
+        last_name: lastName.trim() || undefined,
       }),
     onSuccess: (data) => {
       setToken(data.access_token);
@@ -71,7 +79,18 @@ export default function AcceptInvitePage() {
           if (canSubmit) accept.mutate();
         }}
       >
-        <TextField label="Tu nombre" value={name} onChange={setName} required />
+        <TextField
+          label="Tu nombre"
+          value={firstName}
+          onChange={setFirstName}
+          required
+        />
+        <TextField
+          label="Apellidos"
+          value={lastName}
+          onChange={setLastName}
+          required
+        />
         <TextField
           label="Contraseña (mínimo 8 caracteres)"
           type="password"
