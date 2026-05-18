@@ -9,6 +9,7 @@ import {
   CalendarDays,
   CalendarOff,
   Clock,
+  Home,
   Layers,
   LogOut,
   PartyPopper,
@@ -31,6 +32,7 @@ const NAV: NavSection[] = [
   {
     title: "Operativa",
     items: [
+      { href: "/admin", label: "Inicio", icon: Home },
       { href: "/admin/schedule", label: "Planificación", icon: CalendarDays },
       { href: "/admin/stats", label: "Estadísticas", icon: BarChart3 },
       { href: "/admin/swaps", label: "Cambios de turno", icon: ArrowLeftRight },
@@ -125,7 +127,14 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
               <div className="space-y-0.5">
                 {section.items.map((item) => {
                   const Icon = item.icon;
-                  const active = pathname?.startsWith(item.href);
+                  // /admin (Inicio) is a prefix of every other admin
+                  // route, so use an exact match for it specifically —
+                  // otherwise the dashboard link would light up on
+                  // every page.
+                  const active =
+                    item.href === "/admin"
+                      ? pathname === "/admin"
+                      : pathname?.startsWith(item.href);
                   return (
                     <Link
                       key={item.href}
