@@ -3,9 +3,17 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Assignment } from "@/lib/api";
 import { PlanningGrid } from "@/components/schedule/planning-grid";
+import { NextShiftBanner } from "@/components/me/next-shift-banner";
 import { formatPeriod } from "@/components/admin/month-picker";
 import { Button, EmptyState, ErrorText } from "@/components/admin/ui";
 import { CalendarDays, List, LayoutGrid, Lock } from "lucide-react";
+import {
+  MONTH_SHORT_ES,
+  WEEKDAY_LONG_ES,
+  formatHours,
+  formatLongDate,
+  todayIso as getTodayIso,
+} from "@/lib/dates";
 
 // Persisted user preference. localStorage key kept short + namespaced.
 const VIEW_STORAGE_KEY = "trivu.me.turnos.view";
@@ -340,29 +348,9 @@ function ViewToggle({
   );
 }
 
-const WEEKDAY_LONG_ES = [
-  "domingo",
-  "lunes",
-  "martes",
-  "miércoles",
-  "jueves",
-  "viernes",
-  "sábado",
-];
-const MONTH_SHORT_ES = [
-  "ene",
-  "feb",
-  "mar",
-  "abr",
-  "may",
-  "jun",
-  "jul",
-  "ago",
-  "sep",
-  "oct",
-  "nov",
-  "dic",
-];
+// WEEKDAY_LONG_ES + MONTH_SHORT_ES live in @/lib/dates now — imported
+// at the top of the file. Local copies removed to keep the strings
+// in one place.
 
 function PersonalShiftList({
   assignments,
@@ -373,16 +361,9 @@ function PersonalShiftList({
   personId: number;
   onClickShift: (a: Assignment) => void;
 }) {
-  // Today as ISO YYYY-MM-DD in LOCAL time (the schedule period and
-  // assignment.date are date-only strings; comparing strings works
-  // because the format is lexicographically ordered).
-  const todayIso = useMemo(() => {
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${dd}`;
-  }, []);
+  // Today's ISO YYYY-MM-DD via shared helper so the personal banner
+  // / dashboard / shift list all agree on "today".
+  const todayIso = useMemo(() => getTodayIso(), []);
 
   // Filter to MINE, sort by date+slot for a stable read.
   const mine = useMemo(
@@ -411,25 +392,7 @@ function PersonalShiftList({
 
   return (
     <div className="space-y-4">
-      {nextShift && (
-        <div className="rounded-xl bg-brand-50/60 ring-1 ring-brand-200 px-4 py-3">
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-brand-700">
-            Tu próximo turno
-          </div>
-          <div className="mt-0.5 text-sm text-brand-900">
-            <span className="font-semibold">
-              {formatLongDate(nextShift.date)}
-            </span>
-            <span> · {nextShift.slot_name}</span>
-            {nextShift.team_role_label && (
-              <span className="text-brand-700/80">
-                {" "}· {nextShift.team_role_label}
-              </span>
-            )}
-            <ShiftTimeBadge a={nextShift} />
-          </div>
-        </div>
-      )}
+      {nextShift && <NextShiftBanner shift={nextShift} />}
 
       <ShiftSection
         title="Próximos"
@@ -610,24 +573,17 @@ function DateBlock({
 }
 
 function ShiftTimeBadge({ a, inline = false }: { a: Assignment; inline?: boolean }) {
-  if (!a.slot_start_time || !a.slot_end_time) return null;
-  const hh = (t: string) => t.slice(0, 5);
+  const hours = formatHours(a.slot_start_time, a.slot_end_time);
+  if (!hours) return null;
   return (
     <span
       className={
         (inline ? "mt-0.5 block " : "ml-2 inline ") + "text-xs text-gray-500"
       }
     >
-      {hh(a.slot_start_time)} – {hh(a.slot_end_time)}
+      {hours}
     </span>
   );
 }
 
-function formatLongDate(dateIso: string): string {
-  const [yy, mm, dd] = dateIso.split("-").map(Number);
-  const d = new Date(yy, mm - 1, dd);
-  const weekday = WEEKDAY_LONG_ES[d.getDay()];
-  const dayNum = d.getDate();
-  const monthShort = MONTH_SHORT_ES[d.getMonth()];
-  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${dayNum} ${monthShort}`;
-}
+// formatLongDate lives in @/lib/dates now.

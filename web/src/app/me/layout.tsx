@@ -7,6 +7,7 @@ import {
   ArrowLeftRight,
   CalendarDays,
   CalendarOff,
+  Home,
   LogOut,
   Settings,
   type LucideIcon,
@@ -15,6 +16,7 @@ import { api, getToken } from "@/lib/api";
 import { useLogout } from "@/lib/use-logout";
 
 const NAV: { href: string; label: string; icon: LucideIcon }[] = [
+  { href: "/me", label: "Inicio", icon: Home },
   { href: "/me/turnos", label: "Mis turnos", icon: CalendarDays },
   { href: "/me/swaps", label: "Cambios", icon: ArrowLeftRight },
   { href: "/me/bloqueos", label: "Mis bloqueos", icon: CalendarOff },
@@ -90,7 +92,13 @@ export default function MeLayout({ children }: { children: ReactNode }) {
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
           {NAV.map((item) => {
             const Icon = item.icon;
-            const active = pathname?.startsWith(item.href);
+            // /me (Inicio) is a prefix of every other member route,
+            // so use an exact match for it specifically — otherwise
+            // the dashboard link would light up on every page.
+            const active =
+              item.href === "/me"
+                ? pathname === "/me"
+                : pathname?.startsWith(item.href);
             return (
               <Link
                 key={item.href}
