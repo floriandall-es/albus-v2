@@ -23,6 +23,9 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_ALGORITHM: HS256
       JWT_TTL_MINUTES: 60
+      # HMAC key for invitation token lookup (sprint 17). Set this in
+      # /srv/albus/.env. Rotating it invalidates every pending invite.
+      INVITATION_LOOKUP_SECRET: ${INVITATION_LOOKUP_SECRET}
       # Path-based tenancy: a single host serves every customer. CORS
       # only needs the apex + (optionally) www.
       CORS_ORIGINS: https://trivu.net,https://www.trivu.net
