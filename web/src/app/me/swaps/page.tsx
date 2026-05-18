@@ -422,6 +422,18 @@ function NewOfferModal({
               {(create.error as Error).message}
             </p>
           )}
+          <p className="text-xs text-gray-500 leading-relaxed">
+            Los demás miembros del equipo podrán responder de dos
+            formas:
+            <br />·{" "}
+            <span className="font-medium text-gray-700">Cubrir</span>{" "}
+            — hacen el turno y tú no les debes nada.
+            <br />·{" "}
+            <span className="font-medium text-gray-700">
+              Proponer cambio
+            </span>{" "}
+            — intercambian este turno por uno suyo.
+          </p>
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
@@ -482,19 +494,27 @@ function OpenOfferCard({
       </div>
 
       {!readOnly && offer.status === "open" && !myResponse && (
-        <div className="mt-3 flex gap-2 border-t pt-3">
-          <button
-            className="rounded-md bg-gray-900 px-3 py-1 text-xs text-white hover:bg-gray-700"
-            onClick={() => setRespondMode("cover")}
-          >
-            Cubrir
-          </button>
-          <button
-            className="rounded-md border border-gray-300 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50"
-            onClick={() => setRespondMode("swap")}
-          >
-            Proponer cambio
-          </button>
+        <div className="mt-3 border-t pt-3 space-y-2">
+          <p className="text-xs text-gray-600 leading-relaxed">
+            <span className="font-medium text-gray-800">Cubrir</span>:
+            haces el turno y la persona no te debe nada.{" "}
+            <span className="font-medium text-gray-800">Proponer cambio</span>:
+            intercambias este turno por uno tuyo.
+          </p>
+          <div className="flex gap-2">
+            <button
+              className="rounded-md bg-gray-900 px-3 py-1 text-xs text-white hover:bg-gray-700"
+              onClick={() => setRespondMode("cover")}
+            >
+              Cubrir
+            </button>
+            <button
+              className="rounded-md border border-gray-300 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50"
+              onClick={() => setRespondMode("swap")}
+            >
+              Proponer cambio
+            </button>
+          </div>
         </div>
       )}
 

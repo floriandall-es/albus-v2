@@ -262,9 +262,17 @@ function RequestCoverageModal({
             </p>
           )}
 
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-gray-500 leading-relaxed">
             Los demás miembros del equipo recibirán un email y podrán
-            ofrecerse a cubrirlo o proponer un cambio.
+            responder de dos formas:
+            <br />·{" "}
+            <span className="font-medium text-gray-700">Cubrir</span>{" "}
+            — hacen el turno y tú no les debes nada.
+            <br />·{" "}
+            <span className="font-medium text-gray-700">
+              Proponer cambio
+            </span>{" "}
+            — intercambian este turno por uno suyo.
           </p>
 
           <div className="flex justify-end gap-2 pt-2">
