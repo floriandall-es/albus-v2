@@ -5,7 +5,11 @@ import { api, type Assignment } from "@/lib/api";
 import { PlanningGrid } from "@/components/schedule/planning-grid";
 import { formatPeriod } from "@/components/admin/month-picker";
 import { Button, EmptyState, ErrorText } from "@/components/admin/ui";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, List, LayoutGrid, Lock } from "lucide-react";
+
+// Persisted user preference. localStorage key kept short + namespaced.
+const VIEW_STORAGE_KEY = "trivu.me.turnos.view";
+type ViewMode = "list" | "grid";
 
 export default function TurnosPage() {
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
@@ -23,13 +27,36 @@ export default function TurnosPage() {
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [swapTarget, setSwapTarget] = useState<Assignment | null>(null);
+  // View toggle persisted across sessions. Defaults to "list" — the
+  // personal upcoming-shifts view is the right answer for ~95% of
+  // member visits. Grid stays one click away for the diehards who
+  // want the team overview.
+  const [view, setView] = useState<ViewMode>("list");
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem(VIEW_STORAGE_KEY);
+    if (stored === "list" || stored === "grid") setView(stored);
+  }, []);
+  const setViewPersisted = (v: ViewMode) => {
+    setView(v);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(VIEW_STORAGE_KEY, v);
+    }
+  };
   const downloadPdf = useMutation({
     mutationFn: (id: number) => api.downloadSchedulePdf(id),
   });
   useEffect(() => {
     if (selectedId !== null) return;
     if (publishedSchedules.length === 0) return;
-    setSelectedId(publishedSchedules[0].id);
+    // Prefer the schedule that covers the CURRENT calendar month —
+    // that's almost always what the member wants on first load.
+    // Falls back to the most recent published schedule otherwise.
+    const todayMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+    const currentMonth = publishedSchedules.find(
+      (s) => s.period.slice(0, 7) === todayMonth,
+    );
+    setSelectedId((currentMonth ?? publishedSchedules[0]).id);
   }, [publishedSchedules, selectedId]);
 
   const detail = useQuery({
@@ -75,7 +102,7 @@ export default function TurnosPage() {
   return (
     <>
       <div className="mb-6 flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold">Planificación</h1>
+        <h1 className="text-2xl font-semibold">Mis turnos</h1>
         {publishedSchedules.length > 0 && (
           <>
             <select
@@ -89,6 +116,7 @@ export default function TurnosPage() {
                 </option>
               ))}
             </select>
+            <ViewToggle value={view} onChange={setViewPersisted} />
             <Button
               variant="secondary"
               onClick={() => {
@@ -120,20 +148,33 @@ export default function TurnosPage() {
       )}
       {selectedId !== null && detail.data && (
         <>
-          <p className="mb-4 text-xs text-gray-500">
-            Tus turnos están resaltados en azul. Haz clic en uno para
-            pedir cobertura.
-          </p>
-          <PlanningGrid
-            assignments={detail.data.assignments}
-            holidayDates={holidayDates}
-            highlightPersonId={me.data.person.id}
-            onCellClick={(a) => setSwapTarget(a)}
-            cellIsClickable={(a) =>
-              a.person_id === me.data!.person.id && !a.locked_at
-            }
-            absences={absences.data}
-          />
+          {view === "list" ? (
+            <PersonalShiftList
+              assignments={detail.data.assignments}
+              personId={me.data.person.id}
+              onClickShift={(a) => {
+                if (a.locked_at) return;
+                setSwapTarget(a);
+              }}
+            />
+          ) : (
+            <>
+              <p className="mb-4 text-xs text-gray-500">
+                Tus turnos están resaltados en azul. Haz clic en uno
+                para pedir cobertura.
+              </p>
+              <PlanningGrid
+                assignments={detail.data.assignments}
+                holidayDates={holidayDates}
+                highlightPersonId={me.data.person.id}
+                onCellClick={(a) => setSwapTarget(a)}
+                cellIsClickable={(a) =>
+                  a.person_id === me.data!.person.id && !a.locked_at
+                }
+                absences={absences.data}
+              />
+            </>
+          )}
         </>
       )}
 
@@ -246,4 +287,339 @@ function RequestCoverageModal({
       </div>
     </div>
   );
+}
+
+function ViewToggle({
+  value,
+  onChange,
+}: {
+  value: ViewMode;
+  onChange: (v: ViewMode) => void;
+}) {
+  return (
+    <div className="inline-flex rounded-md border border-gray-300 bg-white p-0.5 shadow-sm">
+      <button
+        type="button"
+        onClick={() => onChange("list")}
+        aria-pressed={value === "list"}
+        title="Ver mis turnos"
+        className={
+          "inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors "
+          + (value === "list"
+            ? "bg-brand-600 text-white"
+            : "text-gray-700 hover:bg-gray-50")
+        }
+      >
+        <List className="h-3.5 w-3.5" />
+        Mis turnos
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("grid")}
+        aria-pressed={value === "grid"}
+        title="Ver planificación completa del equipo"
+        className={
+          "inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors "
+          + (value === "grid"
+            ? "bg-brand-600 text-white"
+            : "text-gray-700 hover:bg-gray-50")
+        }
+      >
+        <LayoutGrid className="h-3.5 w-3.5" />
+        Equipo
+      </button>
+    </div>
+  );
+}
+
+const WEEKDAY_LONG_ES = [
+  "domingo",
+  "lunes",
+  "martes",
+  "miércoles",
+  "jueves",
+  "viernes",
+  "sábado",
+];
+const MONTH_SHORT_ES = [
+  "ene",
+  "feb",
+  "mar",
+  "abr",
+  "may",
+  "jun",
+  "jul",
+  "ago",
+  "sep",
+  "oct",
+  "nov",
+  "dic",
+];
+
+function PersonalShiftList({
+  assignments,
+  personId,
+  onClickShift,
+}: {
+  assignments: Assignment[];
+  personId: number;
+  onClickShift: (a: Assignment) => void;
+}) {
+  // Today as ISO YYYY-MM-DD in LOCAL time (the schedule period and
+  // assignment.date are date-only strings; comparing strings works
+  // because the format is lexicographically ordered).
+  const todayIso = useMemo(() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dd}`;
+  }, []);
+
+  // Filter to MINE, sort by date+slot for a stable read.
+  const mine = useMemo(
+    () =>
+      assignments
+        .filter((a) => a.person_id === personId)
+        .sort((a, b) =>
+          a.date === b.date
+            ? a.slot_name.localeCompare(b.slot_name)
+            : a.date.localeCompare(b.date),
+        ),
+    [assignments, personId],
+  );
+
+  if (mine.length === 0) {
+    return (
+      <div className="rounded-xl bg-white p-6 ring-1 ring-gray-200 shadow-soft text-sm text-gray-600">
+        No tienes turnos asignados en este mes.
+      </div>
+    );
+  }
+
+  const upcoming = mine.filter((a) => a.date >= todayIso);
+  const past = mine.filter((a) => a.date < todayIso);
+  const nextShift = upcoming[0] ?? null;
+
+  return (
+    <div className="space-y-4">
+      {nextShift && (
+        <div className="rounded-xl bg-brand-50/60 ring-1 ring-brand-200 px-4 py-3">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-brand-700">
+            Tu próximo turno
+          </div>
+          <div className="mt-0.5 text-sm text-brand-900">
+            <span className="font-semibold">
+              {formatLongDate(nextShift.date)}
+            </span>
+            <span> · {nextShift.slot_name}</span>
+            {nextShift.team_role_label && (
+              <span className="text-brand-700/80">
+                {" "}· {nextShift.team_role_label}
+              </span>
+            )}
+            <ShiftTimeBadge a={nextShift} />
+          </div>
+        </div>
+      )}
+
+      <ShiftSection
+        title="Próximos"
+        emptyText="No tienes más turnos en este mes."
+        items={upcoming}
+        todayIso={todayIso}
+        onClickShift={onClickShift}
+      />
+      {past.length > 0 && (
+        <ShiftSection
+          title="Pasados"
+          items={past}
+          todayIso={todayIso}
+          dimmed
+          onClickShift={onClickShift}
+        />
+      )}
+    </div>
+  );
+}
+
+function ShiftSection({
+  title,
+  items,
+  emptyText,
+  todayIso,
+  dimmed = false,
+  onClickShift,
+}: {
+  title: string;
+  items: Assignment[];
+  emptyText?: string;
+  todayIso: string;
+  dimmed?: boolean;
+  onClickShift: (a: Assignment) => void;
+}) {
+  if (items.length === 0) {
+    if (!emptyText) return null;
+    return (
+      <div>
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+          {title}
+        </h2>
+        <div className="rounded-xl bg-white p-4 ring-1 ring-gray-200 text-sm text-gray-500">
+          {emptyText}
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+        {title}
+      </h2>
+      <ul className="divide-y divide-gray-100 rounded-xl bg-white ring-1 ring-gray-200 overflow-hidden">
+        {items.map((a) => (
+          <ShiftRow
+            key={a.id}
+            a={a}
+            todayIso={todayIso}
+            dimmed={dimmed}
+            onClick={onClickShift}
+          />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ShiftRow({
+  a,
+  todayIso,
+  dimmed,
+  onClick,
+}: {
+  a: Assignment;
+  todayIso: string;
+  dimmed: boolean;
+  onClick: (a: Assignment) => void;
+}) {
+  const isToday = a.date === todayIso;
+  const isLocked = !!a.locked_at;
+  // The list item is a button when clickable (not locked); plain
+  // div otherwise. Either way it sits 44px+ tall for touch targets.
+  const body = (
+    <div className="flex items-center gap-4 px-4 py-3">
+      <DateBlock dateIso={a.date} highlight={isToday} dimmed={dimmed} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span
+            className={
+              "text-base font-semibold "
+              + (dimmed ? "text-gray-500" : "text-gray-900")
+            }
+          >
+            {a.slot_name}
+          </span>
+          {a.team_role_label && (
+            <span className="text-sm text-gray-500">
+              · {a.team_role_label}
+            </span>
+          )}
+          {isLocked && (
+            <span
+              className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700"
+              title="Turno bloqueado por el administrador"
+            >
+              <Lock className="h-3 w-3" />
+              Bloqueado
+            </span>
+          )}
+        </div>
+        <ShiftTimeBadge a={a} inline />
+      </div>
+      {!isLocked && (
+        <span className="hidden sm:inline text-xs text-brand-700 group-hover:underline">
+          Pedir cobertura →
+        </span>
+      )}
+    </div>
+  );
+  if (isLocked) {
+    return <li className="bg-white">{body}</li>;
+  }
+  return (
+    <li className="bg-white group hover:bg-brand-50/30 transition-colors">
+      <button
+        type="button"
+        onClick={() => onClick(a)}
+        className="block w-full text-left"
+        aria-label={`Pedir cobertura para ${a.slot_name} el ${a.date}`}
+      >
+        {body}
+      </button>
+    </li>
+  );
+}
+
+function DateBlock({
+  dateIso,
+  highlight,
+  dimmed,
+}: {
+  dateIso: string;
+  highlight: boolean;
+  dimmed: boolean;
+}) {
+  // Parse local-date safely (avoid the JS Date timezone trap for
+  // YYYY-MM-DD strings, which the engine treats as UTC midnight).
+  const [yy, mm, dd] = dateIso.split("-").map(Number);
+  const d = new Date(yy, mm - 1, dd);
+  const weekday = WEEKDAY_LONG_ES[d.getDay()].slice(0, 3);
+  const dayNum = String(d.getDate()).padStart(2, "0");
+  const monthShort = MONTH_SHORT_ES[d.getMonth()];
+  return (
+    <div
+      className={
+        "shrink-0 w-14 text-center rounded-lg border px-1 py-1.5 "
+        + (highlight
+          ? "border-brand-300 bg-brand-50 text-brand-700"
+          : dimmed
+            ? "border-gray-200 bg-gray-50 text-gray-400"
+            : "border-gray-200 bg-white text-gray-700")
+      }
+    >
+      <div className="text-[10px] uppercase tracking-wide">{weekday}</div>
+      <div
+        className={
+          "text-xl font-bold leading-none "
+          + (highlight ? "text-brand-800" : dimmed ? "text-gray-500" : "text-gray-900")
+        }
+      >
+        {dayNum}
+      </div>
+      <div className="text-[10px] uppercase">{monthShort}</div>
+    </div>
+  );
+}
+
+function ShiftTimeBadge({ a, inline = false }: { a: Assignment; inline?: boolean }) {
+  if (!a.slot_start_time || !a.slot_end_time) return null;
+  const hh = (t: string) => t.slice(0, 5);
+  return (
+    <span
+      className={
+        (inline ? "mt-0.5 block " : "ml-2 inline ") + "text-xs text-gray-500"
+      }
+    >
+      {hh(a.slot_start_time)} – {hh(a.slot_end_time)}
+    </span>
+  );
+}
+
+function formatLongDate(dateIso: string): string {
+  const [yy, mm, dd] = dateIso.split("-").map(Number);
+  const d = new Date(yy, mm - 1, dd);
+  const weekday = WEEKDAY_LONG_ES[d.getDay()];
+  const dayNum = d.getDate();
+  const monthShort = MONTH_SHORT_ES[d.getMonth()];
+  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${dayNum} ${monthShort}`;
 }

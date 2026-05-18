@@ -32,6 +32,11 @@ class AssignmentOut(BaseModel):
     # with every assignment so the planning grid can sort rows by
     # it without needing a separate slot lookup.
     slot_position: int = 0
+    # Slot hours (HH:MM:SS strings). Surfaced on each assignment so
+    # the member-side "Mis turnos" list can show "08:00 – 15:00"
+    # without a second roundtrip. Null = on-call / all-day slot.
+    slot_start_time: str | None = None
+    slot_end_time: str | None = None
     date: date
     person_id: int | None
     person_name: str | None

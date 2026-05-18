@@ -144,6 +144,10 @@ export type Assignment = {
   /** Mirror of Slot.position, set on the server-side serializer
    * so the planning grid can sort rows without a second roundtrip. */
   slot_position: number;
+  /** Slot hours (HH:MM:SS). Null on on-call / all-day slots. Used by
+   * the personal "Mis turnos" list to show "08:00 – 15:00" inline. */
+  slot_start_time: string | null;
+  slot_end_time: string | null;
   date: string;
   person_id: number | null;
   person_name: string | null;
