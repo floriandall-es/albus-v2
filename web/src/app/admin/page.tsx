@@ -43,6 +43,22 @@ export default function AdminDashboard() {
     const draftCount = allSchedules.filter(
       (s) => s.status === "draft",
     ).length;
+
+    // Pick the schedule the shortcut should link to. Priority:
+    //   1. The schedule whose period IS the current calendar month
+    //      (the one the user is almost certainly looking for).
+    //   2. The next upcoming month (period > today, soonest first).
+    //   3. The most recent past schedule.
+    // Falls back to null when there are no schedules at all.
+    const todayIso = new Date().toISOString().slice(0, 7); // "YYYY-MM"
+    const sorted = [...allSchedules].sort((a, b) =>
+      a.period.localeCompare(b.period),
+    );
+    const currentMonth = sorted.find((s) => s.period.slice(0, 7) === todayIso);
+    const upcoming = sorted.find((s) => s.period.slice(0, 7) > todayIso);
+    const latest = [...sorted].reverse()[0] ?? null;
+    const nextSchedule = currentMonth ?? upcoming ?? latest;
+
     return {
       hasSlots: slotCount > 0,
       hasTeammates: teamCount > 1, // The admin themselves doesn't count.
@@ -54,10 +70,7 @@ export default function AdminDashboard() {
       publishedCount,
       draftCount,
       firstName: (me.data?.person.name ?? "").split(/\s+/)[0] ?? "",
-      nextSchedule:
-        allSchedules.find((s) => s.status === "published")
-        ?? allSchedules[0]
-        ?? null,
+      nextSchedule,
     };
   }, [me.data, team.data, schedules.data]);
 
@@ -147,6 +160,7 @@ export default function AdminDashboard() {
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
           Accesos rápidos
         </h2>
+        {/* Order mirrors the "Operativa" group in the sidebar. */}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <ShortcutCard
             icon={<CalendarDays className="h-5 w-5" />}
@@ -163,20 +177,20 @@ export default function AdminDashboard() {
             }
           />
           <ShortcutCard
-            icon={<ArrowLeftRight className="h-5 w-5" />}
-            label="Cambios de turno"
-            sublabel="Histórico y solicitudes"
-            href="/admin/swaps"
-          />
-          <ShortcutCard
             icon={<BarChart3 className="h-5 w-5" />}
             label="Estadísticas"
             sublabel="Reparto por persona y turno"
             href="/admin/stats"
           />
           <ShortcutCard
+            icon={<ArrowLeftRight className="h-5 w-5" />}
+            label="Cambios de turno"
+            sublabel="Histórico y solicitudes"
+            href="/admin/swaps"
+          />
+          <ShortcutCard
             icon={<Clock className="h-5 w-5" />}
-            label="Bloqueos del equipo"
+            label="Bloqueos"
             sublabel="Vacaciones, bajas, formación"
             href="/admin/availability"
           />
