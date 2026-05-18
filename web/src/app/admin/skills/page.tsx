@@ -7,6 +7,7 @@ import {
   Card,
   Empty,
   ErrorText,
+  InfoHint,
   Modal,
   PageHeader,
   TextField,
@@ -25,7 +26,18 @@ export default function SkillsPage() {
   return (
     <>
       <PageHeader
-        title="Competencias"
+        title={
+          <>
+            Competencias
+            <InfoHint position="below">
+              Habilidades específicas que un turno puede requerir
+              (ecografía, laparoscopia, neonatos…). Asigna competencias
+              a las personas y márcalas como necesarias en los turnos
+              que las requieran; el solver solo asignará a quien las
+              tenga.
+            </InfoHint>
+          </>
+        }
         action={<Button onClick={() => setEditing("new")}>Nueva competencia</Button>}
       />
 

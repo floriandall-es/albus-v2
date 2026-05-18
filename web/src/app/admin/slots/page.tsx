@@ -21,6 +21,7 @@ import {
   Card,
   Empty,
   ErrorText,
+  InfoHint,
   Modal,
   PageHeader,
   Select,
@@ -440,7 +441,16 @@ function SlotDialog({
         )}
         <div>
           <Select
-            label="Modo de plantilla"
+            label="Cuántas personas cubren este turno"
+            hint={
+              <>
+                <strong>Una persona</strong>: consulta, planta.{" "}
+                <strong>Varias del mismo perfil</strong>: dos
+                enfermeros idénticos.{" "}
+                <strong>Equipo con varios roles</strong>: quirófano
+                con cirujano + anestesia + instrumentista.
+              </>
+            }
             value={mode}
             onChange={(v) => {
               if (!v) return;
@@ -466,6 +476,7 @@ function SlotDialog({
         {mode === "multiple_same" && (
           <TextField
             label="Plazas"
+            hint="Cuántas personas se necesitan cada día para cubrir el turno. Ej: planta con 3 enfermeras simultáneas → 3 plazas."
             type="number"
             value={headcount}
             onChange={setHeadcount}
@@ -535,19 +546,22 @@ function SlotDialog({
         )}
         <div>
           <Select
-            label="Unidad"
+            label="Restringir a una sub-unidad"
+            hint={
+              <>
+                Si tu servicio se divide en sub-unidades (p.ej.
+                trasplantes, oncología), restringe este turno a una de
+                ellas. Solo los miembros de esa unidad podrán cubrirlo.
+                Por defecto, cualquier miembro del equipo puede.
+              </>
+            }
             value={poolId ?? ""}
             onChange={(v) => setPoolId(v === "" ? null : Number(v))}
             options={[
-              { value: "", label: "— Sin unidad (cualquier persona) —" },
+              { value: "", label: "— Cualquier persona del equipo —" },
               ...pools.map((p) => ({ value: p.id, label: p.name })),
             ]}
           />
-          <p className="mt-1 text-xs text-gray-500">
-            Si seleccionas una unidad, solo sus miembros podrán cubrir este
-            turno. Déjalo en blanco para permitir a cualquier persona del
-            equipo.
-          </p>
         </div>
         {/*
           Hidden from the basic editor (post_slot_rest, counts_for_equity,
@@ -560,16 +574,19 @@ function SlotDialog({
           <div>
             <TextField
               label="Grupo de equidad"
+              hint={
+                <>
+                  Turnos con el mismo grupo se reparten equitativamente
+                  entre sí. Ej: pon &quot;guardia&quot; en todas tus
+                  guardias para que se balanceen, y &quot;quirofano&quot;
+                  en los quirófanos para que se balanceen por separado.
+                  Déjalo vacío y este turno se balancea solo.
+                </>
+              }
               value={equityGroupKey}
               onChange={setEquityGroupKey}
               placeholder="guardia"
             />
-            <p className="mt-1 text-xs text-gray-500">
-              Turnos con el mismo grupo se balancean entre sí (ej. todas las
-              guardias se reparten equitativamente, todos los quirófanos se
-              reparten equitativamente, sin mezclar). Déjalo vacío para usar
-              el grupo por defecto.
-            </p>
           </div>
         )}
 

@@ -7,6 +7,7 @@ import {
   Card,
   Empty,
   ErrorText,
+  InfoHint,
   Modal,
   PageHeader,
   TextField,
@@ -30,7 +31,17 @@ export default function PoolsPage() {
   return (
     <>
       <PageHeader
-        title="Unidades"
+        title={
+          <>
+            Unidades
+            <InfoHint position="below">
+              Sub-divisiones del servicio (trasplantes, oncología,
+              urgencias…). Cada unidad agrupa a sus miembros; luego
+              puedes restringir turnos a una unidad concreta desde
+              el editor del turno.
+            </InfoHint>
+          </>
+        }
         action={<Button onClick={() => setEditing("new")}>Nueva unidad</Button>}
       />
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}

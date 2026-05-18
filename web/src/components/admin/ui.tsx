@@ -5,12 +5,14 @@ export function PageHeader({
   title,
   action,
 }: {
-  title: string;
+  /** String OR JSX. Use JSX when the title needs an inline hint or
+   * any non-text adornment. */
+  title: ReactNode;
   action?: ReactNode;
 }) {
   return (
     <div className="flex items-center justify-between mb-6">
-      <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
+      <h1 className="text-2xl font-semibold tracking-tight text-gray-900 inline-flex items-center">
         {title}
       </h1>
       {action}
@@ -124,6 +126,7 @@ export function StatusPill({
 
 export function TextField({
   label,
+  hint,
   value,
   onChange,
   type = "text",
@@ -131,6 +134,9 @@ export function TextField({
   required,
 }: {
   label: string;
+  /** Optional (?) badge with hover/focus tooltip rendered next to
+   * the label. Pass a string or any JSX. */
+  hint?: ReactNode;
   value: string;
   onChange: (v: string) => void;
   type?: string;
@@ -139,7 +145,10 @@ export function TextField({
 }) {
   return (
     <label className="block">
-      <span className="text-sm font-medium text-gray-700">{label}</span>
+      <span className="text-sm font-medium text-gray-700">
+        {label}
+        {hint && <InfoHint>{hint}</InfoHint>}
+      </span>
       <input
         type={type}
         value={value}
@@ -185,18 +194,25 @@ export function NumberField({
 
 export function Select<T extends string | number>({
   label,
+  hint,
   value,
   onChange,
   options,
 }: {
   label: string;
+  /** Optional (?) badge with hover/focus tooltip rendered next to
+   * the label. Pass a string or any JSX. */
+  hint?: ReactNode;
   value: T | "";
   onChange: (v: T | "") => void;
   options: { value: T | ""; label: string }[];
 }) {
   return (
     <label className="block">
-      <span className="text-sm font-medium text-gray-700">{label}</span>
+      <span className="text-sm font-medium text-gray-700">
+        {label}
+        {hint && <InfoHint>{hint}</InfoHint>}
+      </span>
       <select
         value={String(value)}
         onChange={(e) => {
@@ -264,4 +280,55 @@ export function Modal({
 export function ErrorText({ children }: { children: ReactNode }) {
   if (!children) return null;
   return <p className="text-sm text-red-600">{children}</p>;
+}
+
+/**
+ * Small "(?)" badge that reveals a plain-language explanation on
+ * hover/focus. Use next to technical labels (Modo de plantilla,
+ * Grupo de equidad, etc.) so a jefe de servicio reading the form
+ * for the first time isn't expected to know the jargon.
+ *
+ * The popover is positioned ABOVE the badge by default; pass
+ * `position="below"` when the field sits near the top of a modal
+ * and there's no headroom for the popover.
+ */
+export function InfoHint({
+  children,
+  position = "above",
+}: {
+  children: ReactNode;
+  position?: "above" | "below";
+}) {
+  const popClasses =
+    position === "above"
+      ? "left-1/2 -translate-x-1/2 bottom-full mb-2"
+      : "left-1/2 -translate-x-1/2 top-full mt-2";
+  const arrowClasses =
+    position === "above"
+      ? "left-1/2 -translate-x-1/2 top-full -mt-1"
+      : "left-1/2 -translate-x-1/2 bottom-full -mb-1";
+  return (
+    <span className="relative inline-flex items-center align-middle group ml-1">
+      <span
+        tabIndex={0}
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-gray-200 text-gray-600 text-[10px] font-semibold cursor-help select-none group-hover:bg-brand-100 group-hover:text-brand-700 group-focus-within:bg-brand-100 group-focus-within:text-brand-700 transition-colors"
+        aria-label="Más información"
+      >
+        ?
+      </span>
+      <span
+        role="tooltip"
+        className={
+          "absolute z-50 w-64 rounded-md bg-gray-900 px-3 py-2 text-xs leading-relaxed text-white opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-events-none transition-opacity shadow-lg whitespace-normal "
+          + popClasses
+        }
+      >
+        {children}
+        <span
+          aria-hidden
+          className={"absolute w-2 h-2 bg-gray-900 rotate-45 " + arrowClasses}
+        />
+      </span>
+    </span>
+  );
 }

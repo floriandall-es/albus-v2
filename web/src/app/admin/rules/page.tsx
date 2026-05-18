@@ -14,6 +14,7 @@ import {
   Card,
   Empty,
   ErrorText,
+  InfoHint,
   Modal,
   NumberField,
   PageHeader,
@@ -89,7 +90,14 @@ function SuccessionSection({
   return (
     <section>
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-semibold">Sucesión de turnos</h2>
+        <h2 className="text-lg font-semibold inline-flex items-center">
+          Sucesión de turnos
+          <InfoHint position="below">
+            Reglas del tipo &quot;después de X, no Y&quot;. Ej: tras una
+            guardia de 24h, la misma persona no puede tener consulta al
+            día siguiente.
+          </InfoHint>
+        </h2>
         <Button onClick={() => setEditing("new")}>+ Añadir regla</Button>
       </div>
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
@@ -395,7 +403,14 @@ function FrequencySection({
   return (
     <section>
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-semibold">Límites de frecuencia</h2>
+        <h2 className="text-lg font-semibold inline-flex items-center">
+          Límites de frecuencia
+          <InfoHint position="below">
+            Tope de cuántas veces alguien hace un turno en un periodo.
+            Ej: máximo 4 guardias al mes por persona, o máximo 2
+            quirófanos por semana.
+          </InfoHint>
+        </h2>
         <Button onClick={() => setEditing("new")}>+ Añadir límite</Button>
       </div>
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
