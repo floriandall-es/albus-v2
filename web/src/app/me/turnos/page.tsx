@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Assignment } from "@/lib/api";
 import { PlanningGrid } from "@/components/schedule/planning-grid";
-import { NextShiftBanner } from "@/components/me/next-shift-banner";
 import { formatPeriod } from "@/components/admin/month-picker";
 import { Button, EmptyState, ErrorText } from "@/components/admin/ui";
 import { CalendarDays, List, LayoutGrid, Lock } from "lucide-react";
@@ -386,18 +385,47 @@ function PersonalShiftList({
     );
   }
 
-  const upcoming = mine.filter((a) => a.date >= todayIso);
+  // "Tomorrow" in local time, computed once. Same approach as
+  // todayIso — we compare date-only ISO strings so the timezone
+  // gotcha doesn't bite.
+  const tomorrowIsoStr = (() => {
+    const [yy, mm, dd] = todayIso.split("-").map(Number);
+    const t = new Date(yy, mm - 1, dd);
+    t.setDate(t.getDate() + 1);
+    const y = t.getFullYear();
+    const m = String(t.getMonth() + 1).padStart(2, "0");
+    const d = String(t.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  })();
+
+  const today = mine.filter((a) => a.date === todayIso);
+  const tomorrow = mine.filter((a) => a.date === tomorrowIsoStr);
+  const upcoming = mine.filter((a) => a.date > tomorrowIsoStr);
   const past = mine.filter((a) => a.date < todayIso);
-  const nextShift = upcoming[0] ?? null;
+
+  // If today, tomorrow AND upcoming are all empty, surface a single
+  // friendly note instead of three silent empties.
+  const noUpcoming =
+    today.length === 0 && tomorrow.length === 0 && upcoming.length === 0;
 
   return (
     <div className="space-y-4">
-      {nextShift && <NextShiftBanner shift={nextShift} />}
-
+      <ShiftSection
+        title="Hoy"
+        items={today}
+        todayIso={todayIso}
+        onClickShift={onClickShift}
+      />
+      <ShiftSection
+        title="Mañana"
+        items={tomorrow}
+        todayIso={todayIso}
+        onClickShift={onClickShift}
+      />
       <ShiftSection
         title="Próximos"
-        emptyText="No tienes más turnos en este mes."
         items={upcoming}
+        emptyText={noUpcoming ? "No tienes turnos próximos en este mes." : undefined}
         todayIso={todayIso}
         onClickShift={onClickShift}
       />
