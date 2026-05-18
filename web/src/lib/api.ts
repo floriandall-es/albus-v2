@@ -854,14 +854,20 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ period }),
     }),
-  publishSchedule: (id: number) =>
-    request<Schedule>(`/api/schedules/${id}/publish`, { method: "POST" }),
+  publishSchedule: (id: number, notifyMembers: boolean = true) =>
+    request<Schedule>(
+      `/api/schedules/${id}/publish?notify_members=${notifyMembers}`,
+      { method: "POST" },
+    ),
   archiveSchedule: (id: number) =>
     request<Schedule>(`/api/schedules/${id}/archive`, { method: "POST" }),
   unarchiveSchedule: (id: number) =>
     request<Schedule>(`/api/schedules/${id}/unarchive`, { method: "POST" }),
-  reopenSchedule: (id: number) =>
-    request<Schedule>(`/api/schedules/${id}/reopen`, { method: "POST" }),
+  reopenSchedule: (id: number, notifyMembers: boolean = true) =>
+    request<Schedule>(
+      `/api/schedules/${id}/reopen?notify_members=${notifyMembers}`,
+      { method: "POST" },
+    ),
   deleteSchedule: (id: number) =>
     request<void>(`/api/schedules/${id}`, { method: "DELETE" }),
 

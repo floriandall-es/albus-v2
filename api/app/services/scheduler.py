@@ -2139,6 +2139,13 @@ def publish(db: Session, schedule: Schedule) -> None:
         raise ValueError("Only draft schedules can be published")
     schedule.status = "published"
     schedule.published_at = datetime.now(timezone.utc)
+    # Clear the reopen audit fields on (re)publish so the
+    # "Reabierta" badge in the UI doesn't linger. The route grabs
+    # the reopened_at value into `is_republish` BEFORE calling this
+    # helper so the audit signal is preserved for the
+    # re-publish-notification copy.
+    schedule.reopened_at = None
+    schedule.reopened_by_membership_id = None
     db.flush()
 
 

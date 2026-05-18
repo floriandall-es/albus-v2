@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from app.models import (
     Assignment,
@@ -272,6 +272,14 @@ def generate(
 @router.post("/schedules/{schedule_id}/publish", response_model=ScheduleOut)
 def publish_schedule(
     schedule_id: int,
+    notify_members: bool = Query(
+        True,
+        description=(
+            "Send a heads-up email to every assigned team member when "
+            "the schedule is published. Pass false to publish silently "
+            "(e.g. the admin will tell the team by other means)."
+        ),
+    ),
     ctx: RequestContext = Depends(get_current_context),
 ) -> Schedule:
     _require_admin(ctx)
@@ -282,7 +290,49 @@ def publish_schedule(
         raise HTTPException(
             status_code=400, detail="Solo se pueden publicar planificaciones en borrador"
         )
+    # Snapshot whether this is a republish BEFORE flipping status —
+    # the helper clears reopened_at on successful publish so we'd
+    # otherwise lose the signal.
+    is_republish = s.reopened_at is not None
+
+    # Snapshot the assigned members BEFORE the flip so the email
+    # query doesn't depend on the post-publish RLS state. Assignments
+    # are tenant-scoped; the query already runs through the admin's
+    # tenant context.
+    assigned_persons: list[Person] = []
+    if notify_members:
+        assigned_persons = (
+            ctx.db.query(Person)
+            .join(Assignment, Assignment.person_id == Person.id)
+            .filter(Assignment.schedule_id == s.id)
+            .distinct()
+            .all()
+        )
+
     scheduler.publish(ctx.db, s)
+
+    if notify_members:
+        # Lazy imports — keep send_email + templates out of the
+        # module load path. Same pattern as reopen_schedule.
+        from app.core.config import settings
+        from app.services.email import send_email
+        from app.services.email_templates import (
+            schedule_published_member_email,
+        )
+
+        period_label = s.period.strftime("%B %Y")
+        app_url = settings.public_base_url
+        for person in assigned_persons:
+            if not person.email:
+                continue
+            subject, body = schedule_published_member_email(
+                recipient_name=person.name,
+                period_label=period_label,
+                app_url=app_url,
+                is_republish=is_republish,
+            )
+            send_email(to=person.email, subject=subject, body_text=body)
+
     return s
 
 
@@ -324,17 +374,28 @@ def unarchive_schedule(
 )
 def reopen_schedule(
     schedule_id: int,
+    notify_members: bool = Query(
+        True,
+        description=(
+            "Send notifications to affected members. When false, both "
+            "the heads-up emails AND the swap-cancelled emails are "
+            "suppressed; the swap offers themselves are still "
+            "cancelled (data integrity) but no email is generated."
+        ),
+    ),
     ctx: RequestContext = Depends(get_current_context),
 ) -> Schedule:
     """Flip published → draft so the admin can edit cells again. The
     schedule disappears from /me/turnos until re-published.
 
-    Side effects:
+    Side effects (subject to the notify_members flag for emails):
     - All open swap offers for the schedule's assignments get
-      cancelled; the requester gets an email saying so.
+      cancelled (always); the requester gets an email saying so
+      (only when notify_members=True).
     - Every team member with at least one assignment in this
       schedule gets a heads-up email so they understand why the
-      planning disappeared from their view.
+      planning disappeared from their view (only when notify_members
+      is True).
     Email sending is best-effort — failures don't roll back the
     status change."""
     _require_admin(ctx)
@@ -378,8 +439,11 @@ def reopen_schedule(
     app_url = settings.public_base_url
     now = datetime.now(timezone.utc)
 
-    # Cancel each offer + any pending responses, send a notification
-    # to the requester.
+    # Cancel each offer + any pending responses. Always do the data
+    # mutation (cancellation is a data-integrity step, not a
+    # notification). Email the requester only when notify_members
+    # is true — when the admin opts out they're taking responsibility
+    # for telling the team themselves.
     for offer, assignment, slot_row, requester in open_offers:
         offer.status = "cancelled"
         offer.closed_at = now
@@ -394,7 +458,7 @@ def reopen_schedule(
                 synchronize_session=False,
             )
         )
-        if requester.email:
+        if notify_members and requester.email:
             subject, body = swap_cancelled_due_to_reopen_email(
                 recipient_name=requester.name,
                 slot_name=slot_row.name,
@@ -405,23 +469,24 @@ def reopen_schedule(
             send_email(to=requester.email, subject=subject, body_text=body)
 
     # Heads-up email to every distinct member with an assignment in
-    # this schedule.
-    member_rows = (
-        ctx.db.query(Person)
-        .join(Assignment, Assignment.person_id == Person.id)
-        .filter(Assignment.schedule_id == s.id)
-        .distinct()
-        .all()
-    )
-    for person in member_rows:
-        if not person.email:
-            continue
-        subject, body = schedule_reopened_member_email(
-            recipient_name=person.name,
-            period_label=period_label,
-            app_url=app_url,
+    # this schedule — gated by the same flag.
+    if notify_members:
+        member_rows = (
+            ctx.db.query(Person)
+            .join(Assignment, Assignment.person_id == Person.id)
+            .filter(Assignment.schedule_id == s.id)
+            .distinct()
+            .all()
         )
-        send_email(to=person.email, subject=subject, body_text=body)
+        for person in member_rows:
+            if not person.email:
+                continue
+            subject, body = schedule_reopened_member_email(
+                recipient_name=person.name,
+                period_label=period_label,
+                app_url=app_url,
+            )
+            send_email(to=person.email, subject=subject, body_text=body)
 
     # Now flip the status (after enumerations so we still see the
     # "published" assignments + open offers).

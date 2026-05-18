@@ -212,3 +212,36 @@ def schedule_reopened_member_email(
         f"— El equipo de Trivu\n"
     )
     return subject, body
+
+
+def schedule_published_member_email(
+    *,
+    recipient_name: str,
+    period_label: str,
+    app_url: str,
+    is_republish: bool,
+) -> tuple[str, str]:
+    """Sent to every assigned team member when an admin publishes a
+    schedule. `is_republish` is True when the schedule was previously
+    reopened — the copy then explicitly closes the loop on the
+    "reabierta para ajustes" notice the same members received earlier."""
+    if is_republish:
+        subject = f"Planificación de {period_label} publicada de nuevo"
+        body = (
+            f"Hola {recipient_name},\n\n"
+            f"La planificación de {period_label} se ha vuelto a publicar "
+            f"con los ajustes del administrador. Ya puedes ver tus turnos "
+            f"actualizados en \"Mis turnos\".\n\n"
+            f"{app_url}/me/turnos\n\n"
+            f"— El equipo de Trivu\n"
+        )
+    else:
+        subject = f"Planificación de {period_label} publicada"
+        body = (
+            f"Hola {recipient_name},\n\n"
+            f"La planificación de {period_label} ya está disponible. "
+            f"Consulta tus turnos en \"Mis turnos\".\n\n"
+            f"{app_url}/me/turnos\n\n"
+            f"— El equipo de Trivu\n"
+        )
+    return subject, body

@@ -30,6 +30,11 @@ export default function ScheduleDetailPage() {
   const qc = useQueryClient();
   const id = Number(params.id);
   const [editing, setEditing] = useState<Assignment | null>(null);
+  // Which lifecycle action is currently being confirmed via the
+  // notify-members modal. Null when no modal is open.
+  const [confirmingAction, setConfirmingAction] = useState<
+    "publish" | "reopen" | null
+  >(null);
   // Date the admin clicked on the Libre row, to open the
   // "add absence" modal pre-filled with that day.
   const [addingAbsenceDate, setAddingAbsenceDate] = useState<string | null>(
@@ -49,7 +54,8 @@ export default function ScheduleDetailPage() {
   });
 
   const publish = useMutation({
-    mutationFn: () => api.publishSchedule(id),
+    mutationFn: (notifyMembers: boolean) =>
+      api.publishSchedule(id, notifyMembers),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["schedule", id] }),
   });
   const archive = useMutation({
@@ -64,7 +70,8 @@ export default function ScheduleDetailPage() {
     },
   });
   const reopen = useMutation({
-    mutationFn: () => api.reopenSchedule(id),
+    mutationFn: (notifyMembers: boolean) =>
+      api.reopenSchedule(id, notifyMembers),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["schedule", id] });
       qc.invalidateQueries({ queryKey: ["schedules"] });
@@ -145,10 +152,10 @@ export default function ScheduleDetailPage() {
                 Regenerar
               </Button>
               <Button
-                onClick={() => publish.mutate()}
+                onClick={() => setConfirmingAction("publish")}
                 disabled={publish.isPending}
               >
-                Publicar
+                {publish.isPending ? "Publicando…" : "Publicar"}
               </Button>
               <Button
                 variant="danger"
@@ -171,15 +178,7 @@ export default function ScheduleDetailPage() {
             <>
               <Button
                 variant="secondary"
-                onClick={() => {
-                  if (
-                    confirm(
-                      "Reabrir esta planificación cancelará los cambios de turno pendientes y la quitará de la vista de los miembros hasta volver a publicarla. ¿Continuar?",
-                    )
-                  ) {
-                    reopen.mutate();
-                  }
-                }}
+                onClick={() => setConfirmingAction("reopen")}
                 disabled={reopen.isPending}
               >
                 {reopen.isPending ? "Reabriendo…" : "Reabrir"}
@@ -285,6 +284,42 @@ export default function ScheduleDetailPage() {
         <ManageAbsencesModal
           date={addingAbsenceDate}
           onClose={() => setAddingAbsenceDate(null)}
+        />
+      )}
+      {confirmingAction === "publish" && (
+        <NotifyConfirmModal
+          title="Publicar planificación"
+          description={
+            s.reopened_at
+              ? "La planificación volverá a estar visible en \"Mis turnos\" con los ajustes que has hecho."
+              : "La planificación quedará visible para todos los miembros del equipo en \"Mis turnos\"."
+          }
+          confirmLabel="Publicar"
+          notifyLabel="Avisar por email a los miembros del equipo"
+          onClose={() => setConfirmingAction(null)}
+          onConfirm={(notify) => {
+            publish.mutate(notify, {
+              onSuccess: () => setConfirmingAction(null),
+            });
+          }}
+          isPending={publish.isPending}
+        />
+      )}
+      {confirmingAction === "reopen" && (
+        <NotifyConfirmModal
+          title="Reabrir planificación"
+          description={
+            "Volver a borrador para hacer cambios. Los cambios de turno pendientes se cancelarán y la planificación dejará de estar visible en \"Mis turnos\" hasta volver a publicarla."
+          }
+          confirmLabel="Reabrir"
+          notifyLabel="Avisar por email a los miembros del equipo"
+          onClose={() => setConfirmingAction(null)}
+          onConfirm={(notify) => {
+            reopen.mutate(notify, {
+              onSuccess: () => setConfirmingAction(null),
+            });
+          }}
+          isPending={reopen.isPending}
         />
       )}
     </>
@@ -881,6 +916,57 @@ function ManageAbsencesModal({
             </Button>
           </div>
         </form>
+      </div>
+    </Modal>
+  );
+}
+
+
+function NotifyConfirmModal({
+  title,
+  description,
+  confirmLabel,
+  notifyLabel,
+  onConfirm,
+  onClose,
+  isPending,
+}: {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  notifyLabel: string;
+  onConfirm: (notifyMembers: boolean) => void;
+  onClose: () => void;
+  isPending: boolean;
+}) {
+  // Default ON — admins who want to silence the email actively
+  // untick the box. Matches the existing reopen/republish behavior
+  // before this opt-out was added.
+  const [notify, setNotify] = useState(true);
+  return (
+    <Modal open={true} onClose={onClose} title={title}>
+      <div className="space-y-4">
+        <p className="text-sm text-gray-700">{description}</p>
+        <label className="flex items-start gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={notify}
+            onChange={(e) => setNotify(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>{notifyLabel}</span>
+        </label>
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="secondary" onClick={onClose} disabled={isPending}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={() => onConfirm(notify)}
+            disabled={isPending}
+          >
+            {isPending ? "Guardando…" : confirmLabel}
+          </Button>
+        </div>
       </div>
     </Modal>
   );
