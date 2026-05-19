@@ -86,26 +86,25 @@ def _sync_allowed_activities(
     member: Membership,
     desired_slot_ids: set[int],
 ) -> None:
-    """Reconcile slot_allowed_persons for `member` so the slots the
-    person is authorized on match `desired_slot_ids`.
+    """Reconcile slot_allowed_persons so this member's eligibility
+    matches `desired_slot_ids` (the set of slot ids the admin wants
+    them authorized on).
 
-    Subtle bit: we only touch slots that are ALREADY restricted
-    (have at least one row in slot_allowed_persons). Unrestricted
-    slots stay unrestricted — adding this person would mean turning
-    a "Todo el equipo" activity into "only this one person", which
-    is a side effect this endpoint must not produce. The team
-    modal's UI mirrors this by disabling the checkbox for
-    unrestricted activities.
+    Cases for each slot in the tenant:
+      Slot restricted, in desired, not yet in allow-list → INSERT
+      Slot restricted, not in desired, currently in allow-list → DELETE
+      Slot unrestricted, in desired → no-op (everyone eligible already)
+      Slot unrestricted, NOT in desired → CONVERT the slot to
+          restricted by inserting all OTHER active members of the
+          tenant. The result: the slot has the same effective
+          coverage minus this one person. Lets admins say "Pedro
+          isn't doing guardias for a while" from the team modal
+          without having to touch the activity itself.
 
-    Validation:
-      - all slot ids must belong to this tenant; unknown ids → 422.
+    Validation: all ids in `desired_slot_ids` must belong to this
+    tenant; unknown ids → 422.
     """
-    if not desired_slot_ids:
-        # Empty set is valid — means "remove from every activity's
-        # allow-list". We still need to validate by going through
-        # the existing rows.
-        pass
-    else:
+    if desired_slot_ids:
         found = (
             ctx.db.query(Slot.id)
             .filter(
@@ -122,12 +121,14 @@ def _sync_allowed_activities(
                 detail=f"Unknown slot_ids: {sorted(missing)}",
             )
 
-    # All slots in the tenant that currently have a restriction.
-    # A slot with zero allow-list rows is unrestricted; we don't
-    # write a row to it even if it appears in desired_slot_ids
-    # (that would silently convert it from "everyone" to "just
-    # this person"). The slot detail page is the only place that
-    # establishes a slot's allow-list in the first place.
+    # Slot ids in the tenant + which ones have at least one row in
+    # slot_allowed_persons (= "restricted").
+    all_slot_ids = {
+        row[0]
+        for row in ctx.db.query(Slot.id)
+        .filter(Slot.tenant_id == ctx.tenant.id)
+        .all()
+    }
     restricted_slot_ids = {
         row[0]
         for row in ctx.db.query(SlotAllowedPerson.slot_id)
@@ -147,24 +148,59 @@ def _sync_allowed_activities(
     )
     current_slot_ids = {r.slot_id for r in current_rows}
 
-    # Limit the desired set to restricted-and-known slots only.
-    effective_desired = desired_slot_ids & restricted_slot_ids
+    # Active members of the tenant (excluding this person). Lazily
+    # computed only if we need to convert an unrestricted slot.
+    other_active_person_ids: set[int] | None = None
 
-    to_remove = current_slot_ids - effective_desired
-    to_add = effective_desired - current_slot_ids
+    def _get_other_active() -> set[int]:
+        nonlocal other_active_person_ids
+        if other_active_person_ids is None:
+            other_active_person_ids = {
+                pid
+                for (pid,) in ctx.db.query(Membership.person_id)
+                .filter(
+                    Membership.tenant_id == ctx.tenant.id,
+                    Membership.disabled_at.is_(None),
+                    Membership.person_id != member.person_id,
+                )
+                .all()
+            }
+        return other_active_person_ids
 
-    if to_remove:
-        for row in current_rows:
-            if row.slot_id in to_remove:
+    for slot_id in all_slot_ids:
+        in_desired = slot_id in desired_slot_ids
+        is_restricted = slot_id in restricted_slot_ids
+        person_listed = slot_id in current_slot_ids
+
+        if is_restricted:
+            if in_desired and not person_listed:
+                ctx.db.add(
+                    SlotAllowedPerson(
+                        tenant_id=ctx.tenant.id,
+                        slot_id=slot_id,
+                        person_id=member.person_id,
+                    )
+                )
+            elif not in_desired and person_listed:
+                row = next(r for r in current_rows if r.slot_id == slot_id)
                 ctx.db.delete(row)
-    for slot_id in to_add:
-        ctx.db.add(
-            SlotAllowedPerson(
-                tenant_id=ctx.tenant.id,
-                slot_id=slot_id,
-                person_id=member.person_id,
-            )
-        )
+        else:
+            if in_desired:
+                # Slot unrestricted, person eligible → no change needed.
+                continue
+            # Slot unrestricted, person should be EXCLUDED. Convert to
+            # restricted by inserting all other active members. If
+            # there are no other active members the conversion can't
+            # take effect (an empty allow-list is "unrestricted"),
+            # which we accept — the exclusion has no peers to honour.
+            for other_pid in _get_other_active():
+                ctx.db.add(
+                    SlotAllowedPerson(
+                        tenant_id=ctx.tenant.id,
+                        slot_id=slot_id,
+                        person_id=other_pid,
+                    )
+                )
 
 
 # NOTE: POST /api/team/invite was moved to app.routes.invitations in Sprint 3

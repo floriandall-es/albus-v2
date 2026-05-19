@@ -340,9 +340,10 @@ function TeamEditDialog({
   };
 
   const toggleActivity = (s: Slot) => {
-    // Disabled slots (unrestricted) are a no-op — see the
-    // backend's _sync_allowed_activities for why.
-    if (s.allowed_person_ids.length === 0) return;
+    // Unrestricted slots ARE toggleable. Unchecking one of them
+    // converts the slot to restricted-to-everyone-except-this-person
+    // server-side. That's how "Pedro isn't doing guardias for a
+    // while" is supposed to work from this view.
     const next = !isAllowed(s);
     setActivityOverrides((cur) => {
       const m = new Map(cur);
@@ -539,37 +540,28 @@ function MemberActivitiesSection({
               {sorted.map((s) => {
                 const unrestricted = s.allowed_person_ids.length === 0;
                 const checked = isAllowed(s);
+                // Show the "Todo el equipo" pill only while the slot
+                // is still unrestricted AND the admin hasn't queued
+                // an uncheck (which would convert it on save).
+                const showOpenPill = unrestricted && checked;
                 return (
                   <li key={s.id}>
-                    <label
-                      className={
-                        "flex items-center justify-between gap-2 px-3 py-1.5 text-sm "
-                        + (unrestricted
-                          ? "cursor-default"
-                          : "cursor-pointer hover:bg-gray-50")
-                      }
-                    >
+                    <label className="flex items-center justify-between gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50">
                       <span className="flex items-center gap-2 min-w-0">
                         <input
                           type="checkbox"
                           checked={checked}
-                          disabled={unrestricted}
                           onChange={() => toggleActivity(s)}
                           className="h-4 w-4 rounded border-gray-300"
                         />
-                        <span
-                          className={
-                            "truncate "
-                            + (unrestricted ? "text-gray-700" : "text-gray-900")
-                          }
-                        >
+                        <span className="truncate text-gray-900">
                           {s.name}
                         </span>
                       </span>
-                      {unrestricted && (
+                      {showOpenPill && (
                         <span
                           className="inline-flex shrink-0 items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-600"
-                          title="Esta actividad está abierta a todo el equipo. Para excluir a alguien, restringe el equipo autorizado en la actividad."
+                          title="Abierta a todo el equipo. Si desmarcas a esta persona, se restringirá automáticamente al resto del equipo activo."
                         >
                           Todo el equipo
                         </span>
