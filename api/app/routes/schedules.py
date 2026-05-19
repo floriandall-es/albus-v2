@@ -364,6 +364,149 @@ def get_schedule_pdf(
     )
 
 
+@router.get("/schedules/{schedule_id}/groups/{group_id}/pdf")
+def get_group_schedule_pdf(
+    schedule_id: int,
+    group_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> Response:
+    """Render one sub-team's plan for a schedule as a landscape PDF.
+
+    Mirrors the main /pdf endpoint but filters slots to a single
+    group. Access:
+      - Tenant admin: any group, any status (drafts too)
+      - Group lead: their own group, any status
+      - Plain member: any group, but only if the group is published
+        for this schedule
+    """
+    from app.routes.scope import caller_scope
+
+    s = ctx.db.get(Schedule, schedule_id)
+    if not s or s.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    g = ctx.db.get(Group, group_id)
+    if not g or g.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=404, detail="Group not found")
+
+    scope = caller_scope(ctx)
+    if scope.is_tenant_admin:
+        pass
+    elif scope.is_group_lead and scope.group_id == group_id:
+        pass
+    else:
+        # Plain member or lead viewing a foreign group: must be
+        # published for this schedule.
+        published = (
+            ctx.db.query(ScheduleGroupPublication.id)
+            .filter(
+                ScheduleGroupPublication.schedule_id == s.id,
+                ScheduleGroupPublication.group_id == group_id,
+            )
+            .first()
+            is not None
+        )
+        if not published:
+            raise HTTPException(
+                status_code=403,
+                detail="La planificación de ese sub-equipo todavía no está publicada.",
+            )
+
+    rows = (
+        ctx.db.query(Assignment, Slot, Person, SlotTeamRole)
+        .join(Slot, Slot.id == Assignment.slot_id)
+        .outerjoin(Person, Person.id == Assignment.person_id)
+        .outerjoin(SlotTeamRole, SlotTeamRole.id == Assignment.team_role_id)
+        .filter(
+            Assignment.schedule_id == s.id,
+            Slot.group_id == group_id,
+        )
+        .order_by(Assignment.date, Assignment.slot_id, Assignment.id)
+        .all()
+    )
+    pdf_rows = build_rows_from_assignments(rows)
+
+    period_start = date(s.period.year, s.period.month, 1)
+    if s.period.month == 12:
+        period_end_exclusive = date(s.period.year + 1, 1, 1)
+    else:
+        period_end_exclusive = date(s.period.year, s.period.month + 1, 1)
+
+    # Absences row: scoped to people in this group so the "Libre"
+    # column reflects the sub-team's coverage, not the whole tenant.
+    absence_rows = (
+        ctx.db.query(AvailabilityBlock, Person)
+        .join(Person, Person.id == AvailabilityBlock.person_id)
+        .join(Membership, Membership.person_id == Person.id)
+        .filter(
+            AvailabilityBlock.status == "approved",
+            AvailabilityBlock.start_date < period_end_exclusive,
+            AvailabilityBlock.end_date >= period_start,
+            Membership.tenant_id == ctx.tenant.id,
+            Membership.group_id == group_id,
+        )
+        .all()
+    )
+
+    class _AbsenceView:
+        def __init__(self, block: AvailabilityBlock, person: Person):
+            self.person_id = block.person_id
+            self.person_name = person.name
+            self.start_date = block.start_date
+            self.end_date = block.end_date
+            self.block_type = block.block_type
+
+    absences = [_AbsenceView(b, p) for b, p in absence_rows]
+
+    import calendar as _cal
+    last_day = _cal.monthrange(s.period.year, s.period.month)[1]
+    month_dates = [
+        date(s.period.year, s.period.month, d) for d in range(1, last_day + 1)
+    ]
+    absences_by_date = build_absences_by_date(absences, month_dates)
+
+    holiday_rows = (
+        ctx.db.query(Holiday)
+        .filter(
+            Holiday.date >= period_start,
+            Holiday.date < period_end_exclusive,
+        )
+        .all()
+    )
+    holiday_dates = {h.date for h in holiday_rows}
+
+    pdf_bytes = render_schedule_pdf(
+        schedule_period=s.period,
+        # Surface the sub-team name in the document header so a
+        # printed PDF of "Residentes" doesn't look identical to the
+        # main team's. We piggyback on tenant_name here — render
+        # takes a single header string and doesn't need code changes.
+        schedule_status=s.status,
+        rows=pdf_rows,
+        absences_by_date=absences_by_date,
+        holiday_dates=holiday_dates,
+        tenant_name=f"{ctx.tenant.name} — {g.name}",
+        generated_at=datetime.now(timezone.utc),
+    )
+    filename = _group_schedule_pdf_filename(s.period, g.name)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )
+
+
+def _group_schedule_pdf_filename(period: date, group_name: str) -> str:
+    """Slug the group name for the download filename. ASCII-only
+    so quoted Content-Disposition is safe across all clients."""
+    slug = "".join(
+        c if c.isascii() and (c.isalnum() or c in "-_") else "-"
+        for c in group_name.lower()
+    ).strip("-_") or "sub-equipo"
+    return f"planificacion-{slug}-{period.strftime('%Y-%m')}.pdf"
+
+
 @router.post(
     "/schedules/generate",
     response_model=ScheduleDetail,

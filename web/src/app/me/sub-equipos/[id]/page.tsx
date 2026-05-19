@@ -1,9 +1,9 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { api, type Assignment, type Slot } from "@/lib/api";
-import { Card, Empty, PageHeader, Select } from "@/components/admin/ui";
+import { Button, Card, Empty, PageHeader, Select } from "@/components/admin/ui";
 import { MONTH_LONG_ES, WEEKDAY_LONG_ES } from "@/lib/dates";
 
 /**
@@ -45,6 +45,10 @@ export default function MemberSubEquipoPage() {
   const isPublishedForGroup =
     schedule?.published_group_ids?.includes(groupId) ?? false;
 
+  const downloadPdf = useMutation({
+    mutationFn: () => api.downloadGroupSchedulePdf(schedule!.id, groupId),
+  });
+
   // We only call the schedule detail when the group is published
   // for this month — otherwise the backend would return 403 and
   // we'd surface a confusing error. The Empty state below covers
@@ -71,8 +75,17 @@ export default function MemberSubEquipoPage() {
       )}
 
       <Card>
-        <div className="p-4">
+        <div className="p-4 flex items-end gap-3 flex-wrap justify-between">
           <MonthYearPicker value={period} onChange={setPeriod} />
+          {schedule && isPublishedForGroup && (
+            <Button
+              variant="secondary"
+              onClick={() => downloadPdf.mutate()}
+              disabled={downloadPdf.isPending}
+            >
+              {downloadPdf.isPending ? "Generando PDF…" : "Descargar PDF"}
+            </Button>
+          )}
         </div>
       </Card>
 

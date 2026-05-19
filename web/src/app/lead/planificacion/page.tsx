@@ -81,6 +81,10 @@ export default function LeadPlanificacionPage() {
       qc.invalidateQueries({ queryKey: ["schedule", schedule!.id] });
     },
   });
+  const downloadPdf = useMutation({
+    mutationFn: () =>
+      api.downloadGroupSchedulePdf(schedule!.id, myGroupId!),
+  });
 
   return (
     <>
@@ -124,6 +128,13 @@ export default function LeadPlanificacionPage() {
                   {publish.isPending ? "Publicando…" : "Publicar"}
                 </Button>
               )}
+              <Button
+                variant="secondary"
+                onClick={() => downloadPdf.mutate()}
+                disabled={downloadPdf.isPending}
+              >
+                {downloadPdf.isPending ? "Generando PDF…" : "Descargar PDF"}
+              </Button>
             </div>
           )}
         </div>

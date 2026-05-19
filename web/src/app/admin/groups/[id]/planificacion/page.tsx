@@ -1,9 +1,10 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { api, type Assignment, type Slot } from "@/lib/api";
 import {
+  Button,
   Card,
   Empty,
   PageHeader,
@@ -72,6 +73,10 @@ export default function AdminGroupPlanificacionPage() {
   const isPublishedForGroup =
     schedule?.published_group_ids?.includes(groupId) ?? false;
 
+  const downloadPdf = useMutation({
+    mutationFn: () => api.downloadGroupSchedulePdf(schedule!.id, groupId),
+  });
+
   return (
     <>
       <PageHeader title={`Planificación · ${group?.name ?? "Sub-equipo"}`} />
@@ -84,16 +89,25 @@ export default function AdminGroupPlanificacionPage() {
         <div className="p-4 flex items-end gap-3 flex-wrap justify-between">
           <MonthYearPicker value={period} onChange={setPeriod} />
           {schedule && (
-            <span
-              className={
-                "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wide "
-                + (isPublishedForGroup
-                  ? "bg-emerald-100 text-emerald-700"
-                  : "bg-amber-100 text-amber-800")
-              }
-            >
-              {isPublishedForGroup ? "Publicada" : "Borrador"}
-            </span>
+            <div className="flex items-center gap-2">
+              <span
+                className={
+                  "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wide "
+                  + (isPublishedForGroup
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-amber-100 text-amber-800")
+                }
+              >
+                {isPublishedForGroup ? "Publicada" : "Borrador"}
+              </span>
+              <Button
+                variant="secondary"
+                onClick={() => downloadPdf.mutate()}
+                disabled={downloadPdf.isPending}
+              >
+                {downloadPdf.isPending ? "Generando PDF…" : "Descargar PDF"}
+              </Button>
+            </div>
           )}
         </div>
       </Card>

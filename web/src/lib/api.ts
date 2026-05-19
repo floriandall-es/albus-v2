@@ -624,6 +624,44 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await res.json()) as T;
 }
 
+/**
+ * Shared "fetch a PDF + trigger browser download" helper.
+ * Used by every schedule PDF download (main schedule + each
+ * sub-team's). Auth via Bearer header, hence the fetch+blob
+ * dance rather than a plain window.open.
+ */
+async function _downloadPdfFromUrl(
+  url: string,
+  fallbackFilename: string,
+): Promise<void> {
+  const token = getToken();
+  const headers: HeadersInit = {};
+  if (token) (headers as Record<string, string>).Authorization = `Bearer ${token}`;
+  const res = await fetch(url, { headers });
+  if (!res.ok) {
+    let detail: unknown = res.statusText;
+    try {
+      const body = await res.json();
+      detail = body.detail ?? detail;
+    } catch {
+      /* binary response, no JSON */
+    }
+    throw new Error(typeof detail === "string" ? detail : "Error generando PDF");
+  }
+  const blob = await res.blob();
+  const cd = res.headers.get("Content-Disposition");
+  const match = cd?.match(/filename="([^"]+)"/);
+  const filename = match?.[1] ?? fallbackFilename;
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
 export const api = {
   signup: (body: {
     tenant_name: string;
@@ -1144,37 +1182,19 @@ export const api = {
    * then trigger a browser download with the server-suggested
    * filename. Auth via Bearer header, so we can't just window.open
    * the URL. */
-  downloadSchedulePdf: async (scheduleId: number) => {
-    const token = getToken();
-    const headers: HeadersInit = {};
-    if (token) (headers as Record<string, string>).Authorization = `Bearer ${token}`;
-    const res = await fetch(
+  downloadSchedulePdf: async (scheduleId: number) =>
+    _downloadPdfFromUrl(
       `${API_BASE_URL}/api/schedules/${scheduleId}/pdf`,
-      { headers },
-    );
-    if (!res.ok) {
-      let detail: unknown = res.statusText;
-      try {
-        const body = await res.json();
-        detail = body.detail ?? detail;
-      } catch {
-        /* binary response, no JSON */
-      }
-      throw new Error(typeof detail === "string" ? detail : "Error generando PDF");
-    }
-    const blob = await res.blob();
-    const cd = res.headers.get("Content-Disposition");
-    const match = cd?.match(/filename="([^"]+)"/);
-    const filename = match?.[1] ?? `planificacion.pdf`;
-    const objectUrl = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = objectUrl;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(objectUrl);
-  },
+      "planificacion.pdf",
+    ),
+  /** Sub-team PDF — same shape but filtered to one group's slots.
+   * Access matches the read-only group views: admin always, lead
+   * for own group always, plain member only when published. */
+  downloadGroupSchedulePdf: async (scheduleId: number, groupId: number) =>
+    _downloadPdfFromUrl(
+      `${API_BASE_URL}/api/schedules/${scheduleId}/groups/${groupId}/pdf`,
+      "planificacion-sub-equipo.pdf",
+    ),
 
   // Bulk invite (CSV)
   bulkInvitePreview: async (file: File) => {
