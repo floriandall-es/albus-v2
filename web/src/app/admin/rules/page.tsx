@@ -33,6 +33,87 @@ const SEVERITY_LABEL: Record<DependencySeverity, string> = {
   soft: "Blanda",
 };
 
+/**
+ * Three-tier picker for soft-rule weight. Replaces a 0–1000
+ * NumberField that admins had no way to calibrate. The tier values
+ * are set against the built-in objective weights in scheduler.py
+ * (fairness=10, weekend=5, role-balance=5, guardia-spread=3) so the
+ * labels are meaningful relative to the rest of the system:
+ *  - Baja (2)  → barely affects the result; gentle preference
+ *  - Media (5) → matches the weekend/role objectives; default
+ *  - Alta (15) → clearly outweighs fairness, but still soft
+ *
+ * Power users / API callers can still POST arbitrary weights — the
+ * schema accepts 0–1000. If an existing rule has a custom weight
+ * that doesn't match a tier, the picker highlights the closest one
+ * without auto-mutating the stored value (it stays whatever it was
+ * unless the admin clicks a tier).
+ */
+const SOFT_WEIGHT_TIERS: { value: number; label: string; desc: string }[] = [
+  { value: 2, label: "Baja", desc: "Trivu lo intenta pero la equidad pesa más." },
+  { value: 5, label: "Media", desc: "Mismo peso que la equidad." },
+  { value: 15, label: "Alta", desc: "Trivu lo prioriza sobre el reparto." },
+];
+
+function SoftWeightPicker({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  // Snap to closest tier for display only; don't mutate the stored
+  // value until the admin actually clicks one.
+  const selected = SOFT_WEIGHT_TIERS.reduce((best, t) =>
+    Math.abs(t.value - value) < Math.abs(best.value - value) ? t : best,
+  );
+  return (
+    <div>
+      <span className="text-sm font-medium text-gray-700">
+        Peso de la regla
+      </span>
+      <div className="mt-1 grid grid-cols-3 gap-2">
+        {SOFT_WEIGHT_TIERS.map((t) => {
+          const checked = t.value === selected.value && t.value === value;
+          // When the stored value doesn't equal any tier (custom
+          // import / API write), no tier is "checked" but `selected`
+          // still highlights the visually-closest one with a softer
+          // ring so admins see roughly where they sit.
+          const isClosest =
+            !checked && t.value === selected.value && t.value !== value;
+          return (
+            <button
+              key={t.value}
+              type="button"
+              onClick={() => onChange(t.value)}
+              className={
+                "rounded-lg border px-3 py-2 text-left transition-colors "
+                + (checked
+                  ? "border-brand-500 bg-brand-50 ring-2 ring-brand-200"
+                  : isClosest
+                    ? "border-gray-300 bg-white ring-1 ring-gray-200"
+                    : "border-gray-300 bg-white hover:border-gray-400")
+              }
+            >
+              <div className="text-sm font-semibold text-gray-900">
+                {t.label}
+              </div>
+              <div className="mt-0.5 text-xs text-gray-500 leading-snug">
+                {t.desc}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      {!SOFT_WEIGHT_TIERS.some((t) => t.value === value) && (
+        <p className="mt-1 text-[11px] text-gray-500">
+          Valor personalizado: {value}. Haz click en un nivel para cambiarlo.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function RulesPage() {
   const slots = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
   const slotById = useMemo(() => {
@@ -360,13 +441,7 @@ function SuccessionDialog({
           ]}
         />
         {severity === "soft" && (
-          <NumberField
-            label="Peso (penalización en blandas)"
-            value={weight}
-            onChange={(v) => setWeight(typeof v === "number" ? v : 5)}
-            min={0}
-            max={1000}
-          />
+          <SoftWeightPicker value={weight} onChange={setWeight} />
         )}
         {save.isError && <ErrorText>{(save.error as Error).message}</ErrorText>}
         <div className="flex justify-end gap-2 pt-2">
@@ -622,13 +697,7 @@ function FrequencyDialog({
           ]}
         />
         {severity === "soft" && (
-          <NumberField
-            label="Peso (penalización en blandas)"
-            value={weight}
-            onChange={(v) => setWeight(typeof v === "number" ? v : 5)}
-            min={0}
-            max={1000}
-          />
+          <SoftWeightPicker value={weight} onChange={setWeight} />
         )}
         {save.isError && <ErrorText>{(save.error as Error).message}</ErrorText>}
         <div className="flex justify-end gap-2 pt-2">
@@ -847,13 +916,7 @@ function SameDayDialog({
           ]}
         />
         {severity === "soft" && (
-          <NumberField
-            label="Peso de la penalización"
-            value={weight}
-            onChange={(v) => setWeight(typeof v === "number" ? v : 5)}
-            min={0}
-            max={1000}
-          />
+          <SoftWeightPicker value={weight} onChange={setWeight} />
         )}
         {save.isError && <ErrorText>{(save.error as Error).message}</ErrorText>}
         <div className="flex justify-end gap-2 pt-2">
