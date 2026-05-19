@@ -2,7 +2,13 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type Category, type Invitation, type TeamMember } from "@/lib/api";
+import {
+  api,
+  avatarSrc,
+  type Category,
+  type Invitation,
+  type TeamMember,
+} from "@/lib/api";
 import {
   Button,
   Card,
@@ -20,6 +26,48 @@ const DEFAULT_GUARDIA_TYPES = [
   "localizada",
   "findes_festivos",
 ];
+
+/**
+ * 32×32 circle showing the member's photo, or two-letter initials
+ * on a brand-tinted background when none is set. Lives here (not
+ * in components/) because the only other Avatar in the app — the
+ * 20px one in the planning grid — is intentionally tighter; this
+ * one's sized for table rows.
+ */
+function TeamAvatar({
+  name,
+  avatarUrl,
+}: {
+  name: string;
+  avatarUrl: string | null;
+}) {
+  const src = avatarSrc(avatarUrl);
+  if (src) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        className="h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-gray-200"
+      />
+    );
+  }
+  const initials = name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join("")
+    .toUpperCase();
+  return (
+    <span
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700 text-xs font-semibold ring-1 ring-gray-200"
+      aria-hidden
+    >
+      {initials || "?"}
+    </span>
+  );
+}
 
 export default function TeamPage() {
   const list = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
@@ -63,7 +111,15 @@ export default function TeamPage() {
             <tbody>
               {list.data.map((m) => (
                 <tr key={m.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors">
-                  <td className="px-4 py-2">{m.person_name}</td>
+                  <td className="px-4 py-2">
+                    <div className="flex items-center gap-2.5">
+                      <TeamAvatar
+                        name={m.person_name}
+                        avatarUrl={m.person_avatar_url}
+                      />
+                      <span>{m.person_name}</span>
+                    </div>
+                  </td>
                   <td className="px-4 py-2 text-gray-600">{m.person_email}</td>
                   <td className="px-4 py-2">{m.category_name ?? "—"}</td>
                   <td className="px-4 py-2">{m.fte_pct}%</td>
