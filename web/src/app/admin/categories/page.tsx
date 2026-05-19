@@ -40,8 +40,6 @@ export default function CategoriesPage() {
             <thead className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-4 py-2 font-medium">Nombre</th>
-                <th className="px-4 py-2 font-medium">Nivel</th>
-                <th className="px-4 py-2 font-medium">Descripción</th>
                 <th className="px-4 py-2 font-medium text-right">Acciones</th>
               </tr>
             </thead>
@@ -49,8 +47,6 @@ export default function CategoriesPage() {
               {list.data.map((c) => (
                 <tr key={c.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors">
                   <td className="px-4 py-2">{c.name}</td>
-                  <td className="px-4 py-2">{c.level ?? "—"}</td>
-                  <td className="px-4 py-2 text-gray-600">{c.description ?? ""}</td>
                   <td className="px-4 py-2 text-right space-x-2">
                     <Button variant="secondary" onClick={() => setEditing(c)}>
                       Editar
@@ -91,15 +87,18 @@ function CategoryDialog({
 }) {
   const qc = useQueryClient();
   const [name, setName] = useState(initial?.name ?? "");
-  const [level, setLevel] = useState<string>(initial?.level?.toString() ?? "");
-  const [description, setDescription] = useState(initial?.description ?? "");
 
   const save = useMutation({
     mutationFn: () => {
+      // We keep the `level` value the API already has on existing
+      // rows (preserves the JdS → Adjunto → R5 → R1 sort order that
+      // preset seeding wrote). New rows go in without a level — they
+      // get sorted alphabetically after the seeded ones via the
+      // NULLS LAST ordering on the categories endpoint.
       const body = {
         name,
-        level: level === "" ? null : Number(level),
-        description: description === "" ? null : description,
+        level: initial?.level ?? null,
+        description: initial?.description ?? null,
       };
       return initial ? api.updateCategory(initial.id, body) : api.createCategory(body);
     },
@@ -123,13 +122,6 @@ function CategoryDialog({
         }}
       >
         <TextField label="Nombre" value={name} onChange={setName} required />
-        <TextField
-          label="Nivel (más bajo = más senior, opcional)"
-          value={level}
-          onChange={setLevel}
-          type="number"
-        />
-        <TextField label="Descripción" value={description} onChange={setDescription} />
         {save.isError && <ErrorText>{(save.error as Error).message}</ErrorText>}
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={onClose}>

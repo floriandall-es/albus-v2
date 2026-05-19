@@ -14,6 +14,7 @@ const DEFAULT_GROUPS: { title: string; items: string[] }[] = [
     title: "Médicos",
     items: [
       "Jefe de servicio",
+      "Jefe clínico",
       "Jefe de sección",
       "Adjunto",
       "Residente R5",
