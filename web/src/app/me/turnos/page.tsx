@@ -22,11 +22,19 @@ export default function TurnosPage() {
     queryFn: api.listSchedules,
   });
 
-  // Team members only see PUBLISHED schedules. Drafts are admin-only —
-  // assignments can still change at that stage.
+  // Visible schedules for a member: the main team's published
+  // ones, plus any drafts that have at least one published group
+  // (a residente will see drafts where their group's lead has
+  // published, even if the admin hasn't pulished the main team
+  // yet). The backend already filters which ASSIGNMENTS to send
+  // per visibility rule; this filter is just the list of months
+  // we surface in the picker.
   const publishedSchedules = useMemo(() => {
     if (!schedules.data) return [];
-    return schedules.data.filter((s) => s.status === "published");
+    return schedules.data.filter(
+      (s) =>
+        s.status === "published" || (s.published_group_ids?.length ?? 0) > 0,
+    );
   }, [schedules.data]);
 
   const [selectedId, setSelectedId] = useState<number | null>(null);

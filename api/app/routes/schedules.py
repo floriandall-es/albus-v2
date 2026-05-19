@@ -18,6 +18,7 @@ from app.models import (
     Membership,
     Person,
     Schedule,
+    ScheduleGroupPublication,
     Slot,
     SlotTeamRole,
 )
@@ -52,7 +53,27 @@ def _require_admin(ctx: RequestContext) -> None:
         )
 
 
+def _published_group_ids_for(
+    ctx: RequestContext, schedule_id: int
+) -> list[int]:
+    """All group ids whose lead has published the group's plan for
+    this schedule. Sorted ascending so the response is stable."""
+    rows = (
+        ctx.db.query(ScheduleGroupPublication.group_id)
+        .filter(ScheduleGroupPublication.schedule_id == schedule_id)
+        .order_by(ScheduleGroupPublication.group_id)
+        .all()
+    )
+    return [r[0] for r in rows]
+
+
 def _serialize_detail(ctx: RequestContext, schedule: Schedule) -> ScheduleDetail:
+    from app.routes.scope import caller_scope
+
+    scope = caller_scope(ctx)
+    published_group_ids = _published_group_ids_for(ctx, schedule.id)
+    published_group_set = set(published_group_ids)
+
     rows = (
         ctx.db.query(Assignment, Slot, Person, SlotTeamRole, Group)
         .join(Slot, Slot.id == Assignment.slot_id)
@@ -63,6 +84,28 @@ def _serialize_detail(ctx: RequestContext, schedule: Schedule) -> ScheduleDetail
         .order_by(Assignment.date, Assignment.slot_id, Assignment.id)
         .all()
     )
+
+    # Visibility filter on the assignments list. Tenant admin sees
+    # everything (their UI controls the whole thing). Group lead
+    # sees everything in their group plus everything visible to
+    # plain members (so they can sanity-check what the residentes
+    # will see). Plain members see:
+    #   - main-team assignments (slot.group_id IS NULL) only when
+    #     the Schedule is published (existing rule)
+    #   - group-slot assignments only when (schedule, group) is in
+    #     schedule_group_publications (new per-group publish state)
+    is_published = schedule.status == "published"
+
+    def _visible(s: Slot) -> bool:
+        if scope.is_tenant_admin:
+            return True
+        if s.group_id is None:
+            return is_published
+        if scope.is_group_lead and s.group_id == scope.group_id:
+            return True
+        return s.group_id in published_group_set
+
+    rows = [t for t in rows if _visible(t[1])]
     assignments = [
         AssignmentOut(
             id=a.id,
@@ -99,6 +142,7 @@ def _serialize_detail(ctx: RequestContext, schedule: Schedule) -> ScheduleDetail
         published_at=schedule.published_at,
         reopened_at=schedule.reopened_at,
         solver_used=schedule.solver_used,  # type: ignore[arg-type]
+        published_group_ids=published_group_ids,
         created_at=schedule.created_at,
         assignments=assignments,
     )
@@ -107,12 +151,44 @@ def _serialize_detail(ctx: RequestContext, schedule: Schedule) -> ScheduleDetail
 @router.get("/schedules", response_model=list[ScheduleOut])
 def list_schedules(
     ctx: RequestContext = Depends(get_current_context),
-) -> list[Schedule]:
-    return (
+) -> list[ScheduleOut]:
+    schedules = (
         ctx.db.query(Schedule)
         .order_by(Schedule.period.desc(), Schedule.id.desc())
         .all()
     )
+    # Batch-load published_group_ids per schedule. One query
+    # regardless of how many schedules there are.
+    pub_rows = (
+        ctx.db.query(
+            ScheduleGroupPublication.schedule_id,
+            ScheduleGroupPublication.group_id,
+        )
+        .filter(
+            ScheduleGroupPublication.schedule_id.in_([s.id for s in schedules])
+        )
+        .all()
+        if schedules
+        else []
+    )
+    pub_by_sched: dict[int, list[int]] = {}
+    for sid, gid in pub_rows:
+        pub_by_sched.setdefault(sid, []).append(gid)
+    return [
+        ScheduleOut(
+            id=s.id,
+            tenant_id=s.tenant_id,
+            period=s.period,
+            status=s.status,  # type: ignore[arg-type]
+            generated_at=s.generated_at,
+            published_at=s.published_at,
+            reopened_at=s.reopened_at,
+            solver_used=s.solver_used,  # type: ignore[arg-type]
+            published_group_ids=sorted(pub_by_sched.get(s.id, [])),
+            created_at=s.created_at,
+        )
+        for s in schedules
+    ]
 
 
 @router.get("/schedules/{schedule_id}", response_model=ScheduleDetail)
@@ -277,6 +353,130 @@ def generate(
         locked=locked_carry,
     )
     return _serialize_detail(ctx, schedule)
+
+
+@router.post(
+    "/schedules/{schedule_id}/groups/{group_id}/publish",
+    response_model=ScheduleOut,
+)
+def publish_group_schedule(
+    schedule_id: int,
+    group_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> ScheduleOut:
+    """Publish a group's plan for this schedule. Idempotent — if
+    the row already exists, just refresh the timestamp + actor.
+
+    Authorized callers: tenant admin (full power) or the group's
+    designated lead. Members get 403.
+    """
+    from app.routes.scope import caller_scope
+
+    scope = caller_scope(ctx)
+    if not scope.is_tenant_admin and not (
+        scope.is_group_lead and scope.group_id == group_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo el responsable del sub-equipo (o el administrador) puede publicar esta planificación.",
+        )
+
+    s = ctx.db.get(Schedule, schedule_id)
+    if not s or s.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+
+    g = ctx.db.get(Group, group_id)
+    if not g or g.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=404, detail="Group not found")
+
+    existing = (
+        ctx.db.query(ScheduleGroupPublication)
+        .filter(
+            ScheduleGroupPublication.schedule_id == s.id,
+            ScheduleGroupPublication.group_id == g.id,
+        )
+        .first()
+    )
+    if existing:
+        existing.published_at = datetime.now(timezone.utc)
+        existing.published_by_membership_id = ctx.membership.id
+    else:
+        ctx.db.add(
+            ScheduleGroupPublication(
+                tenant_id=ctx.tenant.id,
+                schedule_id=s.id,
+                group_id=g.id,
+                published_at=datetime.now(timezone.utc),
+                published_by_membership_id=ctx.membership.id,
+            )
+        )
+    ctx.db.flush()
+
+    return ScheduleOut(
+        id=s.id,
+        tenant_id=s.tenant_id,
+        period=s.period,
+        status=s.status,  # type: ignore[arg-type]
+        generated_at=s.generated_at,
+        published_at=s.published_at,
+        reopened_at=s.reopened_at,
+        solver_used=s.solver_used,  # type: ignore[arg-type]
+        published_group_ids=_published_group_ids_for(ctx, s.id),
+        created_at=s.created_at,
+    )
+
+
+@router.delete(
+    "/schedules/{schedule_id}/groups/{group_id}/publish",
+    response_model=ScheduleOut,
+)
+def unpublish_group_schedule(
+    schedule_id: int,
+    group_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> ScheduleOut:
+    """Revert a group's published plan back to "internal". Same
+    authorization as publish. Idempotent — if the row doesn't
+    exist, return 200 anyway with the current state."""
+    from app.routes.scope import caller_scope
+
+    scope = caller_scope(ctx)
+    if not scope.is_tenant_admin and not (
+        scope.is_group_lead and scope.group_id == group_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo el responsable del sub-equipo (o el administrador) puede despublicar esta planificación.",
+        )
+
+    s = ctx.db.get(Schedule, schedule_id)
+    if not s or s.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+
+    existing = (
+        ctx.db.query(ScheduleGroupPublication)
+        .filter(
+            ScheduleGroupPublication.schedule_id == s.id,
+            ScheduleGroupPublication.group_id == group_id,
+        )
+        .first()
+    )
+    if existing:
+        ctx.db.delete(existing)
+        ctx.db.flush()
+
+    return ScheduleOut(
+        id=s.id,
+        tenant_id=s.tenant_id,
+        period=s.period,
+        status=s.status,  # type: ignore[arg-type]
+        generated_at=s.generated_at,
+        published_at=s.published_at,
+        reopened_at=s.reopened_at,
+        solver_used=s.solver_used,  # type: ignore[arg-type]
+        published_group_ids=_published_group_ids_for(ctx, s.id),
+        created_at=s.created_at,
+    )
 
 
 @router.post("/schedules/{schedule_id}/publish", response_model=ScheduleOut)

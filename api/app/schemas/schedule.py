@@ -17,6 +17,12 @@ class ScheduleOut(BaseModel):
     published_at: datetime | None
     reopened_at: datetime | None = None
     solver_used: SolverUsed | None = None
+    # Group ids whose lead has published the group's plan for this
+    # schedule. Empty when no group has published. Visible to all
+    # callers — used by both /lead/planificacion (to drive the
+    # Publicar/Despublicar button) and /me/turnos (to decide which
+    # group-slot assignments to render).
+    published_group_ids: list[int] = []
     created_at: datetime
 
     model_config = {"from_attributes": True}

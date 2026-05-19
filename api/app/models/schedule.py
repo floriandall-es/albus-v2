@@ -108,3 +108,42 @@ class Assignment(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class ScheduleGroupPublication(Base):
+    """Per-(schedule, group) publication marker. Presence of this
+    row means the group's plan for this schedule is published —
+    its members can see the assignments in /me/turnos even when
+    the parent Schedule's overall status is still 'draft' from
+    the tenant admin's main-team perspective.
+
+    The group lead writes this row by clicking "Publicar" on
+    /lead/planificacion. Tenant admin can also publish/unpublish
+    on behalf of a group via the same endpoint.
+    """
+
+    __tablename__ = "schedule_group_publications"
+    __table_args__ = (
+        UniqueConstraint(
+            "schedule_id", "group_id", name="uq_sched_group_publication"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    schedule_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("schedules.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    group_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("groups.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    published_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    published_by_membership_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("memberships.id", ondelete="SET NULL"),
+        nullable=True,
+    )

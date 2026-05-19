@@ -52,19 +52,88 @@ export default function LeadPlanificacionPage() {
 
   const slots = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
   const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
+  const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   const detail = useQuery({
     queryKey: ["schedule", schedule?.id],
     queryFn: () => api.getSchedule(schedule!.id),
     enabled: !!schedule,
+  });
+  const myGroupId = me.data?.lead_group_id ?? null;
+  const isPublishedForGroup =
+    schedule && myGroupId
+      ? schedule.published_group_ids.includes(myGroupId)
+      : false;
+
+  const qc = useQueryClient();
+  const publish = useMutation({
+    mutationFn: () =>
+      api.publishGroupSchedule(schedule!.id, myGroupId!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["schedules"] });
+      qc.invalidateQueries({ queryKey: ["schedule", schedule!.id] });
+    },
+  });
+  const unpublish = useMutation({
+    mutationFn: () =>
+      api.unpublishGroupSchedule(schedule!.id, myGroupId!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["schedules"] });
+      qc.invalidateQueries({ queryKey: ["schedule", schedule!.id] });
+    },
   });
 
   return (
     <>
       <PageHeader title="Planificación" />
       <Card>
-        <div className="p-4 flex items-end gap-3 flex-wrap">
+        <div className="p-4 flex items-end gap-3 flex-wrap justify-between">
           <MonthYearPicker value={period} onChange={setPeriod} />
+          {schedule && myGroupId && (
+            <div className="flex items-center gap-2">
+              <span
+                className={
+                  "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wide "
+                  + (isPublishedForGroup
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-amber-100 text-amber-800")
+                }
+              >
+                {isPublishedForGroup ? "Publicada" : "Borrador"}
+              </span>
+              {isPublishedForGroup ? (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    if (
+                      confirm(
+                        "Al despublicar, los residentes dejarán de ver esta planificación hasta que la vuelvas a publicar. ¿Continuar?",
+                      )
+                    ) {
+                      unpublish.mutate();
+                    }
+                  }}
+                  disabled={unpublish.isPending}
+                >
+                  Despublicar
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => publish.mutate()}
+                  disabled={publish.isPending}
+                >
+                  {publish.isPending ? "Publicando…" : "Publicar"}
+                </Button>
+              )}
+            </div>
+          )}
         </div>
+        {schedule && myGroupId && (
+          <div className="px-4 pb-3 text-xs text-gray-500">
+            {isPublishedForGroup
+              ? "Tu sub-equipo ya puede ver esta planificación en \"Mis turnos\". Puedes seguir editando — los cambios se ven al momento."
+              : "Solo tú la ves. Cuando publiques, tus residentes la verán en \"Mis turnos\"."}
+          </div>
+        )}
       </Card>
 
       <div className="mt-6">

@@ -137,6 +137,11 @@ export type Schedule = {
   published_at: string | null;
   reopened_at: string | null;
   solver_used: SolverUsed | null;
+  /** Ids of groups whose lead has published the group's plan for
+   * this schedule. Empty when no group has published. Drives the
+   * Publicar/Despublicar button on /lead/planificacion and the
+   * member-visibility filter in /me/turnos. */
+  published_group_ids: number[];
   created_at: string;
 };
 
@@ -977,6 +982,20 @@ export const api = {
     ),
   deleteSchedule: (id: number) =>
     request<void>(`/api/schedules/${id}`, { method: "DELETE" }),
+  /** Publish a group's plan for a schedule. Idempotent — calling
+   * with an already-published (schedule, group) just refreshes
+   * the timestamp. Authorized for the group's lead or the
+   * tenant admin. */
+  publishGroupSchedule: (scheduleId: number, groupId: number) =>
+    request<Schedule>(
+      `/api/schedules/${scheduleId}/groups/${groupId}/publish`,
+      { method: "POST" },
+    ),
+  unpublishGroupSchedule: (scheduleId: number, groupId: number) =>
+    request<Schedule>(
+      `/api/schedules/${scheduleId}/groups/${groupId}/publish`,
+      { method: "DELETE" },
+    ),
 
   // Shift swaps
   listSwapOffers: (opts?: { mine?: boolean; status?: SwapOfferStatus }) => {
