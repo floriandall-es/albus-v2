@@ -810,6 +810,53 @@ function bitmapDescription(bitmap: number): string {
   return DAY_LABELS.map((d) => (bitmap & (1 << d.bit) ? d.short : "·")).join(" ");
 }
 
+/**
+ * Reverse of `blocksFromPreset`: given a rule's existing rotation
+ * blocks + its effective bitmap, work out which preset (if any)
+ * produced them. Used to bind the "Forma de la rotación" select
+ * to the rule's current state when editing — otherwise the
+ * dropdown always shows "Aplicar plantilla…" even on a rule that
+ * was clearly built from a preset.
+ *
+ * Returns "" when blocks is empty (nothing chosen yet), the
+ * matching preset value when one of the algorithmic patterns
+ * fits, or "custom" when the admin has hand-edited blocks that
+ * don't match any preset.
+ */
+function detectRotationPreset(
+  blocks: { position: number; days_bitmap: number }[],
+  bitmap: number,
+): string {
+  if (blocks.length === 0) return "";
+  for (const preset of [
+    "weekly",
+    "daily",
+    "weekdays",
+    "weekdays_weekend_grouped",
+  ]) {
+    const expected = blocksFromPreset(preset, bitmap);
+    if (expected.length === 0) continue;
+    if (rotationBlocksEqual(expected, blocks)) return preset;
+  }
+  return "custom";
+}
+
+function rotationBlocksEqual(
+  a: { position: number; days_bitmap: number }[],
+  b: { position: number; days_bitmap: number }[],
+): boolean {
+  if (a.length !== b.length) return false;
+  const sorted = (xs: { position: number; days_bitmap: number }[]) =>
+    [...xs].sort(
+      (p, q) => p.position - q.position || p.days_bitmap - q.days_bitmap,
+    );
+  const aS = sorted(a);
+  const bS = sorted(b);
+  return aS.every(
+    (v, i) => v.position === bS[i].position && v.days_bitmap === bS[i].days_bitmap,
+  );
+}
+
 function RuleCard({
   rule,
   team,
@@ -1166,7 +1213,7 @@ function RotationEditor({
         />
         <Select
           label="Forma de la rotación"
-          value=""
+          value={detectRotationPreset(rule.rotation_blocks, rule.days_bitmap)}
           onChange={(v) => v && applyPreset(String(v))}
           options={[
             { value: "", label: "Aplicar plantilla…" },
