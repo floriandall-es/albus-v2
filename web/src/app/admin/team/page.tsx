@@ -347,7 +347,22 @@ function TeamEditDialog({
             ...categories.map((c) => ({ value: c.id, label: c.name })),
           ]}
         />
-        <TextField label="FTE %" type="number" value={ftePct} onChange={setFtePct} />
+        <TextField
+          label="FTE %"
+          hint={
+            <>
+              Pondera el reparto de turnos en la planificación. Al 100%
+              la persona recibe su parte completa; al 50%, la mitad.
+              Útil para reducciones de jornada (vuelta de baja,
+              cuidados). No es un tope máximo — el solver intenta
+              acercarse a esa proporción, no impide superarla si hace
+              falta.
+            </>
+          }
+          type="number"
+          value={ftePct}
+          onChange={setFtePct}
+        />
 
         <div className="rounded-md border border-gray-200 bg-gray-50/60 p-3">
           <label className="flex items-start gap-2 text-sm cursor-pointer">
