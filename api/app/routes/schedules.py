@@ -734,20 +734,23 @@ def create_assignment(
     return _serialize_assignment(ctx, a)
 
 
-@router.delete(
-    "/schedules/{schedule_id}/assignments/{assignment_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-)
+@router.delete("/schedules/{schedule_id}/assignments/{assignment_id}")
 def delete_assignment(
     schedule_id: int,
     assignment_id: int,
     ctx: RequestContext = Depends(get_current_context),
-) -> None:
+) -> Response:
     """Delete an Assignment row entirely. Used by group leads to
     remove a cell they added by mistake. Tenant admin can also
     delete — but for main-team cells they typically just clear
     the person via PATCH so the row structure stays intact for
-    the solver's next regenerate."""
+    the solver's next regenerate.
+
+    Returns 204 No Content via an explicit Response — declaring
+    `status_code=204` on the decorator was triggering a FastAPI
+    0.111 assertion on this route (route registration order +
+    something about the multi-decorator file made it complain
+    that the route had an implied body)."""
     scope = caller_scope(ctx)
     if not scope.has_admin_powers:
         raise HTTPException(
@@ -769,6 +772,7 @@ def delete_assignment(
             )
     ctx.db.delete(a)
     ctx.db.flush()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(
