@@ -34,7 +34,7 @@ export default function TeamPage() {
         action={
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => setBulkOpen(true)}>
-              Importar CSV
+              Importar Lista
             </Button>
             <Link href="/admin/team/invite">
               <Button>Invitar miembro</Button>
