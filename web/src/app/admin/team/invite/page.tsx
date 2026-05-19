@@ -19,7 +19,9 @@ export default function InvitePage() {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [categoryId, setCategoryId] = useState<number | "">("");
-  const [rolesText, setRolesText] = useState("member");
+  // The only meaningful role distinction is admin vs. not. Default
+  // off; a single checkbox below promotes the invite to admin.
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [created, setCreated] = useState<InviteCreateResponse | null>(null);
   const [copied, setCopied] = useState(false);
 
@@ -29,10 +31,9 @@ export default function InvitePage() {
         email,
         person_name: name,
         category_id: categoryId === "" ? null : Number(categoryId),
-        roles: rolesText
-          .split(",")
-          .map((r) => r.trim())
-          .filter(Boolean),
+        // Always include "member" (the baseline role every active
+        // person carries); add "admin" only when the checkbox is on.
+        roles: isAdmin ? ["admin", "member"] : ["member"],
       }),
     onSuccess: (data) => {
       setCreated(data);
@@ -77,7 +78,7 @@ export default function InvitePage() {
               setEmail("");
               setName("");
               setCategoryId("");
-              setRolesText("member");
+              setIsAdmin(false);
             }}
           >
             Invitar a otro
@@ -113,11 +114,24 @@ export default function InvitePage() {
             ...(cats.data ?? []).map((c) => ({ value: c.id, label: c.name })),
           ]}
         />
-        <TextField
-          label="Roles (separados por coma, ej: member, doctor, admin)"
-          value={rolesText}
-          onChange={setRolesText}
-        />
+        <div className="rounded-md border border-gray-200 bg-gray-50/60 p-3">
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isAdmin}
+              onChange={(e) => setIsAdmin(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="font-medium">Administrador</span>
+              <span className="block text-xs text-gray-500 mt-0.5">
+                Podrá gestionar el equipo, las actividades y la
+                planificación. Déjalo desmarcado para crear un
+                miembro normal.
+              </span>
+            </span>
+          </label>
+        </div>
         {invite.isError && <ErrorText>{(invite.error as Error).message}</ErrorText>}
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={() => router.push("/admin/team")}>
