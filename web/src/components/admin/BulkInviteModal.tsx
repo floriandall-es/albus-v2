@@ -87,12 +87,12 @@ export function BulkInviteModal({
     : 0;
 
   return (
-    <Modal open={open} onClose={onClose} title="Importar equipo desde CSV" size="lg">
+    <Modal open={open} onClose={onClose} title="Importar equipo desde CSV o Excel" size="lg">
       <div>
         {stage === "pick" && (
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
-              El CSV debe tener tres columnas (en cualquier orden):{" "}
+              El archivo debe tener tres columnas (en cualquier orden):{" "}
               <code className="rounded bg-gray-100 px-1">email</code>,{" "}
               <code className="rounded bg-gray-100 px-1">nombre</code>,{" "}
               <code className="rounded bg-gray-100 px-1">categoría</code>. La
@@ -113,7 +113,7 @@ export function BulkInviteModal({
                   : "border-gray-300 bg-white"
               }`}
             >
-              <p className="font-medium">Arrastra un archivo CSV aquí</p>
+              <p className="font-medium">Arrastra un archivo CSV o Excel aquí</p>
               <p className="mt-1 text-gray-500">o haz click para seleccionarlo</p>
               {file && (
                 <p className="mt-2 text-xs text-gray-700">{file.name}</p>
@@ -121,7 +121,7 @@ export function BulkInviteModal({
               <input
                 ref={inputRef}
                 type="file"
-                accept=".csv,text/csv"
+                accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 hidden
                 onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
               />
@@ -131,10 +131,10 @@ export function BulkInviteModal({
                 href={`${API_BASE_URL}/api/team/invite/bulk/template`}
                 className="underline text-gray-700"
               >
-                Descargar plantilla
+                Descargar plantilla (CSV)
               </a>
               <span className="text-gray-500">
-                Máximo 1 MB · 5000 filas
+                CSV o Excel · Máximo 1 MB · 5000 filas
               </span>
             </div>
             {previewMut.isPending && (

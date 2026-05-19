@@ -1,10 +1,11 @@
-"""Bulk team invitations via CSV upload.
+"""Bulk team invitations via CSV or Excel upload.
 
 Two-stage flow:
 
   POST /api/team/invite/bulk/preview   (multipart file)
-      → parses + validates CSV against current tenant state, NO DB writes.
-      → returns per-row status (ok | warning | error) plus a summary.
+      → parses + validates CSV/XLSX against current tenant state, NO
+        DB writes. Returns per-row status (ok | warning | error)
+        plus a summary.
 
   POST /api/team/invite/bulk/commit    (JSON body of pre-validated rows)
       → re-checks cheap conditions, creates invitations one at a time,
@@ -12,6 +13,11 @@ Two-stage flow:
 
 Why two endpoints (rather than one with `dry_run=true`): cleaner OpenAPI,
 easier to reason about, easier to test.
+
+Format detection: filename extension first (.csv / .xlsx / .xls);
+falls back to magic bytes (XLSX = PK ZIP header, anything else =
+CSV). The parsed shape is identical so downstream validation
+doesn't care which path the row came through.
 """
 
 from __future__ import annotations
@@ -210,6 +216,118 @@ def _parse_csv(raw: bytes) -> list[dict[str, str]]:
     return rows
 
 
+def _parse_xlsx(raw: bytes) -> list[dict[str, str]]:
+    """Parse the first sheet of an .xlsx upload → list of row dicts
+    keyed by canonical header names. Same return shape as
+    `_parse_csv` so the calling code can dispatch on file type
+    without caring about the parser branch downstream.
+
+    We use openpyxl in read_only mode for predictable memory use
+    on bigger files (5k-row cap still applies). Empty rows are
+    skipped, just like the CSV path.
+    """
+    from openpyxl import load_workbook
+
+    try:
+        wb = load_workbook(
+            filename=io.BytesIO(raw), read_only=True, data_only=True
+        )
+    except Exception as e:
+        # openpyxl raises various exception types for malformed XLSX
+        # (zipfile.BadZipFile, KeyError on missing parts, etc.) — flatten
+        # them into a single user-facing 400.
+        raise HTTPException(
+            status_code=400,
+            detail=f"No se pudo leer el archivo Excel: {e}",
+        ) from None
+
+    ws = wb.active
+    if ws is None:
+        raise HTTPException(
+            status_code=400, detail="El archivo Excel no tiene hojas."
+        )
+
+    rows_iter = ws.iter_rows(values_only=True)
+    try:
+        header_row = next(rows_iter)
+    except StopIteration:
+        raise HTTPException(
+            status_code=400, detail="El archivo Excel está vacío."
+        )
+
+    # Excel cells come back as native Python types (int, float, datetime).
+    # For the bulk-invite use case every column is text, so we coerce
+    # to string and strip; None becomes "".
+    raw_header = [(_cell_text(c)).strip() for c in header_row]
+    canonical: list[str | None] = []
+    unknown: list[str] = []
+    for h in raw_header:
+        key = HEADER_ALIASES.get(_strip_accents(h))
+        canonical.append(key)
+        if key is None and h:
+            unknown.append(h)
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Columnas no reconocidas: {', '.join(unknown)}. "
+                "Cabeceras aceptadas: email, nombre, categoría "
+                "(o sus equivalentes en inglés)."
+            ),
+        )
+    missing = [k for k in CANONICAL_HEADERS if k not in canonical]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Faltan columnas requeridas. La cabecera debe incluir: "
+                "email, nombre, categoría."
+            ),
+        )
+
+    rows: list[dict[str, str]] = []
+    for raw_row in rows_iter:
+        cells = [_cell_text(c) for c in raw_row]
+        if not cells or all(c.strip() == "" for c in cells):
+            continue
+        padded = (cells + [""] * len(canonical))[: len(canonical)]
+        row: dict[str, str] = {k: "" for k in CANONICAL_HEADERS}
+        for col_idx, key in enumerate(canonical):
+            if key is not None:
+                row[key] = padded[col_idx].strip()
+        rows.append(row)
+        if len(rows) > MAX_ROWS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"El archivo supera el máximo de {MAX_ROWS} filas.",
+            )
+    return rows
+
+
+def _cell_text(value) -> str:
+    """Coerce an openpyxl cell value to a stripped string. Numbers
+    survive as their `str()` form (rare in this dataset but harmless);
+    None becomes "". We don't trim here — callers do."""
+    if value is None:
+        return ""
+    return str(value)
+
+
+def _is_xlsx_upload(file: UploadFile, raw: bytes) -> bool:
+    """Tell whether this upload should be routed to the Excel parser.
+    Filename extension is the primary signal — admins overwhelmingly
+    leave Excel-default extensions in place. Magic bytes (`PK\\x03\\x04`,
+    the ZIP header that XLSX files inherit) are the fallback for
+    browsers that strip the filename, paranoid clients, etc."""
+    name = (file.filename or "").lower()
+    if name.endswith(".xlsx") or name.endswith(".xlsm"):
+        return True
+    if name.endswith(".csv"):
+        return False
+    # No extension → look at the first 4 bytes.
+    return raw[:4] == b"PK\x03\x04"
+
+
 def _load_categories_by_lower_name(ctx: RequestContext) -> dict[str, Category]:
     cats = ctx.db.query(Category).filter(Category.tenant_id == ctx.tenant.id).all()
     return {c.name.strip().lower(): c for c in cats}
@@ -245,7 +363,7 @@ async def preview_bulk(
             detail=f"El archivo supera el máximo de {MAX_FILE_BYTES // 1024} KB.",
         )
 
-    rows = _parse_csv(raw)
+    rows = _parse_xlsx(raw) if _is_xlsx_upload(file, raw) else _parse_csv(raw)
     cats_by_name = _load_categories_by_lower_name(ctx)
 
     out: list[BulkPreviewRow] = []

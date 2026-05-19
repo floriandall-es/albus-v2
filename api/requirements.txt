@@ -23,6 +23,11 @@ Pillow==10.3.0
 Jinja2==3.1.4
 WeasyPrint==62.3
 pydyf==0.10.0
+# Excel parser for the team bulk-invite import. Spanish hospital
+# admins overwhelmingly live in .xlsx; supporting both CSV and Excel
+# saves a "Save As → CSV → fix encoding" step that nobody enjoys.
+# Pure-Python wheel, ~2 MB, no system deps.
+openpyxl==3.1.2
 pytest==8.2.0
 pytest-asyncio==0.23.6
 asgi-lifespan==2.1.0
