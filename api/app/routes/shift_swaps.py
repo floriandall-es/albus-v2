@@ -350,6 +350,20 @@ def create_offer(
             status_code=403,
             detail="Solo puedes ofrecer tus propios turnos",
         )
+    # Sub-team members cannot use the swap system yet — the
+    # existing flow would email every active tenant member and
+    # let anyone respond, which would let a main-team adjunto
+    # accept a residente's guardia. Mixing across sub-teams is
+    # out of scope until we build a scoped swap flow. For now:
+    # block at the source; the lead resolves coverage manually.
+    if ctx.membership.group_id is not None:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Las solicitudes de cobertura no están disponibles "
+                "para sub-equipos. Habla con tu responsable."
+            ),
+        )
     _published_or_400(ctx, a)
     if a.locked_at is not None:
         raise HTTPException(

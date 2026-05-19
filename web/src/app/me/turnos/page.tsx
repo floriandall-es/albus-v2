@@ -185,22 +185,32 @@ export default function TurnosPage() {
               personId={me.data.person.id}
               onClickShift={(a) => {
                 if (a.locked_at) return;
+                // Sub-equipo members can't request coverage through
+                // the system yet — their lead handles it offline.
+                if (myGroupId !== null) return;
                 setSwapTarget(a);
               }}
+              canRequestCoverage={myGroupId === null}
             />
           ) : (
             <>
-              <p className="mb-4 text-xs text-gray-500">
-                Tus turnos están resaltados en azul. Haz clic en uno
-                para pedir cobertura.
-              </p>
+              {myGroupId === null && (
+                <p className="mb-4 text-xs text-gray-500">
+                  Tus turnos están resaltados en azul. Haz clic en uno
+                  para pedir cobertura.
+                </p>
+              )}
               <PlanningGrid
                 assignments={detail.data.assignments}
                 holidayDates={holidayDates}
                 highlightPersonId={me.data.person.id}
-                onCellClick={(a) => setSwapTarget(a)}
+                onCellClick={
+                  myGroupId === null ? (a) => setSwapTarget(a) : undefined
+                }
                 cellIsClickable={(a) =>
-                  a.person_id === me.data!.person.id && !a.locked_at
+                  myGroupId === null
+                  && a.person_id === me.data!.person.id
+                  && !a.locked_at
                 }
                 absences={absences.data}
               />
@@ -275,10 +285,12 @@ function PersonalShiftList({
   assignments,
   personId,
   onClickShift,
+  canRequestCoverage,
 }: {
   assignments: Assignment[];
   personId: number;
   onClickShift: (a: Assignment) => void;
+  canRequestCoverage: boolean;
 }) {
   // Today's ISO YYYY-MM-DD via shared helper so the personal banner
   // / dashboard / shift list all agree on "today".
@@ -335,12 +347,14 @@ function PersonalShiftList({
         items={today}
         todayIso={todayIso}
         onClickShift={onClickShift}
+        canRequestCoverage={canRequestCoverage}
       />
       <ShiftSection
         title="Mañana"
         items={tomorrow}
         todayIso={todayIso}
         onClickShift={onClickShift}
+        canRequestCoverage={canRequestCoverage}
       />
       <ShiftSection
         title="Próximos"
@@ -348,6 +362,7 @@ function PersonalShiftList({
         emptyText={noUpcoming ? "No tienes turnos próximos en este mes." : undefined}
         todayIso={todayIso}
         onClickShift={onClickShift}
+        canRequestCoverage={canRequestCoverage}
       />
       {past.length > 0 && (
         <ShiftSection
@@ -356,6 +371,7 @@ function PersonalShiftList({
           todayIso={todayIso}
           dimmed
           onClickShift={onClickShift}
+          canRequestCoverage={canRequestCoverage}
         />
       )}
     </div>

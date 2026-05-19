@@ -265,6 +265,19 @@ def create_my_request(
     payload: AvailabilityRequestCreate,
     ctx: RequestContext = Depends(get_current_context),
 ) -> AvailabilityBlockOut:
+    # Sub-team members can't request bloqueos through the system
+    # yet — their lead manages absences internally for now. Same
+    # reason as the swap restriction: the existing approval flow
+    # routes to tenant admin, and the sub-team's lead has their
+    # own arrangement.
+    if ctx.membership.group_id is not None:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Los bloqueos no están disponibles para sub-equipos. "
+                "Habla con tu responsable."
+            ),
+        )
     block = AvailabilityBlock(
         tenant_id=ctx.tenant.id,
         person_id=ctx.person.id,

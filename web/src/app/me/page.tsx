@@ -38,11 +38,23 @@ export default function MeHome() {
   });
   const [swapTarget, setSwapTarget] = useState<Assignment | null>(null);
 
-  // Members only see published schedules.
+  // Members only see published schedules — but "published" means
+  // different things depending on whether they're in a sub-equipo
+  // or on the main team. Mirrors the rule on /me/turnos so the
+  // Inicio shifts match what they see on the full list.
+  const myMembership = me.data?.memberships.find(
+    (m) => m.tenant_id === me.data?.current_tenant.id,
+  );
+  const myGroupId = myMembership?.group_id ?? null;
   const publishedSchedules = useMemo(() => {
     const all = schedules.data ?? [];
-    return all.filter((s) => s.status === "published");
-  }, [schedules.data]);
+    return all.filter((s) => {
+      if (myGroupId !== null) {
+        return s.published_group_ids?.includes(myGroupId) ?? false;
+      }
+      return s.status === "published";
+    });
+  }, [schedules.data, myGroupId]);
 
   // Both today and tomorrow can live in the same calendar month,
   // OR straddle a month boundary. Resolve which schedule(s) we need.
@@ -136,8 +148,10 @@ export default function MeHome() {
               todayIso={todayIsoStr}
               onClickShift={(a) => {
                 if (a.locked_at) return;
+                if (myGroupId !== null) return;
                 setSwapTarget(a);
               }}
+              canRequestCoverage={myGroupId === null}
             />
           )}
           {tomorrowShifts.length > 0 && (
@@ -147,8 +161,10 @@ export default function MeHome() {
               todayIso={todayIsoStr}
               onClickShift={(a) => {
                 if (a.locked_at) return;
+                if (myGroupId !== null) return;
                 setSwapTarget(a);
               }}
+              canRequestCoverage={myGroupId === null}
             />
           )}
         </section>
@@ -184,18 +200,25 @@ export default function MeHome() {
             sublabel="Lista o planificación del equipo"
             href="/me/turnos"
           />
-          <ShortcutCard
-            icon={<ArrowLeftRight className="h-5 w-5" />}
-            label="Cambios"
-            sublabel="Pide cobertura o responde a otros"
-            href="/me/swaps"
-          />
-          <ShortcutCard
-            icon={<CalendarOff className="h-5 w-5" />}
-            label="Mis bloqueos"
-            sublabel="Vacaciones, bajas, formación"
-            href="/me/bloqueos"
-          />
+          {/* Sub-equipo members can't request coverage or bloqueos
+              through the system yet — their lead manages absences and
+              swaps offline. Hide the shortcuts so they don't dead-end. */}
+          {myGroupId === null && (
+            <ShortcutCard
+              icon={<ArrowLeftRight className="h-5 w-5" />}
+              label="Cambios"
+              sublabel="Pide cobertura o responde a otros"
+              href="/me/swaps"
+            />
+          )}
+          {myGroupId === null && (
+            <ShortcutCard
+              icon={<CalendarOff className="h-5 w-5" />}
+              label="Mis bloqueos"
+              sublabel="Vacaciones, bajas, formación"
+              href="/me/bloqueos"
+            />
+          )}
           <ShortcutCard
             icon={<Settings className="h-5 w-5" />}
             label="Mi cuenta"

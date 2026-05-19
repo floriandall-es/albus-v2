@@ -24,6 +24,7 @@ export function ShiftSection({
   todayIso,
   dimmed = false,
   onClickShift,
+  canRequestCoverage = true,
 }: {
   title: string;
   items: Assignment[];
@@ -35,6 +36,10 @@ export function ShiftSection({
    * section on /me/turnos. */
   dimmed?: boolean;
   onClickShift: (a: Assignment) => void;
+  /** Sub-equipo members can't request coverage through the system
+   * yet — their lead handles it offline. When false the row is
+   * non-interactive and the "Pedir cobertura →" hint is hidden. */
+  canRequestCoverage?: boolean;
 }) {
   if (items.length === 0) {
     if (!emptyText) return null;
@@ -62,6 +67,7 @@ export function ShiftSection({
             todayIso={todayIso}
             dimmed={dimmed}
             onClick={onClickShift}
+            canRequestCoverage={canRequestCoverage}
           />
         ))}
       </ul>
@@ -74,14 +80,19 @@ function ShiftRow({
   todayIso,
   dimmed,
   onClick,
+  canRequestCoverage,
 }: {
   a: Assignment;
   todayIso: string;
   dimmed: boolean;
   onClick: (a: Assignment) => void;
+  canRequestCoverage: boolean;
 }) {
   const isToday = a.date === todayIso;
   const isLocked = !!a.locked_at;
+  // Effectively "is the row clickable?" — locked turns it off, and
+  // sub-equipo members never get the coverage flow at all.
+  const isInteractive = !isLocked && canRequestCoverage;
   // The list item is a button when clickable (not locked); plain
   // div otherwise. Either way it sits 44px+ tall for touch targets.
   const body = (
@@ -114,14 +125,14 @@ function ShiftRow({
         </div>
         <ShiftTimeBadge a={a} inline />
       </div>
-      {!isLocked && (
+      {isInteractive && (
         <span className="hidden sm:inline text-xs text-brand-700 group-hover:underline">
           Pedir cobertura →
         </span>
       )}
     </div>
   );
-  if (isLocked) {
+  if (!isInteractive) {
     return <li className="bg-white">{body}</li>;
   }
   return (
