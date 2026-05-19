@@ -478,6 +478,10 @@ export type AuthResponse = {
   tenant: Tenant;
   person: Person;
   memberships: Membership[];
+  /** Set when this person is the designated lead of a group in
+   * the selected tenant. Drives the post-login redirect (group
+   * leads land on /admin instead of /me). */
+  lead_group_id: number | null;
 };
 
 // Returned by /api/login when the person has 2+ memberships and must pick a

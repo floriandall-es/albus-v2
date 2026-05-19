@@ -25,10 +25,14 @@ export function finalizeLogin(
   setToken(res.access_token);
   qc?.clear();
   const isAdmin = res.memberships.some((m) => m.roles.includes("admin"));
+  const isGroupLead = res.lead_group_id !== null;
   const onboarded = res.tenant.onboarding_completed_at != null;
   if (isAdmin && !onboarded) {
     router.push("/onboarding");
-  } else if (isAdmin) {
+  } else if (isAdmin || isGroupLead) {
+    // Group leads get the (scoped) admin UI — same destination as
+    // tenant admins, just with a filtered sidebar driven by
+    // /me.lead_group_id inside the admin layout.
     router.push("/admin");
   } else {
     router.push("/me");

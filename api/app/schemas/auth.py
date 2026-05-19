@@ -120,6 +120,11 @@ class AuthResponse(BaseModel):
     tenant: TenantOut
     person: PersonOut
     memberships: list[MembershipOut]
+    # Mirrors MeResponse.lead_group_id — set when the person is the
+    # designated lead of a group in the selected tenant. Lets the
+    # login redirect send them to /admin instead of /me without an
+    # extra /me round-trip.
+    lead_group_id: int | None = None
 
 
 class TenantSummaryCounts(BaseModel):
