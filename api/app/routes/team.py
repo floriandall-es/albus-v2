@@ -2,14 +2,20 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.models import Category, Membership, Person, Slot, SlotAllowedPerson
+from app.models import Category, Group, Membership, Person, Slot, SlotAllowedPerson
 from app.routes.deps import RequestContext, get_current_context
+from app.routes.scope import caller_scope
 from app.schemas.team import TeamMemberOut, TeamMemberUpdate
 
 router = APIRouter()
 
 
-def _serialize(m: Membership, person: Person, category: Category | None) -> TeamMemberOut:
+def _serialize(
+    m: Membership,
+    person: Person,
+    category: Category | None,
+    group_name: str | None,
+) -> TeamMemberOut:
     return TeamMemberOut(
         id=m.id,
         tenant_id=m.tenant_id,
@@ -23,20 +29,31 @@ def _serialize(m: Membership, person: Person, category: Category | None) -> Team
         category_name=category.name if category else None,
         fte_pct=m.fte_pct,
         disabled_at=m.disabled_at,
+        group_id=m.group_id,
+        group_name=group_name,
         created_at=m.created_at,
     )
 
 
 @router.get("/team", response_model=list[TeamMemberOut])
 def list_team(ctx: RequestContext = Depends(get_current_context)) -> list[TeamMemberOut]:
-    rows = (
-        ctx.db.query(Membership, Person, Category)
+    scope = caller_scope(ctx)
+    q = (
+        ctx.db.query(Membership, Person, Category, Group)
         .join(Person, Person.id == Membership.person_id)
         .outerjoin(Category, Category.id == Membership.category_id)
+        .outerjoin(Group, Group.id == Membership.group_id)
         .order_by(Person.name)
-        .all()
     )
-    return [_serialize(m, p, c) for m, p, c in rows]
+    # Group lead sees only their group's members. Tenant admin and
+    # plain members see everyone (the plain-member view is read-only
+    # by virtue of mutate endpoints requiring admin / lead status).
+    if scope.is_group_lead:
+        q = q.filter(Membership.group_id == scope.group_id)
+    return [
+        _serialize(m, p, c, g.name if g else None)
+        for m, p, c, g in q.all()
+    ]
 
 
 def _get_member_or_404(ctx: RequestContext, membership_id: int) -> Membership:
@@ -52,13 +69,35 @@ def update_team_member(
     payload: TeamMemberUpdate,
     ctx: RequestContext = Depends(get_current_context),
 ) -> TeamMemberOut:
+    scope = caller_scope(ctx)
+    if not scope.has_admin_powers:
+        raise HTTPException(
+            status_code=403, detail="Permisos insuficientes."
+        )
     m = _get_member_or_404(ctx, membership_id)
+    # Group lead: target must be in their group.
+    if scope.is_group_lead and m.group_id != scope.group_id:
+        raise HTTPException(
+            status_code=403,
+            detail="No puedes editar a personas fuera de tu sub-equipo.",
+        )
     data = payload.model_dump(exclude_unset=True)
     # `disabled` is a bool flag in the API; the column it controls
     # is a timestamp. Translate before the generic setattr loop so
     # we don't try to assign a bool to disabled_at directly.
     disabled = data.pop("disabled", None)
     allowed_slot_ids = data.pop("allowed_slot_ids", None)
+    # Group reassignment is tenant-admin-only — leads can't poach
+    # members across groups. clear_group is the explicit "remove
+    # from any group" sentinel (parallels how disabled / category
+    # are handled).
+    group_id_change = data.pop("group_id", None)
+    clear_group = data.pop("clear_group", False)
+    if (group_id_change is not None or clear_group) and not scope.is_tenant_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Solo el administrador puede mover personas entre sub-equipos.",
+        )
     if data.get("category_id") is not None:
         cat = ctx.db.get(Category, data["category_id"])
         if not cat or cat.tenant_id != ctx.tenant.id:
@@ -72,13 +111,22 @@ def update_team_member(
             m.disabled_at = datetime.now(timezone.utc)
         elif not disabled:
             m.disabled_at = None
+    if clear_group:
+        m.group_id = None
+    elif group_id_change is not None:
+        # Validate target group belongs to this tenant.
+        g = ctx.db.get(Group, group_id_change)
+        if not g or g.tenant_id != ctx.tenant.id:
+            raise HTTPException(status_code=422, detail="Unknown group_id")
+        m.group_id = group_id_change
     if allowed_slot_ids is not None:
         _sync_allowed_activities(ctx, m, set(allowed_slot_ids))
     ctx.db.flush()
     person = ctx.db.get(Person, m.person_id)
     cat = ctx.db.get(Category, m.category_id) if m.category_id else None
+    group = ctx.db.get(Group, m.group_id) if m.group_id else None
     assert person is not None
-    return _serialize(m, person, cat)
+    return _serialize(m, person, cat, group.name if group else None)
 
 
 def _sync_allowed_activities(

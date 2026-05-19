@@ -4,6 +4,7 @@ from app.models.membership import Membership
 from app.models.department import Department
 from app.models.role_type import RoleType
 from app.models.category import Category
+from app.models.group import Group
 from app.models.slot import (
     Slot,
     SlotAllowedPerson,
@@ -31,6 +32,7 @@ __all__ = [
     "Department",
     "RoleType",
     "Category",
+    "Group",
     "Slot",
     "SlotAllowedPerson",
     "SlotTeamRole",

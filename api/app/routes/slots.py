@@ -17,6 +17,7 @@ from app.models import (
     SlotTeamRoleCategory,
 )
 from app.routes.deps import RequestContext, get_current_context
+from app.routes.scope import caller_scope
 from app.schemas.slot import (
     SlotCreate,
     SlotOut,
@@ -183,6 +184,7 @@ def _serialize(ctx: RequestContext, slot: Slot) -> SlotOut:
         id=slot.id,
         tenant_id=slot.tenant_id,
         department_id=slot.department_id,
+        group_id=slot.group_id,
         name=slot.name,
         start_time=slot.start_time,
         end_time=slot.end_time,
@@ -296,18 +298,35 @@ def list_slots(ctx: RequestContext = Depends(get_current_context)) -> list[SlotO
     # Admin-controlled order (sprint 17): position is the primary
     # sort key, with name + id as deterministic tiebreakers in the
     # (rare) case two slots end up with the same position.
-    rows = (
-        ctx.db.query(Slot)
-        .order_by(Slot.position, Slot.name, Slot.id)
-        .all()
-    )
-    return [_serialize(ctx, r) for r in rows]
+    #
+    # Group lead scope: only slots owned by their group. Tenant
+    # admin and plain members see everything.
+    scope = caller_scope(ctx)
+    q = ctx.db.query(Slot).order_by(Slot.position, Slot.name, Slot.id)
+    if scope.is_group_lead:
+        q = q.filter(Slot.group_id == scope.group_id)
+    return [_serialize(ctx, r) for r in q.all()]
 
 
 @router.post("/slots", response_model=SlotOut, status_code=status.HTTP_201_CREATED)
 def create_slot(
     payload: SlotCreate, ctx: RequestContext = Depends(get_current_context)
 ) -> SlotOut:
+    scope = caller_scope(ctx)
+    if not scope.has_admin_powers:
+        raise HTTPException(status_code=403, detail="Permisos insuficientes.")
+    # Group lead: new slots are auto-tagged with their group. We
+    # ignore any incoming group_id from the payload (could be a
+    # malicious or stale value); a lead can't create slots outside
+    # their group.
+    group_id = payload.group_id
+    if scope.is_group_lead:
+        group_id = scope.group_id
+    elif group_id is not None:
+        # Tenant admin specifying a group → validate it exists.
+        g = ctx.db.get(Group, group_id)
+        if not g or g.tenant_id != ctx.tenant.id:
+            raise HTTPException(status_code=422, detail="Unknown group_id")
     # Sprint 17: new slots land at the end of the admin's ordering.
     # `max(position) + 1`; if there are no slots yet, position = 0.
     max_pos = ctx.db.query(sa.func.max(Slot.position)).scalar()
@@ -316,6 +335,7 @@ def create_slot(
         tenant_id=ctx.tenant.id,
         name=payload.name,
         department_id=payload.department_id,
+        group_id=group_id,
         start_time=payload.start_time,
         end_time=payload.end_time,
         days_applied=payload.days_applied,
@@ -337,18 +357,18 @@ def create_slot(
 
     _replace_team_roles(ctx, obj, payload.team_roles)
     _replace_allowed_persons(ctx, obj, payload.allowed_person_ids)
-    # Default rule: solver, position 0. The rule's days_bitmap is
-    # derived from slot.days_applied so the admin doesn't have to
-    # reconcile two day-scopes for a brand-new slot. Custom-day slots
-    # use their custom_days_bitmap; "weekdays" / "weekends_holidays" /
-    # "all" map to the obvious bitmaps.
+    # Default rule strategy depends on whether this is a main-team
+    # or group-owned slot: group slots are manual-only by policy
+    # (see scheduler skip + UI hide), main-team slots default to
+    # the solver as before.
+    default_strategy = "manual" if obj.group_id is not None else "solver"
     ctx.db.add(
         SlotRule(
             tenant_id=ctx.tenant.id,
             slot_id=obj.id,
             position=0,
             days_bitmap=_default_rule_bitmap(obj),
-            strategy="solver",
+            strategy=default_strategy,
             anchor_date=None,
         )
     )
@@ -366,10 +386,32 @@ def get_slot(slot_id: int, ctx: RequestContext = Depends(get_current_context)) -
 def update_slot(
     slot_id: int, payload: SlotUpdate, ctx: RequestContext = Depends(get_current_context)
 ) -> SlotOut:
+    scope = caller_scope(ctx)
+    if not scope.has_admin_powers:
+        raise HTTPException(status_code=403, detail="Permisos insuficientes.")
     obj = _get_or_404(ctx, slot_id)
+    if scope.is_group_lead and obj.group_id != scope.group_id:
+        raise HTTPException(
+            status_code=403,
+            detail="No puedes editar actividades fuera de tu sub-equipo.",
+        )
     data = payload.model_dump(exclude_unset=True)
     team_roles = data.pop("team_roles", None)
     allowed_person_ids = data.pop("allowed_person_ids", None)
+    # group_id reassignment: tenant admin only. Group leads cannot
+    # move slots between groups (they could otherwise hide a slot
+    # from the tenant admin's view).
+    if "group_id" in data:
+        if scope.is_group_lead:
+            raise HTTPException(
+                status_code=403,
+                detail="Solo el administrador puede cambiar el sub-equipo de una actividad.",
+            )
+        gid = data["group_id"]
+        if gid is not None:
+            g = ctx.db.get(Group, gid)
+            if not g or g.tenant_id != ctx.tenant.id:
+                raise HTTPException(status_code=422, detail="Unknown group_id")
     if "guardia_type" in data:
         # Normalize empty string to None so the column reflects "not a guardia".
         gt = data["guardia_type"]
@@ -397,7 +439,15 @@ def update_slot(
 
 @router.delete("/slots/{slot_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_slot(slot_id: int, ctx: RequestContext = Depends(get_current_context)) -> None:
+    scope = caller_scope(ctx)
+    if not scope.has_admin_powers:
+        raise HTTPException(status_code=403, detail="Permisos insuficientes.")
     obj = _get_or_404(ctx, slot_id)
+    if scope.is_group_lead and obj.group_id != scope.group_id:
+        raise HTTPException(
+            status_code=403,
+            detail="No puedes eliminar actividades fuera de tu sub-equipo.",
+        )
     ctx.db.delete(obj)
     ctx.db.flush()
 
@@ -653,9 +703,32 @@ def replace_slot_rules(
     payload: SlotRulesReplaceIn,
     ctx: RequestContext = Depends(get_current_context),
 ) -> SlotOut:
+    scope = caller_scope(ctx)
+    if not scope.has_admin_powers:
+        raise HTTPException(status_code=403, detail="Permisos insuficientes.")
     obj = _get_or_404(ctx, slot_id)
+    if scope.is_group_lead and obj.group_id != scope.group_id:
+        raise HTTPException(
+            status_code=403,
+            detail="No puedes editar reglas de actividades fuera de tu sub-equipo.",
+        )
     rules = payload.rules
     _validate_rules(rules, slot_headcount=max(1, obj.headcount))
+
+    # Group-owned slots are manual-only. Forbidden rule strategies
+    # here (rotation / fixed_weekly / solver) would conflict with
+    # the design: sub-team leads manage their schedules by hand.
+    if obj.group_id is not None:
+        non_manual = [r.strategy for r in rules if r.strategy != "manual"]
+        if non_manual:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Las actividades de un sub-equipo solo admiten "
+                    "asignación manual. Cambia las reglas a 'Manual' "
+                    "antes de guardar."
+                ),
+            )
 
     # Validate person_ids belong to this tenant via Membership.
     person_ids: set[int] = set()

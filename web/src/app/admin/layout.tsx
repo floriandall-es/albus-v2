@@ -11,6 +11,7 @@ import {
   CalendarOff,
   Clock,
   Home,
+  Layers,
   LogOut,
   PartyPopper,
   Settings,
@@ -44,6 +45,7 @@ const NAV: NavSection[] = [
     items: [
       { href: "/admin/team", label: "Equipo", icon: Users },
       { href: "/admin/categories", label: "Categorías", icon: Tag },
+      { href: "/admin/groups", label: "Sub-equipos", icon: Layers },
       { href: "/admin/slots", label: "Actividades", icon: Clock },
       { href: "/admin/rules", label: "Reglas", icon: Sparkles },
       { href: "/admin/holidays", label: "Festivos", icon: PartyPopper },

@@ -46,6 +46,12 @@ class Membership(Base):
     disabled_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Sprint 23 / migration 0035: sub-team grouping. Null = main team
+    # member (managed by the tenant admin). Non-null = member of that
+    # group, manageable by the tenant admin AND by the group lead.
+    group_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("groups.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

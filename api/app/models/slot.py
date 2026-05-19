@@ -39,6 +39,13 @@ class Slot(Base):
     department_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Sprint 23 / migration 0035: which sub-team owns this activity.
+    # Null = main team (tenant admin manages). Non-null = owned by
+    # that group; only the group lead and tenant admin can edit it,
+    # and all rules are forced to manual strategy.
+    group_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("groups.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     # `pool_id` lived here before migration 0030. Pools were collapsed
     # into slot_allowed_persons; restricting which people can do a slot
     # is now a direct list of person ids on the slot itself.

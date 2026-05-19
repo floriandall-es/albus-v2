@@ -6,6 +6,7 @@ import {
   api,
   type Category,
   type DaysApplied,
+  type Group,
   type Slot,
   type SlotInput,
   type SlotRule,
@@ -44,6 +45,7 @@ export default function SlotsPage() {
   const list = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
   const cats = useQuery({ queryKey: ["categories"], queryFn: api.listCategories });
   const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
+  const groups = useQuery({ queryKey: ["groups"], queryFn: api.listGroups });
   const [editing, setEditing] = useState<Slot | "new" | null>(null);
 
   const del = useMutation({
@@ -91,6 +93,7 @@ export default function SlotsPage() {
                 <th className="px-4 py-2 font-medium">Días</th>
                 <th className="px-4 py-2 font-medium">Modo</th>
                 <th className="px-4 py-2 font-medium">Plazas</th>
+                <th className="px-4 py-2 font-medium">Sub-equipo</th>
                 <th className="px-4 py-2 font-medium">Equipo autorizado</th>
                 <th className="px-4 py-2 font-medium">Orden</th>
                 <th className="px-4 py-2 font-medium text-right">Acciones</th>
@@ -124,6 +127,20 @@ export default function SlotsPage() {
                         ? s.team_roles.reduce((a, r) => a + r.headcount, 0)
                           || s.headcount
                         : s.headcount}
+                  </td>
+                  <td className="px-4 py-2">
+                    {(() => {
+                      const g = (groups.data ?? []).find(
+                        (x) => x.id === s.group_id,
+                      );
+                      return g ? (
+                        <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700">
+                          {g.name}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-2 text-gray-600">
                     {s.allowed_person_ids.length === 0 ? (
@@ -185,6 +202,7 @@ export default function SlotsPage() {
           initial={editing === "new" ? null : editing}
           categories={cats.data ?? []}
           team={team.data ?? []}
+          groups={groups.data ?? []}
           onClose={() => setEditing(null)}
         />
       )}
@@ -198,15 +216,18 @@ function SlotDialog({
   initial,
   categories,
   team,
+  groups,
   onClose,
 }: {
   initial: Slot | null;
   categories: Category[];
   team: TeamMember[];
+  groups: Group[];
   onClose: () => void;
 }) {
   const qc = useQueryClient();
   const [name, setName] = useState(initial?.name ?? "");
+  const [groupId, setGroupId] = useState<number | "">(initial?.group_id ?? "");
   const [startTime, setStartTime] = useState(initial?.start_time?.slice(0, 5) ?? "");
   const [endTime, setEndTime] = useState(initial?.end_time?.slice(0, 5) ?? "");
   // Two-mode schedule: "ranged" keeps the start/end time pickers and
@@ -299,6 +320,7 @@ function SlotDialog({
         counts_for_equity: countsEquity,
         guardia_type: guardiaType.trim() || null,
         color: color,
+        group_id: groupId === "" ? null : Number(groupId),
         // When scheduleMode = "all_day" both times stay null regardless
         // of what the user previously typed (state is preserved so a
         // toggle back to "ranged" doesn't lose values, but the save
@@ -431,6 +453,25 @@ function SlotDialog({
         }}
       >
         <TextField label="Nombre" value={name} onChange={setName} required />
+        {groups.length > 0 && (
+          <Select
+            label="Sub-equipo"
+            hint={
+              <>
+                Si esta actividad pertenece a un sub-equipo (p. ej.
+                residentes), su responsable la administrará por su cuenta
+                y solo admitirá asignación manual. Déjalo vacío para
+                que la actividad forme parte del equipo principal.
+              </>
+            }
+            value={groupId}
+            onChange={(v) => setGroupId(v === "" ? "" : Number(v))}
+            options={[
+              { value: "", label: "— Equipo principal —" },
+              ...groups.map((g) => ({ value: g.id, label: g.name })),
+            ]}
+          />
+        )}
         <div>
           <span className="text-sm font-medium text-gray-700">Horario</span>
           <div className="mt-1 flex flex-wrap gap-3 text-sm">

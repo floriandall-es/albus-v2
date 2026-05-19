@@ -23,6 +23,10 @@ class TeamMemberOut(BaseModel):
     # UI shows a "Desactivado" badge. Past assignments + login
     # remain unaffected.
     disabled_at: datetime | None = None
+    # Sub-team this person belongs to (null = main team). The
+    # group's lead can manage them; tenant admin always can.
+    group_id: int | None = None
+    group_name: str | None = None
     created_at: datetime
 
 
@@ -42,6 +46,11 @@ class TeamMemberUpdate(BaseModel):
     # silently turn "Todo el equipo" into "everyone-except-Pérez"
     # otherwise, a side effect this view should not produce).
     allowed_slot_ids: list[int] | None = None
+    # Tenant admin only: move this member into / out of a group.
+    # Null = main team. Group leads can't change this via the team
+    # endpoint — they use POST /api/groups/{id}/members instead.
+    group_id: int | None = None
+    clear_group: bool = False
 
 
 class TeamInviteRequest(BaseModel):

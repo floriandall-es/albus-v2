@@ -22,6 +22,10 @@ _HEX_COLOR = r"^#[0-9a-fA-F]{6}$"
 class SlotCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     department_id: int | None = None
+    # Sub-team that owns this activity. Null = main team (managed
+    # by the tenant admin). When set, only the group's lead and
+    # the tenant admin can edit it, and rules are forced to manual.
+    group_id: int | None = None
     start_time: time | None = None
     end_time: time | None = None
     days_applied: DaysApplied = "all"
@@ -42,6 +46,7 @@ class SlotCreate(BaseModel):
 class SlotUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     department_id: int | None = None
+    group_id: int | None = None
     start_time: time | None = None
     end_time: time | None = None
     days_applied: DaysApplied | None = None
@@ -70,6 +75,7 @@ class SlotOut(BaseModel):
     id: int
     tenant_id: int
     department_id: int | None
+    group_id: int | None
     name: str
     start_time: time | None
     end_time: time | None

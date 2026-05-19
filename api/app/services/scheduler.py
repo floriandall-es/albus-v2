@@ -163,7 +163,15 @@ class _Context:
             m.person_id: m for m in self.memberships
         }
 
-        self.slots: list[Slot] = db.query(Slot).all()
+        # Group-owned slots (slot.group_id is not None) are
+        # excluded entirely from the LP. Sub-team leads schedule
+        # those manually via the schedule cell editor; the solver
+        # has no business deciding their assignments. Past
+        # assignments on group slots stay in the Schedule; we just
+        # don't generate new ones from here.
+        self.slots: list[Slot] = (
+            db.query(Slot).filter(Slot.group_id.is_(None)).all()
+        )
         self.slot_by_id: dict[int, Slot] = {s.id: s for s in self.slots}
         self.team_roles_by_slot: dict[int, list[SlotTeamRole]] = defaultdict(list)
         for tr in db.query(SlotTeamRole).all():

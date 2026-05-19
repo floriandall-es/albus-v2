@@ -301,6 +301,19 @@ export type Category = {
   created_at: string;
 };
 
+export type Group = {
+  id: number;
+  tenant_id: number;
+  name: string;
+  /** Membership id of the designated lead. Null when no lead set. */
+  lead_membership_id: number | null;
+  /** Display name of the lead (joined Person.name). */
+  lead_name: string | null;
+  member_count: number;
+  slot_count: number;
+  created_at: string;
+};
+
 export type Incident = {
   id: number;
   tenant_id: number;
@@ -369,6 +382,8 @@ export type Slot = {
   id: number;
   tenant_id: number;
   department_id: number | null;
+  /** Sub-team that owns this activity. Null = main team. */
+  group_id: number | null;
   name: string;
   start_time: string | null;
   end_time: string | null;
@@ -397,6 +412,7 @@ export type Slot = {
 export type SlotInput = {
   name: string;
   department_id?: number | null;
+  group_id?: number | null;
   start_time?: string | null;
   end_time?: string | null;
   days_applied: DaysApplied;
@@ -428,6 +444,9 @@ export type TeamMember = {
   /** ISO timestamp. Non-null = membership is paused; solver
    * skips them and admin UI shows "Desactivado". Null = active. */
   disabled_at: string | null;
+  /** Sub-team this person belongs to. Null = main team. */
+  group_id: number | null;
+  group_name: string | null;
   created_at: string;
 };
 
@@ -442,6 +461,10 @@ export type TeamMemberUpdate = {
    * this person should be authorized on. Server reconciles
    * only restricted slots — unrestricted slots stay untouched. */
   allowed_slot_ids?: number[];
+  /** Tenant-admin only: move this member to a different group
+   * (or clear with `clear_group: true`). */
+  group_id?: number | null;
+  clear_group?: boolean;
 };
 
 export type TenantSummaryCounts = {
@@ -770,6 +793,33 @@ export const api = {
     }),
   deleteIncident: (id: number) =>
     request<void>(`/api/incidents/${id}`, { method: "DELETE" }),
+
+  // Sub-team groups
+  listGroups: () => request<Group[]>("/api/groups"),
+  createGroup: (body: { name: string; lead_membership_id?: number | null }) =>
+    request<Group>("/api/groups", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateGroup: (
+    id: number,
+    body: {
+      name?: string;
+      lead_membership_id?: number | null;
+      clear_lead?: boolean;
+    },
+  ) =>
+    request<Group>(`/api/groups/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteGroup: (id: number) =>
+    request<void>(`/api/groups/${id}`, { method: "DELETE" }),
+  replaceGroupMembers: (id: number, membership_ids: number[]) =>
+    request<Group>(`/api/groups/${id}/members`, {
+      method: "PUT",
+      body: JSON.stringify({ membership_ids }),
+    }),
 
   // Tenant defaults
   updateTenantDefaults: (body: {
