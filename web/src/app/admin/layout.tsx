@@ -23,28 +23,17 @@ import {
 import { api, getToken } from "@/lib/api";
 import { useLogout } from "@/lib/use-logout";
 
-type NavItem = {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-  /** True = visible to group leads too. Default (omitted) = tenant
-   * admin only. Group leads see a curated subset of the admin UI —
-   * everything tenant-wide (Categorías, Reglas, Festivos, etc.) is
-   * hidden from them because they have no business editing it. */
-  leadAccess?: boolean;
-};
-
 type NavSection = {
   title: string;
-  items: NavItem[];
+  items: { href: string; label: string; icon: LucideIcon }[];
 };
 
 const NAV: NavSection[] = [
   {
     title: "Operativa",
     items: [
-      { href: "/admin", label: "Inicio", icon: Home, leadAccess: true },
-      { href: "/admin/schedule", label: "Planificación", icon: CalendarDays, leadAccess: true },
+      { href: "/admin", label: "Inicio", icon: Home },
+      { href: "/admin/schedule", label: "Planificación", icon: CalendarDays },
       { href: "/admin/stats", label: "Estadísticas", icon: BarChart3 },
       { href: "/admin/swaps", label: "Cambios de turno", icon: ArrowLeftRight },
       { href: "/admin/availability", label: "Bloqueos", icon: CalendarOff },
@@ -54,10 +43,10 @@ const NAV: NavSection[] = [
   {
     title: "Configuración",
     items: [
-      { href: "/admin/team", label: "Equipo", icon: Users, leadAccess: true },
+      { href: "/admin/team", label: "Equipo", icon: Users },
       { href: "/admin/categories", label: "Categorías", icon: Tag },
       { href: "/admin/groups", label: "Sub-equipos", icon: Layers },
-      { href: "/admin/slots", label: "Actividades", icon: Clock, leadAccess: true },
+      { href: "/admin/slots", label: "Actividades", icon: Clock },
       { href: "/admin/rules", label: "Reglas", icon: Sparkles },
       { href: "/admin/holidays", label: "Festivos", icon: PartyPopper },
     ],
@@ -65,7 +54,7 @@ const NAV: NavSection[] = [
   {
     title: "Cuenta",
     items: [
-      { href: "/admin/settings", label: "Mi cuenta", icon: Settings, leadAccess: true },
+      { href: "/admin/settings", label: "Mi cuenta", icon: Settings },
     ],
   },
 ];
@@ -95,9 +84,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     if (!me.data) return;
     const isAdmin = me.data.memberships.some((m) => m.roles.includes("admin"));
     const isGroupLead = me.data.lead_group_id !== null;
-    // Tenant admins AND group leads both get the (scoped) admin UI.
-    // Plain members are bounced back to /me.
-    if (!isAdmin && !isGroupLead) router.replace("/me");
+    // Only tenant admins get the full admin UI. Group leads have
+    // a dedicated UI at /lead purpose-built for "manage your
+    // group's actividades + planning" — they don't need (and
+    // shouldn't see) tenant-level pages here.
+    if (!isAdmin) router.replace(isGroupLead ? "/lead" : "/me");
   }, [me.data, router]);
 
   if (!authChecked || me.isLoading) {
@@ -133,23 +124,13 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
-          {NAV.map((section) => {
-            // Filter items down for group leads. Tenant admins see
-            // everything; leads see only items tagged leadAccess.
-            const isTenantAdmin = me.data?.memberships.some((m) =>
-              m.roles.includes("admin"),
-            );
-            const items = isTenantAdmin
-              ? section.items
-              : section.items.filter((i) => i.leadAccess);
-            if (items.length === 0) return null;
-            return (
+          {NAV.map((section) => (
             <div key={section.title}>
               <div className="px-2 mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                 {section.title}
               </div>
               <div className="space-y-0.5">
-                {items.map((item) => {
+                {section.items.map((item) => {
                   const Icon = item.icon;
                   // /admin (Inicio) is a prefix of every other admin
                   // route, so use an exact match for it specifically —
@@ -184,8 +165,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                 })}
               </div>
             </div>
-            );
-          })}
+          ))}
         </nav>
 
         <div className="border-t border-gray-100 px-3 py-3">

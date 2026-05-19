@@ -61,6 +61,17 @@ class AssignmentPatch(BaseModel):
     clear_person: bool = False
 
 
+class AssignmentCreate(BaseModel):
+    """Body for POST /api/schedules/{id}/assignments — used by
+    group leads to create a new Assignment row for one of THEIR
+    group's slots on a specific date. Tenant admin uses a
+    different path (assignments come from the solver run)."""
+    slot_id: int
+    date: date
+    person_id: int | None = None
+    team_role_id: int | None = None
+
+
 class EligiblePersonOut(BaseModel):
     person_id: int
     person_name: str

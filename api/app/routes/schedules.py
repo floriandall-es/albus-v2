@@ -21,7 +21,9 @@ from app.models import (
     SlotTeamRole,
 )
 from app.routes.deps import RequestContext, get_current_context
+from app.routes.scope import caller_scope
 from app.schemas.schedule import (
+    AssignmentCreate,
     AssignmentOut,
     AssignmentPatch,
     EligiblePersonOut,
@@ -587,9 +589,31 @@ def patch_assignment(
     payload: AssignmentPatch,
     ctx: RequestContext = Depends(get_current_context),
 ) -> AssignmentOut:
-    _require_admin(ctx)
-    schedule = _get_draft_schedule_or_400(ctx, schedule_id)
+    scope = caller_scope(ctx)
+    if not scope.has_admin_powers:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes."
+        )
+    # Tenant admins still hit the draft-only gate (their bulk
+    # edits are scoped to "I'm editing a draft before publishing").
+    # Group leads bypass it for cells on THEIR group's slots:
+    # group slots are manual-only and aren't part of the main team's
+    # publish lifecycle, so the lead can adjust assignments at any
+    # status without affecting the tenant admin's plan.
+    if scope.is_tenant_admin:
+        schedule = _get_draft_schedule_or_400(ctx, schedule_id)
+    else:
+        schedule = ctx.db.get(Schedule, schedule_id)
+        if not schedule or schedule.tenant_id != ctx.tenant.id:
+            raise HTTPException(status_code=404, detail="Schedule not found")
     a = _get_assignment(ctx, schedule, assignment_id)
+    if scope.is_group_lead:
+        slot = ctx.db.get(Slot, a.slot_id)
+        if not slot or slot.group_id != scope.group_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Esta asignación no pertenece a tu sub-equipo.",
+            )
     data = payload.model_dump(exclude_unset=True)
     clear = data.pop("clear_person", False)
 
@@ -626,6 +650,125 @@ def patch_assignment(
 
     ctx.db.flush()
     return _serialize_assignment(ctx, a)
+
+
+@router.post(
+    "/schedules/{schedule_id}/assignments",
+    response_model=AssignmentOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_assignment(
+    schedule_id: int,
+    payload: AssignmentCreate,
+    ctx: RequestContext = Depends(get_current_context),
+) -> AssignmentOut:
+    """Create a new Assignment row. Used by group leads to add
+    cells for their group's slots — the solver never creates rows
+    for group slots, so a lead opening a "new" cell needs to insert
+    one before they can pick a person.
+
+    Tenant admin can also call this for edge cases (manual cells
+    on main-team slots that the solver missed). For tenant admin,
+    the draft-only gate applies. Group leads bypass that gate, same
+    rationale as patch_assignment.
+    """
+    scope = caller_scope(ctx)
+    if not scope.has_admin_powers:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes."
+        )
+    if scope.is_tenant_admin:
+        schedule = _get_draft_schedule_or_400(ctx, schedule_id)
+    else:
+        schedule = ctx.db.get(Schedule, schedule_id)
+        if not schedule or schedule.tenant_id != ctx.tenant.id:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+
+    slot = ctx.db.get(Slot, payload.slot_id)
+    if not slot or slot.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=422, detail="Unknown slot_id")
+    if scope.is_group_lead and slot.group_id != scope.group_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Esta actividad no pertenece a tu sub-equipo.",
+        )
+
+    # Date must fall within the schedule's month.
+    period_start = date(schedule.period.year, schedule.period.month, 1)
+    next_month_year = (
+        schedule.period.year + (1 if schedule.period.month == 12 else 0)
+    )
+    next_month = 1 if schedule.period.month == 12 else schedule.period.month + 1
+    period_end = date(next_month_year, next_month, 1)
+    if not (period_start <= payload.date < period_end):
+        raise HTTPException(
+            status_code=422,
+            detail=f"La fecha {payload.date} cae fuera del mes {schedule.period}.",
+        )
+
+    if payload.team_role_id is not None:
+        tr = ctx.db.get(SlotTeamRole, payload.team_role_id)
+        if not tr or tr.tenant_id != ctx.tenant.id or tr.slot_id != slot.id:
+            raise HTTPException(
+                status_code=422, detail="team_role_id no pertenece a este slot"
+            )
+
+    if payload.person_id is not None:
+        sctx = _Context(ctx.db, ctx.tenant.id, schedule.period)
+        ok, reason = is_eligible(
+            sctx, payload.person_id, slot, payload.date, team_role_id=payload.team_role_id
+        )
+        if not ok:
+            raise HTTPException(status_code=422, detail=reason or "No elegible")
+
+    a = Assignment(
+        tenant_id=ctx.tenant.id,
+        schedule_id=schedule.id,
+        slot_id=slot.id,
+        date=payload.date,
+        person_id=payload.person_id,
+        team_role_id=payload.team_role_id,
+    )
+    ctx.db.add(a)
+    ctx.db.flush()
+    return _serialize_assignment(ctx, a)
+
+
+@router.delete(
+    "/schedules/{schedule_id}/assignments/{assignment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_assignment(
+    schedule_id: int,
+    assignment_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> None:
+    """Delete an Assignment row entirely. Used by group leads to
+    remove a cell they added by mistake. Tenant admin can also
+    delete — but for main-team cells they typically just clear
+    the person via PATCH so the row structure stays intact for
+    the solver's next regenerate."""
+    scope = caller_scope(ctx)
+    if not scope.has_admin_powers:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes."
+        )
+    if scope.is_tenant_admin:
+        schedule = _get_draft_schedule_or_400(ctx, schedule_id)
+    else:
+        schedule = ctx.db.get(Schedule, schedule_id)
+        if not schedule or schedule.tenant_id != ctx.tenant.id:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+    a = _get_assignment(ctx, schedule, assignment_id)
+    if scope.is_group_lead:
+        slot = ctx.db.get(Slot, a.slot_id)
+        if not slot or slot.group_id != scope.group_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Esta asignación no pertenece a tu sub-equipo.",
+            )
+    ctx.db.delete(a)
+    ctx.db.flush()
 
 
 @router.post(

@@ -4,9 +4,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  ArrowLeftRight,
   CalendarDays,
-  CalendarOff,
+  Clock,
   Home,
   LogOut,
   Settings,
@@ -15,15 +14,27 @@ import {
 import { api, getToken } from "@/lib/api";
 import { useLogout } from "@/lib/use-logout";
 
+/**
+ * Dedicated shell for sub-team leads (the "residente mayor" and
+ * equivalents). Purpose-built for "manage this group's actividades
+ * + plan this group's people" — NOT a filtered version of /admin.
+ *
+ * Auth gate: requires the caller to be lead_group_id !== null on
+ * the /me response. Tenant admins are bounced to /admin (they have
+ * their own bigger UI); plain members go to /me.
+ *
+ * Sidebar deliberately tiny — three operational items + Mi cuenta.
+ * No tenant-level concepts (no schedules-as-publishable-objects,
+ * no rules, no holidays, no stats). Manual planning only.
+ */
 const NAV: { href: string; label: string; icon: LucideIcon }[] = [
-  { href: "/me", label: "Inicio", icon: Home },
-  { href: "/me/turnos", label: "Mis turnos", icon: CalendarDays },
-  { href: "/me/swaps", label: "Cambios", icon: ArrowLeftRight },
-  { href: "/me/bloqueos", label: "Mis bloqueos", icon: CalendarOff },
-  { href: "/me/settings", label: "Mi cuenta", icon: Settings },
+  { href: "/lead", label: "Inicio", icon: Home },
+  { href: "/lead/actividades", label: "Actividades", icon: Clock },
+  { href: "/lead/planificacion", label: "Planificación", icon: CalendarDays },
+  { href: "/lead/settings", label: "Mi cuenta", icon: Settings },
 ];
 
-export default function MeLayout({ children }: { children: ReactNode }) {
+export default function LeadLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const logout = useLogout();
   const pathname = usePathname();
@@ -44,45 +55,35 @@ export default function MeLayout({ children }: { children: ReactNode }) {
     enabled: authChecked,
   });
 
-  // Un-onboarded admins still go through the wizard. Group leads
-  // get bounced to their dedicated /lead UI — /me is for plain
-  // members (the residentes themselves, in this domain).
+  // Route guard: only group leads get here. Tenant admins (who
+  // could happen to also be a lead) go to /admin because that's
+  // their main UI. Plain members go to /me.
   useEffect(() => {
     if (!me.data) return;
-    const isAdmin = me.data.memberships.some((m) =>
-      m.roles.includes("admin"),
-    );
-    if (isAdmin && me.data.current_tenant.onboarding_completed_at === null) {
-      router.replace("/onboarding");
+    const isAdmin = me.data.memberships.some((m) => m.roles.includes("admin"));
+    if (isAdmin) {
+      router.replace("/admin");
       return;
     }
-    // Don't redirect from /me/settings — leads click "Mi cuenta"
-    // on their own sidebar and it links to /lead/settings, but
-    // we shouldn't fight users who navigate directly here.
-    const isLead = me.data.lead_group_id !== null;
-    const onSettings = pathname?.startsWith("/me/settings");
-    if (isLead && !isAdmin && !onSettings) {
-      router.replace("/lead");
+    if (me.data.lead_group_id === null) {
+      router.replace("/me");
     }
-  }, [me.data, router, pathname]);
+  }, [me.data, router]);
+
+  // Look up the lead's group name for the sidebar header. We don't
+  // store it on /me to keep that response slim — one extra request
+  // here is fine and gets cached by react-query.
+  const groups = useQuery({
+    queryKey: ["groups"],
+    queryFn: api.listGroups,
+    enabled: !!me.data?.lead_group_id,
+  });
+  const myGroup = groups.data?.find(
+    (g) => g.id === me.data?.lead_group_id,
+  );
 
   if (!authChecked || me.isLoading) {
     return <div className="p-8 text-sm text-gray-500">Cargando…</div>;
-  }
-  if (me.isError) {
-    return (
-      <div className="p-8">
-        <p className="text-sm text-red-600 mb-4">
-          {(me.error as Error).message}
-        </p>
-        <button
-          className="rounded-md border px-3 py-1 text-sm"
-          onClick={logout}
-        >
-          Iniciar sesión de nuevo
-        </button>
-      </div>
-    );
   }
 
   return (
@@ -95,20 +96,29 @@ export default function MeLayout({ children }: { children: ReactNode }) {
             alt="Trivu"
             className="h-14 w-14 rounded-lg object-cover shadow-soft"
           />
-          <div className="text-sm font-medium text-gray-700 leading-tight">
-            {me.data?.current_tenant.name}
+          <div className="leading-tight">
+            <div className="text-sm font-medium text-gray-700">
+              {me.data?.current_tenant.name}
+            </div>
+            {myGroup && (
+              <div className="text-xs text-gray-500 mt-0.5">
+                Sub-equipo:{" "}
+                <span className="font-medium text-gray-700">
+                  {myGroup.name}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
           {NAV.map((item) => {
             const Icon = item.icon;
-            // /me (Inicio) is a prefix of every other member route,
-            // so use an exact match for it specifically — otherwise
-            // the dashboard link would light up on every page.
+            // /lead (Inicio) is a prefix of every other lead route,
+            // so use exact match for it specifically.
             const active =
-              item.href === "/me"
-                ? pathname === "/me"
+              item.href === "/lead"
+                ? pathname === "/lead"
                 : pathname?.startsWith(item.href);
             return (
               <Link

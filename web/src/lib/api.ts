@@ -1024,6 +1024,28 @@ export const api = {
       `/api/schedules/${scheduleId}/assignments/${assignmentId}`,
       { method: "PATCH", body: JSON.stringify(body) },
     ),
+  /** Used by group leads to add a brand-new assignment row to a
+   * schedule for one of their group's slots on a given date.
+   * Tenant admins can use this too but typically don't need to —
+   * the solver pre-creates rows for main-team slots. */
+  createAssignment: (
+    scheduleId: number,
+    body: {
+      slot_id: number;
+      date: string;
+      person_id?: number | null;
+      team_role_id?: number | null;
+    },
+  ) =>
+    request<Assignment>(`/api/schedules/${scheduleId}/assignments`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteAssignment: (scheduleId: number, assignmentId: number) =>
+    request<void>(
+      `/api/schedules/${scheduleId}/assignments/${assignmentId}`,
+      { method: "DELETE" },
+    ),
   lockAssignment: (scheduleId: number, assignmentId: number) =>
     request<Assignment>(
       `/api/schedules/${scheduleId}/assignments/${assignmentId}/lock`,

@@ -29,11 +29,13 @@ export function finalizeLogin(
   const onboarded = res.tenant.onboarding_completed_at != null;
   if (isAdmin && !onboarded) {
     router.push("/onboarding");
-  } else if (isAdmin || isGroupLead) {
-    // Group leads get the (scoped) admin UI — same destination as
-    // tenant admins, just with a filtered sidebar driven by
-    // /me.lead_group_id inside the admin layout.
+  } else if (isAdmin) {
     router.push("/admin");
+  } else if (isGroupLead) {
+    // Group leads have a dedicated UI at /lead — purpose-built for
+    // "manage your group's actividades + planning". Not a filtered
+    // version of /admin.
+    router.push("/lead");
   } else {
     router.push("/me");
   }

@@ -43,18 +43,9 @@ export default function SchedulesPage() {
   const router = useRouter();
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ["schedules"], queryFn: api.listSchedules });
-  const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   const today = new Date();
   const defaultPeriod = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
   const [period, setPeriod] = useState<string>(defaultPeriod);
-
-  // Only tenant admins can generate a new month (it runs the solver
-  // on the main team's slots). Group leads land on this same page
-  // but only to open existing schedules and edit their group's
-  // cells manually, so the generate UI is hidden for them.
-  const isTenantAdmin = !!me.data?.memberships.some((m) =>
-    m.roles.includes("admin"),
-  );
 
   const generate = useMutation({
     mutationFn: () => api.generateSchedule(period),
@@ -67,37 +58,31 @@ export default function SchedulesPage() {
   return (
     <>
       <PageHeader title="Planificación" />
-      {isTenantAdmin && (
-        <Card>
-          <div className="p-4 flex items-end gap-3">
-            <div className="w-72">
-              <MonthPicker label="Mes" value={period} onChange={setPeriod} />
-            </div>
-            <Button
-              onClick={() => generate.mutate()}
-              disabled={generate.isPending}
-            >
-              {generate.isPending ? "Generando…" : "Generar nueva"}
-            </Button>
+      <Card>
+        <div className="p-4 flex items-end gap-3">
+          <div className="w-72">
+            <MonthPicker label="Mes" value={period} onChange={setPeriod} />
           </div>
-          {generate.isError && (
-            <div className="px-4 pb-3">
-              <ErrorText>{(generate.error as Error).message}</ErrorText>
-            </div>
-          )}
-        </Card>
-      )}
+          <Button
+            onClick={() => generate.mutate()}
+            disabled={generate.isPending}
+          >
+            {generate.isPending ? "Generando…" : "Generar nueva"}
+          </Button>
+        </div>
+        {generate.isError && (
+          <div className="px-4 pb-3">
+            <ErrorText>{(generate.error as Error).message}</ErrorText>
+          </div>
+        )}
+      </Card>
       <div className="mt-6">
         {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
         {list.data && list.data.length === 0 && (
           <EmptyState
             icon={<CalendarDays className="h-5 w-5" />}
             title="Aún no hay ninguna planificación"
-            description={
-              isTenantAdmin
-                ? "Elige un mes arriba y pulsa Generar para crear la primera."
-                : "El administrador todavía no ha generado ninguna planificación. Cuando lo haga, podrás asignar a tu sub-equipo aquí."
-            }
+            description="Elige un mes arriba y pulsa Generar para crear la primera."
           />
         )}
         {list.data && list.data.length > 0 && (
