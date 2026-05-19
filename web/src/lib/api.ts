@@ -965,7 +965,10 @@ export const api = {
 
   // Schedules
   listSchedules: () => request<Schedule[]>("/api/schedules"),
-  getSchedule: (id: number) => request<ScheduleDetail>(`/api/schedules/${id}`),
+  getSchedule: (id: number, opts?: { groupId?: number }) => {
+    const qs = opts?.groupId !== undefined ? `?group_id=${opts.groupId}` : "";
+    return request<ScheduleDetail>(`/api/schedules/${id}${qs}`);
+  },
   generateSchedule: (period: string) =>
     request<ScheduleDetail>("/api/schedules/generate", {
       method: "POST",

@@ -67,12 +67,30 @@ def _published_group_ids_for(
     return [r[0] for r in rows]
 
 
-def _serialize_detail(ctx: RequestContext, schedule: Schedule) -> ScheduleDetail:
+def _serialize_detail(
+    ctx: RequestContext,
+    schedule: Schedule,
+    override_group_id: int | None = None,
+) -> ScheduleDetail:
+    """Serialize a schedule's assignments per caller context.
+
+    `override_group_id` lets a tenant admin pin the view to a
+    specific group (the new /admin/groups/[id]/planificacion page
+    uses it). Group leads can also pass their own group_id but
+    not anyone else's — passing a foreign group is a 403.
+    """
     from app.routes.scope import caller_scope
 
     scope = caller_scope(ctx)
     published_group_ids = _published_group_ids_for(ctx, schedule.id)
     published_group_set = set(published_group_ids)
+
+    if override_group_id is not None:
+        if not scope.is_tenant_admin and scope.group_id != override_group_id:
+            raise HTTPException(
+                status_code=403,
+                detail="No tienes acceso a la planificación de ese sub-equipo.",
+            )
 
     rows = (
         ctx.db.query(Assignment, Slot, Person, SlotTeamRole, Group)
@@ -106,6 +124,12 @@ def _serialize_detail(ctx: RequestContext, schedule: Schedule) -> ScheduleDetail
     member_group_id: int | None = ctx.membership.group_id
 
     def _visible(s: Slot) -> bool:
+        # When the caller explicitly asked for a specific group's
+        # view, narrow to that group. This is the
+        # /admin/groups/[id]/planificacion path; the auth check
+        # above already guaranteed the caller is allowed to see it.
+        if override_group_id is not None:
+            return s.group_id == override_group_id
         if scope.is_tenant_admin:
             return s.group_id is None
         if scope.is_group_lead:
@@ -206,12 +230,22 @@ def list_schedules(
 @router.get("/schedules/{schedule_id}", response_model=ScheduleDetail)
 def get_schedule(
     schedule_id: int,
+    group_id: int | None = Query(
+        default=None,
+        description=(
+            "Optional: narrow the response to one group's "
+            "assignments. Tenant admin uses this to view a "
+            "specific group's plan from /admin/groups/{id}/"
+            "planificacion. Group leads can only pass their own "
+            "group's id; anything else returns 403."
+        ),
+    ),
     ctx: RequestContext = Depends(get_current_context),
 ) -> ScheduleDetail:
     s = ctx.db.get(Schedule, schedule_id)
     if not s or s.tenant_id != ctx.tenant.id:
         raise HTTPException(status_code=404, detail="Schedule not found")
-    return _serialize_detail(ctx, s)
+    return _serialize_detail(ctx, s, override_group_id=group_id)
 
 
 @router.get("/schedules/{schedule_id}/pdf")
