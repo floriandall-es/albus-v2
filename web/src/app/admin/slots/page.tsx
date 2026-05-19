@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
@@ -521,12 +522,6 @@ function SlotDialog({
             ))}
           </div>
         )}
-        <AllowedPersonsSection
-          team={team}
-          allowedPersonIds={allowedPersonIds}
-          setAllowedPersonIds={setAllowedPersonIds}
-          togglePerson={togglePerson}
-        />
         {/*
           Hidden from the basic editor (post_slot_rest, counts_for_equity,
           guardia_type) — see commit message. Existing values on saved
@@ -618,6 +613,13 @@ function SlotDialog({
             />
           ))}
         </div>
+
+        <AllowedPersonsSection
+          team={team}
+          allowedPersonIds={allowedPersonIds}
+          setAllowedPersonIds={setAllowedPersonIds}
+          togglePerson={togglePerson}
+        />
 
         {save.isError && <ErrorText>{(save.error as Error).message}</ErrorText>}
         <div className="flex justify-end gap-2 pt-2 sticky bottom-0 bg-white">
@@ -1410,6 +1412,11 @@ function AllowedPersonsSection({
   togglePerson: (personId: number) => void;
 }) {
   const isUnrestricted = allowedPersonIds.length === 0;
+  // Collapsed by default — the common case is "Todo el equipo" /
+  // no restriction. A small status badge in the header tells the
+  // admin whether they need to expand to look. Auto-expands when
+  // a restriction is set so editing existing limits is one click.
+  const [open, setOpen] = useState<boolean>(!isUnrestricted);
   // Hide disabled members — they can't be scheduled anyway, and
   // showing them with a checkbox is confusing. Their existing rows
   // in slot_allowed_persons are kept untouched (the solver just
@@ -1421,64 +1428,80 @@ function AllowedPersonsSection({
     .sort((a, b) => a.person_name.localeCompare(b.person_name, "es"));
   return (
     <div className="border-t pt-3">
-      <div className="flex items-center justify-between mb-2">
-        <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <div className="flex items-center gap-2">
+          {open ? (
+            <ChevronDown className="h-4 w-4 text-gray-500" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-gray-500" />
+          )}
           <h3 className="text-sm font-semibold">Equipo autorizado</h3>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Por defecto cualquier miembro puede cubrir esta actividad. Si
-            sólo algunas personas deben poder hacerlo, márcalas aquí.
-          </p>
         </div>
-        {!isUnrestricted && (
-          <button
-            type="button"
-            onClick={() => setAllowedPersonIds([])}
-            className="shrink-0 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 whitespace-nowrap"
-          >
-            Permitir a todo el equipo
-          </button>
-        )}
-      </div>
-      <ul className="rounded-md border bg-white divide-y divide-gray-100 max-h-56 overflow-y-auto">
-        {sortedTeam.map((m) => {
-          const checked = allowedPersonIds.includes(m.person_id);
-          return (
-            <li key={m.person_id}>
-              <label className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50">
-                <input
-                  type="checkbox"
-                  checked={isUnrestricted || checked}
-                  onChange={() => togglePerson(m.person_id)}
-                  className="h-4 w-4 rounded border-gray-300"
-                />
-                <span className={isUnrestricted ? "text-gray-700" : "text-gray-900"}>
-                  {m.person_name}
-                </span>
-                {m.category_name && (
-                  <span className="text-xs text-gray-500">
-                    · {m.category_name}
-                  </span>
-                )}
-              </label>
-            </li>
-          );
-        })}
-        {team.length === 0 && (
-          <li className="px-3 py-2 text-xs text-gray-500">
-            Aún no hay miembros en el equipo.
-          </li>
-        )}
-      </ul>
-      {isUnrestricted ? (
-        <p className="mt-1 text-xs text-gray-500">
-          <span className="font-medium text-gray-700">Todo el equipo</span>{" "}
-          puede cubrir esta actividad.
-        </p>
-      ) : (
-        <p className="mt-1 text-xs text-gray-500">
-          Sólo <span className="font-medium text-gray-700">{allowedPersonIds.length} personas</span>{" "}
-          autorizadas.
-        </p>
+        <span
+          className={
+            "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium "
+            + (isUnrestricted
+              ? "bg-gray-100 text-gray-700"
+              : "bg-brand-100 text-brand-700")
+          }
+        >
+          {isUnrestricted
+            ? "Todo el equipo"
+            : `${allowedPersonIds.length} ${allowedPersonIds.length === 1 ? "persona" : "personas"}`}
+        </span>
+      </button>
+      {open && (
+        <div className="mt-3">
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <p className="text-xs text-gray-500 flex-1">
+              Por defecto cualquier miembro puede cubrir esta actividad. Si
+              sólo algunas personas deben poder hacerlo, márcalas aquí.
+            </p>
+            {!isUnrestricted && (
+              <button
+                type="button"
+                onClick={() => setAllowedPersonIds([])}
+                className="shrink-0 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 whitespace-nowrap"
+              >
+                Permitir a todo el equipo
+              </button>
+            )}
+          </div>
+          <ul className="rounded-md border bg-white divide-y divide-gray-100 max-h-56 overflow-y-auto">
+            {sortedTeam.map((m) => {
+              const checked = allowedPersonIds.includes(m.person_id);
+              return (
+                <li key={m.person_id}>
+                  <label className="flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50">
+                    <input
+                      type="checkbox"
+                      checked={isUnrestricted || checked}
+                      onChange={() => togglePerson(m.person_id)}
+                      className="h-4 w-4 rounded border-gray-300"
+                    />
+                    <span className={isUnrestricted ? "text-gray-700" : "text-gray-900"}>
+                      {m.person_name}
+                    </span>
+                    {m.category_name && (
+                      <span className="text-xs text-gray-500">
+                        · {m.category_name}
+                      </span>
+                    )}
+                  </label>
+                </li>
+              );
+            })}
+            {team.length === 0 && (
+              <li className="px-3 py-2 text-xs text-gray-500">
+                Aún no hay miembros en el equipo.
+              </li>
+            )}
+          </ul>
+        </div>
       )}
     </div>
   );
