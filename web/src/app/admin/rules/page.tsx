@@ -11,7 +11,6 @@ import {
 } from "@/lib/api";
 import {
   Button,
-  Card,
   Empty,
   ErrorText,
   InfoHint,
@@ -51,11 +50,16 @@ export default function RulesPage() {
         Incompatibilidades del mismo día, sucesión entre actividades y límites
         de frecuencia por persona.
       </p>
-      <SameDaySection slots={slots.data ?? []} slotById={slotById} />
-      <div className="h-8" />
-      <SuccessionSection slots={slots.data ?? []} slotById={slotById} />
-      <div className="h-8" />
-      <FrequencySection slots={slots.data ?? []} slotById={slotById} />
+      {/* Each section lives in its own card so the visual boundary is
+          obvious. Without cards three "+ Añadir regla" buttons next to
+          each other made it ambiguous which section the click belonged
+          to. Vertical rhythm via space-y replaces the manual spacer
+          divs we used before. */}
+      <div className="space-y-6">
+        <SameDaySection slots={slots.data ?? []} slotById={slotById} />
+        <SuccessionSection slots={slots.data ?? []} slotById={slotById} />
+        <FrequencySection slots={slots.data ?? []} slotById={slotById} />
+      </div>
     </>
   );
 }
@@ -88,7 +92,7 @@ function SuccessionSection({
   const successionRules = (list.data ?? []).filter((r) => r.days_after >= 1);
 
   return (
-    <section>
+    <section className="rounded-xl bg-white p-5 ring-1 ring-gray-200 shadow-soft">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-lg font-semibold inline-flex items-center">
           Sucesión entre actividades
@@ -106,7 +110,7 @@ function SuccessionSection({
         <Empty>Aún no hay reglas de sucesión.</Empty>
       )}
       {successionRules.length > 0 && (
-        <Card>
+        <div className="overflow-hidden rounded-lg border border-gray-200">
           <table className="w-full text-sm">
             <thead className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
               <tr>
@@ -173,7 +177,7 @@ function SuccessionSection({
               })}
             </tbody>
           </table>
-        </Card>
+        </div>
       )}
       {del.isError && <ErrorText>{(del.error as Error).message}</ErrorText>}
 
@@ -401,7 +405,7 @@ function FrequencySection({
   });
 
   return (
-    <section>
+    <section className="rounded-xl bg-white p-5 ring-1 ring-gray-200 shadow-soft">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-lg font-semibold inline-flex items-center">
           Límites de frecuencia
@@ -419,7 +423,7 @@ function FrequencySection({
         <Empty>Aún no hay límites de frecuencia.</Empty>
       )}
       {list.data && list.data.length > 0 && (
-        <Card>
+        <div className="overflow-hidden rounded-lg border border-gray-200">
           <table className="w-full text-sm">
             <thead className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
               <tr>
@@ -473,7 +477,7 @@ function FrequencySection({
               })}
             </tbody>
           </table>
-        </Card>
+        </div>
       )}
       {del.isError && <ErrorText>{(del.error as Error).message}</ErrorText>}
 
@@ -669,7 +673,7 @@ function SameDaySection({
   const sameDay = (list.data ?? []).filter((r) => r.days_after === 0);
 
   return (
-    <section>
+    <section className="rounded-xl bg-white p-5 ring-1 ring-gray-200 shadow-soft">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-lg font-semibold">
           Incompatibilidades del mismo día
@@ -687,7 +691,7 @@ function SameDaySection({
         <Empty>Aún no hay incompatibilidades del mismo día.</Empty>
       )}
       {sameDay.length > 0 && (
-        <Card>
+        <div className="overflow-hidden rounded-lg border border-gray-200">
           <table className="w-full text-sm">
             <thead className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
               <tr>
@@ -729,7 +733,7 @@ function SameDaySection({
               ))}
             </tbody>
           </table>
-        </Card>
+        </div>
       )}
       {del.isError && <ErrorText>{(del.error as Error).message}</ErrorText>}
 
