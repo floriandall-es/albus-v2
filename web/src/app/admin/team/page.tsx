@@ -109,7 +109,6 @@ export default function TeamPage() {
                 <th className="px-4 py-2 font-medium">Email</th>
                 <th className="px-4 py-2 font-medium">Categoría</th>
                 <th className="px-4 py-2 font-medium">FTE</th>
-                <th className="px-4 py-2 font-medium">Roles</th>
                 <th className="px-4 py-2 font-medium text-right">Acciones</th>
               </tr>
             </thead>
@@ -125,6 +124,7 @@ export default function TeamPage() {
                 // entirely. We must not treat `undefined` as "disabled"
                 // — that would flag the entire team as paused.
                 const isDisabled = Boolean(m.disabled_at);
+                const isAdmin = m.roles.includes("admin");
                 return (
                 <tr
                   key={m.id}
@@ -145,6 +145,14 @@ export default function TeamPage() {
                       <span className={isDisabled ? "" : "text-gray-900"}>
                         {m.person_name}
                       </span>
+                      {isAdmin && !isDisabled && (
+                        <span
+                          className="inline-flex items-center rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-brand-700"
+                          title="Administrador del equipo"
+                        >
+                          Admin
+                        </span>
+                      )}
                       {isDisabled && (
                         <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-700">
                           Desactivado
@@ -157,9 +165,6 @@ export default function TeamPage() {
                   </td>
                   <td className="px-4 py-2">{m.category_name ?? "—"}</td>
                   <td className="px-4 py-2">{m.fte_pct}%</td>
-                  <td className={"px-4 py-2 text-xs " + (isDisabled ? "" : "text-gray-600")}>
-                    {m.roles.join(", ") || "—"}
-                  </td>
                   <td className="px-4 py-2 text-right">
                     <Button variant="secondary" onClick={() => setEditing(m)}>
                       Editar
