@@ -4,7 +4,10 @@ from alembic import context
 
 from app.core.config import settings
 from app.db.base import Base
-# Import all models so metadata is populated
+# Import all models so metadata is populated.
+# Sprint 22 / migration 0030 dropped Pool and Skill entirely — those
+# imports would now fail at module load time and crash the api
+# container before any migration could run.
 from app.models import (  # noqa: F401
     tenant,
     person,
@@ -12,8 +15,6 @@ from app.models import (  # noqa: F401
     department,
     role_type,
     category,
-    pool,
-    skill,
     slot,
     invitation,
 )
