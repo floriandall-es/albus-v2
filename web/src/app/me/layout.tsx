@@ -8,6 +8,7 @@ import {
   CalendarDays,
   CalendarOff,
   Home,
+  Layers,
   LogOut,
   Settings,
   type LucideIcon,
@@ -41,6 +42,15 @@ export default function MeLayout({ children }: { children: ReactNode }) {
     queryKey: ["me"],
     queryFn: api.me,
     retry: false,
+    enabled: authChecked,
+  });
+
+  // Sub-team groups for the dynamic sidebar section. Every member
+  // can browse them: the per-group page surfaces published plans
+  // only (drafts stay between the lead and tenant admin).
+  const groups = useQuery({
+    queryKey: ["groups"],
+    queryFn: api.listGroups,
     enabled: authChecked,
   });
 
@@ -100,39 +110,81 @@ export default function MeLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
-          {NAV.map((item) => {
-            const Icon = item.icon;
-            // /me (Inicio) is a prefix of every other member route,
-            // so use an exact match for it specifically — otherwise
-            // the dashboard link would light up on every page.
-            const active =
-              item.href === "/me"
-                ? pathname === "/me"
-                : pathname?.startsWith(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={
-                  "group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors "
-                  + (active
-                    ? "bg-brand-50 text-brand-700"
-                    : "text-gray-700 hover:bg-gray-100")
-                }
-              >
-                <Icon
+        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
+          <div className="space-y-0.5">
+            {NAV.map((item) => {
+              const Icon = item.icon;
+              // /me (Inicio) is a prefix of every other member route,
+              // so use an exact match for it specifically — otherwise
+              // the dashboard link would light up on every page.
+              const active =
+                item.href === "/me"
+                  ? pathname === "/me"
+                  : pathname?.startsWith(item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
                   className={
-                    "h-4 w-4 shrink-0 "
+                    "group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors "
                     + (active
-                      ? "text-brand-600"
-                      : "text-gray-400 group-hover:text-gray-600")
+                      ? "bg-brand-50 text-brand-700"
+                      : "text-gray-700 hover:bg-gray-100")
                   }
-                />
-                <span className="truncate">{item.label}</span>
-              </Link>
-            );
-          })}
+                >
+                  <Icon
+                    className={
+                      "h-4 w-4 shrink-0 "
+                      + (active
+                        ? "text-brand-600"
+                        : "text-gray-400 group-hover:text-gray-600")
+                    }
+                  />
+                  <span className="truncate">{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+
+          {/* Dynamic sub-team plans — same shape as the admin
+              sidebar's Sub-equipos section. Members see only
+              published group plans (the per-group page handles
+              "not yet published" empty states). */}
+          {groups.data && groups.data.length > 0 && (
+            <div>
+              <div className="px-2 mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                Sub-equipos
+              </div>
+              <div className="space-y-0.5">
+                {groups.data.map((g) => {
+                  const href = `/me/sub-equipos/${g.id}`;
+                  const active = pathname?.startsWith(href);
+                  return (
+                    <Link
+                      key={g.id}
+                      href={href}
+                      className={
+                        "group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors "
+                        + (active
+                          ? "bg-brand-50 text-brand-700"
+                          : "text-gray-700 hover:bg-gray-100")
+                      }
+                    >
+                      <Layers
+                        className={
+                          "h-4 w-4 shrink-0 "
+                          + (active
+                            ? "text-brand-600"
+                            : "text-gray-400 group-hover:text-gray-600")
+                        }
+                      />
+                      <span className="truncate">{g.name}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </nav>
 
         <div className="border-t border-gray-100 px-3 py-3">

@@ -86,11 +86,20 @@ def _serialize_detail(
     published_group_set = set(published_group_ids)
 
     if override_group_id is not None:
-        if not scope.is_tenant_admin and scope.group_id != override_group_id:
-            raise HTTPException(
-                status_code=403,
-                detail="No tienes acceso a la planificación de ese sub-equipo.",
-            )
+        if scope.is_tenant_admin:
+            pass  # admin can see any group, any status
+        elif scope.is_group_lead and scope.group_id == override_group_id:
+            pass  # lead sees their own group at any status (drafts too)
+        else:
+            # Plain member (or lead peeking at a foreign group):
+            # allowed only when the group is published for THIS
+            # schedule. Drafts stay private to the lead + tenant
+            # admin.
+            if override_group_id not in published_group_set:
+                raise HTTPException(
+                    status_code=403,
+                    detail="La planificación de ese sub-equipo todavía no está publicada.",
+                )
 
     rows = (
         ctx.db.query(Assignment, Slot, Person, SlotTeamRole, Group)
