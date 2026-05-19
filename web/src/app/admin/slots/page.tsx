@@ -1412,10 +1412,11 @@ function AllowedPersonsSection({
   // Hide disabled members — they can't be scheduled anyway, and
   // showing them with a checkbox is confusing. Their existing rows
   // in slot_allowed_persons are kept untouched (the solver just
-  // skips them via the membership filter).
+  // skips them via the membership filter). Truthiness check so a
+  // missing field (older API build) is treated as "active".
   // Sort by name so the checklist stays scannable.
   const sortedTeam = [...team]
-    .filter((m) => m.disabled_at === null)
+    .filter((m) => !m.disabled_at)
     .sort((a, b) => a.person_name.localeCompare(b.person_name, "es"));
   return (
     <div className="border-t pt-3">

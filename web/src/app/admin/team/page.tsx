@@ -119,7 +119,12 @@ export default function TeamPage() {
                 // admin can spot who's paused (maternity leave, sabbatical)
                 // — they just render muted and tagged. Re-enabling lives
                 // inside the edit modal.
-                const isDisabled = m.disabled_at !== null;
+                //
+                // Defensive truthiness check: an older API build (or a
+                // not-yet-redeployed api container) may omit the field
+                // entirely. We must not treat `undefined` as "disabled"
+                // — that would flag the entire team as paused.
+                const isDisabled = Boolean(m.disabled_at);
                 return (
                 <tr
                   key={m.id}
@@ -299,14 +304,14 @@ function TeamEditDialog({
   const qc = useQueryClient();
   const [categoryId, setCategoryId] = useState<number | "">(member.category_id ?? "");
   const [ftePct, setFtePct] = useState<string>(member.fte_pct.toString());
-  const [active, setActive] = useState<boolean>(member.disabled_at === null);
+  const [active, setActive] = useState<boolean>(!member.disabled_at);
 
   const save = useMutation({
     mutationFn: () => {
       // Only send `disabled` if its boolean state actually flipped —
       // saves the server a write and keeps disabled_at's timestamp
       // stable when the admin just re-saved Categoría/FTE.
-      const wasActive = member.disabled_at === null;
+      const wasActive = !member.disabled_at;
       const flipped = active !== wasActive;
       return api.updateTeamMember(member.id, {
         category_id: categoryId === "" ? null : Number(categoryId),
