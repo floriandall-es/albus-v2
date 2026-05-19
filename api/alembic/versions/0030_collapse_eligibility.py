@@ -126,15 +126,19 @@ def upgrade() -> None:
     )
 
     # Case B: slot has NO pool_id but DOES have hard skill requirements.
-    # Eligible = everyone in the tenant who has all the required skills.
-    # Without a pool restriction we'd implicitly include EVERY tenant
-    # member — which is "no restriction", so we skip in that case.
+    # Eligible = everyone in the tenant (= a Membership row) who has
+    # all the required skills. Persons aren't tenant-scoped in this
+    # schema — Memberships are — so we walk through memberships
+    # instead of joining persons.tenant_id (which doesn't exist).
+    # Without a pool restriction AND without hard skills the slot is
+    # already "no restriction", so we skip in that case (no row
+    # inserted = empty allow-list = everyone eligible).
     op.execute(
         """
         INSERT INTO slot_allowed_persons (tenant_id, slot_id, person_id)
-        SELECT DISTINCT s.tenant_id, s.id, p.id
+        SELECT DISTINCT s.tenant_id, s.id, mem.person_id
         FROM slots s
-        JOIN persons p ON p.tenant_id = s.tenant_id
+        JOIN memberships mem ON mem.tenant_id = s.tenant_id
         WHERE s.pool_id IS NULL
           AND EXISTS (
             SELECT 1 FROM slot_skills_required ssr2
@@ -147,7 +151,7 @@ def upgrade() -> None:
               AND ssr.strength = 'hard'
               AND NOT EXISTS (
                 SELECT 1 FROM person_skills ps
-                WHERE ps.person_id = p.id
+                WHERE ps.person_id = mem.person_id
                   AND ps.skill_id = ssr.skill_id
               )
           )
