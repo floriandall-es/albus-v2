@@ -88,6 +88,10 @@ class MembershipOut(BaseModel):
     category_id: int | None = None
     fte_pct: int = 100
     disabled_at: datetime | None = None
+    # Set when the person belongs to a sub-team group. Drives the
+    # per-context filtering on /me/turnos so a resident sees their
+    # group's planning instead of the main team's.
+    group_id: int | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

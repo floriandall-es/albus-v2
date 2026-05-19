@@ -283,6 +283,11 @@ export type Membership = {
   /** ISO timestamp; non-null = membership is paused (solver
    * skips them, admin UI shows "Desactivado"). Null = active. */
   disabled_at: string | null;
+  /** Set when the person belongs to a sub-team group. Used by
+   * /me/turnos to filter the schedule list to the right context
+   * (a residente sees the residentes' plan, an Adjunto sees the
+   * main team's). */
+  group_id: number | null;
   created_at: string;
 };
 

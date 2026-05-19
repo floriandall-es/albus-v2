@@ -85,25 +85,37 @@ def _serialize_detail(ctx: RequestContext, schedule: Schedule) -> ScheduleDetail
         .all()
     )
 
-    # Visibility filter on the assignments list. Tenant admin sees
-    # everything (their UI controls the whole thing). Group lead
-    # sees everything in their group plus everything visible to
-    # plain members (so they can sanity-check what the residentes
-    # will see). Plain members see:
-    #   - main-team assignments (slot.group_id IS NULL) only when
-    #     the Schedule is published (existing rule)
-    #   - group-slot assignments only when (schedule, group) is in
-    #     schedule_group_publications (new per-group publish state)
+    # Strict context filter: a Schedule entity carries assignments
+    # for BOTH the main team and group sub-teams in one row set,
+    # but no caller ever wants to see both mixed together. We slice
+    # to the caller's relevant context here so the admin's main
+    # view, PDF, stats, etc. all naturally stay clean.
+    #
+    #   Tenant admin   → main team only (slot.group_id IS NULL).
+    #                    Group plans live in /lead/planificacion;
+    #                    admins peek at them only via a future
+    #                    dedicated route, never mixed here.
+    #   Group lead     → their group's assignments only (the only
+    #                    rows they manage).
+    #   Plain member   → their OWN context:
+    #                      - in a group → that group's assignments,
+    #                        gated by per-group publish state
+    #                      - not in a group → main team only, gated
+    #                        by the existing Schedule.status gate
     is_published = schedule.status == "published"
+    member_group_id: int | None = ctx.membership.group_id
 
     def _visible(s: Slot) -> bool:
         if scope.is_tenant_admin:
-            return True
-        if s.group_id is None:
-            return is_published
-        if scope.is_group_lead and s.group_id == scope.group_id:
-            return True
-        return s.group_id in published_group_set
+            return s.group_id is None
+        if scope.is_group_lead:
+            return s.group_id == scope.group_id
+        # Plain member: context is their membership's group_id.
+        if member_group_id is None:
+            return s.group_id is None and is_published
+        if s.group_id != member_group_id:
+            return False
+        return member_group_id in published_group_set
 
     rows = [t for t in rows if _visible(t[1])]
     assignments = [
@@ -228,7 +240,14 @@ def get_schedule_pdf(
         .join(Slot, Slot.id == Assignment.slot_id)
         .outerjoin(Person, Person.id == Assignment.person_id)
         .outerjoin(SlotTeamRole, SlotTeamRole.id == Assignment.team_role_id)
-        .filter(Assignment.schedule_id == s.id)
+        .filter(
+            Assignment.schedule_id == s.id,
+            # Strict context: the PDF is the admin's main-team
+            # plan; group sub-team plans never appear here.
+            # Sub-team admins publish + export their own plans
+            # separately (planned, not in v1).
+            Slot.group_id.is_(None),
+        )
         .order_by(Assignment.date, Assignment.slot_id, Assignment.id)
         .all()
     )

@@ -22,20 +22,30 @@ export default function TurnosPage() {
     queryFn: api.listSchedules,
   });
 
-  // Visible schedules for a member: the main team's published
-  // ones, plus any drafts that have at least one published group
-  // (a residente will see drafts where their group's lead has
-  // published, even if the admin hasn't pulished the main team
-  // yet). The backend already filters which ASSIGNMENTS to send
-  // per visibility rule; this filter is just the list of months
-  // we surface in the picker.
+  // Visible schedules for a member depend on which planning
+  // context they belong to (set per-membership, not per-tenant):
+  //
+  //   - In a group → their group's planning is theirs. They see
+  //     a schedule iff that group has published for it.
+  //   - Not in a group → they're a main-team member; they see a
+  //     schedule iff status === "published".
+  //
+  // The backend's _serialize_detail already filters assignments
+  // by the same context rule, so even if a stale schedule sneaks
+  // through here they'll just see an empty list.
+  const myMembership = me.data?.memberships.find(
+    (m) => m.tenant_id === me.data?.current_tenant.id,
+  );
+  const myGroupId = myMembership?.group_id ?? null;
   const publishedSchedules = useMemo(() => {
     if (!schedules.data) return [];
-    return schedules.data.filter(
-      (s) =>
-        s.status === "published" || (s.published_group_ids?.length ?? 0) > 0,
-    );
-  }, [schedules.data]);
+    return schedules.data.filter((s) => {
+      if (myGroupId !== null) {
+        return s.published_group_ids?.includes(myGroupId) ?? false;
+      }
+      return s.status === "published";
+    });
+  }, [schedules.data, myGroupId]);
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [swapTarget, setSwapTarget] = useState<Assignment | null>(null);
