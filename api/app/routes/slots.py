@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from app.models import (
     Category,
     Membership,
+    Person,
     Slot,
     SlotAllowedPerson,
     SlotRule,
@@ -244,12 +245,35 @@ def _replace_allowed_persons(
 ) -> None:
     """Atomically replace the slot's allow-list. Empty list = clear
     (= "Todo el equipo" / no restriction). Caller pre-validates that
-    the person ids belong to this tenant."""
+    the person ids belong to this tenant.
+
+    Cascade: anyone being removed from the allow-list also loses
+    any weekly_pin / rotation_member references they had in this
+    slot's rules. The frontend should surface those conflicts via
+    a confirm dialog before getting here so this isn't a silent
+    delete from the admin's point of view.
+    """
+    from app.services.slot_rules import cascade_remove_persons_from_slot_rules
+
     existing = (
         ctx.db.query(SlotAllowedPerson)
         .filter(SlotAllowedPerson.slot_id == slot.id)
         .all()
     )
+    previous_ids = {r.person_id for r in existing}
+    new_ids = set(person_ids)
+
+    # Edge case: clearing the allow-list (empty payload) unlocks
+    # the slot to "Todo el equipo". Existing pins/rotation_members
+    # stay valid — anyone in the tenant is now eligible. So only
+    # cascade when we're transitioning from one restricted state
+    # to another (or restricted → still restricted) AND the new
+    # state actually drops people.
+    if new_ids:
+        removed = previous_ids - new_ids
+        if removed:
+            cascade_remove_persons_from_slot_rules(ctx.db, slot.id, removed)
+
     for row in existing:
         ctx.db.delete(row)
     ctx.db.flush()
@@ -441,6 +465,43 @@ def _validate_rules_in_tenant_persons(
         )
 
 
+def _validate_rules_against_allowlist(
+    ctx: RequestContext, slot: Slot, person_ids: set[int]
+) -> None:
+    """If the slot is restricted, every person referenced in
+    pins/rotation_members must also be in the slot's allow-list.
+    Saves admins from creating "Pedro pinned to Tuesday on a
+    restricted slot Pedro can't actually do" mismatches that the
+    solver would silently drop.
+
+    Unrestricted slots (no rows in slot_allowed_persons) accept
+    any tenant member — every member is implicitly eligible.
+    """
+    if not person_ids:
+        return
+    allowed = {
+        row[0]
+        for row in ctx.db.query(SlotAllowedPerson.person_id)
+        .filter(SlotAllowedPerson.slot_id == slot.id)
+        .all()
+    }
+    if not allowed:
+        return
+    missing_ids = person_ids - allowed
+    if not missing_ids:
+        return
+    # Look up names for a friendly error.
+    rows = ctx.db.query(Person.name).filter(Person.id.in_(missing_ids)).all()
+    names = ", ".join(r[0] for r in rows) or f"#{sorted(missing_ids)}"
+    raise HTTPException(
+        status_code=422,
+        detail=(
+            f"Personas no autorizadas en este turno: {names}. "
+            "Añádelas primero al equipo autorizado de la actividad."
+        ),
+    )
+
+
 def _validate_rules(rules: list[SlotRuleIn], slot_headcount: int = 1) -> None:
     if not rules:
         raise HTTPException(
@@ -604,6 +665,7 @@ def replace_slot_rules(
         for m in r.rotation_members:
             person_ids.add(m.person_id)
     _validate_rules_in_tenant_persons(ctx, person_ids)
+    _validate_rules_against_allowlist(ctx, obj, person_ids)
 
     # Atomic replace: delete existing rules (cascade drops children).
     existing = ctx.db.query(SlotRule).filter(SlotRule.slot_id == obj.id).all()

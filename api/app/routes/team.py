@@ -167,6 +167,8 @@ def _sync_allowed_activities(
             }
         return other_active_person_ids
 
+    from app.services.slot_rules import cascade_remove_persons_from_slot_rules
+
     for slot_id in all_slot_ids:
         in_desired = slot_id in desired_slot_ids
         is_restricted = slot_id in restricted_slot_ids
@@ -184,6 +186,12 @@ def _sync_allowed_activities(
             elif not in_desired and person_listed:
                 row = next(r for r in current_rows if r.slot_id == slot_id)
                 ctx.db.delete(row)
+                # Cascade: drop any pins/rotation_members for this
+                # person on this slot. Frontend should have surfaced
+                # this in a confirm dialog already.
+                cascade_remove_persons_from_slot_rules(
+                    ctx.db, slot_id, {member.person_id}
+                )
         else:
             if in_desired:
                 # Slot unrestricted, person eligible → no change needed.
@@ -201,6 +209,13 @@ def _sync_allowed_activities(
                         person_id=other_pid,
                     )
                 )
+            # Cascade rules: even though the slot was unrestricted,
+            # this person could have been pinned/in a rotation via
+            # any rule on it. After the conversion they're no longer
+            # eligible, so drop those references.
+            cascade_remove_persons_from_slot_rules(
+                ctx.db, slot_id, {member.person_id}
+            )
 
 
 # NOTE: POST /api/team/invite was moved to app.routes.invitations in Sprint 3

@@ -23,6 +23,10 @@ import {
 } from "@/components/admin/ui";
 import { BulkInviteModal } from "@/components/admin/BulkInviteModal";
 
+// Spanish short weekday labels — bit 0 = Monday. Used in the
+// activity-removal confirmation dialog ("pin los Martes…").
+const WEEKDAY_SHORT = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+
 /**
  * 32×32 circle showing the member's photo, or two-letter initials
  * on a brand-tinted background when none is set. Lives here (not
@@ -382,6 +386,62 @@ function TeamEditDialog({
     },
   });
 
+  /**
+   * Pre-save check: for each activity the admin is removing the
+   * person from (i.e. override === false), look at the slot's
+   * rules for weekly_pins / rotation_members referencing this
+   * person. If any are found, build a confirm message listing
+   * the conflicts so the admin sees exactly what the server is
+   * about to cascade-delete.
+   */
+  const buildConflictMessage = (): string | null => {
+    if (activityOverrides.size === 0) return null;
+    const lines: string[] = [];
+    for (const s of slots) {
+      const willBeAllowed = isAllowed(s);
+      if (willBeAllowed) continue;
+      const pinDays: string[] = [];
+      const rotationPositions: number[] = [];
+      for (const r of s.rules) {
+        for (const p of r.weekly_pins) {
+          if (p.person_id === member.person_id) {
+            pinDays.push(WEEKDAY_SHORT[p.weekday] ?? `d${p.weekday}`);
+          }
+        }
+        for (const m of r.rotation_members) {
+          if (m.person_id === member.person_id) {
+            rotationPositions.push(m.position + 1);
+          }
+        }
+      }
+      const fragments: string[] = [];
+      if (pinDays.length > 0) {
+        fragments.push(`${pinDays.length} pin (${pinDays.join(", ")})`);
+      }
+      if (rotationPositions.length > 0) {
+        fragments.push(
+          `${rotationPositions.length} posición en rotación`,
+        );
+      }
+      if (fragments.length > 0) {
+        lines.push(`  • ${s.name}: ${fragments.join(" + ")}`);
+      }
+    }
+    if (lines.length === 0) return null;
+    return (
+      `Al desautorizar a ${member.person_name} se eliminarán las siguientes asignaciones en reglas:\n\n`
+      + lines.join("\n")
+      + "\n\n¿Continuar?"
+    );
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const conflict = buildConflictMessage();
+    if (conflict !== null && !confirm(conflict)) return;
+    save.mutate();
+  };
+
   // ES locale, short date — for the "Desactivado desde X" hint.
   const disabledSince = member.disabled_at
     ? new Date(member.disabled_at).toLocaleDateString("es", {
@@ -393,13 +453,7 @@ function TeamEditDialog({
 
   return (
     <Modal open={true} onClose={onClose} title={`Editar — ${member.person_name}`}>
-      <form
-        className="space-y-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          save.mutate();
-        }}
-      >
+      <form className="space-y-3" onSubmit={handleSubmit}>
         <Select
           label="Categoría"
           value={categoryId}

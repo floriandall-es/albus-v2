@@ -367,12 +367,66 @@ function SlotDialog({
     );
   }
 
+  /**
+   * Pre-save check. If the admin is reducing the allow-list (going
+   * from N people to a strict subset), warn about any rule
+   * references (pins / rotation_members) that will be cascade-
+   * deleted by the server. Shows a single confirm with the
+   * affected names + what gets removed for each.
+   *
+   * Returns true to proceed, false to cancel.
+   */
+  function confirmAllowListCascade(): boolean {
+    if (!initial) return true; // new slot — no rules yet, no cascade
+    const previousIds = new Set(initial.allowed_person_ids);
+    const newIds = new Set(allowedPersonIds);
+    // Empty payload = clearing the allow-list = opening to "Todo
+    // el equipo". Existing pins/rotation_members stay valid;
+    // nothing to cascade.
+    if (newIds.size === 0) return true;
+    const removed = [...previousIds].filter((id) => !newIds.has(id));
+    if (removed.length === 0) return true;
+    const personNameById = new Map(team.map((m) => [m.person_id, m.person_name]));
+    const lines: string[] = [];
+    for (const pid of removed) {
+      const pinDays: string[] = [];
+      let rotationCount = 0;
+      for (const r of initial.rules) {
+        for (const p of r.weekly_pins) {
+          if (p.person_id === pid) {
+            pinDays.push(DAY_LABELS[p.weekday]?.short ?? `d${p.weekday}`);
+          }
+        }
+        for (const m of r.rotation_members) {
+          if (m.person_id === pid) rotationCount += 1;
+        }
+      }
+      if (pinDays.length === 0 && rotationCount === 0) continue;
+      const fragments: string[] = [];
+      if (pinDays.length > 0) {
+        fragments.push(`${pinDays.length} pin (${pinDays.join(", ")})`);
+      }
+      if (rotationCount > 0) {
+        fragments.push(`${rotationCount} posición en rotación`);
+      }
+      const name = personNameById.get(pid) ?? `#${pid}`;
+      lines.push(`  • ${name}: ${fragments.join(" + ")}`);
+    }
+    if (lines.length === 0) return true;
+    return confirm(
+      `Al quitar a estas personas del equipo autorizado se eliminarán las siguientes asignaciones en reglas:\n\n`
+      + lines.join("\n")
+      + "\n\n¿Continuar?",
+    );
+  }
+
   return (
     <Modal open={true} onClose={onClose} title={initial ? "Editar actividad" : "Nueva actividad"}>
       <form
         className="space-y-3 max-h-[70vh] overflow-y-auto pr-1"
         onSubmit={(e) => {
           e.preventDefault();
+          if (!confirmAllowListCascade()) return;
           save.mutate();
         }}
       >
