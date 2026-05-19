@@ -675,16 +675,17 @@ function SameDaySection({
   return (
     <section className="rounded-xl bg-white p-5 ring-1 ring-gray-200 shadow-soft">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-semibold">
+        <h2 className="text-lg font-semibold inline-flex items-center">
           Incompatibilidades del mismo día
+          <InfoHint position="below">
+            Dos actividades que no pueden coincidir el mismo día para la
+            misma persona, aunque sus horarios no se solapen. (Para
+            conflictos de horario solapado no necesitas regla — Trivu
+            los detecta automáticamente.)
+          </InfoHint>
         </h2>
         <Button onClick={() => setEditing("new")}>+ Añadir regla</Button>
       </div>
-      <p className="-mt-2 mb-3 text-xs text-gray-500">
-        Dos actividades que no pueden coincidir el mismo día para la misma persona,
-        aunque sus horarios no se solapen. (Para conflictos de horario solapado
-        no necesitas regla — Trivu los detecta automáticamente.)
-      </p>
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
       {list.isError && <ErrorText>{(list.error as Error).message}</ErrorText>}
       {list.data && sameDay.length === 0 && (
