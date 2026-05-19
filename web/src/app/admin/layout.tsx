@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  AlertCircle,
   ArrowLeftRight,
   BarChart3,
   CalendarDays,
@@ -35,6 +36,7 @@ const NAV: NavSection[] = [
       { href: "/admin/stats", label: "Estadísticas", icon: BarChart3 },
       { href: "/admin/swaps", label: "Cambios de turno", icon: ArrowLeftRight },
       { href: "/admin/availability", label: "Bloqueos", icon: CalendarOff },
+      { href: "/admin/incidents", label: "Incidentes", icon: AlertCircle },
     ],
   },
   {

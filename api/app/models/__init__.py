@@ -17,6 +17,7 @@ from app.models.slot_rule import (
     SlotRuleRotationMember,
 )
 from app.models.slot_dependency import SlotSuccessionRule, SlotFrequencyCap
+from app.models.incident import Incident
 from app.models.invitation import Invitation
 from app.models.holiday import Holiday
 from app.models.availability_block import AvailabilityBlock
@@ -40,6 +41,7 @@ __all__ = [
     "SlotRuleRotationMember",
     "SlotSuccessionRule",
     "SlotFrequencyCap",
+    "Incident",
     "Invitation",
     "Holiday",
     "AvailabilityBlock",

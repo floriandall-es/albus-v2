@@ -301,6 +301,19 @@ export type Category = {
   created_at: string;
 };
 
+export type Incident = {
+  id: number;
+  tenant_id: number;
+  occurred_at: string; // ISO date YYYY-MM-DD
+  title: string;
+  body: string | null;
+  /** Display name of the admin who logged it; null if the
+   * membership was deleted after creation. */
+  created_by_name: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type DaysApplied = "all" | "weekdays" | "weekends_holidays" | "custom";
 export type StaffingMode = "single" | "multiple_same" | "team_composition";
 
@@ -735,6 +748,28 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ kind }),
     }),
+
+  // Incidents (operational log)
+  listIncidents: () => request<Incident[]>("/api/incidents"),
+  createIncident: (body: {
+    occurred_at: string;
+    title: string;
+    body?: string | null;
+  }) =>
+    request<Incident>("/api/incidents", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateIncident: (
+    id: number,
+    body: { occurred_at?: string; title?: string; body?: string | null },
+  ) =>
+    request<Incident>(`/api/incidents/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteIncident: (id: number) =>
+    request<void>(`/api/incidents/${id}`, { method: "DELETE" }),
 
   // Tenant defaults
   updateTenantDefaults: (body: {
