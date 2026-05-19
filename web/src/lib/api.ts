@@ -149,6 +149,12 @@ export type Assignment = {
   /** Mirror of Slot.position, set on the server-side serializer
    * so the planning grid can sort rows without a second roundtrip. */
   slot_position: number;
+  /** Set when the slot belongs to a sub-team group. Lets the
+   * planning grid render a "Sub-equipo: Foo" pill on the row so
+   * admins/members can see at a glance which rows are managed
+   * by a group lead. */
+  slot_group_id: number | null;
+  slot_group_name: string | null;
   /** Slot hours (HH:MM:SS). Null on on-call / all-day slots. Used by
    * the personal "Mis turnos" list to show "08:00 – 15:00" inline. */
   slot_start_time: string | null;

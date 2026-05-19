@@ -175,7 +175,17 @@ export function PlanningGrid({
                     />
                   )}
                   <span className="flex flex-col leading-tight">
-                    <span>{row.display_name}</span>
+                    <span className="flex items-center gap-1.5">
+                      {row.display_name}
+                      {row.group_name && (
+                        <span
+                          className="inline-flex items-center rounded-full bg-indigo-50 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-indigo-700"
+                          title={`Actividad gestionada por el sub-equipo ${row.group_name}`}
+                        >
+                          {row.group_name}
+                        </span>
+                      )}
+                    </span>
                     {row.team_role_label && (
                       <span className="text-xs font-normal text-gray-500">
                         {row.team_role_label}
@@ -421,6 +431,10 @@ function buildGrid(assignments: Assignment[]) {
     team_role_label: string | null;
     display_name: string;
     color: string | null;
+    /** Set when the slot belongs to a sub-team group. Used to
+     * render a small pill on the row label so admins can tell at
+     * a glance which rows are managed by a group lead. */
+    group_name: string | null;
     cells: Record<string, Assignment[]>;
   };
   const rowMap = new Map<string, GridRow>();
@@ -438,6 +452,7 @@ function buildGrid(assignments: Assignment[]) {
         team_role_label: role,
         display_name: a.slot_name,
         color: a.slot_color ?? null,
+        group_name: a.slot_group_name ?? null,
         cells: {},
       };
       rowMap.set(key, row);

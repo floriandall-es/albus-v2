@@ -32,6 +32,12 @@ class AssignmentOut(BaseModel):
     # with every assignment so the planning grid can sort rows by
     # it without needing a separate slot lookup.
     slot_position: int = 0
+    # Sub-team grouping (post-0035). When non-null the slot belongs
+    # to a Group; the admin/members planning grid renders a small
+    # pill on the row so tenant admins can tell at a glance which
+    # rows are managed by a group lead.
+    slot_group_id: int | None = None
+    slot_group_name: str | None = None
     # Slot hours (HH:MM:SS strings). Surfaced on each assignment so
     # the member-side "Mis turnos" list can show "08:00 – 15:00"
     # without a second roundtrip. Null = on-call / all-day slot.

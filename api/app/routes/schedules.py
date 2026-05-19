@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from app.models import (
     Assignment,
     AvailabilityBlock,
+    Group,
     Holiday,
     Membership,
     Person,
@@ -53,10 +54,11 @@ def _require_admin(ctx: RequestContext) -> None:
 
 def _serialize_detail(ctx: RequestContext, schedule: Schedule) -> ScheduleDetail:
     rows = (
-        ctx.db.query(Assignment, Slot, Person, SlotTeamRole)
+        ctx.db.query(Assignment, Slot, Person, SlotTeamRole, Group)
         .join(Slot, Slot.id == Assignment.slot_id)
         .outerjoin(Person, Person.id == Assignment.person_id)
         .outerjoin(SlotTeamRole, SlotTeamRole.id == Assignment.team_role_id)
+        .outerjoin(Group, Group.id == Slot.group_id)
         .filter(Assignment.schedule_id == schedule.id)
         .order_by(Assignment.date, Assignment.slot_id, Assignment.id)
         .all()
@@ -69,6 +71,8 @@ def _serialize_detail(ctx: RequestContext, schedule: Schedule) -> ScheduleDetail
             slot_name=s.name,
             slot_color=s.color,
             slot_position=s.position,
+            slot_group_id=g.id if g else None,
+            slot_group_name=g.name if g else None,
             slot_start_time=s.start_time.isoformat() if s.start_time else None,
             slot_end_time=s.end_time.isoformat() if s.end_time else None,
             date=a.date,
@@ -84,7 +88,7 @@ def _serialize_detail(ctx: RequestContext, schedule: Schedule) -> ScheduleDetail
             locked_by_membership_id=a.locked_by_membership_id,
             swap_offer_id=a.swap_offer_id,
         )
-        for a, s, p, tr in rows
+        for a, s, p, tr, g in rows
     ]
     return ScheduleDetail(
         id=schedule.id,
@@ -555,6 +559,7 @@ def _serialize_assignment(ctx: RequestContext, a: Assignment) -> AssignmentOut:
     p = ctx.db.get(Person, a.person_id) if a.person_id else None
     tr = ctx.db.get(SlotTeamRole, a.team_role_id) if a.team_role_id else None
     assert s is not None
+    g = ctx.db.get(Group, s.group_id) if s.group_id else None
     return AssignmentOut(
         id=a.id,
         schedule_id=a.schedule_id,
@@ -562,6 +567,8 @@ def _serialize_assignment(ctx: RequestContext, a: Assignment) -> AssignmentOut:
         slot_name=s.name,
         slot_color=s.color,
         slot_position=s.position,
+        slot_group_id=g.id if g else None,
+        slot_group_name=g.name if g else None,
         slot_start_time=s.start_time.isoformat() if s.start_time else None,
         slot_end_time=s.end_time.isoformat() if s.end_time else None,
         date=a.date,
