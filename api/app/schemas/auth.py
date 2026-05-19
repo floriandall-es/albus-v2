@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, EmailStr, Field
@@ -87,10 +87,7 @@ class MembershipOut(BaseModel):
     roles: list[str]
     category_id: int | None = None
     fte_pct: int = 100
-    does_guardias: bool = True
-    guardia_types: list[str] = Field(default_factory=list)
-    exemption_type: str | None = None
-    exemption_until: date | None = None
+    disabled_at: datetime | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -19,23 +19,22 @@ class TeamMemberOut(BaseModel):
     category_id: int | None
     category_name: str | None
     fte_pct: int
-    does_guardias: bool
-    guardia_types: list[str]
-    exemption_type: str | None
-    exemption_until: date | None
+    # Non-null = paused membership; solver excludes them, admin
+    # UI shows a "Desactivado" badge. Past assignments + login
+    # remain unaffected.
+    disabled_at: datetime | None = None
     created_at: datetime
 
 
 class TeamMemberUpdate(BaseModel):
     category_id: int | None = None
     fte_pct: int | None = Field(default=None, ge=0, le=200)
-    does_guardias: bool | None = None
-    guardia_types: list[str] | None = None
-    exemption_type: str | None = Field(default=None, pattern=r"^(permanent|temporary)$")
-    exemption_until: date | None = None
     roles: list[str] | None = None
-    # Sentinel-ish: clients pass `clear_exemption=True` to wipe both fields.
-    clear_exemption: bool = False
+    # If provided, controls the active/disabled state of the
+    # membership. True = disable now (server stamps disabled_at);
+    # False = re-enable (server clears disabled_at). Omit to leave
+    # the state untouched.
+    disabled: bool | None = None
 
 
 class TeamInviteRequest(BaseModel):
@@ -44,8 +43,6 @@ class TeamInviteRequest(BaseModel):
     category_id: int | None = None
     roles: list[str] = Field(default_factory=list)
     fte_pct: int = Field(default=100, ge=0, le=200)
-    does_guardias: bool = True
-    guardia_types: list[str] = Field(default_factory=list)
 
 
 class TeamInviteResponse(BaseModel):

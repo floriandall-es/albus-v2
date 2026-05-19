@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.models import Category, Membership, Person
@@ -20,10 +22,7 @@ def _serialize(m: Membership, person: Person, category: Category | None) -> Team
         category_id=m.category_id,
         category_name=category.name if category else None,
         fte_pct=m.fte_pct,
-        does_guardias=m.does_guardias,
-        guardia_types=list(m.guardia_types),
-        exemption_type=m.exemption_type,
-        exemption_until=m.exemption_until,
+        disabled_at=m.disabled_at,
         created_at=m.created_at,
     )
 
@@ -55,16 +54,23 @@ def update_team_member(
 ) -> TeamMemberOut:
     m = _get_member_or_404(ctx, membership_id)
     data = payload.model_dump(exclude_unset=True)
-    clear_exemption = data.pop("clear_exemption", False)
+    # `disabled` is a bool flag in the API; the column it controls
+    # is a timestamp. Translate before the generic setattr loop so
+    # we don't try to assign a bool to disabled_at directly.
+    disabled = data.pop("disabled", None)
     if data.get("category_id") is not None:
         cat = ctx.db.get(Category, data["category_id"])
         if not cat or cat.tenant_id != ctx.tenant.id:
             raise HTTPException(status_code=422, detail="Unknown category_id")
     for k, v in data.items():
         setattr(m, k, v)
-    if clear_exemption:
-        m.exemption_type = None
-        m.exemption_until = None
+    if disabled is not None:
+        if disabled and m.disabled_at is None:
+            # Stamp the moment we paused — useful later for "disabled
+            # since X" UI hints and any cleanup batch jobs.
+            m.disabled_at = datetime.now(timezone.utc)
+        elif not disabled:
+            m.disabled_at = None
     ctx.db.flush()
     person = ctx.db.get(Person, m.person_id)
     cat = ctx.db.get(Category, m.category_id) if m.category_id else None

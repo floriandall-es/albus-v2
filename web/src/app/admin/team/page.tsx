@@ -21,12 +21,6 @@ import {
 } from "@/components/admin/ui";
 import { BulkInviteModal } from "@/components/admin/BulkInviteModal";
 
-const DEFAULT_GUARDIA_TYPES = [
-  "presencial_24h",
-  "localizada",
-  "findes_festivos",
-];
-
 /**
  * 32×32 circle showing the member's photo, or two-letter initials
  * on a brand-tinted background when none is set. Lives here (not
@@ -37,9 +31,13 @@ const DEFAULT_GUARDIA_TYPES = [
 function TeamAvatar({
   name,
   avatarUrl,
+  muted = false,
 }: {
   name: string;
   avatarUrl: string | null;
+  /** Disabled-member styling: desaturated photo + neutral initials
+   * background so the row reads as "paused" at a glance. */
+  muted?: boolean;
 }) {
   const src = avatarSrc(avatarUrl);
   if (src) {
@@ -48,7 +46,10 @@ function TeamAvatar({
       <img
         src={src}
         alt=""
-        className="h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-gray-200"
+        className={
+          "h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-gray-200 "
+          + (muted ? "opacity-50 grayscale" : "")
+        }
       />
     );
   }
@@ -61,7 +62,12 @@ function TeamAvatar({
     .toUpperCase();
   return (
     <span
-      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700 text-xs font-semibold ring-1 ring-gray-200"
+      className={
+        "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ring-1 ring-gray-200 "
+        + (muted
+          ? "bg-gray-200 text-gray-500"
+          : "bg-brand-100 text-brand-700")
+      }
       aria-hidden
     >
       {initials || "?"}
@@ -103,28 +109,50 @@ export default function TeamPage() {
                 <th className="px-4 py-2 font-medium">Email</th>
                 <th className="px-4 py-2 font-medium">Categoría</th>
                 <th className="px-4 py-2 font-medium">FTE</th>
-                <th className="px-4 py-2 font-medium">Guardias</th>
                 <th className="px-4 py-2 font-medium">Roles</th>
                 <th className="px-4 py-2 font-medium text-right">Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {list.data.map((m) => (
-                <tr key={m.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors">
+              {list.data.map((m) => {
+                // Disabled members are still present in the list so an
+                // admin can spot who's paused (maternity leave, sabbatical)
+                // — they just render muted and tagged. Re-enabling lives
+                // inside the edit modal.
+                const isDisabled = m.disabled_at !== null;
+                return (
+                <tr
+                  key={m.id}
+                  className={
+                    "border-b border-gray-100 last:border-b-0 transition-colors "
+                    + (isDisabled
+                      ? "bg-gray-50/40 text-gray-400"
+                      : "hover:bg-gray-50/60")
+                  }
+                >
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-2.5">
                       <TeamAvatar
                         name={m.person_name}
                         avatarUrl={m.person_avatar_url}
+                        muted={isDisabled}
                       />
-                      <span>{m.person_name}</span>
+                      <span className={isDisabled ? "" : "text-gray-900"}>
+                        {m.person_name}
+                      </span>
+                      {isDisabled && (
+                        <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-700">
+                          Desactivado
+                        </span>
+                      )}
                     </div>
                   </td>
-                  <td className="px-4 py-2 text-gray-600">{m.person_email}</td>
+                  <td className={"px-4 py-2 " + (isDisabled ? "" : "text-gray-600")}>
+                    {m.person_email}
+                  </td>
                   <td className="px-4 py-2">{m.category_name ?? "—"}</td>
                   <td className="px-4 py-2">{m.fte_pct}%</td>
-                  <td className="px-4 py-2">{m.does_guardias ? "Sí" : "No"}</td>
-                  <td className="px-4 py-2 text-xs text-gray-600">
+                  <td className={"px-4 py-2 text-xs " + (isDisabled ? "" : "text-gray-600")}>
                     {m.roles.join(", ") || "—"}
                   </td>
                   <td className="px-4 py-2 text-right">
@@ -133,7 +161,8 @@ export default function TeamPage() {
                     </Button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </Card>
@@ -268,43 +297,21 @@ function TeamEditDialog({
   onClose: () => void;
 }) {
   const qc = useQueryClient();
-  // Collect guardia_type values currently used on slots so they show up
-  // as suggested chips. Tenants can add anything else free-form.
-  const slotsQ = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
-  const slotTypes = (slotsQ.data ?? [])
-    .map((s) => s.guardia_type)
-    .filter((t): t is string => !!t);
-  const baseTypes = Array.from(
-    new Set([...DEFAULT_GUARDIA_TYPES, ...slotTypes, ...member.guardia_types]),
-  );
-  const [extraType, setExtraType] = useState("");
-  const [knownTypes, setKnownTypes] = useState<string[]>(baseTypes);
   const [categoryId, setCategoryId] = useState<number | "">(member.category_id ?? "");
   const [ftePct, setFtePct] = useState<string>(member.fte_pct.toString());
-  const [doesGuardias, setDoesGuardias] = useState<boolean>(member.does_guardias);
-  const [guardiaTypes, setGuardiaTypes] = useState<string[]>(member.guardia_types);
-  const [exemptionType, setExemptionType] = useState<string>(member.exemption_type ?? "");
-  const [exemptionUntil, setExemptionUntil] = useState<string>(
-    member.exemption_until ?? "",
-  );
+  const [active, setActive] = useState<boolean>(member.disabled_at === null);
 
   const save = useMutation({
     mutationFn: () => {
-      const clearExemption = exemptionType === "";
+      // Only send `disabled` if its boolean state actually flipped —
+      // saves the server a write and keeps disabled_at's timestamp
+      // stable when the admin just re-saved Categoría/FTE.
+      const wasActive = member.disabled_at === null;
+      const flipped = active !== wasActive;
       return api.updateTeamMember(member.id, {
         category_id: categoryId === "" ? null : Number(categoryId),
         fte_pct: Number(ftePct),
-        does_guardias: doesGuardias,
-        guardia_types: guardiaTypes,
-        exemption_type: clearExemption
-          ? undefined
-          : (exemptionType as "permanent" | "temporary"),
-        exemption_until: clearExemption
-          ? undefined
-          : exemptionUntil === ""
-          ? null
-          : exemptionUntil,
-        clear_exemption: clearExemption,
+        ...(flipped ? { disabled: !active } : {}),
       });
     },
     onSuccess: () => {
@@ -313,11 +320,14 @@ function TeamEditDialog({
     },
   });
 
-  function toggleGuardiaType(t: string) {
-    setGuardiaTypes((cur) =>
-      cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t],
-    );
-  }
+  // ES locale, short date — for the "Desactivado desde X" hint.
+  const disabledSince = member.disabled_at
+    ? new Date(member.disabled_at).toLocaleDateString("es", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : null;
 
   return (
     <Modal open={true} onClose={onClose} title={`Editar — ${member.person_name}`}>
@@ -338,75 +348,31 @@ function TeamEditDialog({
           ]}
         />
         <TextField label="FTE %" type="number" value={ftePct} onChange={setFtePct} />
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={doesGuardias}
-            onChange={(e) => setDoesGuardias(e.target.checked)}
-          />
-          Hace guardias
-        </label>
-        {doesGuardias && (
-          <div>
-            <span className="text-sm font-medium">Tipos de guardia</span>
-            <div className="mt-1 flex flex-wrap gap-2">
-              {knownTypes.map((t) => (
-                <label key={t} className="flex items-center gap-1 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={guardiaTypes.includes(t)}
-                    onChange={() => toggleGuardiaType(t)}
-                  />
-                  {t}
-                </label>
-              ))}
-            </div>
-            <div className="mt-2 flex gap-2">
-              <input
-                type="text"
-                placeholder="Nuevo tipo (p. ej. 24h_traumatologia)"
-                value={extraType}
-                onChange={(e) => setExtraType(e.target.value)}
-                className="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm"
-              />
-              <button
-                type="button"
-                className="text-sm underline"
-                onClick={() => {
-                  const t = extraType.trim();
-                  if (!t) return;
-                  if (!knownTypes.includes(t)) {
-                    setKnownTypes((cur) => [...cur, t]);
-                  }
-                  if (!guardiaTypes.includes(t)) {
-                    setGuardiaTypes((cur) => [...cur, t]);
-                  }
-                  setExtraType("");
-                }}
-              >
-                Añadir
-              </button>
-            </div>
-          </div>
-        )}
-        <Select
-          label="Exención"
-          value={exemptionType}
-          onChange={(v) => setExemptionType(v as string)}
-          options={[
-            { value: "", label: "— Sin exención —" },
-            { value: "temporary", label: "Temporal" },
-            { value: "permanent", label: "Permanente" },
-          ]}
-        />
-        {exemptionType === "temporary" && (
-          <TextField
-            label="Exención hasta"
-            type="date"
-            value={exemptionUntil}
-            onChange={setExemptionUntil}
-          />
-        )}
+
+        <div className="rounded-md border border-gray-200 bg-gray-50/60 p-3">
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={active}
+              onChange={(e) => setActive(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="font-medium">Activo en el equipo</span>
+              <span className="block text-xs text-gray-500 mt-0.5">
+                Desactiva durante bajas largas (maternidad, sabático, etc.).
+                La persona deja de aparecer en planificaciones nuevas, pero
+                conserva su historial y puede seguir entrando a la app.
+              </span>
+              {!active && disabledSince && (
+                <span className="block text-xs text-gray-600 mt-1">
+                  Desactivado desde {disabledSince}.
+                </span>
+              )}
+            </span>
+          </label>
+        </div>
+
         {save.isError && <ErrorText>{(save.error as Error).message}</ErrorText>}
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={onClose}>

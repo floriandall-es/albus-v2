@@ -51,10 +51,10 @@ class Slot(Base):
     headcount: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     post_slot_rest: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     counts_for_equity: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    # Free-text guardia tag. When set, only members whose
-    # Membership.guardia_types[] contains this exact string can cover the
-    # slot. Common values: "presencial_24h", "localizada", "findes_festivos"
-    # — tenants are free to invent their own taxonomy.
+    # Free-text guardia tag. Sprint 22 / migration 0032 removed the
+    # eligibility filter that used this — kept only because the
+    # solver's "two-guardias-too-close" spread objective consults it
+    # to know whether to apply the 4-day penalty.
     guardia_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Free-text grouping tag for fairness. The solver runs one balance term
     # per distinct equity_group_key (NULL is its own catch-all bucket). Has

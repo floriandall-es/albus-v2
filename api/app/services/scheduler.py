@@ -11,9 +11,9 @@ Hard constraints (model rejects any solution that breaks them):
   person_id=NULL "Sin cubrir" rows).
 - A person works at most one slot per date.
 - Eligibility filters (the model only creates an x-variable when ALL hold):
-  slot allow-list (if any rows in slot_allowed_persons), team-role
-  categories, guardia_type matching Membership.guardia_types[], approved
-  availability blocks, does_guardias respected for guardia-typed slots.
+  membership is active (disabled_at IS NULL), slot allow-list (if any
+  rows in slot_allowed_persons), team-role categories, approved
+  availability blocks.
 - post_slot_rest=True: assignment on day D forbids any assignment on D+1.
 - Locked assignments (Sprint 5 part B) are pinned: the variable is forced
   to 1 and competing variables on the same (date, slot, role) are forced
@@ -413,6 +413,11 @@ class _Context:
         m = self.member_by_person_id.get(person_id)
         if not m:
             return "La persona no es miembro activo del equipo"
+        # Disabled membership (Sprint 22 / migration 0032). Pause flag
+        # for maternity leave, sabbaticals, etc. Past assignments stay;
+        # new ones don't get generated.
+        if m.disabled_at is not None:
+            return "La persona está desactivada en el equipo"
         # Slot allow-list (post-0030 replacement for pool + skill filters).
         allowed = self.slot_allowed_persons.get(slot.id)
         if allowed and person_id not in allowed:
@@ -422,14 +427,6 @@ class _Context:
             cats = self.team_role_categories.get(team_role_id)
             if cats and m.category_id not in cats:
                 return "Su categoría no cubre este rol"
-        # Guardia type / does_guardias.
-        if slot.guardia_type:
-            if not m.does_guardias:
-                return "La persona no hace guardias"
-            if slot.guardia_type not in (m.guardia_types or []):
-                return (
-                    f"No tiene el tipo de guardia '{slot.guardia_type}' en su perfil"
-                )
         # Availability blocks.
         if self.is_blocked(person_id, d):
             return "La persona tiene un bloqueo de disponibilidad aprobado en esa fecha"

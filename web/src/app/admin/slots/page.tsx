@@ -1409,10 +1409,14 @@ function AllowedPersonsSection({
   togglePerson: (personId: number) => void;
 }) {
   const isUnrestricted = allowedPersonIds.length === 0;
+  // Hide disabled members — they can't be scheduled anyway, and
+  // showing them with a checkbox is confusing. Their existing rows
+  // in slot_allowed_persons are kept untouched (the solver just
+  // skips them via the membership filter).
   // Sort by name so the checklist stays scannable.
-  const sortedTeam = [...team].sort((a, b) =>
-    a.person_name.localeCompare(b.person_name, "es"),
-  );
+  const sortedTeam = [...team]
+    .filter((m) => m.disabled_at === null)
+    .sort((a, b) => a.person_name.localeCompare(b.person_name, "es"));
   return (
     <div className="border-t pt-3">
       <div className="flex items-center justify-between mb-2">

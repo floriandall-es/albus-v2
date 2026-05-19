@@ -269,10 +269,9 @@ export type Membership = {
   roles: string[];
   category_id: number | null;
   fte_pct: number;
-  does_guardias: boolean;
-  guardia_types: string[];
-  exemption_type: string | null;
-  exemption_until: string | null;
+  /** ISO timestamp; non-null = membership is paused (solver
+   * skips them, admin UI shows "Desactivado"). Null = active. */
+  disabled_at: string | null;
   created_at: string;
 };
 
@@ -415,22 +414,19 @@ export type TeamMember = {
   category_id: number | null;
   category_name: string | null;
   fte_pct: number;
-  does_guardias: boolean;
-  guardia_types: string[];
-  exemption_type: string | null;
-  exemption_until: string | null;
+  /** ISO timestamp. Non-null = membership is paused; solver
+   * skips them and admin UI shows "Desactivado". Null = active. */
+  disabled_at: string | null;
   created_at: string;
 };
 
 export type TeamMemberUpdate = {
   category_id?: number | null;
   fte_pct?: number;
-  does_guardias?: boolean;
-  guardia_types?: string[];
-  exemption_type?: "permanent" | "temporary" | null;
-  exemption_until?: string | null;
   roles?: string[];
-  clear_exemption?: boolean;
+  /** True = disable now (server stamps disabled_at). False =
+   * re-enable. Omit to leave state unchanged. */
+  disabled?: boolean;
 };
 
 export type TenantSummaryCounts = {
