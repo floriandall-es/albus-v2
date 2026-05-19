@@ -134,6 +134,10 @@ class MeResponse(BaseModel):
     role_types: list[RoleTypeOut]
     departments: list[DepartmentOut]
     counts: TenantSummaryCounts
+    # When this person is the lead of a group, the group's id.
+    # Frontend uses it to give them the (scoped) admin UI even
+    # though their role is plain "member". Null otherwise.
+    lead_group_id: int | None = None
 
 
 # Profile self-management. `name` retained for backward compat with the

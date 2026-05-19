@@ -509,6 +509,10 @@ export type MeResponse = {
   role_types: RoleType[];
   departments: Department[];
   counts: TenantSummaryCounts;
+  /** Set when this person is the designated lead of a group.
+   * Frontend uses it to let leads into the scoped admin UI even
+   * though their role is plain "member". Null otherwise. */
+  lead_group_id: number | null;
 };
 
 // Pydantic v2 error item we expect inside FastAPI's `detail` array for
