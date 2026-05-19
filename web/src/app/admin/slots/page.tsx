@@ -1433,7 +1433,7 @@ function AllowedPersonsSection({
           <button
             type="button"
             onClick={() => setAllowedPersonIds([])}
-            className="text-xs text-gray-600 hover:underline"
+            className="shrink-0 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 whitespace-nowrap"
           >
             Permitir a todo el equipo
           </button>
