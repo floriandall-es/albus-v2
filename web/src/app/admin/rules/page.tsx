@@ -48,8 +48,8 @@ export default function RulesPage() {
     <>
       <PageHeader title="Reglas" />
       <p className="-mt-4 mb-6 text-sm text-gray-600">
-        Incompatibilidades del mismo día, sucesión entre turnos y límites de
-        frecuencia por persona.
+        Incompatibilidades del mismo día, sucesión entre actividades y límites
+        de frecuencia por persona.
       </p>
       <SameDaySection slots={slots.data ?? []} slotById={slotById} />
       <div className="h-8" />
@@ -91,7 +91,7 @@ function SuccessionSection({
     <section>
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-lg font-semibold inline-flex items-center">
-          Sucesión de turnos
+          Sucesión entre actividades
           <InfoHint position="below">
             Reglas del tipo &quot;después de X, no Y&quot;. Ej: tras una
             guardia de 24h, la misma persona no puede tener consulta al
@@ -233,7 +233,7 @@ function SuccessionDialog({
         });
       }
       if (afterSlotId === "" || forbidSlotId === "") {
-        throw new Error("Selecciona los turnos");
+        throw new Error("Selecciona las actividades");
       }
       return api.createSuccessionRule({
         after_slot_id: afterSlotId,
@@ -281,7 +281,7 @@ function SuccessionDialog({
         }}
       >
         <Select
-          label="Después del turno"
+          label="Después de la actividad"
           value={afterSlotId}
           onChange={(v) => {
             const next = v === "" ? "" : Number(v);
@@ -294,7 +294,7 @@ function SuccessionDialog({
         />
         {afterRoleOptions.length > 0 && (
           <Select
-            label="Subturno (opcional)"
+            label="Sub-actividad (opcional)"
             value={afterRoleId}
             onChange={(v) => setAfterRoleId(v === "" ? "" : Number(v))}
             options={[
@@ -318,7 +318,7 @@ function SuccessionDialog({
         />
         {forbidRoleOptions.length > 0 && (
           <Select
-            label="Subturno (opcional)"
+            label="Sub-actividad (opcional)"
             value={forbidRoleId}
             onChange={(v) => setForbidRoleId(v === "" ? "" : Number(v))}
             options={[
@@ -406,7 +406,7 @@ function FrequencySection({
         <h2 className="text-lg font-semibold inline-flex items-center">
           Límites de frecuencia
           <InfoHint position="below">
-            Tope de cuántas veces alguien hace un turno en un periodo.
+            Tope de cuántas veces alguien hace una actividad en un periodo.
             Ej: máximo 4 guardias al mes por persona, o máximo 2
             quirófanos por semana.
           </InfoHint>
@@ -423,7 +423,7 @@ function FrequencySection({
           <table className="w-full text-sm">
             <thead className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
               <tr>
-                <th className="px-4 py-2 font-medium">Turno</th>
+                <th className="px-4 py-2 font-medium">Actividad</th>
                 <th className="px-4 py-2 font-medium">Periodo</th>
                 <th className="px-4 py-2 font-medium">Máx por persona</th>
                 <th className="px-4 py-2 font-medium">Severidad</th>
@@ -528,7 +528,7 @@ function FrequencyDialog({
           weight,
         });
       }
-      if (slotId === "") throw new Error("Selecciona un turno");
+      if (slotId === "") throw new Error("Selecciona una actividad");
       return api.createFrequencyCap({
         slot_id: slotId,
         team_role_id: roleId === "" ? null : roleId,
@@ -561,7 +561,7 @@ function FrequencyDialog({
       >
         {!initial && (
           <Select
-            label="Turno"
+            label="Actividad"
             value={slotId}
             onChange={(v) => {
               const next = v === "" ? "" : Number(v);
@@ -573,7 +573,7 @@ function FrequencyDialog({
         )}
         {!initial && roleOptions.length > 0 && (
           <Select
-            label="Subturno (opcional)"
+            label="Sub-actividad (opcional)"
             value={roleId}
             onChange={(v) => setRoleId(v === "" ? "" : Number(v))}
             options={[
@@ -677,7 +677,7 @@ function SameDaySection({
         <Button onClick={() => setEditing("new")}>+ Añadir regla</Button>
       </div>
       <p className="-mt-2 mb-3 text-xs text-gray-500">
-        Dos turnos que no pueden coincidir el mismo día para la misma persona,
+        Dos actividades que no pueden coincidir el mismo día para la misma persona,
         aunque sus horarios no se solapen. (Para conflictos de horario solapado
         no necesitas regla — el solver los detecta automáticamente.)
       </p>
@@ -691,7 +691,7 @@ function SameDaySection({
           <table className="w-full text-sm">
             <thead className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
               <tr>
-                <th className="px-4 py-2 font-medium">Turno</th>
+                <th className="px-4 py-2 font-medium">Actividad</th>
                 <th className="px-4 py-2 font-medium">No se puede combinar con</th>
                 <th className="px-4 py-2 font-medium">Severidad</th>
                 <th className="px-4 py-2 font-medium">Peso</th>
@@ -775,10 +775,10 @@ function SameDayDialog({
         });
       }
       if (afterSlotId === "" || forbidSlotId === "") {
-        throw new Error("Selecciona los dos turnos");
+        throw new Error("Selecciona las dos actividades");
       }
       if (afterSlotId === forbidSlotId) {
-        throw new Error("Los dos turnos deben ser diferentes");
+        throw new Error("Las dos actividades deben ser diferentes");
       }
       return api.createSuccessionRule({
         after_slot_id: afterSlotId,
@@ -815,11 +815,11 @@ function SameDayDialog({
         }}
       >
         <Select
-          label="Turno"
+          label="Actividad"
           value={afterSlotId}
           onChange={(v) => setAfterSlotId(v === "" ? "" : Number(v))}
           options={[
-            { value: "", label: "Selecciona un turno" },
+            { value: "", label: "Selecciona una actividad" },
             ...slotOptions,
           ]}
         />
@@ -828,7 +828,7 @@ function SameDayDialog({
           value={forbidSlotId}
           onChange={(v) => setForbidSlotId(v === "" ? "" : Number(v))}
           options={[
-            { value: "", label: "Selecciona un turno" },
+            { value: "", label: "Selecciona una actividad" },
             ...slotOptions,
           ]}
         />

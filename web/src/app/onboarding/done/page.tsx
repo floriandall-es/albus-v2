@@ -37,7 +37,7 @@ export default function DoneStep() {
 
       <ul className="rounded-md border bg-white divide-y text-sm mb-6">
         <SummaryRow label="Categorías" value={counts.categories} />
-        <SummaryRow label="Turnos" value={counts.slots} />
+        <SummaryRow label="Actividades" value={counts.slots} />
         <SummaryRow label="Invitaciones pendientes" value={counts.invites} />
       </ul>
 

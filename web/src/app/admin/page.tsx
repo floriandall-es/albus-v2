@@ -99,13 +99,13 @@ export default function AdminDashboard() {
           <StepCard
             done={state.hasSlots}
             icon={<Stethoscope className="h-5 w-5" />}
-            title="Configura los turnos del servicio"
+            title="Configura las actividades del servicio"
             description={
               state.hasSlots
-                ? `${state.slotCount} ${state.slotCount === 1 ? "turno definido" : "turnos definidos"}.`
-                : "Define cada tipo de turno (consulta, guardia, quirófano…) que utiliza tu servicio."
+                ? `${state.slotCount} ${state.slotCount === 1 ? "actividad definida" : "actividades definidas"}.`
+                : "Define cada actividad (consulta, guardia, quirófano…) que utiliza tu servicio."
             }
-            ctaLabel={state.hasSlots ? "Revisar turnos" : "Crear el primer turno"}
+            ctaLabel={state.hasSlots ? "Revisar actividades" : "Crear la primera actividad"}
             href="/admin/slots"
           />
           <StepCard
@@ -179,7 +179,7 @@ export default function AdminDashboard() {
           <ShortcutCard
             icon={<BarChart3 className="h-5 w-5" />}
             label="Estadísticas"
-            sublabel="Reparto por persona y turno"
+            sublabel="Reparto por persona y actividad"
             href="/admin/stats"
           />
           <ShortcutCard

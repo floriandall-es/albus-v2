@@ -42,7 +42,7 @@ const PRESETS: PresetCard[] = [
     bullets: [
       "Categorías: Jefe de servicio, Adjunto, Residente R1–R5",
       "Pensado para Cirugía, ORL, Trauma, Urología, Gineco…",
-      "Personaliza los turnos en el paso 4",
+      "Personaliza las actividades en el paso 4",
     ],
   },
   {
@@ -60,7 +60,7 @@ const PRESETS: PresetCard[] = [
     kind: "otro",
     icon: Building2,
     title: "Otro — empezar en blanco",
-    subtitle: "Configuro mis categorías y turnos desde cero",
+    subtitle: "Configuro mis categorías y actividades desde cero",
     bullets: [
       "Ninguna categoría predefinida",
       "Útil si tu equipo no encaja con los anteriores",

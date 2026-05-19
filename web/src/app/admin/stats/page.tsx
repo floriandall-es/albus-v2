@@ -184,7 +184,7 @@ export default function StatsPage() {
         </div>
         {q.data && (
           <div className="text-xs text-gray-500 pb-2">
-            {totalAssignments} asignaciones · {slotMeta.length} tipos de turno
+            {totalAssignments} asignaciones · {slotMeta.length} actividades
             · planificaciones publicadas y archivadas.
           </div>
         )}

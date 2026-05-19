@@ -42,7 +42,7 @@ const NAV: NavSection[] = [
     items: [
       { href: "/admin/team", label: "Equipo", icon: Users },
       { href: "/admin/categories", label: "Categorías", icon: Tag },
-      { href: "/admin/slots", label: "Turnos", icon: Clock },
+      { href: "/admin/slots", label: "Actividades", icon: Clock },
       { href: "/admin/rules", label: "Reglas", icon: Sparkles },
       { href: "/admin/holidays", label: "Festivos", icon: PartyPopper },
     ],

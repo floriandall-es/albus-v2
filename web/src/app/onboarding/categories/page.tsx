@@ -77,9 +77,9 @@ export default function CategoriesStep() {
     <div>
       <h2 className="text-2xl font-semibold mb-2">Paso 2 — Categorías</h2>
       <p className="text-sm text-gray-600 mb-6">
-        Las categorías describen los niveles de tu equipo. Las usaremos más adelante
-        para asignar turnos y calcular equidad. Marca las que apliquen a tu
-        servicio y añade las que falten.
+        Las categorías describen los niveles de tu equipo. Las usaremos más
+        adelante para asignar actividades y calcular equidad. Marca las que
+        apliquen a tu servicio y añade las que falten.
       </p>
 
       <div className="rounded-md border bg-white mb-4 divide-y">

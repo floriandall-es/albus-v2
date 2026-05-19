@@ -612,7 +612,7 @@ function BalanceStats({
         <table className="text-xs">
           <thead className="border-b border-gray-200 bg-gray-50 text-left">
             <tr className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-              <th className="px-3 py-2">Turno</th>
+              <th className="px-3 py-2">Actividad</th>
               {stats.personsSorted.map(([pid, meta]) => (
                 <th
                   key={pid}

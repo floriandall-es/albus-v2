@@ -193,18 +193,19 @@ export default function SlotsStep() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-2">Paso 3 — Turnos</h2>
+      <h2 className="text-2xl font-semibold mb-2">Paso 3 — Actividades</h2>
       <p className="text-sm text-gray-600 mb-3">
-        Define los turnos típicos de tu servicio. Marca los habituales y/o añade
-        los tuyos abajo. Por defecto cada turno se asigna automáticamente con el
-        solver, repartiendo los turnos equitativamente entre el equipo.
+        Define las actividades típicas de tu servicio. Marca las habituales y/o
+        añade las tuyas abajo. Por defecto cada actividad se asigna
+        automáticamente con el solver, repartiendo el reparto equitativamente
+        entre el equipo.
       </p>
       <p className="text-xs text-gray-500 mb-6">
         ¿Necesitas rotaciones, días fijos o asignación manual? Termina la
-        configuración básica aquí y luego edita cada turno en{" "}
-        <strong>Admin → Turnos</strong>: cada turno admite reglas distintas para
-        diferentes días de la semana (p. ej. rotación L–J + solver fin de semana).
-        También puedes ajustar composición de equipo, competencias requeridas,
+        configuración básica aquí y luego edita cada actividad en{" "}
+        <strong>Admin → Actividades</strong>: cada actividad admite reglas
+        distintas para diferentes días de la semana (p. ej. rotación L–J + solver
+        fin de semana). También puedes ajustar composición de equipo,
         descanso post-guardia y grupo de equidad.
       </p>
 
@@ -260,11 +261,11 @@ export default function SlotsStep() {
 
       <div className="rounded-md border bg-white mb-4">
         <div className="px-4 py-2 border-b bg-gray-50 text-xs font-medium uppercase tracking-wide text-gray-600">
-          Otros turnos
+          Otras actividades
         </div>
         {customSlots.length === 0 && (
           <p className="px-4 py-3 text-sm text-gray-500">
-            Aún no has añadido turnos personalizados.
+            Aún no has añadido actividades personalizadas.
           </p>
         )}
         {customSlots.length > 0 && (
@@ -310,7 +311,7 @@ export default function SlotsStep() {
             if (name.trim()) createCustom.mutate();
           }}
         >
-          <TextField label="Nombre del turno" value={name} onChange={setName} />
+          <TextField label="Nombre de la actividad" value={name} onChange={setName} />
           <div className="grid grid-cols-2 gap-3">
             <Select<DaysApplied>
               label="Días"
@@ -342,7 +343,7 @@ export default function SlotsStep() {
             />
           )}
           <Button type="submit" disabled={!name.trim() || createCustom.isPending}>
-            Añadir turno
+            Añadir actividad
           </Button>
         </form>
       </div>

@@ -67,12 +67,12 @@ export default function SlotsPage() {
   return (
     <>
       <PageHeader
-        title="Turnos"
-        action={<Button onClick={() => setEditing("new")}>Nuevo turno</Button>}
+        title="Actividades"
+        action={<Button onClick={() => setEditing("new")}>Nueva actividad</Button>}
       />
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
       {list.isError && <ErrorText>{(list.error as Error).message}</ErrorText>}
-      {list.data && list.data.length === 0 && <Empty>Aún no hay turnos.</Empty>}
+      {list.data && list.data.length === 0 && <Empty>Aún no hay actividades.</Empty>}
       {list.data && list.data.length > 0 && (() => {
         // Only show the #id suffix when two slots share a name — keeps the
         // list clean while still letting admins distinguish duplicates.
@@ -165,7 +165,7 @@ export default function SlotsPage() {
                     <Button
                       variant="danger"
                       onClick={() => {
-                        if (confirm(`¿Eliminar turno "${s.name}"?`)) del.mutate(s.id);
+                        if (confirm(`¿Eliminar actividad "${s.name}"?`)) del.mutate(s.id);
                       }}
                     >
                       Eliminar
@@ -371,7 +371,7 @@ function SlotDialog({
   }
 
   return (
-    <Modal open={true} onClose={onClose} title={initial ? "Editar turno" : "Nuevo turno"}>
+    <Modal open={true} onClose={onClose} title={initial ? "Editar actividad" : "Nueva actividad"}>
       <form
         className="space-y-3 max-h-[70vh] overflow-y-auto pr-1"
         onSubmit={(e) => {
@@ -418,7 +418,7 @@ function SlotDialog({
         )}
         <div>
           <Select
-            label="Cuántas personas cubren este turno"
+            label="Cuántas personas cubren esta actividad"
             hint={
               <>
                 <strong>Una persona</strong>: consulta, planta.{" "}
@@ -443,9 +443,9 @@ function SlotDialog({
           />
           <p className="mt-1 text-xs text-gray-500">
             {mode === "single" &&
-              "Una sola persona cubre el turno (1 plaza)."}
+              "Una sola persona cubre la actividad (1 plaza)."}
             {mode === "multiple_same" &&
-              "Varias personas con el mismo perfil cubren el turno. Indica cuántas plazas."}
+              "Varias personas con el mismo perfil cubren la actividad. Indica cuántas plazas."}
             {mode === "team_composition" &&
               "Equipo con varios roles. Define los roles abajo; cada uno tiene su propia plaza y categoría."}
           </p>
@@ -453,7 +453,7 @@ function SlotDialog({
         {mode === "multiple_same" && (
           <TextField
             label="Plazas"
-            hint="Cuántas personas se necesitan cada día para cubrir el turno. Ej: planta con 3 enfermeras simultáneas → 3 plazas."
+            hint="Cuántas personas se necesitan cada día para cubrir la actividad. Ej: planta con 3 enfermeras simultáneas → 3 plazas."
             type="number"
             value={headcount}
             onChange={setHeadcount}
@@ -540,11 +540,12 @@ function SlotDialog({
               label="Grupo de equidad"
               hint={
                 <>
-                  Turnos con el mismo grupo se reparten equitativamente
-                  entre sí. Ej: pon &quot;guardia&quot; en todas tus
-                  guardias para que se balanceen, y &quot;quirofano&quot;
-                  en los quirófanos para que se balanceen por separado.
-                  Déjalo vacío y este turno se balancea solo.
+                  Actividades con el mismo grupo se reparten
+                  equitativamente entre sí. Ej: pon &quot;guardia&quot;
+                  en todas tus guardias para que se balanceen, y
+                  &quot;quirofano&quot; en los quirófanos para que se
+                  balanceen por separado. Déjalo vacío y esta
+                  actividad se balancea sola.
                 </>
               }
               value={equityGroupKey}
@@ -558,7 +559,7 @@ function SlotDialog({
           <span className="text-sm font-medium text-gray-700">Color</span>
           <SlotColorPicker value={color} onChange={setColor} />
           <p className="mt-1 text-xs text-gray-500">
-            Punto coloreado junto al nombre del turno en la planificación.
+            Punto coloreado junto al nombre de la actividad en la planificación.
             Opcional.
           </p>
         </div>
@@ -588,7 +589,7 @@ function SlotDialog({
           {mode === "team_composition" && (
             <p className="mb-2 rounded border border-brand-200 bg-brand-50 p-2 text-xs text-brand-800">
               En este modo cada posición de la rotación / día fijo es un{" "}
-              <strong>equipo</strong> del tamaño total del turno (suma de las
+              <strong>equipo</strong> del tamaño total de la actividad (suma de las
               plazas de todos los roles). El solver decide qué persona del
               equipo cubre cada rol cada día, rotando los roles entre ellas
               (Latin-square) a lo largo del bloque de días.
@@ -776,7 +777,7 @@ function validateRulesClient(
           ? 0b1100000
           : customBitmap;
   if (target && (combined & target) !== target) {
-    return "Las reglas no cubren todos los días del turno. Las fechas sin regla quedarán vacías.";
+    return "Las reglas no cubren todos los días de la actividad. Las fechas sin regla quedarán vacías.";
   }
   return null;
 }
@@ -899,7 +900,7 @@ function RuleCard({
                 disabled={disabled}
                 title={
                   disabled
-                    ? `${long} — fuera del alcance del turno`
+                    ? `${long} — fuera del alcance de la actividad`
                     : long
                 }
                 className={
@@ -1040,7 +1041,7 @@ function FixedWeeklyEditor({
                 }
                 title={
                   pinsForDay.length >= headcount
-                    ? `Este día ya tiene ${headcount} persona${headcount === 1 ? "" : "s"} (el máximo del turno).`
+                    ? `Este día ya tiene ${headcount} persona${headcount === 1 ? "" : "s"} (el máximo de la actividad).`
                     : undefined
                 }
                 className="text-blue-700 hover:underline disabled:text-gray-400 disabled:no-underline"
@@ -1081,7 +1082,7 @@ function FixedWeeklyEditor({
             {mismatch && (
               <p className="mt-1 text-amber-700">
                 {d.long}: {pinsForDay.length} persona{pinsForDay.length === 1 ? "" : "s"}
-                {" "}asignada{pinsForDay.length === 1 ? "" : "s"} (el turno requiere{" "}
+                {" "}asignada{pinsForDay.length === 1 ? "" : "s"} (la actividad requiere{" "}
                 {headcount}).
               </p>
             )}
@@ -1259,7 +1260,7 @@ function RotationEditor({
                   }
                   title={
                     members.length >= headcount
-                      ? `Esta posición ya tiene ${headcount} persona${headcount === 1 ? "" : "s"} (el máximo del turno). Añade otra posición para más personas en la rotación.`
+                      ? `Esta posición ya tiene ${headcount} persona${headcount === 1 ? "" : "s"} (el máximo de la actividad). Añade otra posición para más personas en la rotación.`
                       : undefined
                   }
                   className="text-blue-700 hover:underline disabled:text-gray-400 disabled:no-underline"
@@ -1310,7 +1311,7 @@ function RotationEditor({
               {mismatch && (
                 <p className="mt-1 text-amber-700">
                   Posición {posIdx + 1}: {members.length} persona
-                  {members.length === 1 ? "" : "s"} (el turno requiere {headcount}).
+                  {members.length === 1 ? "" : "s"} (la actividad requiere {headcount}).
                 </p>
               )}
             </div>
@@ -1424,7 +1425,7 @@ function AllowedPersonsSection({
         <div>
           <h3 className="text-sm font-semibold">Equipo autorizado</h3>
           <p className="text-xs text-gray-500 mt-0.5">
-            Por defecto cualquier miembro puede cubrir este turno. Si
+            Por defecto cualquier miembro puede cubrir esta actividad. Si
             sólo algunas personas deben poder hacerlo, márcalas aquí.
           </p>
         </div>
@@ -1471,7 +1472,7 @@ function AllowedPersonsSection({
       {isUnrestricted ? (
         <p className="mt-1 text-xs text-gray-500">
           <span className="font-medium text-gray-700">Todo el equipo</span>{" "}
-          puede cubrir este turno.
+          puede cubrir esta actividad.
         </p>
       ) : (
         <p className="mt-1 text-xs text-gray-500">
