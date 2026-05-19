@@ -762,7 +762,10 @@ function validateRulesClient(
 const ROT_PRESETS: { value: string; label: string }[] = [
   { value: "daily", label: "Diaria" },
   { value: "weekdays", label: "Solo laborables" },
-  { value: "weekdays_weekend_grouped", label: "Laborables + finde agrupado" },
+  // "agrupado" dropped — the block diagram below the select makes
+  // it obvious that the weekend shares one block. The old label
+  // overflowed the Select width in narrow modals.
+  { value: "weekdays_weekend_grouped", label: "Laborables + finde" },
   { value: "weekly", label: "Semanal" },
   { value: "custom", label: "Personalizado" },
 ];
