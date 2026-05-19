@@ -427,6 +427,10 @@ export type TeamMemberUpdate = {
   /** True = disable now (server stamps disabled_at). False =
    * re-enable. Omit to leave state unchanged. */
   disabled?: boolean;
+  /** Inverse view of slot_allowed_persons: the activity ids
+   * this person should be authorized on. Server reconciles
+   * only restricted slots — unrestricted slots stay untouched. */
+  allowed_slot_ids?: number[];
 };
 
 export type TenantSummaryCounts = {

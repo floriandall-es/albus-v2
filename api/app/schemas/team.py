@@ -35,6 +35,13 @@ class TeamMemberUpdate(BaseModel):
     # False = re-enable (server clears disabled_at). Omit to leave
     # the state untouched.
     disabled: bool | None = None
+    # Inverse view of slot_allowed_persons. The IDs of activities
+    # this person should be authorized on. Server syncs the union
+    # against existing rows, BUT only for slots that are already
+    # restricted — unrestricted slots stay unrestricted (we'd
+    # silently turn "Todo el equipo" into "everyone-except-Pérez"
+    # otherwise, a side effect this view should not produce).
+    allowed_slot_ids: list[int] | None = None
 
 
 class TeamInviteRequest(BaseModel):

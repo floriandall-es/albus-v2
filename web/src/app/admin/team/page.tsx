@@ -1,12 +1,14 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import {
   api,
   avatarSrc,
   type Category,
   type Invitation,
+  type Slot,
   type TeamMember,
 } from "@/lib/api";
 import {
@@ -310,6 +312,44 @@ function TeamEditDialog({
   const [categoryId, setCategoryId] = useState<number | "">(member.category_id ?? "");
   const [ftePct, setFtePct] = useState<string>(member.fte_pct.toString());
   const [active, setActive] = useState<boolean>(!member.disabled_at);
+  // Inverse view of slot_allowed_persons: which activities this
+  // person is authorized on. We track ONLY explicit toggles in
+  // `overrides`; initial state for each slot is derived from the
+  // slots data (unrestricted slot = implicit yes; restricted slot
+  // = yes iff person is in allowed_person_ids). Only send the
+  // field to the server if the admin actually touched anything,
+  // so a no-op edit doesn't ping the allow-list endpoint.
+  const [activityOverrides, setActivityOverrides] = useState<
+    Map<number, boolean>
+  >(new Map());
+
+  const slotsQ = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
+  const slots = useMemo(() => slotsQ.data ?? [], [slotsQ.data]);
+
+  // Effective "is this person allowed on this activity?" — used
+  // both for rendering and for the save payload. Subtle: an
+  // unrestricted slot is always "yes" (the checkbox is disabled
+  // but rendered as checked) and the override Map is the only
+  // way the value flips, since we never write to overrides for
+  // unrestricted slots.
+  const isAllowed = (s: Slot): boolean => {
+    const override = activityOverrides.get(s.id);
+    if (override !== undefined) return override;
+    if (s.allowed_person_ids.length === 0) return true;
+    return s.allowed_person_ids.includes(member.person_id);
+  };
+
+  const toggleActivity = (s: Slot) => {
+    // Disabled slots (unrestricted) are a no-op — see the
+    // backend's _sync_allowed_activities for why.
+    if (s.allowed_person_ids.length === 0) return;
+    const next = !isAllowed(s);
+    setActivityOverrides((cur) => {
+      const m = new Map(cur);
+      m.set(s.id, next);
+      return m;
+    });
+  };
 
   const save = useMutation({
     mutationFn: () => {
@@ -318,14 +358,25 @@ function TeamEditDialog({
       // stable when the admin just re-saved Categoría/FTE.
       const wasActive = !member.disabled_at;
       const flipped = active !== wasActive;
+      // Allow-list: only include if admin touched anything, to
+      // avoid unnecessary writes during plain Categoría/FTE
+      // edits.
+      const allowedSlotIdsPayload =
+        activityOverrides.size > 0
+          ? slots.filter(isAllowed).map((s) => s.id)
+          : undefined;
       return api.updateTeamMember(member.id, {
         category_id: categoryId === "" ? null : Number(categoryId),
         fte_pct: Number(ftePct),
         ...(flipped ? { disabled: !active } : {}),
+        ...(allowedSlotIdsPayload !== undefined
+          ? { allowed_slot_ids: allowedSlotIdsPayload }
+          : {}),
       });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["team"] });
+      qc.invalidateQueries({ queryKey: ["slots"] });
       onClose();
     },
   });
@@ -397,6 +448,12 @@ function TeamEditDialog({
           </label>
         </div>
 
+        <MemberActivitiesSection
+          slots={slots}
+          isAllowed={isAllowed}
+          toggleActivity={toggleActivity}
+        />
+
         {save.isError && <ErrorText>{(save.error as Error).message}</ErrorText>}
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={onClose}>
@@ -408,5 +465,123 @@ function TeamEditDialog({
         </div>
       </form>
     </Modal>
+  );
+}
+
+/**
+ * Per-member inverse view of slot_allowed_persons. Shows every
+ * activity in the tenant; for each:
+ *  - Unrestricted activity → checkbox is checked & disabled, with
+ *    a "Todo el equipo" pill explaining why. Excluding this person
+ *    specifically would mean restricting the activity, which can
+ *    only be done from the activity edit modal (to avoid silent
+ *    side effects from this view).
+ *  - Restricted activity → checkbox is interactive. Reflects
+ *    whether the person is in the slot's allow-list; toggling
+ *    queues an add/remove that's applied on Save.
+ *
+ * Folded by default with a status badge in the header so the
+ * admin can see the count without expanding — matches the
+ * pattern used on the slot side.
+ */
+function MemberActivitiesSection({
+  slots,
+  isAllowed,
+  toggleActivity,
+}: {
+  slots: Slot[];
+  isAllowed: (s: Slot) => boolean;
+  toggleActivity: (s: Slot) => void;
+}) {
+  const [open, setOpen] = useState<boolean>(false);
+  const sorted = useMemo(
+    () =>
+      [...slots].sort((a, b) => {
+        if (a.position !== b.position) return a.position - b.position;
+        return a.name.localeCompare(b.name, "es");
+      }),
+    [slots],
+  );
+  const allowedCount = sorted.filter(isAllowed).length;
+  const total = sorted.length;
+
+  return (
+    <div className="rounded-md border border-gray-200">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-3 py-2.5 text-left"
+      >
+        <div className="flex items-center gap-2">
+          {open ? (
+            <ChevronDown className="h-4 w-4 text-gray-500" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-gray-500" />
+          )}
+          <span className="text-sm font-semibold">
+            Actividades autorizadas
+          </span>
+        </div>
+        <span className="inline-flex items-center rounded-full bg-brand-100 px-2 py-0.5 text-[11px] font-medium text-brand-700">
+          {allowedCount} de {total}
+        </span>
+      </button>
+      {open && (
+        <div className="border-t border-gray-100">
+          {total === 0 ? (
+            <p className="px-3 py-2.5 text-xs text-gray-500">
+              Aún no hay actividades configuradas. Crea actividades primero
+              en{" "}
+              <strong>Admin → Actividades</strong>.
+            </p>
+          ) : (
+            <ul className="divide-y divide-gray-100 max-h-64 overflow-y-auto">
+              {sorted.map((s) => {
+                const unrestricted = s.allowed_person_ids.length === 0;
+                const checked = isAllowed(s);
+                return (
+                  <li key={s.id}>
+                    <label
+                      className={
+                        "flex items-center justify-between gap-2 px-3 py-1.5 text-sm "
+                        + (unrestricted
+                          ? "cursor-default"
+                          : "cursor-pointer hover:bg-gray-50")
+                      }
+                    >
+                      <span className="flex items-center gap-2 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={unrestricted}
+                          onChange={() => toggleActivity(s)}
+                          className="h-4 w-4 rounded border-gray-300"
+                        />
+                        <span
+                          className={
+                            "truncate "
+                            + (unrestricted ? "text-gray-700" : "text-gray-900")
+                          }
+                        >
+                          {s.name}
+                        </span>
+                      </span>
+                      {unrestricted && (
+                        <span
+                          className="inline-flex shrink-0 items-center rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-600"
+                          title="Esta actividad está abierta a todo el equipo. Para excluir a alguien, restringe el equipo autorizado en la actividad."
+                        >
+                          Todo el equipo
+                        </span>
+                      )}
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
