@@ -683,7 +683,7 @@ function SameDaySection({
       <p className="-mt-2 mb-3 text-xs text-gray-500">
         Dos actividades que no pueden coincidir el mismo día para la misma persona,
         aunque sus horarios no se solapen. (Para conflictos de horario solapado
-        no necesitas regla — el solver los detecta automáticamente.)
+        no necesitas regla — Trivu los detecta automáticamente.)
       </p>
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
       {list.isError && <ErrorText>{(list.error as Error).message}</ErrorText>}
@@ -841,7 +841,7 @@ function SameDayDialog({
           value={severity}
           onChange={(v) => v && setSeverity(v as DependencySeverity)}
           options={[
-            { value: "hard", label: "Estricta (el solver no lo permitirá)" },
+            { value: "hard", label: "Estricta (Trivu no lo permitirá)" },
             { value: "soft", label: "Blanda (penaliza, pero permite)" },
           ]}
         />

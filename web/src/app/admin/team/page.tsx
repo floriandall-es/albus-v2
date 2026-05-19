@@ -364,9 +364,8 @@ function TeamEditDialog({
               Pondera el reparto de turnos en la planificación. Al 100%
               la persona recibe su parte completa; al 50%, la mitad.
               Útil para reducciones de jornada (vuelta de baja,
-              cuidados). No es un tope máximo — el solver intenta
-              acercarse a esa proporción, no impide superarla si hace
-              falta.
+              cuidados). No es un tope máximo — Trivu intenta acercarse
+              a esa proporción, no impide superarla si hace falta.
             </>
           }
           type="number"

@@ -135,7 +135,7 @@ export default function AdminDashboard() {
                 ? `${state.publishedCount} ${state.publishedCount === 1 ? "planificación publicada" : "planificaciones publicadas"}.`
                 : state.hasDraftToPublish
                   ? "Tienes un borrador. Cuando lo publiques, el equipo lo verá en \"Mis turnos\"."
-                  : "Genera el primer mes. El solver lo construye automáticamente respetando las reglas y disponibilidades."
+                  : "Genera el primer mes. Trivu lo construye automáticamente respetando las reglas y disponibilidades."
             }
             ctaLabel={
               state.hasPublishedSchedule

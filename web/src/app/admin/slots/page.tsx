@@ -590,7 +590,7 @@ function SlotDialog({
             <p className="mb-2 rounded border border-brand-200 bg-brand-50 p-2 text-xs text-brand-800">
               En este modo cada posición de la rotación / día fijo es un{" "}
               <strong>equipo</strong> del tamaño total de la actividad (suma de las
-              plazas de todos los roles). El solver decide qué persona del
+              plazas de todos los roles). Trivu decide qué persona del
               equipo cubre cada rol cada día, rotando los roles entre ellas
               (Latin-square) a lo largo del bloque de días.
             </p>
@@ -860,7 +860,7 @@ function RuleCard({
   const setStrategy = (s: SlotRuleStrategy) => onChange({ strategy: s });
 
   const summary = (() => {
-    if (rule.strategy === "solver") return "Asignación automática (solver)";
+    if (rule.strategy === "solver") return "Asignación automática";
     if (rule.strategy === "manual") return "Asignación manual";
     if (rule.strategy === "fixed_weekly")
       return `${rule.weekly_pins.length} pin(s) en total`;
@@ -922,7 +922,7 @@ function RuleCard({
       <div className="flex flex-wrap gap-3 text-xs">
         {(
           [
-            { v: "solver", label: "Solver" },
+            { v: "solver", label: "Automático" },
             { v: "fixed_weekly", label: "Día fijo" },
             { v: "rotation", label: "Rotación" },
             { v: "manual", label: "Manual" },

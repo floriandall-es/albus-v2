@@ -254,11 +254,11 @@ export default function ScheduleDetailPage() {
             }
             title={
               s.solver_used === "cpsat"
-                ? "CP-SAT: solver óptimo con equidad, descansos y reglas cruzadas aplicadas."
-                : "Greedy: respaldo round-robin. CP-SAT no encontró solución factible — equidad y restricciones suaves no se aplicaron."
+                ? "Equilibrada: equidad, descansos y reglas cruzadas aplicadas."
+                : "Simplificada (respaldo): no se pudo equilibrar con todas las reglas activas — la planificación es válida pero el reparto puede ser desigual."
             }
           >
-            {s.solver_used === "cpsat" ? "CP-SAT" : "Greedy (respaldo)"}
+            {s.solver_used === "cpsat" ? "Equilibrada" : "Simplificada"}
           </span>
         )}
         {isEditable && (

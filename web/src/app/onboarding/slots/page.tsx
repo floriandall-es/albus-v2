@@ -197,16 +197,16 @@ export default function SlotsStep() {
       <p className="text-sm text-gray-600 mb-3">
         Define las actividades típicas de tu servicio. Marca las habituales y/o
         añade las tuyas abajo. Por defecto cada actividad se asigna
-        automáticamente con el solver, repartiendo el reparto equitativamente
-        entre el equipo.
+        automáticamente, repartiendo el reparto equitativamente entre el
+        equipo.
       </p>
       <p className="text-xs text-gray-500 mb-6">
         ¿Necesitas rotaciones, días fijos o asignación manual? Termina la
         configuración básica aquí y luego edita cada actividad en{" "}
         <strong>Admin → Actividades</strong>: cada actividad admite reglas
-        distintas para diferentes días de la semana (p. ej. rotación L–J + solver
-        fin de semana). También puedes ajustar composición de equipo,
-        descanso post-guardia y grupo de equidad.
+        distintas para diferentes días de la semana (p. ej. rotación L–J +
+        asignación automática los fines de semana). También puedes ajustar
+        composición de equipo, descanso post-guardia y grupo de equidad.
       </p>
 
       <div className="rounded-md border bg-white mb-4 divide-y">
