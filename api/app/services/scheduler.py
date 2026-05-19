@@ -1782,19 +1782,16 @@ def _solve_cpsat(
     # We minimize max - min of weighted counts. Weights are int100/fte_pct
     # to make the LP integer.
     #
-    # Slots are bucketed by `equity_group_key`. Slots that share a key
-    # balance together (e.g. "guardia" → all guardia variants split
-    # evenly among the eligible people). Slots with key=NULL each form
-    # their OWN single-slot group — every slot balances independently
-    # by default, and an admin opts INTO grouped-balance by setting the
-    # same key on multiple slots. (Earlier behavior was the opposite —
-    # all NULL-group slots in one bucket — but that produced "person X
-    # does 100% of localizadas while totals look balanced" because the
-    # localizada slot was lumped with quirófanos and consultas.)
+    # Each slot is its own fairness bucket. Migration 0033 dropped the
+    # `equity_group_key` pooling — admins almost always wanted per-slot
+    # fairness, and the pooled mode produced surprises ("person X does
+    # 100% of localizadas, person Y does 100% of presenciales, totals
+    # look balanced"). Within a team-composition slot the per-role
+    # balance term below (W_ROLE_BALANCE) covers role-level fairness.
     # Weekend balance stays a single global term (weighed less; it's a
-    # cross-group sanity check rather than a primary fairness dimension).
+    # cross-slot sanity check rather than a primary fairness dimension).
     person_ids_present = sorted({pid for (_, _, _, pid) in x.keys()})
-    equity_groups: dict[str, dict[int, list]] = defaultdict(
+    per_slot_buckets: dict[int, dict[int, list]] = defaultdict(
         lambda: {pid: [] for pid in person_ids_present}
     )
     weekend_total: dict[int, list] = {pid: [] for pid in person_ids_present}
@@ -1802,13 +1799,7 @@ def _solve_cpsat(
     for (d, slot_id, role_id, pid), var in x.items():
         slot = ctx.slot_by_id[slot_id]
         if slot.counts_for_equity:
-            # NULL key → unique per-slot bucket. Explicit key → shared.
-            group_key = (
-                slot.equity_group_key
-                if slot.equity_group_key
-                else f"_slot_{slot.id}"
-            )
-            equity_groups[group_key][pid].append(var)
+            per_slot_buckets[slot_id][pid].append(var)
             if is_weekend_or_holiday[d]:
                 weekend_total[pid].append(var)
 
@@ -1816,9 +1807,10 @@ def _solve_cpsat(
 
     def _balance_term(buckets: dict[int, list], weight: int, label: str) -> None:
         """Build (max - min) of weighted-by-FTE sums across buckets and add
-        weight*(max-min) to obj_terms. `label` is used to disambiguate
-        IntVar names when the helper is called more than once (e.g. one
-        call per equity_group_key)."""
+        weight*(max-min) to obj_terms. `label` disambiguates IntVar
+        names when the helper is called more than once (one call per
+        slot for the per-slot fairness term, plus the global weekend
+        balance and per-role inside team-composition slots)."""
         if not buckets:
             return
         # Multiply each person's sum by 100 // fte to FTE-normalize. We
@@ -1857,16 +1849,9 @@ def _solve_cpsat(
         model.Add(spread == max_var - min_var)
         obj_terms.append(weight * spread)
 
-    # One balance term per group. Explicit keys (e.g. "guardia") share a
-    # term across all slots that opted in; synthetic _slot_{id} keys
-    # produce a per-slot term so each slot self-balances by default.
-    for group_key, buckets in equity_groups.items():
-        # Sanitize the group key for use in CP-SAT variable names (which
-        # don't tolerate weird chars). "default" for the NULL bucket.
-        safe = "default" if group_key is None else "".join(
-            c if c.isalnum() else "_" for c in group_key
-        )[:24]
-        _balance_term(buckets, W_FAIRNESS, f"eq_{safe}")
+    # One balance term per slot — every activity self-balances.
+    for slot_id, buckets in per_slot_buckets.items():
+        _balance_term(buckets, W_FAIRNESS, f"eq_s{slot_id}")
 
     _balance_term(weekend_total, W_WEEKEND, "weekend")
 

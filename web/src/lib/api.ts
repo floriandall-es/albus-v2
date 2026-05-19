@@ -366,7 +366,6 @@ export type Slot = {
   post_slot_rest: boolean;
   counts_for_equity: boolean;
   guardia_type: string | null;
-  equity_group_key: string | null;
   color: string | null;
   /** Admin-controlled display order. Lower = earlier in the
    * planning grid and the slot list. */
@@ -394,7 +393,6 @@ export type SlotInput = {
   post_slot_rest: boolean;
   counts_for_equity: boolean;
   guardia_type?: string | null;
-  equity_group_key?: string | null;
   color?: string | null;
   team_roles: { role_label: string; headcount: number; category_ids: number[] }[];
   /** Empty = no restriction; non-empty = only these persons may be

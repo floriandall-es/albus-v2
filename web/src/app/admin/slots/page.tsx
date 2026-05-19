@@ -234,9 +234,6 @@ function SlotDialog({
   const [guardiaType, setGuardiaType] = useState<string>(
     initial?.guardia_type ?? "",
   );
-  const [equityGroupKey, setEquityGroupKey] = useState<string>(
-    initial?.equity_group_key ?? "",
-  );
   const [color, setColor] = useState<string | null>(initial?.color ?? null);
   // Allow-list: empty = "Todo el equipo" (no restriction). Non-empty
   // = only these person ids may be assigned. Replaces the pre-0030
@@ -301,7 +298,6 @@ function SlotDialog({
         post_slot_rest: postRest,
         counts_for_equity: countsEquity,
         guardia_type: guardiaType.trim() || null,
-        equity_group_key: equityGroupKey.trim() || null,
         color: color,
         // When scheduleMode = "all_day" both times stay null regardless
         // of what the user previously typed (state is preserved so a
@@ -529,27 +525,6 @@ function SlotDialog({
           state defaults (false / true / "") because postRest /
           countsEquity / guardiaType are never re-assigned by the form.
         */}
-        {countsEquity && (
-          <div>
-            <TextField
-              label="Grupo de equidad"
-              hint={
-                <>
-                  Actividades con el mismo grupo se reparten
-                  equitativamente entre sí. Ej: pon &quot;guardia&quot;
-                  en todas tus guardias para que se balanceen, y
-                  &quot;quirofano&quot; en los quirófanos para que se
-                  balanceen por separado. Déjalo vacío y esta
-                  actividad se balancea sola.
-                </>
-              }
-              value={equityGroupKey}
-              onChange={setEquityGroupKey}
-              placeholder="guardia"
-            />
-          </div>
-        )}
-
         <div>
           <span className="text-sm font-medium text-gray-700">Color</span>
           <SlotColorPicker value={color} onChange={setColor} />

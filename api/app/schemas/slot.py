@@ -31,7 +31,6 @@ class SlotCreate(BaseModel):
     post_slot_rest: bool = False
     counts_for_equity: bool = True
     guardia_type: str | None = Field(default=None, max_length=64)
-    equity_group_key: str | None = Field(default=None, max_length=64)
     color: str | None = Field(default=None, pattern=_HEX_COLOR)
     team_roles: list[SlotTeamRoleIn] = Field(default_factory=list)
     # Per-slot allow-list. Empty list = "Todo el equipo" (no
@@ -81,7 +80,6 @@ class SlotOut(BaseModel):
     post_slot_rest: bool
     counts_for_equity: bool
     guardia_type: str | None
-    equity_group_key: str | None
     color: str | None = None
     position: int = 0
     crosses_midnight: bool

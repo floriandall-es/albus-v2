@@ -192,7 +192,6 @@ def _serialize(ctx: RequestContext, slot: Slot) -> SlotOut:
         post_slot_rest=slot.post_slot_rest,
         counts_for_equity=slot.counts_for_equity,
         guardia_type=slot.guardia_type,
-        equity_group_key=slot.equity_group_key,
         color=slot.color,
         position=slot.position,
         crosses_midnight=slot.crosses_midnight,
@@ -302,7 +301,6 @@ def create_slot(
         post_slot_rest=payload.post_slot_rest,
         counts_for_equity=payload.counts_for_equity,
         guardia_type=(payload.guardia_type or None),
-        equity_group_key=(payload.equity_group_key or None),
         color=(payload.color or None),
         position=next_pos,
     )
@@ -352,9 +350,6 @@ def update_slot(
         # Normalize empty string to None so the column reflects "not a guardia".
         gt = data["guardia_type"]
         data["guardia_type"] = gt or None
-    if "equity_group_key" in data:
-        eg = data["equity_group_key"]
-        data["equity_group_key"] = eg or None
     if "color" in data:
         c = data["color"]
         data["color"] = c or None

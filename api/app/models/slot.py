@@ -56,10 +56,6 @@ class Slot(Base):
     # solver's "two-guardias-too-close" spread objective consults it
     # to know whether to apply the 4-day penalty.
     guardia_type: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Free-text grouping tag for fairness. The solver runs one balance term
-    # per distinct equity_group_key (NULL is its own catch-all bucket). Has
-    # no effect when counts_for_equity=False.
-    equity_group_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     # 7-char hex color (#rrggbb) used by the UI to colour-code the slot
     # row dot in the planning grid. Null = no dot.
     color: Mapped[str | None] = mapped_column(String(7), nullable=True)
