@@ -175,17 +175,7 @@ export function PlanningGrid({
                     />
                   )}
                   <span className="flex flex-col leading-tight">
-                    <span className="flex items-center gap-1.5">
-                      {row.display_name}
-                      {row.group_name && (
-                        <span
-                          className="inline-flex items-center rounded-full bg-indigo-50 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-indigo-700"
-                          title={`Actividad gestionada por el sub-equipo ${row.group_name}`}
-                        >
-                          {row.group_name}
-                        </span>
-                      )}
-                    </span>
+                    <span>{row.display_name}</span>
                     {row.team_role_label && (
                       <span className="text-xs font-normal text-gray-500">
                         {row.team_role_label}
