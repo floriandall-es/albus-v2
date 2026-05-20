@@ -75,11 +75,12 @@ export default function SlotsStep() {
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
 
-  // Manual form state.
+  // Manual form state. Custom slots are created as "una persona" by
+  // default; the staffing mode picker lives in the inline editor that
+  // appears under each ticked / created row (it shows all three modes,
+  // including team_composition which has its own role-definition UI).
   const [name, setName] = useState("");
   const [days, setDays] = useState<DaysApplied>("all");
-  const [mode, setMode] = useState<StaffingMode>("single");
-  const [headcount, setHeadcount] = useState("1");
 
   const createTemplate = useMutation({
     mutationFn: (t: TemplateSlot) =>
@@ -96,8 +97,8 @@ export default function SlotsStep() {
       api.createSlot({
         name,
         days_applied: days,
-        staffing_mode: mode,
-        headcount: mode === "multiple_same" ? Math.max(1, Number(headcount)) : 1,
+        staffing_mode: "single",
+        headcount: 1,
         counts_for_equity: true,
         team_roles: [],
         allowed_person_ids: [],
@@ -244,36 +245,17 @@ export default function SlotsStep() {
           }}
         >
           <TextField label="Nombre de la actividad" value={name} onChange={setName} />
-          <div className="grid grid-cols-2 gap-3">
-            <Select<DaysApplied>
-              label="Días"
-              value={days}
-              onChange={(v) => v && setDays(v as DaysApplied)}
-              options={[
-                { value: "all", label: "Todos los días" },
-                { value: "weekdays", label: "Días laborables" },
-                { value: "weekends_holidays", label: "Fines de semana y festivos" },
-                { value: "custom", label: "Personalizado" },
-              ]}
-            />
-            <Select<StaffingMode>
-              label="Modo de staffing"
-              value={mode}
-              onChange={(v) => v && setMode(v as StaffingMode)}
-              options={[
-                { value: "single", label: "Una persona" },
-                { value: "multiple_same", label: "Varias personas (mismo rol)" },
-              ]}
-            />
-          </div>
-          {mode === "multiple_same" && (
-            <TextField
-              label="Número de personas"
-              type="number"
-              value={headcount}
-              onChange={setHeadcount}
-            />
-          )}
+          <Select<DaysApplied>
+            label="Días"
+            value={days}
+            onChange={(v) => v && setDays(v as DaysApplied)}
+            options={[
+              { value: "all", label: "Todos los días" },
+              { value: "weekdays", label: "Días laborables" },
+              { value: "weekends_holidays", label: "Fines de semana y festivos" },
+              { value: "custom", label: "Personalizado" },
+            ]}
+          />
           <Button type="submit" disabled={!name.trim() || createCustom.isPending}>
             Añadir actividad
           </Button>
