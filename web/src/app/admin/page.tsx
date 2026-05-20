@@ -101,7 +101,7 @@ export default function AdminDashboard() {
           <StepCard
             done={state.rulesDone}
             icon={<Sparkles className="h-5 w-5" />}
-            title="Configura las reglas del solver"
+            title="Configura las reglas de asignación"
             description="Incompatibilidades del mismo día, sucesión entre actividades y límites por persona."
             ctaLabel="Ir a Reglas"
             href="/admin/rules"
@@ -111,7 +111,7 @@ export default function AdminDashboard() {
             done={state.teamDone}
             icon={<Users className="h-5 w-5" />}
             title="Revisa tu equipo"
-            description="Las invitaciones ya se enviaron durante el alta. Asigna a cada miembro su categoría profesional para que el solver pueda repartir las actividades."
+            description="Las invitaciones ya se enviaron durante el alta. Asigna a cada miembro su categoría profesional para que Trivu pueda repartir las actividades."
             ctaLabel="Ir al equipo"
             href="/admin/team"
             primary={

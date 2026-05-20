@@ -77,7 +77,7 @@ export default function SlotsPage() {
       <SetupBanner
         area="activities"
         title="Define las actividades de tu servicio"
-        description="Cada actividad es un tipo de turno: consulta, guardia, quirófano, planta. Para cada una eliges nombre, horario (o sin horario fijo), días que aplica y cómo se asigna a las personas: solver automático, rotación, días fijos por persona o asignación manual."
+        description="Cada actividad es un tipo de turno: consulta, guardia, quirófano, planta. Para cada una eliges nombre, horario, qué días aplica y cómo se reparte entre el equipo (automática, rotación, días fijos por persona o manual)."
       />
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
       {list.isError && <ErrorText>{(list.error as Error).message}</ErrorText>}
