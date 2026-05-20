@@ -1,5 +1,6 @@
 "use client";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, setToken } from "@/lib/api";
@@ -11,6 +12,7 @@ export default function SignupPage() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -25,6 +27,7 @@ export default function SignupPage() {
         last_name: lastName,
         email,
         password,
+        accept_terms: acceptTerms,
       });
       setToken(res.access_token);
       // Fresh tenant — always go straight into the onboarding wizard.
@@ -90,10 +93,38 @@ export default function SignupPage() {
               value={password}
               onChange={setPassword}
             />
+            <label className="flex items-start gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={acceptTerms}
+                onChange={(e) => setAcceptTerms(e.target.checked)}
+                required
+                className="mt-0.5 shrink-0"
+              />
+              <span>
+                Acepto los{" "}
+                <Link
+                  href="/terms"
+                  target="_blank"
+                  className="text-brand-700 hover:underline"
+                >
+                  términos y condiciones
+                </Link>{" "}
+                y la{" "}
+                <Link
+                  href="/privacy"
+                  target="_blank"
+                  className="text-brand-700 hover:underline"
+                >
+                  política de privacidad
+                </Link>
+                .
+              </span>
+            </label>
             {error && <p className="text-sm text-rose-600">{error}</p>}
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !acceptTerms}
               className="w-full rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-soft hover:bg-brand-700 disabled:opacity-50"
             >
               {loading ? "Creando…" : "Crear servicio"}

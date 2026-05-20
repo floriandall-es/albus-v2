@@ -130,6 +130,17 @@ def _slug_exists(db: Session, slug: str) -> bool:
 
 @router.post("/signup", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthResponse:
+    # Affirmative ToS / Privacy acceptance is mandatory. We reject
+    # before any DB work so a sneaky client can't smuggle accounts
+    # in by leaving the field false.
+    if not payload.accept_terms:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Debes aceptar los términos y la política de "
+                "privacidad para crear la cuenta."
+            ),
+        )
     # Email uniqueness — checked before tenant creation so we don't leave
     # an orphan tenant if the email collides.
     existing_person = db.query(Person).filter(Person.email == payload.email.lower()).first()
@@ -166,6 +177,8 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthRespons
         name=name,
         first_name=first_name,
         last_name=last_name,
+        terms_accepted_at=datetime.now(timezone.utc),
+        terms_accepted_version=settings.terms_current_version,
     )
     db.add(person)
     db.flush()

@@ -53,6 +53,13 @@ class InviteAcceptRequest(BaseModel):
     person_name: str | None = Field(default=None, min_length=1, max_length=255)
     first_name: str | None = Field(default=None, max_length=255)
     last_name: str | None = Field(default=None, max_length=255)
+    # The invitee must affirmatively accept the ToS + Privacy
+    # Policy. Server rejects with 422 if false. For invitees who
+    # are already a Person in the db (cross-tenant invite), the
+    # ack is treated as a no-op since they accepted on their
+    # original signup; the server still requires the field to be
+    # true so the invitee saw and ticked the checkbox.
+    accept_terms: bool = False
 
 
 # The response is the same shape as login — frontend can drop the user

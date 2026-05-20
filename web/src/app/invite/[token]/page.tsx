@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -22,6 +23,7 @@ export default function AcceptInvitePage() {
   const [prefillDone, setPrefillDone] = useState(false);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [acceptTerms, setAcceptTerms] = useState(false);
 
   // When preview loads, prefill the name fields with a best-effort
   // split of the invitation's `person_name` (whatever the admin
@@ -39,6 +41,7 @@ export default function AcceptInvitePage() {
         password,
         first_name: firstName.trim() || undefined,
         last_name: lastName.trim() || undefined,
+        accept_terms: acceptTerms,
       }),
     onSuccess: (data) => {
       setToken(data.access_token);
@@ -63,7 +66,11 @@ export default function AcceptInvitePage() {
 
   const inv = preview.data!;
   const passwordsMatch = password === confirm;
-  const canSubmit = password.length >= 8 && passwordsMatch && !accept.isPending;
+  const canSubmit =
+    password.length >= 8
+    && passwordsMatch
+    && acceptTerms
+    && !accept.isPending;
 
   return (
     <div className="p-8 max-w-md mx-auto">
@@ -108,6 +115,34 @@ export default function AcceptInvitePage() {
         {!passwordsMatch && confirm.length > 0 && (
           <ErrorText>Las contraseñas no coinciden.</ErrorText>
         )}
+        <label className="flex items-start gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={acceptTerms}
+            onChange={(e) => setAcceptTerms(e.target.checked)}
+            required
+            className="mt-0.5 shrink-0"
+          />
+          <span>
+            Acepto los{" "}
+            <Link
+              href="/terms"
+              target="_blank"
+              className="text-brand-700 hover:underline"
+            >
+              términos y condiciones
+            </Link>{" "}
+            y la{" "}
+            <Link
+              href="/privacy"
+              target="_blank"
+              className="text-brand-700 hover:underline"
+            >
+              política de privacidad
+            </Link>
+            .
+          </span>
+        </label>
         {accept.isError && <ErrorText>{(accept.error as Error).message}</ErrorText>}
         <Button type="submit" disabled={!canSubmit}>
           {accept.isPending ? "Aceptando…" : "Aceptar invitación"}

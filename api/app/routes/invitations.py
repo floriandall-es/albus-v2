@@ -18,6 +18,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.security import (
     create_access_token,
     hash_password,
@@ -285,6 +286,14 @@ def accept_invitation(
     payload: InviteAcceptRequest,
     db: Session = Depends(_public_db),
 ) -> AuthResponse:
+    if not payload.accept_terms:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Debes aceptar los términos y la política de "
+                "privacidad para activar tu cuenta."
+            ),
+        )
     inv = _find_invitation_by_token(db, raw_token)
     if not inv:
         raise HTTPException(status_code=400, detail="Invitation not found or expired")
@@ -323,12 +332,21 @@ def accept_invitation(
         # linking accounts cross-tenant should leave their previously-
         # set profile alone. Skip the update.
     else:
+        # Invitees who land here via an emailed link have already
+        # demonstrated mailbox control, same proof as the signup
+        # verification step. Stamp email_verified_at + terms
+        # acceptance at the same time so the new Person starts in
+        # a clean, fully-onboarded state.
+        now_utc = datetime.now(timezone.utc)
         person = Person(
             email=inv.email,
             hashed_password=hash_password(payload.password),
             name=composed_name,
             first_name=first_name,
             last_name=last_name,
+            email_verified_at=now_utc,
+            terms_accepted_at=now_utc,
+            terms_accepted_version=settings.terms_current_version,
         )
         db.add(person)
         db.flush()

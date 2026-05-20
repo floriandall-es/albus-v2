@@ -723,6 +723,9 @@ export const api = {
     last_name?: string;
     email: string;
     password: string;
+    /** Affirmative ToS + Privacy acceptance. Server rejects with
+     * 422 if missing or false. */
+    accept_terms: boolean;
   }) => request<AuthResponse>("/api/signup", { method: "POST", body: JSON.stringify(body) }),
 
   // Login is conditional on how many memberships the person has:
@@ -896,6 +899,9 @@ export const api = {
       person_name?: string;
       first_name?: string;
       last_name?: string;
+      /** Affirmative ToS + Privacy acceptance. Server rejects
+       * with 422 if missing or false. */
+      accept_terms: boolean;
     },
   ) =>
     request<AuthResponse>(

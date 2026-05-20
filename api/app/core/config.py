@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     # on phone, finish on laptop", short enough that a stolen
     # mailbox doesn't yield long-term reset capability.
     password_reset_ttl_minutes: int = 60
+
+    # Current version string of the Terms of Service + Privacy
+    # Policy. Stored on persons.terms_accepted_version when a user
+    # accepts; bumping this constant after a substantive update
+    # makes existing acceptances "stale" and the frontend can
+    # re-prompt. Keep this in sync with the actual /terms and
+    # /privacy pages (web/src/app/terms, /privacy).
+    terms_current_version: str = "1.0"
     cors_origins: str = "http://localhost:3000"
     # Used to build invite accept URLs. In dev this points at the web service
     # exposed on the host; in prod it's the public domain.

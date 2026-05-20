@@ -17,6 +17,12 @@ class SignupRequest(BaseModel):
     # ISO 3166-1 alpha-2. Defaults to ES — Trivu's v1 launch market. Used as
     # the default for the holiday import flow; admins can change it later.
     country_code: str | None = Field(default="ES", max_length=8)
+    # The user must affirmatively acknowledge the ToS + Privacy
+    # Policy at signup. The client sends `true` after the user
+    # ticks the checkbox; the server stores the current version
+    # string and the timestamp on the new Person row. Required —
+    # missing or false rejects with 422.
+    accept_terms: bool = False
 
 
 class LoginRequest(BaseModel):
