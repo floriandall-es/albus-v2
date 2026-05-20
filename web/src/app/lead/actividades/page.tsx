@@ -193,7 +193,6 @@ function ActivityDialog({
         // composition. headcount is the only knob.
         staffing_mode: "multiple_same",
         headcount: Math.max(1, Number(headcount) || 1),
-        post_slot_rest: false,
         counts_for_equity: true,
         team_roles: [],
         allowed_person_ids: [],

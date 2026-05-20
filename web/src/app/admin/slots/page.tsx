@@ -248,7 +248,6 @@ function SlotDialog({
   const [headcount, setHeadcount] = useState<string>(
     initial?.headcount?.toString() ?? "1",
   );
-  const [postRest, setPostRest] = useState<boolean>(initial?.post_slot_rest ?? false);
   const [countsEquity, setCountsEquity] = useState<boolean>(
     initial?.counts_for_equity ?? true,
   );
@@ -316,7 +315,6 @@ function SlotDialog({
         // value mirrors what the editor showed so the list-view's
         // "Plazas" column never disagrees with the per-mode UI.
         headcount: derivedHeadcount,
-        post_slot_rest: postRest,
         counts_for_equity: countsEquity,
         guardia_type: guardiaType.trim() || null,
         color: color,
@@ -614,11 +612,11 @@ function SlotDialog({
           </div>
         )}
         {/*
-          Hidden from the basic editor (post_slot_rest, counts_for_equity,
-          guardia_type) — see commit message. Existing values on saved
-          slots still drive the solver; new slots inherit the React
-          state defaults (false / true / "") because postRest /
-          countsEquity / guardiaType are never re-assigned by the form.
+          counts_for_equity and guardia_type are not surfaced in the
+          basic editor — existing slots keep whatever value they had
+          (initial?.counts_for_equity / guardia_type), new slots get
+          the React state defaults (true / "") because nothing in
+          the form re-assigns them.
         */}
         <div>
           <span className="text-sm font-medium text-gray-700">Color</span>

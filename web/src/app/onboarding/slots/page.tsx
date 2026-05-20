@@ -24,7 +24,6 @@ type TemplateSlot = Pick<
   | "days_applied"
   | "staffing_mode"
   | "headcount"
-  | "post_slot_rest"
   | "counts_for_equity"
 >;
 
@@ -60,7 +59,6 @@ const SLOT_TEMPLATES: { items: TemplateSlot[] } = {
     days_applied: "all",
     staffing_mode: "single",
     headcount: 1,
-    post_slot_rest: false,
     counts_for_equity: true,
   })),
 };
@@ -100,7 +98,6 @@ export default function SlotsStep() {
         days_applied: days,
         staffing_mode: mode,
         headcount: mode === "multiple_same" ? Math.max(1, Number(headcount)) : 1,
-        post_slot_rest: false,
         counts_for_equity: true,
         team_roles: [],
         allowed_person_ids: [],
@@ -148,7 +145,7 @@ export default function SlotsStep() {
         <strong>Admin → Actividades</strong>: cada actividad admite reglas
         distintas para diferentes días de la semana (p. ej. rotación L–J +
         asignación automática los fines de semana). También puedes ajustar
-        composición de equipo, descanso post-guardia y grupo de equidad.
+        composición de equipo y grupo de equidad.
       </p>
 
       <div className="rounded-md border bg-white mb-4">

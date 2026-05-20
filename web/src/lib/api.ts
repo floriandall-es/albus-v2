@@ -485,7 +485,11 @@ export type SlotInput = {
   custom_days_bitmap?: number | null;
   staffing_mode: StaffingMode;
   headcount: number;
-  post_slot_rest: boolean;
+  /** Deprecated. Kept optional so older callers don't break; the
+   * UI no longer exposes it and new slots leave it unset (server
+   * defaults to false). Post-shift rest constraints are admin-
+   * configurable via rules. */
+  post_slot_rest?: boolean;
   counts_for_equity: boolean;
   guardia_type?: string | null;
   color?: string | null;
