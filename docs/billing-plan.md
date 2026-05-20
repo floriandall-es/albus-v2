@@ -4,7 +4,24 @@ Pricing + monetisation reference. Source of truth for when we
 start building the Stripe integration. Not yet implemented in
 code.
 
-## Pricing
+## GTM shape
+
+Two-track motion sold off the same product:
+
+- **Self-serve** (default, ship first): jefe de servicio buys it on
+  a corporate card. Lands one service at a time, zero procurement.
+  Individual adjuntos optionally self-subscribe for app access.
+- **Enterprise** (later, hospital-wide): RH / dirección médica buys
+  a multi-service deal. Bundles all adjuntos' app access + the data
+  layer (compliance dashboard, cross-service analytics, etc.) +
+  SSO + dedicated support.
+
+The self-serve track lands the product inside a hospital one
+service at a time. The enterprise track converts that beachhead
+into a hospital-wide contract once we have 2–3 services on
+self-serve and the RH has noticed the data we sit on.
+
+## Self-serve pricing
 
 Two SKUs. Two payer types.
 
@@ -190,7 +207,7 @@ next billing cycle; they fall back to PDF.
     - Document Stripe keys, webhook secret, test card numbers,
       how to replay a webhook locally
 
-## Open questions
+## Open questions (self-serve)
 
 None for the model itself. Build-time decisions deferred to
 implementation:
@@ -202,8 +219,222 @@ implementation:
 - Whether to add `/admin/billing/invoices` (mirror of what the
   Customer Portal already shows) or just deep-link to the portal
 
+## Enterprise tier
+
+Sold top-down to hospital RH / dirección médica once we have a
+beachhead inside the hospital (2–3 services already on self-serve,
+admins happy, RH curious). This is **not** the first SKU we
+build — see "Phasing" below.
+
+### Pricing structure
+
+- **Per-service fee**, volume-discounted vs self-serve. Indicative:
+  €19/servicio/mo when ≥3 services on contract, €15 at ≥6.
+- **Hospital platform fee** that bundles the data layer + SSO +
+  dedicated support. Indicative: €500–1500/mo depending on hospital
+  size (number of beds is the easiest external proxy).
+- **All adjunto app access included** — no individual subs to
+  chase, no fragmentation. Residentes still free (now redundant
+  with "everyone included" but kept as policy).
+- **Annual contract**, signed via a real MSA. Stripe Billing still
+  handles the actual charge but with a custom-quoted invoice
+  generated from the negotiated terms.
+
+### Included beyond self-serve
+
+| Feature | Self-serve | Enterprise |
+|---|---|---|
+| Solver, rules, planning, PDF | ✓ | ✓ |
+| Admin's app access | ✓ | ✓ |
+| Adjunto app access | optional, €5/mo each | included for all |
+| Sub-equipos | ✓ | ✓ |
+| Convenio compliance dashboard | — (or premium add-on) | ✓ |
+| Cross-service analytics | — | ✓ |
+| Headcount planning | — | ✓ |
+| Equity / fairness audit trail | — | ✓ |
+| SSO (Entra / Google Workspace) | — | ✓ |
+| Dedicated account contact | — | ✓ |
+| Custom contract / DPA | — | ✓ |
+
+### GTM motion
+
+Top-down. The pitch is to RH or dirección médica, not the jefe de
+servicio. The triggers that get the meeting:
+
+1. The hospital noticed Trivu is already running in 2–3 services
+   informally → RH wants it "officialised" so they have a single
+   contract, single invoice, and visibility into what each service
+   is doing.
+2. A compliance scare (inspection, complaint, fine) → RH wants the
+   convenio compliance dashboard as a risk-reduction tool.
+3. Annual budget cycle for "tools used by clinicians" → enterprise
+   software is a normal line item.
+
+What they buy is the **data layer**. Without it, "hospital pays
+3 × €25 self-serve = €75/mo" is identical to self-serve totals
+and there's no reason to formalise. The platform fee covers the
+enterprise-only features the hospital RH cares about that no jefe
+would.
+
+## Data layer
+
+What we can derive from the scheduling data that justifies the
+hospital platform fee. Ranked by **realism × value** — i.e., what
+moves a procurement decision and is reasonable for us to actually
+build.
+
+### 1. Convenio compliance dashboard ★★★
+
+Spanish public healthcare has hard legal caps from the convenio
+colectivo + the EU Working Time Directive. Examples:
+
+- Residente R1: max 4 guardias/mes
+- Min 12h rest between shifts
+- Max 48h/week averaged over 4 months
+- Max 7 consecutive workdays
+
+The hospital RH has **no easy way today** to verify that the
+schedules built by each service comply. They find out when a
+clinician files a grievance or an inspector shows up. We sit on
+all the data — flagging breaches in real time is mechanical.
+
+What it looks like:
+
+- Real-time list of current breaches across all services
+- Per-person + per-categoría thresholds (configurable; ships
+  with Spanish defaults)
+- Solver hard-constraint mode: "no breaches allowed" vs
+  warning-only (admin choice per rule)
+- Monthly compliance report PDF, signed timestamp, AEAT-compliant
+  format → hospital legal department gets exactly what they need
+  at audit time
+- Per-service compliance status on a hospital dashboard so RH can
+  see who needs attention
+
+Standalone justifies a meaningful chunk of the platform fee. The
+legal-risk reduction is concrete and quantifiable.
+
+### 2. Cross-service workload analytics ★★★
+
+Once a hospital has ≥2 services on Trivu, the hospital sees what
+no single jefe can:
+
+- Avg guardias / FTE / mes by service
+- Baja médica rate by service (often a leading indicator of
+  burnout or management issues)
+- Overtime hours by service (budgeting input)
+- Coverage gaps when bloqueos cluster across services
+  (vacaciones / formación overlap)
+- Schedule-publication lead time by service (how late do jefes
+  publish?)
+
+The aggregation is trivial code. The value is being the **only
+source** of cross-service operational data. The hospital can't
+get this from their HIS, their HR system, or their payroll system
+— those don't know about turnos at the grain we do.
+
+### 3. Headcount planning ★★
+
+"Based on the last 6 months of schedules, your service needs +1.3
+FTE adjuntos to keep guardias at convenio-compliant levels without
+overtime."
+
+A budget-conversation tool for jefes negotiating with gerencia,
+and a justification tool for RH approving headcount requests.
+Each hospital hire is €60–90k/yr — getting the count right
+matters.
+
+Less critical than #1 / #2 but a strong "show this in a sales
+demo" feature.
+
+### 4. Equity / fairness audit trail ★★
+
+Every assignment Trivu makes carries a reason (rule that fired,
+equity weight, etc.). Surface that as a per-person report: "Tú
+has hecho 5 guardias en mayo. Trivu intentó asignar 4. La 5ª
+salió por X."
+
+When a clinician complains the schedule is unfair, the jefe
+shows them the audit trail. Reduces internal conflict, defends
+against discrimination claims. RH cares because grievances cost
+HR time and reputational risk.
+
+### 5. Burnout / overload early warning ★
+
+Cumulative-load scoring (hours + nights + weekend density +
+recent bajas) → flag individuals trending toward a likely burnout
+window. Simple version: rolling 8-week hours percentile within
+the service.
+
+Useful but harder to validate. False positives are expensive —
+you don't want to tell every busy adjunto they're burning out.
+Lower priority than #1 in the first release.
+
+### Skip for v1
+
+- **Cross-tenant benchmarking** (anonymised "your service does X
+  vs avg Y"). Legally sensitive — Spanish hospitals will want
+  explicit data-sharing consent, and the data is health-adjacent.
+  Defer.
+- **AI insights / "smart recommendations"**. Buzzwordy without
+  specifics. Don't build until we have a concrete recommendation
+  type customers ask for.
+
+## Phasing
+
+Don't build the data layer or the enterprise tier before we have
+paying self-serve tenants. The order of operations matters —
+each phase informs the next.
+
+### Phase 1: self-serve (Stripe integration)
+
+1–2 weeks. Ship the self-serve tiers as described above. No data
+layer, no enterprise SKU yet. Goal: get the billing plumbing real
+and convert the first 3–5 tenants. See "Implementation chunks"
+section above for the ordered checklist.
+
+### Phase 2: convenio compliance as a premium feature
+
+Build #1 (convenio compliance dashboard). Available to self-serve
+admins as a **paid add-on** (e.g., +€15/mo per tenant). Included
+in enterprise.
+
+Reasoning: even a single-service admin gets real value from
+compliance flags. Premium pricing tests the willingness-to-pay
+signal before we commit to the full enterprise build.
+
+### Phase 3: cross-service analytics + enterprise launch
+
+Only when at least one hospital has 2+ services on self-serve AND
+expressed interest in a hospital-wide deal. Build #2 (cross-
+service analytics), SSO, account-management surface. Now the
+enterprise SKU is real — sell it.
+
+### Phase 4: data layer expansion
+
+Iterate on the data layer based on what enterprise customers
+actually ask for. Don't pre-build features unless someone has
+asked for them by name.
+
+## Open questions (enterprise)
+
+To be revisited when we enter Phase 3:
+
+- Final pricing: per-service fee + platform fee numbers, or all-in
+  per-bed pricing?
+- DPA template — needs to comply with RGPD + LOPDGDD. Lawyer
+  drafts before first enterprise close.
+- SSO: build native (SAML / OIDC) or use a third-party (WorkOS,
+  Auth0)? Third-party is faster but eats margin.
+- Data residency: do we commit to EU-only Postgres replica?
+  Bigger hospitals will ask.
+- Multi-tenant data isolation guarantees: RGPD-grade. Already
+  enforced by FORCE ROW LEVEL SECURITY but needs an auditable
+  story we can hand to a CISO.
+
 ## When to build
 
 Per the user's call: **plan only for now, don't build**. Re-open
-this doc when (a) we have at least one tenant interested in paying,
-or (b) we've finished the rest of the post-signup polish.
+this doc when (a) we have at least one tenant interested in
+paying self-serve, or (b) we've finished the rest of the
+post-signup polish.
