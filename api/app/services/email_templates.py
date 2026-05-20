@@ -214,6 +214,38 @@ def schedule_reopened_member_email(
     return subject, body
 
 
+def email_verify_signup_email(
+    *,
+    recipient_name: str,
+    tenant_name: str,
+    confirm_url: str,
+    ttl_hours: int,
+) -> tuple[str, str]:
+    """Sent on signup to the address the new admin gave us. Confirms
+    that the mailbox is real before the account is treated as
+    fully active.
+
+    The user can still use the app while unverified — this is a
+    soft-verification flow — but the UI shows a persistent banner
+    pushing them to click the link."""
+    days = ttl_hours // 24
+    when = (
+        f"{days} días" if days >= 2 and ttl_hours % 24 == 0 else f"{ttl_hours} horas"
+    )
+    subject = "Confirma tu email para Trivu"
+    body = (
+        f"Hola {recipient_name},\n\n"
+        f"Bienvenido a Trivu. Hemos creado «{tenant_name}» con esta "
+        f"dirección como administrador. Para confirmar que el email "
+        f"es correcto, haz clic en el enlace:\n\n"
+        f"{confirm_url}\n\n"
+        f"El enlace caduca en {when}. Si no has creado esta cuenta, "
+        f"ignora este correo.\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body
+
+
 def email_change_confirm_email(
     *,
     recipient_name: str,

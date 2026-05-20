@@ -27,6 +27,14 @@ class Person(Base):
     # served by FastAPI from the avatars volume. Null = no photo, UI falls
     # back to a colored-initials chip.
     avatar_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Timestamp the user clicked the verification link sent on
+    # signup. NULL = not yet verified — surfaced to the frontend
+    # which shows a "verifica tu correo" banner until cleared.
+    # Existing persons were backfilled to NOW() by migration 0038
+    # so they're grandfathered as verified.
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     # may read it on a phone, switch devices, etc.) while keeping the
     # exposure window short.
     email_change_ttl_hours: int = 24
+    # TTL for the email-verification link sent on signup. 7 days
+    # matches typical "click to verify" UX — long enough for the
+    # admin to sign up Friday afternoon and confirm on Monday, but
+    # short enough that abandoned signups stop showing as
+    # legitimate-looking accounts within a sprint.
+    email_verify_ttl_hours: int = 24 * 7
     cors_origins: str = "http://localhost:3000"
     # Used to build invite accept URLs. In dev this points at the web service
     # exposed on the host; in prod it's the public domain.

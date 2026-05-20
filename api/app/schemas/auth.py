@@ -75,6 +75,11 @@ class PersonOut(BaseModel):
     last_name: str | None = None
     locale: str | None = None
     avatar_url: str | None = None
+    # Timestamp the user clicked the signup verification link.
+    # Null = not yet verified — the web UI shows a "verifica tu
+    # correo" banner with a resend button. Existing accounts
+    # were backfilled to NOW() by migration 0038.
+    email_verified_at: datetime | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

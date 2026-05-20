@@ -103,3 +103,39 @@ def decode_email_change_token(token: str) -> dict[str, Any]:
     if not payload.get("person_id") or not payload.get("new_email"):
         raise jwt.InvalidTokenError("Malformed email-change token")
     return payload
+
+
+def create_email_verify_token(*, person_id: int) -> str:
+    """Self-contained JWT identifying a person to be marked verified.
+    Sent on signup to the address the user gave us; clicking the
+    link is proof they control that mailbox.
+
+    Distinct `kind` from email_change so an intercepted token can
+    only ever verify the address — never grant access or mutate
+    an unrelated person's email."""
+    now = datetime.now(timezone.utc)
+    payload: dict[str, Any] = {
+        "kind": "email_verify",
+        "person_id": person_id,
+        "iat": int(now.timestamp()),
+        "exp": int(
+            (
+                now
+                + timedelta(hours=settings.email_verify_ttl_hours)
+            ).timestamp()
+        ),
+    }
+    return jwt.encode(
+        payload, settings.jwt_secret, algorithm=settings.jwt_algorithm
+    )
+
+
+def decode_email_verify_token(token: str) -> dict[str, Any]:
+    payload = jwt.decode(
+        token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
+    )
+    if payload.get("kind") != "email_verify":
+        raise jwt.InvalidTokenError("Not an email-verify token")
+    if not payload.get("person_id"):
+        raise jwt.InvalidTokenError("Malformed email-verify token")
+    return payload

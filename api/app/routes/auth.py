@@ -1,6 +1,7 @@
 import re
 import secrets
 import unicodedata
+from datetime import datetime, timezone
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -8,19 +9,24 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.security import (
     create_access_token,
+    create_email_verify_token,
     create_pre_auth_token,
+    decode_email_verify_token,
     decode_pre_auth_token,
     hash_password,
     verify_password,
 )
 from app.db.session import get_db, set_tenant
 from app.models import Group, Membership, Person, Tenant
+from app.routes.deps import RequestContext, get_current_context
 from app.services.person_name import compose_name
 from app.schemas.auth import (
     AuthResponse,
     LoginRequest,
+    PersonOut,
     SelectTenantRequest,
     SignupRequest,
     TenantPickerOption,
@@ -28,6 +34,33 @@ from app.schemas.auth import (
 )
 
 router = APIRouter()
+
+
+def _send_verification_email(person: Person, tenant_name: str) -> None:
+    """Fire off the signup verification email to `person.email`.
+
+    Failure is swallowed inside send_email (we log + continue) — a
+    transient SMTP outage shouldn't break the signup flow. The
+    /auth/resend-verification endpoint lets the user retry from
+    the banner.
+    """
+    token = create_email_verify_token(person_id=person.id)
+    confirm_url = (
+        f"{settings.public_base_url.rstrip('/')}/confirm-email"
+        f"?token={token}&kind=verify"
+    )
+    # Lazy imports — same pattern as the email-change flow, keeps
+    # the templates / smtplib import out of module-load time.
+    from app.services.email import send_email
+    from app.services.email_templates import email_verify_signup_email
+
+    subject, body = email_verify_signup_email(
+        recipient_name=person.name,
+        tenant_name=tenant_name,
+        confirm_url=confirm_url,
+        ttl_hours=settings.email_verify_ttl_hours,
+    )
+    send_email(to=person.email, subject=subject, body_text=body)
 
 
 # Maximum candidate-suffix attempts before falling back to a random hex tail.
@@ -148,6 +181,13 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthRespons
     db.refresh(membership)
 
     token = create_access_token(person_id=person.id, tenant_id=tenant.id, roles=membership.roles)
+
+    # Fire-and-forget verification email. Soft flow: the user can
+    # use the app immediately, but the frontend shows a "verifica
+    # tu correo" banner until they click the link (sets
+    # person.email_verified_at).
+    _send_verification_email(person, tenant.name)
+
     # Fresh signup creates a tenant + first admin — no groups
     # exist yet, so lead_group_id is definitionally None here.
     return AuthResponse(
@@ -278,3 +318,54 @@ def select_tenant(payload: SelectTenantRequest, db: Session = Depends(get_db)) -
         memberships=[membership],  # type: ignore[list-item]
         lead_group_id=_lookup_lead_group_id(db, membership.id),
     )
+
+
+@router.post("/auth/verify-email", response_model=PersonOut)
+def verify_email(token: str, db: Session = Depends(get_db)) -> Person:
+    """Mark a person as email-verified.
+
+    No bearer required — the token in the URL is the only proof of
+    address ownership. The token's `kind` claim is checked by
+    decode_email_verify_token, so an intercepted access token or
+    email-change token can't be used here.
+
+    Idempotent: clicking the link twice just returns the already-
+    verified person row.
+    """
+    try:
+        payload = decode_email_verify_token(token)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=400, detail="El enlace de verificación ha caducado"
+        )
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=400, detail="Enlace de verificación inválido"
+        )
+    person = db.get(Person, payload["person_id"])
+    if not person:
+        raise HTTPException(status_code=404, detail="Cuenta no encontrada")
+    if person.email_verified_at is None:
+        person.email_verified_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(person)
+    return person
+
+
+@router.post(
+    "/auth/resend-verification", status_code=status.HTTP_204_NO_CONTENT
+)
+def resend_verification(
+    ctx: RequestContext = Depends(get_current_context),
+) -> None:
+    """Re-send the verification email to the caller's address.
+
+    Auth-required (we use the bearer to know which mailbox to
+    write to) and a no-op when already verified — silent success
+    keeps the banner's "reenviar" button UX simple. Tenant name
+    comes from the caller's current tenant context, matching
+    what was used at signup.
+    """
+    if ctx.person.email_verified_at is not None:
+        return  # already verified — silent no-op
+    _send_verification_email(ctx.person, ctx.tenant.name)

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { api, getToken } from "@/lib/api";
 import { useLogout } from "@/lib/use-logout";
+import { EmailVerifyBanner } from "@/components/email-verify-banner";
 
 const NAV: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/me", label: "Inicio", icon: Home },
@@ -230,7 +231,10 @@ export default function MeLayout({ children }: { children: ReactNode }) {
           </button>
         </div>
       </aside>
-      <main className="flex-1 p-8">{children}</main>
+      <div className="flex-1 flex flex-col">
+        <EmailVerifyBanner />
+        <main className="flex-1 p-8">{children}</main>
+      </div>
     </div>
   );
 }

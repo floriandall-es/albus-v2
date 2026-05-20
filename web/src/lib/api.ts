@@ -197,6 +197,10 @@ export type Person = {
   last_name: string | null;
   locale: string | null;
   avatar_url: string | null;
+  /** ISO timestamp the user clicked the signup verification link.
+   * Null = not yet verified; UI shows the "verifica tu correo"
+   * banner with a resend button until cleared. */
+  email_verified_at: string | null;
   created_at: string;
 };
 
@@ -772,6 +776,19 @@ export const api = {
       `/api/me/email/confirm?token=${encodeURIComponent(token)}`,
       { method: "POST" },
     ),
+
+  /** Mark the caller's address as verified using the token sent on
+   * signup. Public — no bearer required, since the user may be
+   * clicking from a different device than the one they signed up on. */
+  verifyEmail: (token: string) =>
+    request<Person>(
+      `/api/auth/verify-email?token=${encodeURIComponent(token)}`,
+      { method: "POST" },
+    ),
+  /** Re-send the signup verification email to the caller's address.
+   * Auth-required (bearer); silently no-op if already verified. */
+  resendVerification: () =>
+    request<void>("/api/auth/resend-verification", { method: "POST" }),
   uploadAvatar: async (file: File): Promise<Person> => {
     const fd = new FormData();
     fd.append("file", file);
