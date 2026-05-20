@@ -28,102 +28,138 @@ type TemplateSlot = Pick<
   | "counts_for_equity"
 >;
 
-const SLOT_TEMPLATES: { title: string; items: TemplateSlot[] }[] = [
-  {
-    title: "Por horario",
-    items: [
-      {
-        name: "Mañana",
-        start_time: "08:00:00",
-        end_time: "14:00:00",
-        days_applied: "all",
-        staffing_mode: "single",
-        headcount: 1,
-        post_slot_rest: false,
-        counts_for_equity: true,
-      },
-      {
-        name: "Tarde",
-        start_time: "14:00:00",
-        end_time: "20:00:00",
-        days_applied: "all",
-        staffing_mode: "single",
-        headcount: 1,
-        post_slot_rest: false,
-        counts_for_equity: true,
-      },
-      {
-        name: "Noche",
-        start_time: "20:00:00",
-        end_time: "08:00:00",
-        days_applied: "all",
-        staffing_mode: "single",
-        headcount: 1,
-        post_slot_rest: true,
-        counts_for_equity: true,
-      },
-      {
-        name: "24 horas",
-        start_time: "08:00:00",
-        end_time: "08:00:00",
-        days_applied: "all",
-        staffing_mode: "single",
-        headcount: 1,
-        post_slot_rest: true,
-        counts_for_equity: true,
-      },
-    ],
-  },
-  {
-    title: "Por actividad",
-    items: [
-      {
-        name: "Guardia localizada",
-        start_time: null,
-        end_time: null,
-        days_applied: "all",
-        staffing_mode: "single",
-        headcount: 1,
-        post_slot_rest: false,
-        counts_for_equity: true,
-      },
-      {
-        name: "Consulta",
-        start_time: "08:00:00",
-        end_time: "14:00:00",
-        days_applied: "weekdays",
-        staffing_mode: "single",
-        headcount: 1,
-        post_slot_rest: false,
-        counts_for_equity: true,
-      },
-      {
-        name: "Quirófano programado",
-        start_time: "08:00:00",
-        end_time: "15:00:00",
-        days_applied: "weekdays",
-        staffing_mode: "single",
-        headcount: 1,
-        post_slot_rest: false,
-        counts_for_equity: true,
-      },
-      {
-        name: "Planta",
-        start_time: "08:00:00",
-        end_time: "15:00:00",
-        days_applied: "all",
-        staffing_mode: "single",
-        headcount: 1,
-        post_slot_rest: false,
-        counts_for_equity: true,
-      },
-    ],
-  },
-];
+// Single flat list of actividades habituales for a Spanish hospital
+// service. Times are sensible defaults; admins can edit each slot
+// inline below or fine-tune later in /admin/slots (headcount,
+// post-guardia rest, team composition, etc.). The list is
+// intentionally broad — admins tick the ones their service does
+// and leave the rest unchecked.
+const SLOT_TEMPLATES: { items: TemplateSlot[] } = {
+  items: [
+    {
+      name: "Guardia presencial",
+      start_time: "08:00:00",
+      end_time: "08:00:00",
+      days_applied: "all",
+      staffing_mode: "single",
+      headcount: 1,
+      post_slot_rest: true,
+      counts_for_equity: true,
+    },
+    {
+      name: "Guardia localizada",
+      start_time: null,
+      end_time: null,
+      days_applied: "all",
+      staffing_mode: "single",
+      headcount: 1,
+      post_slot_rest: false,
+      counts_for_equity: true,
+    },
+    {
+      name: "Consulta",
+      start_time: "08:00:00",
+      end_time: "14:00:00",
+      days_applied: "weekdays",
+      staffing_mode: "single",
+      headcount: 1,
+      post_slot_rest: false,
+      counts_for_equity: true,
+    },
+    {
+      name: "Quirófano programado",
+      start_time: "08:00:00",
+      end_time: "15:00:00",
+      days_applied: "weekdays",
+      staffing_mode: "single",
+      headcount: 1,
+      post_slot_rest: false,
+      counts_for_equity: true,
+    },
+    {
+      name: "Quirófano urgente",
+      start_time: "08:00:00",
+      end_time: "20:00:00",
+      days_applied: "all",
+      staffing_mode: "single",
+      headcount: 1,
+      post_slot_rest: false,
+      counts_for_equity: true,
+    },
+    {
+      name: "Planta",
+      start_time: "08:00:00",
+      end_time: "15:00:00",
+      days_applied: "all",
+      staffing_mode: "single",
+      headcount: 1,
+      post_slot_rest: false,
+      counts_for_equity: true,
+    },
+    {
+      name: "Urgencias",
+      start_time: "08:00:00",
+      end_time: "08:00:00",
+      days_applied: "all",
+      staffing_mode: "single",
+      headcount: 1,
+      post_slot_rest: true,
+      counts_for_equity: true,
+    },
+    {
+      name: "UCI",
+      start_time: "08:00:00",
+      end_time: "15:00:00",
+      days_applied: "all",
+      staffing_mode: "single",
+      headcount: 1,
+      post_slot_rest: false,
+      counts_for_equity: true,
+    },
+    {
+      name: "Trasplante",
+      start_time: null,
+      end_time: null,
+      days_applied: "all",
+      staffing_mode: "single",
+      headcount: 1,
+      post_slot_rest: true,
+      counts_for_equity: true,
+    },
+    {
+      name: "Hospital de día",
+      start_time: "08:00:00",
+      end_time: "15:00:00",
+      days_applied: "weekdays",
+      staffing_mode: "single",
+      headcount: 1,
+      post_slot_rest: false,
+      counts_for_equity: true,
+    },
+    {
+      name: "Interconsulta",
+      start_time: "08:00:00",
+      end_time: "15:00:00",
+      days_applied: "weekdays",
+      staffing_mode: "single",
+      headcount: 1,
+      post_slot_rest: false,
+      counts_for_equity: true,
+    },
+    {
+      name: "Pruebas / técnicas",
+      start_time: "08:00:00",
+      end_time: "15:00:00",
+      days_applied: "weekdays",
+      staffing_mode: "single",
+      headcount: 1,
+      post_slot_rest: false,
+      counts_for_equity: true,
+    },
+  ],
+};
 
-const ALL_TEMPLATE_NAMES = new Set(
-  SLOT_TEMPLATES.flatMap((g) => g.items.map((i) => i.name)),
-);
+const ALL_TEMPLATE_NAMES = new Set(SLOT_TEMPLATES.items.map((i) => i.name));
 
 function formatTimeRange(s: Slot): string {
   if (!s.start_time || !s.end_time) return "sin horario";
@@ -209,54 +245,47 @@ export default function SlotsStep() {
         composición de equipo, descanso post-guardia y grupo de equidad.
       </p>
 
-      <div className="rounded-md border bg-white mb-4 divide-y">
-        {SLOT_TEMPLATES.map((group) => (
-          <div key={group.title}>
-            <div className="px-4 py-2 bg-gray-50 text-xs font-medium uppercase tracking-wide text-gray-600">
-              {group.title}
-            </div>
-            <ul className="divide-y">
-              {group.items.map((t) => {
-                const existingSlot = byName.get(t.name);
-                const checked = !!existingSlot;
-                const isPending =
-                  (createTemplate.isPending && createTemplate.variables?.name === t.name) ||
-                  (del.isPending && del.variables === existingSlot?.id);
-                const subtitle =
-                  t.start_time && t.end_time
-                    ? `${t.start_time.slice(0, 5)}–${t.end_time.slice(0, 5)}`
-                    : "sin horario fijo";
-                return (
-                  <li key={t.name} className="px-4 py-2 text-sm">
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id={`slot-${t.name}`}
-                        className="mr-3 h-4 w-4"
-                        checked={checked}
-                        disabled={isPending}
-                        onChange={(e) => toggleTemplate(t, e.target.checked)}
-                      />
-                      <label
-                        htmlFor={`slot-${t.name}`}
-                        className="flex-1 cursor-pointer"
-                      >
-                        {t.name}{" "}
-                        <span className="text-xs text-gray-500">({subtitle})</span>
-                      </label>
-                      {isPending && (
-                        <span className="text-xs text-gray-400">guardando…</span>
-                      )}
-                    </div>
-                    {existingSlot && (
-                      <SlotInlineEditor slot={existingSlot} />
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        ))}
+      <div className="rounded-md border bg-white mb-4">
+        <ul className="divide-y">
+          {SLOT_TEMPLATES.items.map((t) => {
+            const existingSlot = byName.get(t.name);
+            const checked = !!existingSlot;
+            const isPending =
+              (createTemplate.isPending && createTemplate.variables?.name === t.name) ||
+              (del.isPending && del.variables === existingSlot?.id);
+            const subtitle =
+              t.start_time && t.end_time
+                ? `${t.start_time.slice(0, 5)}–${t.end_time.slice(0, 5)}`
+                : "sin horario fijo";
+            return (
+              <li key={t.name} className="px-4 py-2 text-sm">
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id={`slot-${t.name}`}
+                    className="mr-3 h-4 w-4"
+                    checked={checked}
+                    disabled={isPending}
+                    onChange={(e) => toggleTemplate(t, e.target.checked)}
+                  />
+                  <label
+                    htmlFor={`slot-${t.name}`}
+                    className="flex-1 cursor-pointer"
+                  >
+                    {t.name}{" "}
+                    <span className="text-xs text-gray-500">({subtitle})</span>
+                  </label>
+                  {isPending && (
+                    <span className="text-xs text-gray-400">guardando…</span>
+                  )}
+                </div>
+                {existingSlot && (
+                  <SlotInlineEditor slot={existingSlot} />
+                )}
+              </li>
+            );
+          })}
+        </ul>
       </div>
 
       <div className="rounded-md border bg-white mb-4">
