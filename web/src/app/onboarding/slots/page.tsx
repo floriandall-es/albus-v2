@@ -29,134 +29,40 @@ type TemplateSlot = Pick<
 >;
 
 // Single flat list of actividades habituales for a Spanish hospital
-// service. Times are sensible defaults; admins can edit each slot
-// inline below or fine-tune later in /admin/slots (headcount,
-// post-guardia rest, team composition, etc.). The list is
-// intentionally broad — admins tick the ones their service does
-// and leave the rest unchecked.
+// service. Defaults are deliberately bland — no horario, todos los
+// días, single occupant. Each service does these activities very
+// differently (Consulta might be L–V mañanas in one place, lunes
+// solo en otro), so pre-baking times would be wrong more often than
+// not. Admins tick the ones their service does and set the horario
+// inline below the checkbox if it matters; otherwise the activity
+// runs "todos los días, sin horario fijo" which is the safest
+// no-information default.
+const TEMPLATE_NAMES = [
+  "Guardia presencial",
+  "Guardia localizada",
+  "Consulta",
+  "Quirófano programado",
+  "Quirófano urgente",
+  "Planta",
+  "Urgencias",
+  "UCI",
+  "Trasplante",
+  "Hospital de día",
+  "Interconsulta",
+  "Pruebas / técnicas",
+];
+
 const SLOT_TEMPLATES: { items: TemplateSlot[] } = {
-  items: [
-    {
-      name: "Guardia presencial",
-      start_time: "08:00:00",
-      end_time: "08:00:00",
-      days_applied: "all",
-      staffing_mode: "single",
-      headcount: 1,
-      post_slot_rest: true,
-      counts_for_equity: true,
-    },
-    {
-      name: "Guardia localizada",
-      start_time: null,
-      end_time: null,
-      days_applied: "all",
-      staffing_mode: "single",
-      headcount: 1,
-      post_slot_rest: false,
-      counts_for_equity: true,
-    },
-    {
-      name: "Consulta",
-      start_time: "08:00:00",
-      end_time: "14:00:00",
-      days_applied: "weekdays",
-      staffing_mode: "single",
-      headcount: 1,
-      post_slot_rest: false,
-      counts_for_equity: true,
-    },
-    {
-      name: "Quirófano programado",
-      start_time: "08:00:00",
-      end_time: "15:00:00",
-      days_applied: "weekdays",
-      staffing_mode: "single",
-      headcount: 1,
-      post_slot_rest: false,
-      counts_for_equity: true,
-    },
-    {
-      name: "Quirófano urgente",
-      start_time: "08:00:00",
-      end_time: "20:00:00",
-      days_applied: "all",
-      staffing_mode: "single",
-      headcount: 1,
-      post_slot_rest: false,
-      counts_for_equity: true,
-    },
-    {
-      name: "Planta",
-      start_time: "08:00:00",
-      end_time: "15:00:00",
-      days_applied: "all",
-      staffing_mode: "single",
-      headcount: 1,
-      post_slot_rest: false,
-      counts_for_equity: true,
-    },
-    {
-      name: "Urgencias",
-      start_time: "08:00:00",
-      end_time: "08:00:00",
-      days_applied: "all",
-      staffing_mode: "single",
-      headcount: 1,
-      post_slot_rest: true,
-      counts_for_equity: true,
-    },
-    {
-      name: "UCI",
-      start_time: "08:00:00",
-      end_time: "15:00:00",
-      days_applied: "all",
-      staffing_mode: "single",
-      headcount: 1,
-      post_slot_rest: false,
-      counts_for_equity: true,
-    },
-    {
-      name: "Trasplante",
-      start_time: null,
-      end_time: null,
-      days_applied: "all",
-      staffing_mode: "single",
-      headcount: 1,
-      post_slot_rest: true,
-      counts_for_equity: true,
-    },
-    {
-      name: "Hospital de día",
-      start_time: "08:00:00",
-      end_time: "15:00:00",
-      days_applied: "weekdays",
-      staffing_mode: "single",
-      headcount: 1,
-      post_slot_rest: false,
-      counts_for_equity: true,
-    },
-    {
-      name: "Interconsulta",
-      start_time: "08:00:00",
-      end_time: "15:00:00",
-      days_applied: "weekdays",
-      staffing_mode: "single",
-      headcount: 1,
-      post_slot_rest: false,
-      counts_for_equity: true,
-    },
-    {
-      name: "Pruebas / técnicas",
-      start_time: "08:00:00",
-      end_time: "15:00:00",
-      days_applied: "weekdays",
-      staffing_mode: "single",
-      headcount: 1,
-      post_slot_rest: false,
-      counts_for_equity: true,
-    },
-  ],
+  items: TEMPLATE_NAMES.map((name) => ({
+    name,
+    start_time: null,
+    end_time: null,
+    days_applied: "all",
+    staffing_mode: "single",
+    headcount: 1,
+    post_slot_rest: false,
+    counts_for_equity: true,
+  })),
 };
 
 const ALL_TEMPLATE_NAMES = new Set(SLOT_TEMPLATES.items.map((i) => i.name));
