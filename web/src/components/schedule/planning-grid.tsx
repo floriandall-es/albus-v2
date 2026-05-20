@@ -223,11 +223,18 @@ export function PlanningGrid({
                   highlightPersonId !== null
                   && cell.some((a) => a.person_id === highlightPersonId);
                 const isToday = d === today;
+                // True when any assignment in this cell shows up in a
+                // rule violation — drives a rose ring around the cell
+                // so the admin can spot conflicts at a glance.
+                const isFlagged =
+                  flaggedAssignmentIds
+                  && cell.some((a) => flaggedAssignmentIds.has(a.id));
                 return (
                   <td
                     key={d}
                     className={
                       "align-top px-1.5 py-2 border-b border-gray-100 "
+                      + (isFlagged ? "ring-2 ring-inset ring-rose-400 " : "")
                       + (empty
                         ? "bg-rose-50/70"
                         : hasMe
@@ -270,13 +277,6 @@ export function PlanningGrid({
                             )}
                             {a.swap_offer_id != null && (
                               <SwapIcon className="h-3 w-3 text-sky-600 shrink-0" />
-                            )}
-                            {flaggedAssignmentIds?.has(a.id) && (
-                              <span
-                                className="inline-block h-1.5 w-1.5 rounded-full bg-rose-500 shrink-0"
-                                title="Esta asignación participa en al menos un conflicto. Mira el aviso encima de la planificación."
-                                aria-hidden
-                              />
                             )}
                               {a.person_id === null ? (
                                 <span className="text-rose-700 font-medium">
