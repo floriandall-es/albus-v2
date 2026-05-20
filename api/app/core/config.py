@@ -17,7 +17,12 @@ class Settings(BaseSettings):
         return self.app_database_url or self.database_url
     jwt_secret: str = "change-me-in-prod-this-is-only-for-dev"
     jwt_algorithm: str = "HS256"
-    jwt_ttl_minutes: int = 60
+    # 8 hours: long enough to cover a sit-down onboarding session
+    # (signup → wizard → first day's planning) or a full hospital
+    # shift, short enough that a stolen token has bounded value.
+    # Override via JWT_TTL_MINUTES in the env. There's no refresh-
+    # token flow yet; once this expires the user has to log in again.
+    jwt_ttl_minutes: int = 60 * 8
     # HMAC key for the invitation token-lookup hash. Has to be set
     # in prod via INVITATION_LOOKUP_SECRET. If it ever rotates, all
     # pending invitations become inaccessible — recipients must be

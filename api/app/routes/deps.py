@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Generator
 
+import jwt
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -30,12 +31,27 @@ def get_current_context(
     db: Session = Depends(get_db_raw),
 ) -> Generator[RequestContext, None, None]:
     if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing bearer token",
+        )
     token = authorization.split(" ", 1)[1].strip()
+    # Distinguish "you've been signed out, log in again" (expired) from
+    # "this token is forged or wrong type" (everything else) so the
+    # frontend can render a helpful message instead of a vague
+    # "Invalid token". Both are 401 — only the detail string differs.
     try:
         payload = decode_access_token(token)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Tu sesión ha caducado. Vuelve a iniciar sesión.",
+        )
     except Exception:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido. Vuelve a iniciar sesión.",
+        )
 
     person_id = payload.get("person_id")
     tenant_id = payload.get("tenant_id")

@@ -673,6 +673,20 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     } catch {
       /* ignore */
     }
+    // 401 on an authenticated request means the access token has
+    // expired or been invalidated. Clear it and bounce to /login
+    // so the user gets a clean re-auth instead of a stale tab
+    // showing cached data while every mutation fails. We only do
+    // this in the browser (typeof window) and only when a token
+    // was actually sent — public endpoints that 401 (forgot-
+    // password edge cases, etc.) don't trigger the redirect.
+    if (res.status === 401 && token && typeof window !== "undefined") {
+      clearToken();
+      const here = window.location.pathname + window.location.search;
+      if (!here.startsWith("/login")) {
+        window.location.replace("/login");
+      }
+    }
     throw new Error(formatErrorDetail(detail, res.statusText));
   }
   return (await res.json()) as T;
