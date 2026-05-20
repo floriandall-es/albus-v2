@@ -243,34 +243,62 @@ def password_reset_email(
     return subject, body
 
 
-def email_verify_signup_email(
+def welcome_and_verify_email(
     *,
     recipient_name: str,
+    recipient_first_name: str | None,
     tenant_name: str,
     confirm_url: str,
+    app_base_url: str,
     ttl_hours: int,
 ) -> tuple[str, str]:
-    """Sent on signup to the address the new admin gave us. Confirms
-    that the mailbox is real before the account is treated as
-    fully active.
+    """The single email a new admin gets after signup.
 
-    The user can still use the app while unverified — this is a
-    soft-verification flow — but the UI shows a persistent banner
-    pushing them to click the link."""
+    Doubles as (a) welcome — "tu servicio está listo, esto es lo
+    que sigue", and (b) email verification — "para mantener tu
+    cuenta activa, confirma esta dirección".
+
+    Sending two separate emails (welcome + verify) would just
+    crowd the inbox; merging them is friendlier and the
+    verification link still does its job. The /admin banner keeps
+    nagging until they click, so the verify CTA isn't buried.
+    """
     days = ttl_hours // 24
     when = (
         f"{days} días" if days >= 2 and ttl_hours % 24 == 0 else f"{ttl_hours} horas"
     )
-    subject = "Confirma tu email para Trivu"
+    greeting_name = (recipient_first_name or recipient_name).strip() or "hola"
+    base = app_base_url.rstrip("/")
+    onboarding_url = f"{base}/onboarding/preset"
+    terms_url = f"{base}/terms"
+    privacy_url = f"{base}/privacy"
+
+    subject = f"Bienvenido a Trivu — confirma tu email"
     body = (
-        f"Hola {recipient_name},\n\n"
-        f"Bienvenido a Trivu. Hemos creado «{tenant_name}» con esta "
-        f"dirección como administrador. Para confirmar que el email "
-        f"es correcto, haz clic en el enlace:\n\n"
+        f"Hola {greeting_name},\n\n"
+        f"Hemos creado «{tenant_name}» en Trivu y tú eres su "
+        f"primer administrador. Gracias por probarnos.\n\n"
+        f"Confirma tu correo\n"
+        f"------------------\n"
+        f"Para mantener la cuenta activa, abre este enlace desde "
+        f"esta dirección:\n\n"
         f"{confirm_url}\n\n"
-        f"El enlace caduca en {when}. Si no has creado esta cuenta, "
-        f"ignora este correo.\n\n"
-        f"— El equipo de Trivu\n"
+        f"Caduca en {when}. Si no fuiste tú, ignora este mensaje.\n\n"
+        f"Qué sigue\n"
+        f"---------\n"
+        f"Si todavía no lo has hecho, sigue el asistente de "
+        f"configuración para dejar tu servicio listo en unos "
+        f"minutos:\n\n"
+        f"  1. Elige el tipo de equipo (médico, quirúrgico u otro)\n"
+        f"  2. Revisa las categorías profesionales\n"
+        f"  3. Define las actividades (turnos) del equipo\n"
+        f"  4. Invita a tus compañeros\n\n"
+        f"Empieza aquí: {onboarding_url}\n\n"
+        f"Para cualquier duda, responde a este correo.\n\n"
+        f"— El equipo de Trivu\n\n"
+        f"---\n"
+        f"Términos: {terms_url}\n"
+        f"Privacidad: {privacy_url}\n"
     )
     return subject, body
 

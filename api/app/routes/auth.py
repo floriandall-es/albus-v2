@@ -41,13 +41,17 @@ from app.schemas.auth import (
 router = APIRouter()
 
 
-def _send_verification_email(person: Person, tenant_name: str) -> None:
-    """Fire off the signup verification email to `person.email`.
+def _send_welcome_and_verify_email(person: Person, tenant_name: str) -> None:
+    """Fire off the signup welcome-and-verify email to `person.email`.
+
+    Single combined email: welcomes the new admin, lists the
+    onboarding-wizard next steps, and asks them to click the
+    verify link. Resend from the banner reuses this same template
+    so a user who lost the original still gets the helpful "what
+    to do next" pointers.
 
     Failure is swallowed inside send_email (we log + continue) — a
-    transient SMTP outage shouldn't break the signup flow. The
-    /auth/resend-verification endpoint lets the user retry from
-    the banner.
+    transient SMTP outage shouldn't break the signup flow.
     """
     token = create_email_verify_token(person_id=person.id)
     confirm_url = (
@@ -57,12 +61,14 @@ def _send_verification_email(person: Person, tenant_name: str) -> None:
     # Lazy imports — same pattern as the email-change flow, keeps
     # the templates / smtplib import out of module-load time.
     from app.services.email import send_email
-    from app.services.email_templates import email_verify_signup_email
+    from app.services.email_templates import welcome_and_verify_email
 
-    subject, body = email_verify_signup_email(
+    subject, body = welcome_and_verify_email(
         recipient_name=person.name,
+        recipient_first_name=person.first_name,
         tenant_name=tenant_name,
         confirm_url=confirm_url,
+        app_base_url=settings.public_base_url,
         ttl_hours=settings.email_verify_ttl_hours,
     )
     send_email(to=person.email, subject=subject, body_text=body)
@@ -200,11 +206,12 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthRespons
 
     token = create_access_token(person_id=person.id, tenant_id=tenant.id, roles=membership.roles)
 
-    # Fire-and-forget verification email. Soft flow: the user can
-    # use the app immediately, but the frontend shows a "verifica
-    # tu correo" banner until they click the link (sets
+    # Fire-and-forget welcome + verification email (combined).
+    # Soft flow: the user can use the app immediately, but the
+    # frontend shows a "verifica tu correo" banner until they
+    # click the link in the email (which sets
     # person.email_verified_at).
-    _send_verification_email(person, tenant.name)
+    _send_welcome_and_verify_email(person, tenant.name)
 
     # Fresh signup creates a tenant + first admin — no groups
     # exist yet, so lead_group_id is definitionally None here.
@@ -386,7 +393,7 @@ def resend_verification(
     """
     if ctx.person.email_verified_at is not None:
         return  # already verified — silent no-op
-    _send_verification_email(ctx.person, ctx.tenant.name)
+    _send_welcome_and_verify_email(ctx.person, ctx.tenant.name)
 
 
 @router.post(
