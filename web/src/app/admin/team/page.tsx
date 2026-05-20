@@ -167,6 +167,14 @@ export default function TeamPage() {
                           Admin
                         </span>
                       )}
+                      {m.is_pending && !isDisabled && (
+                        <span
+                          className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800"
+                          title="Invitado, todavía no ha activado su cuenta. Trivu ya lo asigna en la planificación."
+                        >
+                          Pendiente
+                        </span>
+                      )}
                       {isDisabled && (
                         <span className="inline-flex items-center rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-700">
                           Desactivado

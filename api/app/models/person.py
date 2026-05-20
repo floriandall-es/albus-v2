@@ -11,7 +11,12 @@ class Person(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    # NULL = pendiente (invited but never activated). NOT NULL =
+    # activo (has logged in / set a password at least once). The
+    # solver is unaware of this distinction; it scans Memberships.
+    hashed_password: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
     # Canonical display string — kept in sync with first_name + last_name
     # on every write (see _compose_name in routes). Legacy rows from
     # before the split have it as the only source of truth.

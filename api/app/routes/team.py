@@ -31,6 +31,7 @@ def _serialize(
         disabled_at=m.disabled_at,
         group_id=m.group_id,
         group_name=group_name,
+        is_pending=person.hashed_password is None,
         created_at=m.created_at,
     )
 

@@ -22,6 +22,20 @@ from app.core.config import settings
 logger = logging.getLogger("app.email")
 
 
+def should_email_person(hashed_password: str | None) -> bool:
+    """True when this Person is "activo" (has activated their
+    account at least once) and therefore should receive routine
+    notifications — schedule-published, swap requests, etc.
+
+    Pendientes (NULL hashed_password) only ever get the
+    invitation email itself; the rest of the system stays silent
+    until they activate. The product reason: an admin can
+    schedule somebody who hasn't joined yet, but we don't want
+    to spam an unconfirmed inbox with operational noise.
+    """
+    return hashed_password is not None
+
+
 def send_email(
     to: str,
     subject: str,

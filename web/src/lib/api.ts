@@ -531,6 +531,11 @@ export type TeamMember = {
   /** Sub-team this person belongs to. Null = main team. */
   group_id: number | null;
   group_name: string | null;
+  /** True when the admin has invited them but they haven't yet
+   * opened the activation link to set a password. The solver
+   * schedules pendientes like any other member; this flag just
+   * drives the "Pendiente" badge in the admin team list. */
+  is_pending: boolean;
   created_at: string;
 };
 

@@ -258,6 +258,18 @@ def _list_person_memberships(db: Session, person_id: int) -> list[dict]:
 @router.post("/login")
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     person = db.query(Person).filter(Person.email == payload.email.lower()).first()
+    # Pendiente accounts (invited but never activated) have a NULL
+    # hashed_password. Surface a distinct message so the invitee
+    # knows to use the invitation link, not the login form.
+    if person and person.hashed_password is None:
+        raise HTTPException(
+            status_code=401,
+            detail=(
+                "Tu cuenta aún no está activada. Abre el enlace de "
+                "invitación que te enviamos por email para crear "
+                "una contraseña."
+            ),
+        )
     if not person or not verify_password(payload.password, person.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
@@ -420,6 +432,12 @@ def forgot_password(
     person = db.query(Person).filter(Person.email == email).first()
     if not person:
         return  # silent — no enumeration
+    # Pendiente (NULL password) — there's nothing to reset yet. Stay
+    # silent rather than reveal that the address has been invited but
+    # not activated. They need to use the invitation link, not the
+    # reset flow.
+    if person.hashed_password is None:
+        return
 
     token = create_password_reset_token(
         person_id=person.id,
@@ -467,6 +485,11 @@ def reset_password(
 
     person = db.get(Person, claims["person_id"])
     if not person:
+        raise HTTPException(status_code=400, detail="Enlace inválido")
+    # Pendiente — there's no current password to fingerprint against.
+    # Should never happen (forgot-password also short-circuits these)
+    # but guard defensively in case an old token survived.
+    if person.hashed_password is None:
         raise HTTPException(status_code=400, detail="Enlace inválido")
     if password_fingerprint(person.hashed_password) != claims["fp"]:
         # Hash already rotated since the link was issued. Either the

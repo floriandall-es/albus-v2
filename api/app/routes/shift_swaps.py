@@ -37,7 +37,7 @@ from app.schemas.shift_swap import (
     SwapOfferOut,
     SwapResponseOut,
 )
-from app.services.email import send_email
+from app.services.email import send_email, should_email_person
 from app.services.email_templates import (
     format_spanish_date,
     swap_accepted_email,
@@ -679,6 +679,10 @@ def _notify_offer_created(
         .all()
     )
     for p in recipients:
+        # Pendientes (not yet activated) only get the invitation
+        # email; skip routine notifications until they sign in.
+        if not should_email_person(p.hashed_password):
+            continue
         subject, body = swap_offer_created_email(
             recipient_name=p.name,
             requester_name=requester_name,
@@ -719,6 +723,8 @@ def _notify_response_created(
             swap_slot_name = sa_slot_name
             swap_date = sa_date
 
+    if not should_email_person(requester.hashed_password):
+        return
     subject, body = swap_response_email(
         requester_name=requester.name,
         responder_name=responder_name,
@@ -747,6 +753,8 @@ def _notify_response_accepted(
     responder = ctx.db.get(Person, responder_m.person_id)
     requester = ctx.db.get(Person, ctx.person.id)
     if responder is None or requester is None:
+        return
+    if not should_email_person(responder.hashed_password):
         return
     subject, body = swap_accepted_email(
         responder_name=responder.name,
@@ -788,6 +796,8 @@ def _notify_admins(
         if "admin" in (m.roles or []):
             admin_persons.append(p)
     for admin_p in admin_persons:
+        if not should_email_person(admin_p.hashed_password):
+            continue
         subject, body = swap_admin_notification_email(
             admin_name=admin_p.name,
             requester_name=requester.name,

@@ -190,29 +190,27 @@ def reissue_invitation(
     invitation_id: int,
     ctx: RequestContext = Depends(get_current_context),
 ) -> InviteCreateResponse:
-    """Re-send the invitation: revokes the old row, creates a fresh one with
-    a new token + expiry, sends the email, returns the new accept_url."""
+    """Re-send the invitation: rotates the token + expiry on the
+    existing row and re-emails the recipient. Returns the fresh
+    accept_url so the admin can copy a backup link if the email
+    bounces.
+
+    Now that Person + Membership are created at invite time (sprint
+    25), this endpoint can no longer call create_invitation_service
+    — that would try to create a second Membership and 409 on the
+    uq_membership_tenant_person constraint. We use the same in-place
+    token rotation as /resend instead. Same row, fresh secrets, new
+    7d expiry."""
     _require_admin(ctx)
     inv = ctx.db.get(Invitation, invitation_id)
     if not inv or inv.tenant_id != ctx.tenant.id:
         raise HTTPException(status_code=404, detail="Invitation not found")
     if inv.accepted_at is not None:
         raise HTTPException(status_code=400, detail="ya aceptada")
+    if inv.revoked_at is not None:
+        raise HTTPException(status_code=400, detail="La invitación se ha revocado")
 
-    try:
-        created = create_invitation_service(
-            ctx.db,
-            tenant_id=ctx.tenant.id,
-            email=inv.email,
-            person_name=inv.person_name,
-            created_by_membership_id=ctx.membership.id,
-            category_id=inv.category_id,
-            roles=list(inv.roles) if inv.roles else ["member"],
-        )
-    except IntegrityError:
-        ctx.db.rollback()
-        raise HTTPException(status_code=409, detail="Conflict creating invitation")
-
+    created = regenerate_invitation_token(ctx.db, invitation=inv)
     send_invitation_email(ctx.db, tenant_id=ctx.tenant.id, created=created)
 
     return InviteCreateResponse(
@@ -342,11 +340,38 @@ def accept_invitation(
     if not tenant:
         raise HTTPException(status_code=400, detail="Invitation tenant missing")
 
+    # The Person + Membership were created at invite time (sprint
+    # 25). This endpoint now just turns a pendiente Person into an
+    # activo one — sets the password, fills in profile fields, stamps
+    # the email-verified + terms-accepted markers. Cross-tenant
+    # invites of an already-active Person leave the password alone.
     person = db.query(Person).filter(Person.email == inv.email).first()
-    created_person = False
-    # Compose the canonical name from whatever the invitee provided.
-    # Falls back to the invitation's `person_name` if neither
-    # split fields nor a legacy `person_name` came in the payload.
+    if not person:
+        # Defensive: this would mean somebody deleted the Person row
+        # between invite and accept. Surface a clear error rather
+        # than try to repair invisibly.
+        raise HTTPException(
+            status_code=400,
+            detail="La cuenta asociada a esta invitación ya no existe.",
+        )
+
+    membership = (
+        db.query(Membership)
+        .filter(
+            Membership.tenant_id == tenant.id,
+            Membership.person_id == person.id,
+        )
+        .first()
+    )
+    if not membership:
+        # Same defensive case — admin removed the Membership before
+        # the invitee could accept. Don't silently re-create it; the
+        # admin's intent was to remove this person.
+        raise HTTPException(
+            status_code=400,
+            detail="Ya no formas parte de este equipo. Pide al administrador una invitación nueva.",
+        )
+
     from app.services.person_name import compose_name
 
     composed_name, first_name, last_name = compose_name(
@@ -355,57 +380,35 @@ def accept_invitation(
         last_name=payload.last_name,
     )
 
-    if person:
-        # Existing user: check they're not already a member of THIS tenant.
-        already = (
-            db.query(Membership)
-            .filter(
-                Membership.tenant_id == tenant.id,
-                Membership.person_id == person.id,
-            )
-            .first()
-        )
-        if already:
-            raise HTTPException(status_code=400, detail="Already a member")
-        # Don't change existing user's password or canonical name —
-        # linking accounts cross-tenant should leave their previously-
-        # set profile alone. Skip the update.
-    else:
-        # Invitees who land here via an emailed link have already
-        # demonstrated mailbox control, same proof as the signup
-        # verification step. Stamp email_verified_at + terms
-        # acceptance at the same time so the new Person starts in
-        # a clean, fully-onboarded state.
-        now_utc = datetime.now(timezone.utc)
-        person = Person(
-            email=inv.email,
-            hashed_password=hash_password(payload.password),
-            name=composed_name,
-            first_name=first_name,
-            last_name=last_name,
-            email_verified_at=now_utc,
-            terms_accepted_at=now_utc,
-            terms_accepted_version=settings.terms_current_version,
-        )
-        db.add(person)
-        db.flush()
+    now_utc = datetime.now(timezone.utc)
+    if person.hashed_password is None:
+        # First-time activation. Set the password, profile fields,
+        # email-verified + terms-accepted markers. Email verification
+        # is granted automatically because clicking the invite link
+        # is the same mailbox proof we ask for at signup.
+        person.hashed_password = hash_password(payload.password)
+        person.name = composed_name
+        person.first_name = first_name
+        person.last_name = last_name
+        person.email_verified_at = now_utc
+        person.terms_accepted_at = now_utc
+        person.terms_accepted_version = settings.terms_current_version
         created_person = True
+    else:
+        # Cross-tenant accept: the Person already has a password from
+        # a previous tenant's activation. Do NOT overwrite it — that
+        # would let any invitation link silently reset the user's
+        # password across tenants. We also leave first/last name
+        # alone (the previous tenant's value wins).
+        created_person = False
 
-    membership = Membership(
-        tenant_id=tenant.id,
-        person_id=person.id,
-        roles=list(inv.roles) or ["member"],
-        category_id=inv.category_id,
-    )
-    db.add(membership)
-
-    inv.accepted_at = datetime.now(timezone.utc)
+    inv.accepted_at = now_utc
 
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Conflict creating membership")
+        raise HTTPException(status_code=409, detail="Conflict accepting invitation")
 
     # Re-set tenant for any post-commit refresh.
     set_tenant(db, tenant.id)

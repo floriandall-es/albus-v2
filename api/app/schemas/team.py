@@ -27,6 +27,13 @@ class TeamMemberOut(BaseModel):
     # group's lead can manage them; tenant admin always can.
     group_id: int | None = None
     group_name: str | None = None
+    # True when the underlying Person row still has a NULL
+    # hashed_password — the admin invited them but they haven't yet
+    # opened the activation link to set a password. The solver
+    # schedules pendientes like any other member; this flag just
+    # drives the "Pendiente" pill on the admin team list and
+    # silences routine email notifications.
+    is_pending: bool = False
     created_at: datetime
 
 

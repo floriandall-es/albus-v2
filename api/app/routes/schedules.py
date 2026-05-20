@@ -730,7 +730,7 @@ def publish_schedule(
         # Lazy imports — keep send_email + templates out of the
         # module load path. Same pattern as reopen_schedule.
         from app.core.config import settings
-        from app.services.email import send_email
+        from app.services.email import send_email, should_email_person
         from app.services.email_templates import (
             schedule_published_member_email,
         )
@@ -739,6 +739,10 @@ def publish_schedule(
         app_url = settings.public_base_url
         for person in assigned_persons:
             if not person.email:
+                continue
+            # Pendientes (not yet activated) don't receive routine
+            # notifications; they'd land in an unconfirmed inbox.
+            if not should_email_person(person.hashed_password):
                 continue
             subject, body = schedule_published_member_email(
                 recipient_name=person.name,
@@ -828,7 +832,7 @@ def reopen_schedule(
     # / swap models at module-import time.
     from app.core.config import settings
     from app.models.shift_swap import ShiftSwapOffer, ShiftSwapResponse
-    from app.services.email import send_email
+    from app.services.email import send_email, should_email_person
     from app.services.email_templates import (
         schedule_reopened_member_email,
         swap_cancelled_due_to_reopen_email,
@@ -873,7 +877,11 @@ def reopen_schedule(
                 synchronize_session=False,
             )
         )
-        if notify_members and requester.email:
+        if (
+            notify_members
+            and requester.email
+            and should_email_person(requester.hashed_password)
+        ):
             subject, body = swap_cancelled_due_to_reopen_email(
                 recipient_name=requester.name,
                 slot_name=slot_row.name,
@@ -895,6 +903,8 @@ def reopen_schedule(
         )
         for person in member_rows:
             if not person.email:
+                continue
+            if not should_email_person(person.hashed_password):
                 continue
             subject, body = schedule_reopened_member_email(
                 recipient_name=person.name,
