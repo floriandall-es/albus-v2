@@ -46,6 +46,10 @@ export type Tenant = {
   /** Onboarding template chosen on the new first wizard step.
    * Null on tenants created before the preset selector shipped. */
   preset_kind: PresetKind | null;
+  /** Yes/No answer the admin gave at signup to "¿Vas a usar
+   * sub-equipos?". Drives whether /admin Inicio surfaces a
+   * sub-equipos setup card. False by default. */
+  has_subteams: boolean;
 };
 
 export type HolidaySource = "national" | "regional" | "custom";
@@ -744,6 +748,10 @@ export const api = {
     /** Affirmative ToS + Privacy acceptance. Server rejects with
      * 422 if missing or false. */
     accept_terms: boolean;
+    /** Yes/No answer to "¿Vas a usar sub-equipos?". Stored on the
+     * tenant; later drives whether /admin Inicio surfaces a
+     * sub-equipos setup card. */
+    has_subteams: boolean;
   }) => request<AuthResponse>("/api/signup", { method: "POST", body: JSON.stringify(body) }),
 
   // Login is conditional on how many memberships the person has:

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, func
+from sqlalchemy import Boolean, DateTime, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -29,4 +29,11 @@ class Tenant(Base):
     # that reads this for default-suggestion logic.
     preset_kind: Mapped[str | None] = mapped_column(
         String(32), nullable=True
+    )
+    # Answered yes/no on the signup form: "¿Vas a usar sub-equipos?".
+    # Drives whether /admin Inicio shows a "Configura tus sub-equipos"
+    # card. Admins who later change their mind can still create
+    # groups via /admin/groups regardless of this flag.
+    has_subteams: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
     )

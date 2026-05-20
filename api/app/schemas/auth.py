@@ -23,6 +23,11 @@ class SignupRequest(BaseModel):
     # string and the timestamp on the new Person row. Required —
     # missing or false rejects with 422.
     accept_terms: bool = False
+    # "¿Vas a usar sub-equipos? (residentes, becarios, etc.)" answered
+    # at signup. Stored on the tenant; later drives the /admin Inicio
+    # checklist (a "Configura tus sub-equipos" card appears only when
+    # this is True).
+    has_subteams: bool = False
 
 
 class LoginRequest(BaseModel):
@@ -78,6 +83,10 @@ class TenantOut(BaseModel):
     # Set by the onboarding preset step. One of 'quirurgico' / 'medico'
     # / 'otro'. Null on tenants created before this feature shipped.
     preset_kind: str | None = None
+    # Answered yes/no at signup. Drives whether /admin Inicio surfaces
+    # a "Configura tus sub-equipos" card. False by default — admins
+    # who change their mind later still have /admin/groups available.
+    has_subteams: bool = False
 
     model_config = {"from_attributes": True}
 

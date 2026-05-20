@@ -13,6 +13,10 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [acceptTerms, setAcceptTerms] = useState(false);
+  // Yes/No answer to "¿Vas a usar sub-equipos?". Stored on the
+  // tenant; later drives the post-signup checklist (no nav at
+  // signup time — the admin lands in /onboarding regardless).
+  const [hasSubteams, setHasSubteams] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -28,6 +32,7 @@ export default function SignupPage() {
         email,
         password,
         accept_terms: acceptTerms,
+        has_subteams: hasSubteams === true,
       });
       setToken(res.access_token);
       // Fresh tenant — always go straight into the onboarding wizard.
@@ -93,6 +98,27 @@ export default function SignupPage() {
               value={password}
               onChange={setPassword}
             />
+            <fieldset>
+              <legend className="text-sm font-medium text-gray-700 mb-1.5">
+                ¿Tienes sub-equipos? (residentes, becarios, etc.)
+              </legend>
+              <div className="grid grid-cols-2 gap-2">
+                <SubteamOption
+                  label="Sí"
+                  active={hasSubteams === true}
+                  onClick={() => setHasSubteams(true)}
+                />
+                <SubteamOption
+                  label="No"
+                  active={hasSubteams === false}
+                  onClick={() => setHasSubteams(false)}
+                />
+              </div>
+              <p className="mt-1.5 text-xs text-gray-500">
+                Si tienes, te mostraremos un acceso para configurarlos
+                después.
+              </p>
+            </fieldset>
             <label className="flex items-start gap-2 text-sm text-gray-700">
               <input
                 type="checkbox"
@@ -124,7 +150,7 @@ export default function SignupPage() {
             {error && <p className="text-sm text-rose-600">{error}</p>}
             <button
               type="submit"
-              disabled={loading || !acceptTerms}
+              disabled={loading || !acceptTerms || hasSubteams === null}
               className="w-full rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-soft hover:bg-brand-700 disabled:opacity-50"
             >
               {loading ? "Creando…" : "Crear servicio"}
@@ -164,5 +190,34 @@ function Field(props: {
         className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
       />
     </label>
+  );
+}
+
+// Two-button pill row for the sub-equipos yes/no. Type="button"
+// so it doesn't submit the form; visual state mirrors a radio
+// without the awkward native styling.
+function SubteamOption({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={
+        "rounded-lg px-3 py-2 text-sm font-medium transition-colors "
+        + (active
+          ? "bg-brand-600 text-white shadow-soft"
+          : "ring-1 ring-gray-300 bg-white text-gray-800 hover:bg-gray-50")
+      }
+    >
+      {label}
+    </button>
   );
 }

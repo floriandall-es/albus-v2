@@ -159,6 +159,7 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthRespons
         slug=slug,
         name=payload.tenant_name,
         country_code=payload.country_code,
+        has_subteams=payload.has_subteams,
     )
     db.add(tenant)
     db.flush()
