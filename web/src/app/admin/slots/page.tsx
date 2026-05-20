@@ -26,6 +26,7 @@ import {
   Select,
   TextField,
 } from "@/components/admin/ui";
+import { SetupBanner } from "@/components/admin/SetupBanner";
 
 const DAYS: { value: DaysApplied; label: string }[] = [
   { value: "all", label: "Todos los días" },
@@ -72,6 +73,11 @@ export default function SlotsPage() {
       <PageHeader
         title="Actividades"
         action={<Button onClick={() => setEditing("new")}>Nueva actividad</Button>}
+      />
+      <SetupBanner
+        area="activities"
+        title="Define las actividades de tu servicio"
+        description="Cada actividad es un tipo de turno: consulta, guardia, quirófano, planta… Marca un horario y un modo de staffing si aplica, o déjalo en blanco para «sin horario fijo, todos los días». Las reglas detalladas (rotaciones, asignación manual) las configuras desde Reglas."
       />
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
       {list.isError && <ErrorText>{(list.error as Error).message}</ErrorText>}

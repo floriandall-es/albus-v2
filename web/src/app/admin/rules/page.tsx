@@ -19,6 +19,7 @@ import {
   PageHeader,
   Select,
 } from "@/components/admin/ui";
+import { SetupBanner } from "@/components/admin/SetupBanner";
 
 const PERIOD_LABEL: Record<FrequencyPeriod, string> = {
   rolling_7: "Móvil 7 días",
@@ -131,6 +132,11 @@ export default function RulesPage() {
         Incompatibilidades del mismo día, sucesión entre actividades y límites
         de frecuencia por persona.
       </p>
+      <SetupBanner
+        area="rules"
+        title="Reglas para el solver"
+        description="Define cómo se reparten las actividades: qué actividades no pueden coincidir en el mismo día (p. ej. no doblar guardia + consulta), qué actividad debe seguir a otra (sucesión) y cuántas veces como máximo puede hacer una persona una actividad en un periodo. Si no necesitas ninguna, marca como completado."
+      />
       {/* Each section lives in its own card so the visual boundary is
           obvious. Without cards three "+ Añadir regla" buttons next to
           each other made it ambiguous which section the click belonged

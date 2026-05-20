@@ -87,6 +87,14 @@ class TenantOut(BaseModel):
     # a "Configura tus sub-equipos" card. False by default — admins
     # who change their mind later still have /admin/groups available.
     has_subteams: bool = False
+    # Per-area "I'm done configuring" timestamps. NULL = pending,
+    # surfaced in the Inicio checklist; non-null = admin marked it
+    # done, card disappears and the first-visit banner stops
+    # showing on the corresponding subpage.
+    setup_activities_completed_at: datetime | None = None
+    setup_rules_completed_at: datetime | None = None
+    setup_team_completed_at: datetime | None = None
+    setup_subteams_completed_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

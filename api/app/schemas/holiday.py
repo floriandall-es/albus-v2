@@ -3,6 +3,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+# Areas the post-signup checklist tracks. Mirror of the four
+# tenant.setup_*_completed_at columns added by migration 0042.
+SetupArea = Literal["activities", "rules", "team", "subteams"]
+
 
 HolidaySource = Literal["national", "regional", "custom"]
 
@@ -40,3 +44,12 @@ class HolidayImportResult(BaseModel):
 class TenantUpdate(BaseModel):
     country_code: str | None = Field(default=None, max_length=8)
     region_code: str | None = Field(default=None, max_length=16)
+
+
+class SetupAreaUpdate(BaseModel):
+    """Body for POST /api/tenants/me/setup. `completed=True` stamps
+    the corresponding setup_*_completed_at with NOW; `completed=False`
+    clears it back to NULL (admin un-marking).
+    """
+    area: SetupArea
+    completed: bool

@@ -29,32 +29,12 @@ import { formatPeriod } from "@/components/admin/month-picker";
  */
 export default function AdminDashboard() {
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
-  const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
-  const slots = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
-  const groups = useQuery({ queryKey: ["groups"], queryFn: api.listGroups });
   const schedules = useQuery({
     queryKey: ["schedules"],
     queryFn: api.listSchedules,
   });
 
   const state = useMemo(() => {
-    const slotCount = slots.data?.length ?? me.data?.counts.slots ?? 0;
-    const teamCount = team.data?.length ?? 0;
-    // Members with no categoría assigned can't be scheduled by the
-    // solver. We surface this as a sub-signal on the "Revisa equipo"
-    // card so the admin knows whether the post-invite cleanup is done.
-    const teamMissingCategory =
-      (team.data ?? []).filter((m) => m.category_id == null).length;
-    // "Reglas configuradas" = any slot whose rules aren't the
-    // default single solver rule. The Slot.rules array always has at
-    // least one entry (a default solver rule), so we look for slots
-    // with >1 rule OR a non-solver rule strategy.
-    const slotsWithCustomRules = (slots.data ?? []).filter((s) => {
-      if (s.rules.length === 0) return false;
-      if (s.rules.length > 1) return true;
-      return s.rules[0].strategy !== "solver";
-    }).length;
-
     const allSchedules = schedules.data ?? [];
     const todayIso = new Date().toISOString().slice(0, 7); // "YYYY-MM"
     const sorted = [...allSchedules].sort((a, b) =>
@@ -65,30 +45,29 @@ export default function AdminDashboard() {
     const latest = [...sorted].reverse()[0] ?? null;
     const nextSchedule = currentMonth ?? upcoming ?? latest;
 
+    const t = me.data?.current_tenant;
+    // Explicit per-area "I'm done" flags toggled by the admin on
+    // each subpage. Replacing the previous heuristic signals (which
+    // lit up green the moment the admin ticked any template in the
+    // wizard, making the checklist useless on real signups).
     return {
-      hasSlots: slotCount > 0,
-      slotCount,
-      hasTeammates: teamCount > 1, // The admin themselves doesn't count.
-      teamCount,
-      teamMissingCategory,
-      hasCustomRules: slotsWithCustomRules > 0,
-      hasSubteamsFlag: me.data?.current_tenant.has_subteams ?? false,
-      groupCount: groups.data?.length ?? 0,
+      activitiesDone: !!t?.setup_activities_completed_at,
+      rulesDone: !!t?.setup_rules_completed_at,
+      teamDone: !!t?.setup_team_completed_at,
+      subteamsDone: !!t?.setup_subteams_completed_at,
+      hasSubteamsFlag: t?.has_subteams ?? false,
       firstName: me.data ? personFirstName(me.data.person) : "",
       nextSchedule,
     };
-  }, [me.data, team.data, slots.data, groups.data, schedules.data]);
+  }, [me.data, schedules.data]);
 
-  // Setup is "done" when every post-signup todo has at least one
-  // positive signal: actividades exist, equipo reviewed (no
-  // missing categorías), reglas configured, and — if the admin
-  // said yes to sub-equipos at signup — at least one group exists.
+  // Setup is "done" when every applicable area has been explicitly
+  // marked done. Sub-equipos only counts when has_subteams=true.
   const setupDone =
-    state.hasSlots
-    && state.hasTeammates
-    && state.teamMissingCategory === 0
-    && state.hasCustomRules
-    && (!state.hasSubteamsFlag || state.groupCount > 0);
+    state.activitiesDone
+    && state.rulesDone
+    && state.teamDone
+    && (!state.hasSubteamsFlag || state.subteamsDone);
 
   return (
     <>
@@ -104,79 +83,57 @@ export default function AdminDashboard() {
       </header>
 
       {/* Setup checklist — only shown while there are pending items.
-          Cards reflect the four post-signup todos (plus sub-equipos
-          when the admin said yes at signup). Order is roughly the
-          natural sequence: define what gets done → tell the solver
-          how → check who'll do it → carve out the sub-cohorts. */}
+          Each card's `done` state is driven by the explicit
+          tenant.setup_<area>_completed_at flag toggled on the
+          subpage via the SetupBanner. The sub-equipos card only
+          appears when the admin answered "Sí" at signup. */}
       {!setupDone && (
         <section className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <StepCard
-            done={state.hasSlots}
+            done={state.activitiesDone}
             icon={<Stethoscope className="h-5 w-5" />}
             title="Configura las actividades del servicio"
-            description={
-              state.hasSlots
-                ? `${state.slotCount} ${state.slotCount === 1 ? "actividad definida" : "actividades definidas"}.`
-                : "Define cada actividad (consulta, guardia, quirófano…) que utiliza tu servicio."
-            }
-            ctaLabel={state.hasSlots ? "Revisar actividades" : "Crear la primera actividad"}
+            description="Define cada actividad (consulta, guardia, quirófano…) que utiliza tu servicio."
+            ctaLabel="Ir a Actividades"
             href="/admin/slots"
+            primary={!state.activitiesDone}
           />
           <StepCard
-            done={state.hasCustomRules}
+            done={state.rulesDone}
             icon={<Sparkles className="h-5 w-5" />}
             title="Configura las reglas del solver"
-            description={
-              state.hasCustomRules
-                ? "Las actividades ya tienen reglas configuradas."
-                : "Define cómo se asigna cada actividad: solver automático, rotación, días fijos o asignación manual."
-            }
-            ctaLabel={
-              state.hasCustomRules ? "Revisar reglas" : "Configurar reglas"
-            }
+            description="Incompatibilidades del mismo día, sucesión entre actividades y límites por persona."
+            ctaLabel="Ir a Reglas"
             href="/admin/rules"
-            // Highlighted only when actividades exist but reglas
-            // haven't been touched — that's the natural next step.
-            primary={state.hasSlots && !state.hasCustomRules}
+            primary={state.activitiesDone && !state.rulesDone}
           />
           <StepCard
-            done={
-              state.hasTeammates && state.teamMissingCategory === 0
-            }
+            done={state.teamDone}
             icon={<Users className="h-5 w-5" />}
             title="Revisa tu equipo"
-            description={
-              !state.hasTeammates
-                ? "Ya hemos enviado las invitaciones que pediste durante el alta. Asigna a cada miembro su categoría cuando acepten."
-                : state.teamMissingCategory > 0
-                  ? `${state.teamMissingCategory} ${state.teamMissingCategory === 1 ? "miembro sin categoría asignada" : "miembros sin categoría asignada"} — la solver los necesita para asignar turnos.`
-                  : `${state.teamCount} ${state.teamCount === 1 ? "miembro" : "miembros"}, todos con categoría.`
-            }
+            description="Las invitaciones ya se enviaron durante el alta. Asigna a cada miembro su categoría profesional para que la solver pueda repartir las actividades."
             ctaLabel="Ir al equipo"
             href="/admin/team"
             primary={
-              state.hasSlots
-              && state.hasCustomRules
-              && state.teamMissingCategory > 0
+              state.activitiesDone
+              && state.rulesDone
+              && !state.teamDone
             }
           />
           {state.hasSubteamsFlag && (
             <StepCard
-              done={state.groupCount > 0}
+              done={state.subteamsDone}
               icon={<Layers className="h-5 w-5" />}
               title="Configura tus sub-equipos"
-              description={
-                state.groupCount === 0
-                  ? "Crea un sub-equipo (residentes, becarios, etc.) para que su responsable gestione sus propias actividades y planificación."
-                  : `${state.groupCount} ${state.groupCount === 1 ? "sub-equipo configurado" : "sub-equipos configurados"}.`
-              }
-              ctaLabel={
-                state.groupCount === 0
-                  ? "Crear sub-equipo"
-                  : "Revisar sub-equipos"
-              }
+              description="Crea un sub-equipo (residentes, becarios, etc.) para que su responsable gestione sus propias actividades y planificación."
+              ctaLabel="Ir a Sub-equipos"
               href="/admin/groups"
-              primary={state.groupCount === 0}
+              primary={
+                state.activitiesDone
+                && state.rulesDone
+                && state.teamDone
+                && !state.subteamsDone
+              }
             />
           )}
         </section>

@@ -12,6 +12,7 @@ import {
   Select,
   TextField,
 } from "@/components/admin/ui";
+import { SetupBanner } from "@/components/admin/SetupBanner";
 
 /**
  * Manage sub-team groups. Tenant-admin only — group leads see a
@@ -47,14 +48,11 @@ export default function GroupsPage() {
         title="Sub-equipos"
         action={<Button onClick={() => setEditing("new")}>Nuevo sub-equipo</Button>}
       />
-      <p className="-mt-4 mb-6 text-sm text-gray-600">
-        Crea un sub-equipo cuando una parte del equipo (p. ej.
-        residentes) gestiona su propia planificación. Asigna a uno
-        de sus miembros como responsable y se convertirá en
-        administrador de su sub-equipo: podrá editar sus
-        actividades y a sus miembros, pero solo asignación manual
-        (sin solver ni rotaciones automáticas).
-      </p>
+      <SetupBanner
+        area="subteams"
+        title="Sub-equipos con su propio responsable"
+        description="Un sub-equipo (residentes, becarios, etc.) gestiona sus propias actividades y planificación sin mezclarse con el equipo principal. Crea uno, elige a un miembro como responsable, y se convertirá en administrador de ese sub-equipo. Si no necesitas sub-equipos ahora, marca como completado."
+      />
 
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
       {list.isError && <ErrorText>{(list.error as Error).message}</ErrorText>}

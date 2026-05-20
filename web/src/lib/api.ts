@@ -50,7 +50,17 @@ export type Tenant = {
    * sub-equipos?". Drives whether /admin Inicio surfaces a
    * sub-equipos setup card. False by default. */
   has_subteams: boolean;
+  /** Per-area "I'm done configuring" timestamps. Null = pending
+   * (Inicio shows the card, subpage shows the first-visit banner);
+   * non-null = admin marked it done. Toggled via
+   * POST /api/tenants/me/setup. */
+  setup_activities_completed_at: string | null;
+  setup_rules_completed_at: string | null;
+  setup_team_completed_at: string | null;
+  setup_subteams_completed_at: string | null;
 };
+
+export type SetupArea = "activities" | "rules" | "team" | "subteams";
 
 export type HolidaySource = "national" | "regional" | "custom";
 export type Holiday = {
@@ -1080,6 +1090,14 @@ export const api = {
     country_code?: string | null;
     region_code?: string | null;
   }) => request<Tenant>("/api/tenants/me", { method: "PATCH", body: JSON.stringify(body) }),
+  /** Mark one of the four post-signup areas as completed (or undo
+   * it). Server writes/clears the corresponding
+   * tenant.setup_*_completed_at column. */
+  setSetupArea: (area: SetupArea, completed: boolean) =>
+    request<Tenant>("/api/tenants/me/setup", {
+      method: "POST",
+      body: JSON.stringify({ area, completed }),
+    }),
 
   // Holidays
   listHolidays: (year?: number) =>

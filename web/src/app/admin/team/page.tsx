@@ -23,6 +23,7 @@ import {
 } from "@/components/admin/ui";
 import { BulkInviteModal } from "@/components/admin/BulkInviteModal";
 import { InviteDeliveryPill } from "@/components/admin/InviteDeliveryPill";
+import { SetupBanner } from "@/components/admin/SetupBanner";
 
 // Spanish short weekday labels — bit 0 = Monday. Used in the
 // activity-removal confirmation dialog ("pin los Martes…").
@@ -104,6 +105,11 @@ export default function TeamPage() {
         }
       />
       <BulkInviteModal open={bulkOpen} onClose={() => setBulkOpen(false)} />
+      <SetupBanner
+        area="team"
+        title="Revisa tu equipo"
+        description="Las invitaciones que pediste durante el alta ya se enviaron. Aquí ves a cada miembro y puedes asignarle su categoría profesional (la solver la necesita para repartir las actividades correctas). Reenvía la invitación o cambia la categoría desde cada fila."
+      />
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
       {list.isError && <ErrorText>{(list.error as Error).message}</ErrorText>}
       {list.data && list.data.length === 0 && <Empty>Aún no hay miembros.</Empty>}

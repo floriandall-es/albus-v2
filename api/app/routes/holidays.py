@@ -7,7 +7,7 @@ usual RequestContext + RLS path.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
@@ -20,9 +20,21 @@ from app.schemas.holiday import (
     HolidayImport,
     HolidayImportResult,
     HolidayOut,
+    SetupAreaUpdate,
     TenantUpdate,
 )
 from app.schemas.auth import TenantOut
+
+
+# Map the `area` string in the API to the Tenant column name. Kept
+# here (rather than in the schema) so the schema stays serialisation-
+# only and the route owns the column-name binding.
+_SETUP_AREA_COLUMNS: dict[str, str] = {
+    "activities": "setup_activities_completed_at",
+    "rules": "setup_rules_completed_at",
+    "team": "setup_team_completed_at",
+    "subteams": "setup_subteams_completed_at",
+}
 
 router = APIRouter()
 
@@ -133,5 +145,30 @@ def update_tenant_defaults(
     data = payload.model_dump(exclude_unset=True)
     for k, v in data.items():
         setattr(ctx.tenant, k, v)
+    ctx.db.flush()
+    return TenantOut.model_validate(ctx.tenant)
+
+
+@router.post("/tenants/me/setup", response_model=TenantOut)
+def update_setup_flag(
+    payload: SetupAreaUpdate,
+    ctx: RequestContext = Depends(get_current_context),
+) -> TenantOut:
+    """Toggle one of the per-area setup-completion flags.
+
+    Idempotent: re-setting an already-true flag is a no-op (the
+    timestamp doesn't move). Un-marking writes NULL. Used by the
+    "Marcar como completado" / "Marcar como pendiente" buttons on
+    /admin/slots, /admin/rules, /admin/team, /admin/groups.
+    """
+    _require_admin(ctx)
+    column = _SETUP_AREA_COLUMNS[payload.area]
+    if payload.completed:
+        # Idempotent — don't move the timestamp on repeat calls so the
+        # admin can see "when did I finish this" later if we surface it.
+        if getattr(ctx.tenant, column) is None:
+            setattr(ctx.tenant, column, datetime.now(timezone.utc))
+    else:
+        setattr(ctx.tenant, column, None)
     ctx.db.flush()
     return TenantOut.model_validate(ctx.tenant)

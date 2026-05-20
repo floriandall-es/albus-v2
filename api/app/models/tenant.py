@@ -37,3 +37,21 @@ class Tenant(Base):
     has_subteams: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+    # Explicit per-area "I'm done configuring this" flags, set by the
+    # admin clicking "Marcar como completado" on each subpage. Drives
+    # both the /admin Inicio checklist (which cards remain visible)
+    # and the first-visit explanation banner inside each subpage.
+    # Migration 0042 added these as nullable timestamps; existing
+    # tenants stay NULL until their admin clicks through.
+    setup_activities_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    setup_rules_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    setup_team_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    setup_subteams_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
