@@ -294,9 +294,35 @@ function SlotInlineEditor({ slot }: { slot: Slot }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["slots"] }),
   });
 
+  // Horario mode is derived from whether the slot has times set on
+  // the server. We keep a local copy so a user who picks
+  // "Personalizado" but hasn't yet entered the times sees the input
+  // fields immediately (instead of waiting for the first onChange
+  // to round-trip through the server).
+  const serverScheduleMode: "all_day" | "ranged" =
+    slot.start_time && slot.end_time ? "ranged" : "all_day";
+  const [scheduleMode, setScheduleMode] = useState<"all_day" | "ranged">(
+    serverScheduleMode,
+  );
+  // Local edits for the time inputs. Start blank when the slot has no
+  // horario yet — committing them only happens once both are filled.
+  const [startTime, setStartTime] = useState<string>(
+    slot.start_time ? slot.start_time.slice(0, 5) : "",
+  );
+  const [endTime, setEndTime] = useState<string>(
+    slot.end_time ? slot.end_time.slice(0, 5) : "",
+  );
+
+  // Commit a complete (start, end) pair to the server. Empty values
+  // mean the user is still typing — don't save half a horario.
+  const commitTimes = (s: string, e: string) => {
+    if (!s || !e) return;
+    update.mutate({ start_time: `${s}:00`, end_time: `${e}:00` });
+  };
+
   return (
     <div className="ml-7 mt-2 space-y-2">
-      <div className="max-w-xs">
+      <div className="max-w-md grid grid-cols-2 gap-2">
         <Select<DaysApplied>
           label="Días"
           value={slot.days_applied}
@@ -310,7 +336,61 @@ function SlotInlineEditor({ slot }: { slot: Slot }) {
             { value: "custom", label: "Personalizado" },
           ]}
         />
+        <Select<"all_day" | "ranged">
+          label="Horario"
+          value={scheduleMode}
+          onChange={(v) => {
+            if (!v) return;
+            const next = v as "all_day" | "ranged";
+            setScheduleMode(next);
+            // Switching back to "todo el día" clears the times on
+            // the server. Switching to "personalizado" doesn't save
+            // anything until the user fills both inputs — that's
+            // handled by commitTimes below.
+            if (next === "all_day") {
+              setStartTime("");
+              setEndTime("");
+              if (slot.start_time || slot.end_time) {
+                update.mutate({ start_time: null, end_time: null });
+              }
+            }
+          }}
+          options={[
+            { value: "all_day", label: "Todo el día" },
+            { value: "ranged", label: "Personalizado" },
+          ]}
+        />
       </div>
+      {scheduleMode === "ranged" && (
+        <div className="max-w-md grid grid-cols-2 gap-2">
+          <label className="block">
+            <span className="text-sm font-medium text-gray-700">Desde</span>
+            <input
+              type="time"
+              value={startTime}
+              onChange={(e) => {
+                const v = e.target.value;
+                setStartTime(v);
+                commitTimes(v, endTime);
+              }}
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium text-gray-700">Hasta</span>
+            <input
+              type="time"
+              value={endTime}
+              onChange={(e) => {
+                const v = e.target.value;
+                setEndTime(v);
+                commitTimes(startTime, v);
+              }}
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            />
+          </label>
+        </div>
+      )}
       {slot.days_applied === "custom" && (
         <WeekdayPicker
           value={slot.custom_days_bitmap ?? 0}
