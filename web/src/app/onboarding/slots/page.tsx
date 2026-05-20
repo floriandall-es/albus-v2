@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Clock, Info, Plus } from "lucide-react";
 import {
   api,
   type DaysApplied,
@@ -137,24 +138,40 @@ export default function SlotsStep() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-2">Paso 3 — Actividades</h2>
-      <p className="text-sm text-gray-600 mb-3">
-        Define las actividades típicas de tu servicio. Marca las habituales y/o
-        añade las tuyas abajo. Por defecto cada actividad se asigna
-        automáticamente, repartiendo el reparto equitativamente entre el
-        equipo.
-      </p>
-      <p className="text-xs text-gray-500 mb-6">
-        ¿Necesitas rotaciones, días fijos o asignación manual? Termina la
-        configuración básica aquí y luego edita cada actividad en{" "}
-        <strong>Admin → Actividades</strong>: cada actividad admite reglas
-        distintas para diferentes días de la semana (p. ej. rotación L–J +
-        asignación automática los fines de semana). También puedes ajustar
-        composición de equipo y grupo de equidad.
-      </p>
+      <div className="mb-6 flex items-center gap-3">
+        <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-brand-100 text-brand-700 shrink-0">
+          <Clock className="h-5 w-5" />
+        </span>
+        <div>
+          <h2 className="text-2xl font-semibold text-gray-900">
+            Paso 3 — Actividades
+          </h2>
+          <p className="text-sm text-gray-600">
+            Marca las que se hacen en tu servicio. Cada actividad se
+            asigna luego automáticamente y de forma equitativa.
+          </p>
+        </div>
+      </div>
 
-      <div className="rounded-md border bg-white mb-4">
-        <ul className="divide-y">
+      <div className="mb-6 rounded-xl border border-brand-100 bg-brand-50/60 p-4 flex items-start gap-3">
+        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white text-brand-700 ring-1 ring-brand-200 shrink-0">
+          <Info className="h-4 w-4" />
+        </span>
+        <p className="text-sm text-brand-900/80 leading-relaxed">
+          ¿Necesitas rotaciones, días fijos o asignación manual?
+          Termina la configuración básica aquí y luego edita cada
+          actividad en <strong>Admin → Actividades</strong>: cada
+          una admite reglas distintas por día de la semana
+          (p. ej. rotación L–J + asignación automática los fines
+          de semana), composición de equipo y grupo de equidad.
+        </p>
+      </div>
+
+      <div className="mb-4 rounded-xl border border-gray-200 bg-white shadow-soft overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-gray-100 bg-gray-50/60 text-xs font-semibold uppercase tracking-wider text-gray-500">
+          Habituales
+        </div>
+        <ul className="divide-y divide-gray-100">
           {SLOT_TEMPLATES.items.map((t) => {
             const existingSlot = byName.get(t.name);
             const checked = !!existingSlot;
@@ -162,19 +179,30 @@ export default function SlotsStep() {
               (createTemplate.isPending && createTemplate.variables?.name === t.name) ||
               (del.isPending && del.variables === existingSlot?.id);
             return (
-              <li key={t.name} className="px-4 py-2 text-sm">
+              <li
+                key={t.name}
+                className={
+                  "px-4 py-2.5 text-sm transition-colors "
+                  + (checked ? "bg-brand-50/40" : "hover:bg-gray-50/60")
+                }
+              >
                 <div className="flex items-center">
                   <input
                     type="checkbox"
                     id={`slot-${t.name}`}
-                    className="mr-3 h-4 w-4"
+                    className="mr-3 h-4 w-4 accent-brand-600"
                     checked={checked}
                     disabled={isPending}
                     onChange={(e) => toggleTemplate(t, e.target.checked)}
                   />
                   <label
                     htmlFor={`slot-${t.name}`}
-                    className="flex-1 cursor-pointer"
+                    className={
+                      "flex-1 cursor-pointer "
+                      + (checked
+                        ? "font-medium text-gray-900"
+                        : "text-gray-800")
+                    }
                   >
                     {t.name}
                   </label>
@@ -191,8 +219,9 @@ export default function SlotsStep() {
         </ul>
       </div>
 
-      <div className="rounded-md border bg-white mb-4">
-        <div className="px-4 py-2 border-b bg-gray-50 text-xs font-medium uppercase tracking-wide text-gray-600">
+      <div className="mb-4 rounded-xl border border-gray-200 bg-white shadow-soft overflow-hidden">
+        <div className="px-4 py-2.5 border-b border-gray-100 bg-gray-50/60 text-xs font-semibold uppercase tracking-wider text-gray-500 flex items-center gap-2">
+          <Plus className="h-3.5 w-3.5 text-brand-600" />
           Otras actividades
         </div>
         {customSlots.length === 0 && (
