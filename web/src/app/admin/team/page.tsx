@@ -22,6 +22,7 @@ import {
   TextField,
 } from "@/components/admin/ui";
 import { BulkInviteModal } from "@/components/admin/BulkInviteModal";
+import { InviteDeliveryPill } from "@/components/admin/InviteDeliveryPill";
 
 // Spanish short weekday labels — bit 0 = Monday. Used in the
 // activity-removal confirmation dialog ("pin los Martes…").
@@ -214,14 +215,9 @@ function PendingInvitations() {
     mutationFn: (id: number) => api.revokeInvitation(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["invitations"] }),
   });
-  const [lastReissue, setLastReissue] = useState<{
-    email: string;
-    accept_url: string;
-  } | null>(null);
-  const reissue = useMutation({
-    mutationFn: (id: number) => api.reissueInvitation(id),
-    onSuccess: (data) => {
-      setLastReissue({ email: data.email, accept_url: data.accept_url });
+  const resend = useMutation({
+    mutationFn: (id: number) => api.resendInvitation(id),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["invitations"] });
     },
   });
@@ -236,6 +232,7 @@ function PendingInvitations() {
             <tr>
               <th className="px-4 py-2 font-medium">Email</th>
               <th className="px-4 py-2 font-medium">Nombre</th>
+              <th className="px-4 py-2 font-medium">Entrega</th>
               <th className="px-4 py-2 font-medium">Caduca</th>
               <th className="px-4 py-2 font-medium text-right">Acciones</th>
             </tr>
@@ -245,6 +242,9 @@ function PendingInvitations() {
               <tr key={inv.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors">
                 <td className="px-4 py-2">{inv.email}</td>
                 <td className="px-4 py-2">{inv.person_name}</td>
+                <td className="px-4 py-2">
+                  <InviteDeliveryPill inv={inv} />
+                </td>
                 <td className="px-4 py-2 text-gray-600">
                   {new Date(inv.expires_at).toLocaleDateString()}
                 </td>
@@ -254,15 +254,15 @@ function PendingInvitations() {
                     onClick={() => {
                       if (
                         confirm(
-                          `¿Re-enviar la invitación a ${inv.email}? Se enviará un nuevo email y el enlace anterior dejará de funcionar.`,
+                          `¿Reenviar la invitación a ${inv.email}? Se enviará un nuevo email y el enlace anterior dejará de funcionar.`,
                         )
                       ) {
-                        reissue.mutate(inv.id);
+                        resend.mutate(inv.id);
                       }
                     }}
-                    disabled={reissue.isPending}
+                    disabled={resend.isPending}
                   >
-                    Re-enviar
+                    Reenviar
                   </Button>
                   <Button
                     variant="danger"
@@ -277,37 +277,10 @@ function PendingInvitations() {
           </tbody>
         </table>
       </Card>
-      {lastReissue && (
-        <div className="mt-3 rounded-md border border-green-200 bg-green-50 p-3 text-sm">
-          <p className="font-medium text-green-800">
-            Nueva invitación enviada a {lastReissue.email}
-          </p>
-          <p className="mt-1 text-xs text-green-900">
-            Enlace de respaldo (por si el email no llega):
-          </p>
-          <div className="mt-1 flex items-center gap-2">
-            <code className="flex-1 break-all rounded bg-white px-2 py-1 text-xs">
-              {lastReissue.accept_url}
-            </code>
-            <button
-              className="text-xs underline"
-              onClick={() => {
-                navigator.clipboard.writeText(lastReissue.accept_url);
-              }}
-            >
-              Copiar
-            </button>
-            <button
-              className="text-xs text-gray-600"
-              onClick={() => setLastReissue(null)}
-            >
-              Cerrar
-            </button>
-          </div>
+      {resend.isError && (
+        <div className="mt-3">
+          <ErrorText>{(resend.error as Error).message}</ErrorText>
         </div>
-      )}
-      {reissue.isError && (
-        <ErrorText>{(reissue.error as Error).message}</ErrorText>
       )}
     </section>
   );

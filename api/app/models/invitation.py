@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import ARRAY, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import ARRAY, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -37,6 +37,18 @@ class Invitation(Base):
         Integer, ForeignKey("categories.id", ondelete="SET NULL"), nullable=True
     )
     roles: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, default=list)
+    # Email-delivery tracking. Set when send_invitation_email is
+    # called; either last_email_sent_at gets a timestamp (SMTP ok)
+    # OR last_email_error gets a message (SMTP failed). Both NULL
+    # = the row exists but no email has ever been attempted (rare —
+    # happens if the admin shared the accept_url directly without
+    # triggering the email path).
+    last_email_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_email_error: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

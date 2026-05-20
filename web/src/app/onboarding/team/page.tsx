@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Button, ErrorText, Select, TextField } from "@/components/admin/ui";
 import { BulkInviteModal } from "@/components/admin/BulkInviteModal";
+import { InviteDeliveryPill } from "@/components/admin/InviteDeliveryPill";
 import { StepNav } from "../_nav";
 
 type GeneratedInvite = {
@@ -41,6 +42,14 @@ export default function TeamStep() {
       setCategoryId("");
       qc.invalidateQueries({ queryKey: ["invitations"] });
     },
+  });
+
+  // Resend any pending invitation. Rotates the token in-place
+  // so the row stays put, with the delivery pill updating after
+  // the next list refresh.
+  const resend = useMutation({
+    mutationFn: (id: number) => api.resendInvitation(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["invitations"] }),
   });
 
   function copy(url: string) {
@@ -131,20 +140,46 @@ export default function TeamStep() {
         <h3 className="text-sm font-medium mb-2">Pendientes de aceptar</h3>
         <ul className="rounded-md border bg-white divide-y text-sm">
           {(invs.data ?? []).map((inv) => (
-            <li key={inv.id} className="flex items-center justify-between px-4 py-2">
-              <span>
+            <li
+              key={inv.id}
+              className="flex flex-wrap items-center justify-between gap-2 px-4 py-2"
+            >
+              <span className="min-w-0">
                 {inv.person_name}{" "}
                 <span className="text-gray-500">{inv.email}</span>
               </span>
-              <span className="text-xs text-gray-400">
-                caduca {new Date(inv.expires_at).toLocaleDateString()}
-              </span>
+              <div className="flex items-center gap-3 ml-auto">
+                <InviteDeliveryPill inv={inv} />
+                <span className="text-xs text-gray-400">
+                  caduca {new Date(inv.expires_at).toLocaleDateString()}
+                </span>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    if (
+                      confirm(
+                        `¿Reenviar la invitación a ${inv.email}? Se enviará un nuevo email y el enlace anterior dejará de funcionar.`,
+                      )
+                    ) {
+                      resend.mutate(inv.id);
+                    }
+                  }}
+                  disabled={resend.isPending}
+                >
+                  Reenviar
+                </Button>
+              </div>
             </li>
           ))}
           {(invs.data ?? []).length === 0 && (
             <li className="px-4 py-3 text-gray-500">Sin invitaciones pendientes.</li>
           )}
         </ul>
+        {resend.isError && (
+          <div className="mt-2">
+            <ErrorText>{(resend.error as Error).message}</ErrorText>
+          </div>
+        )}
       </section>
 
       <StepNav currentSlug="team" />

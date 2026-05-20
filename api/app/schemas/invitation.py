@@ -22,6 +22,14 @@ class InvitationOut(BaseModel):
     revoked_at: datetime | None
     category_id: int | None
     roles: list[str]
+    # Timestamp of the most recent successful SMTP send. NULL =
+    # never delivered (either the row was never emailed, or the
+    # very first send failed).
+    last_email_sent_at: datetime | None = None
+    # Error string from the most recent send attempt. NULL when
+    # the last attempt succeeded. Surfaced to admin UI as the
+    # "Falló" pill so SMTP issues are visible instead of silent.
+    last_email_error: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

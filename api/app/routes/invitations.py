@@ -40,6 +40,7 @@ from app.services.invitations import create_invitation as create_invitation_serv
 from app.services.invitations import (
     invitation_token_lookup,
     is_already_member,
+    regenerate_invitation_token,
     send_invitation_email,
 )
 
@@ -142,6 +143,44 @@ def revoke_invitation(
         raise HTTPException(status_code=400, detail="Already accepted")
     if inv.revoked_at is None:
         inv.revoked_at = datetime.now(timezone.utc)
+    ctx.db.flush()
+    return inv
+
+
+@router.post(
+    "/invitations/{invitation_id}/resend", response_model=InvitationOut
+)
+def resend_invitation(
+    invitation_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> Invitation:
+    """Rotate the token on an existing pending invitation and email
+    the recipient again.
+
+    Differs from /reissue: this mutates the existing row (same id,
+    same created_at) rather than revoking + creating a new one.
+    From the admin's perspective the invitation entry stays put on
+    their list, with last_email_sent_at moving forward each time
+    they re-send. The old accept URL stops working because
+    token_lookup is rotated.
+
+    Returns the full invitation row so the UI can refresh the
+    delivery-status pill without a follow-up list call.
+    """
+    _require_admin(ctx)
+    inv = ctx.db.get(Invitation, invitation_id)
+    if not inv or inv.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    if inv.accepted_at is not None:
+        raise HTTPException(
+            status_code=400, detail="La invitación ya se ha aceptado"
+        )
+    if inv.revoked_at is not None:
+        raise HTTPException(
+            status_code=400, detail="La invitación se ha revocado"
+        )
+    created = regenerate_invitation_token(ctx.db, invitation=inv)
+    send_invitation_email(ctx.db, tenant_id=ctx.tenant.id, created=created)
     ctx.db.flush()
     return inv
 

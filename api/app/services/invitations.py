@@ -152,21 +152,69 @@ def send_invitation_email(
     tenant_id: int,
     created: CreatedInvitation,
 ) -> None:
-    """Best-effort send. Looks up the tenant for the body. Never raises."""
+    """Best-effort send. Looks up the tenant for the body. Never raises.
+
+    Updates the row's last_email_sent_at on success or
+    last_email_error on failure so the admin UI can show a
+    delivery-status pill on each invitation row. (Underlying
+    send_email itself never raises — it logs SMTP errors and
+    returns; we wrap with our own try/except so any template or
+    DB-fetch failure also lands in last_email_error rather than
+    bubbling into the HTTP response.)
+    """
+    inv = created.invitation
+    err: str | None = None
     try:
         tenant = db.get(Tenant, tenant_id)
         tenant_name = tenant.name if tenant else "tu equipo"
         subject, body = invitation_email(
-            person_name=created.invitation.person_name,
+            person_name=inv.person_name,
             tenant_name=tenant_name,
             accept_url=created.accept_url,
-            expires_at=created.invitation.expires_at,
+            expires_at=inv.expires_at,
         )
-        send_email(to=created.invitation.email, subject=subject, body_text=body)
+        send_email(to=inv.email, subject=subject, body_text=body)
     except Exception as exc:  # pragma: no cover
+        err = f"{type(exc).__name__}: {exc}"
         logger.error(
             "Could not send invitation email tenant=%s email=%s err=%s",
             tenant_id,
-            created.invitation.email,
+            inv.email,
             exc,
         )
+
+    if err is None:
+        inv.last_email_sent_at = datetime.now(timezone.utc)
+        inv.last_email_error = None
+    else:
+        # Don't clear last_email_sent_at — keep the previous-success
+        # timestamp visible so the UI can show "última entrega: X,
+        # último intento falló". last_email_error wins precedence
+        # in the pill colour.
+        inv.last_email_error = err
+
+
+def regenerate_invitation_token(
+    db: Session,
+    *,
+    invitation: Invitation,
+) -> CreatedInvitation:
+    """Rotate the token on an existing invitation so a fresh accept
+    URL can be sent. Old link becomes invalid because the
+    token_lookup column moves.
+
+    Resets expires_at to NOW + INVITE_TTL so an admin re-sending a
+    nearly-expired invite doesn't hand the recipient a link that
+    dies in five minutes. Used by the resend endpoint.
+    """
+    now = datetime.now(timezone.utc)
+    raw_token = secrets.token_urlsafe(32)
+    invitation.token_hash = pwd_context.hash(raw_token)
+    invitation.token_lookup = invitation_token_lookup(raw_token)
+    invitation.expires_at = now + INVITE_TTL
+    db.flush()
+    return CreatedInvitation(
+        invitation=invitation,
+        raw_token=raw_token,
+        accept_url=build_accept_url(raw_token),
+    )

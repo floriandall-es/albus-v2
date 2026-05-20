@@ -886,6 +886,12 @@ export const api = {
     request<InviteCreateResponse>(`/api/invitations/${id}/reissue`, {
       method: "POST",
     }),
+  /** Rotate the token on a pending invitation and re-send the
+   * email. Old accept URL becomes invalid. Returns the refreshed
+   * Invitation row so the caller can update the delivery-status
+   * pill without a follow-up list call. */
+  resendInvitation: (id: number) =>
+    request<Invitation>(`/api/invitations/${id}/resend`, { method: "POST" }),
 
   // Public invite acceptance (no auth)
   getInvitationByToken: (token: string) =>
@@ -1558,6 +1564,12 @@ export type Invitation = {
   revoked_at: string | null;
   category_id: number | null;
   roles: string[];
+  /** ISO timestamp of the last successful SMTP send, or null when
+   * the row has never been delivered. */
+  last_email_sent_at: string | null;
+  /** Error string from the last failed send, or null when the
+   * most recent attempt succeeded (or none attempted). */
+  last_email_error: string | null;
   created_at: string;
 };
 

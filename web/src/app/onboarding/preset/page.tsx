@@ -6,9 +6,11 @@ import {
   Stethoscope,
   ScissorsLineDashed,
   Check,
+  MapPin,
 } from "lucide-react";
 import { api, type PresetKind } from "@/lib/api";
-import { ErrorText } from "@/components/admin/ui";
+import { ErrorText, Select } from "@/components/admin/ui";
+import { ES_REGIONS } from "@/lib/regions";
 import { StepNav } from "../_nav";
 
 /**
@@ -86,7 +88,43 @@ export default function PresetStep() {
     },
   });
 
+  // Region picker — saves region_code on the tenant and triggers a
+  // best-effort holiday import for the current + next year. Both
+  // calls are fire-and-forget from the UI's perspective (we
+  // invalidate /me on success); the admin can still fix things via
+  // /admin/holidays after onboarding.
+  const setRegion = useMutation({
+    mutationFn: async (regionCode: string) => {
+      await api.updateTenantDefaults({ region_code: regionCode });
+      const country =
+        me.data?.current_tenant.country_code
+        ?? me.data?.current_tenant.country
+        ?? "ES";
+      const year = new Date().getFullYear();
+      // Two years: current + next. The import endpoint dedupes on
+      // (tenant, date, name) so re-running it is harmless.
+      await Promise.allSettled([
+        api.importHolidays({
+          country_code: country,
+          region_code: regionCode,
+          year,
+        }),
+        api.importHolidays({
+          country_code: country,
+          region_code: regionCode,
+          year: year + 1,
+        }),
+      ]);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["me"] });
+      qc.invalidateQueries({ queryKey: ["holidays"] });
+    },
+  });
+
   const currentKind = me.data?.current_tenant.preset_kind ?? null;
+  const currentRegion =
+    me.data?.current_tenant.region_code ?? "";
   const busyKind = choose.isPending ? choose.variables : null;
 
   return (
@@ -99,6 +137,51 @@ export default function PresetStep() {
         los siguientes pasos con valores razonables; puedes editar todo
         después.
       </p>
+
+      {/* Region picker — drives the regional festivos import. Kept on
+          this step because country/region are foundational defaults
+          (alongside the preset kind) and most admins answer them
+          together. Optional: the wizard continues fine without it. */}
+      <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 flex items-start gap-3">
+        <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-brand-50 text-brand-700 shrink-0">
+          <MapPin className="h-5 w-5" />
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-gray-900">
+            Comunidad autónoma
+          </div>
+          <p className="text-xs text-gray-500 mb-2">
+            Lo usamos para cargar los festivos regionales junto con los
+            nacionales. Lo puedes cambiar luego en Festivos.
+          </p>
+          <div className="max-w-xs">
+            <Select
+              label=""
+              value={currentRegion}
+              onChange={(v) => {
+                if (v && v !== currentRegion) setRegion.mutate(String(v));
+              }}
+              options={[
+                { value: "", label: "— Selecciona —" },
+                ...ES_REGIONS.map((r) => ({ value: r.code, label: r.label })),
+              ]}
+            />
+          </div>
+          {setRegion.isPending && (
+            <p className="mt-1 text-xs text-brand-700">Cargando festivos…</p>
+          )}
+          {setRegion.isSuccess && !setRegion.isPending && (
+            <p className="mt-1 text-xs text-emerald-700">
+              Festivos cargados.
+            </p>
+          )}
+          {setRegion.isError && (
+            <p className="mt-1 text-xs text-rose-700">
+              {(setRegion.error as Error).message}
+            </p>
+          )}
+        </div>
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
         {PRESETS.map((p) => {

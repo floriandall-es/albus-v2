@@ -1,6 +1,8 @@
 "use client";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Layers } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/admin/ui";
 import { StepNav } from "../_nav";
@@ -43,6 +45,8 @@ export default function DoneStep() {
 
       <ImportHolidaysCard />
 
+      <SubEquiposCard />
+
       <p className="text-sm text-gray-600 mb-6">
         Puedes seguir editando todo desde la sección de administración. Cuando estés
         listo, termina la configuración para entrar al dashboard.
@@ -63,6 +67,35 @@ function SummaryRow({ label, value }: { label: string; value: number }) {
       <span className="text-gray-600">{label}</span>
       <span className="font-medium">{value}</span>
     </li>
+  );
+}
+
+function SubEquiposCard() {
+  // Surfaced on the final onboarding step so admins who run a
+  // mixed cohort (e.g. residentes alongside the main team) know
+  // the feature exists before they exit the wizard. Lightweight
+  // CTA — actual creation happens in /admin/groups, so we don't
+  // gate "Terminar configuración" on this.
+  return (
+    <div className="rounded-md border bg-white p-4 mb-6 text-sm flex items-start gap-3">
+      <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-brand-50 text-brand-700 shrink-0">
+        <Layers className="h-5 w-5" />
+      </span>
+      <div className="flex-1 min-w-0">
+        <p className="font-medium mb-1">¿Tienes residentes u otro sub-equipo?</p>
+        <p className="text-gray-600 mb-3">
+          Crea un sub-equipo para que su responsable gestione sus
+          propias actividades y planificación, sin mezclarse con el
+          equipo principal. Puedes hacerlo ahora o más tarde.
+        </p>
+        <Link
+          href="/admin/groups"
+          className="inline-flex items-center gap-1.5 rounded-lg ring-1 ring-gray-300 bg-white text-gray-800 hover:bg-gray-50 px-3 py-1.5 text-sm font-medium"
+        >
+          Ir a Sub-equipos
+        </Link>
+      </div>
+    </div>
   );
 }
 
