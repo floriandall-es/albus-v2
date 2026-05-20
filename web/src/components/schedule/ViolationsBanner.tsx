@@ -57,8 +57,7 @@ export function ViolationsBanner({
               : `${violations.length} conflictos detectados`}
           </div>
           <div className="text-xs text-gray-600">
-            Las reglas siguen siendo solo avisos — Trivu no bloquea
-            ediciones. Revisa la lista antes de publicar.
+            Pulsa para ver los detalles y corregir antes de publicar.
           </div>
         </div>
         {open ? (
