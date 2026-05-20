@@ -81,6 +81,10 @@ export default function SlotsStep() {
   // including team_composition which has its own role-definition UI).
   const [name, setName] = useState("");
   const [days, setDays] = useState<DaysApplied>("all");
+  // Bitmap: bit 0 = Lunes … bit 6 = Domingo. Only sent to the server
+  // when days === "custom"; ignored otherwise. Same convention as
+  // /admin/slots so the rule editor and this form stay in sync.
+  const [customDaysBitmap, setCustomDaysBitmap] = useState<number>(0);
 
   const createTemplate = useMutation({
     mutationFn: (t: TemplateSlot) =>
@@ -97,6 +101,7 @@ export default function SlotsStep() {
       api.createSlot({
         name,
         days_applied: days,
+        custom_days_bitmap: days === "custom" ? customDaysBitmap : null,
         staffing_mode: "single",
         headcount: 1,
         counts_for_equity: true,
@@ -106,8 +111,14 @@ export default function SlotsStep() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["slots"] });
       setName("");
+      setCustomDaysBitmap(0);
     },
   });
+
+  // The submit button is disabled when "Personalizado" is chosen but
+  // no day is ticked — saving an empty bitmap would create a slot
+  // that never runs.
+  const customDaysMissing = days === "custom" && customDaysBitmap === 0;
 
   const del = useMutation({
     mutationFn: (id: number) => api.deleteSlot(id),
@@ -256,7 +267,18 @@ export default function SlotsStep() {
               { value: "custom", label: "Personalizado" },
             ]}
           />
-          <Button type="submit" disabled={!name.trim() || createCustom.isPending}>
+          {days === "custom" && (
+            <WeekdayPicker
+              value={customDaysBitmap}
+              onChange={setCustomDaysBitmap}
+            />
+          )}
+          <Button
+            type="submit"
+            disabled={
+              !name.trim() || createCustom.isPending || customDaysMissing
+            }
+          >
             Añadir actividad
           </Button>
         </form>
@@ -288,46 +310,114 @@ function SlotInlineEditor({ slot }: { slot: Slot }) {
   });
 
   return (
-    <div className="ml-7 mt-2 grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
-      <Select<DaysApplied>
-        label="Días"
-        value={slot.days_applied}
-        onChange={(v) =>
-          v && update.mutate({ days_applied: v as DaysApplied })
-        }
-        options={[
-          { value: "all", label: "Todos los días" },
-          { value: "weekdays", label: "Días laborables" },
-          { value: "weekends_holidays", label: "Findes y festivos" },
-          { value: "custom", label: "Personalizado" },
-        ]}
-      />
-      <Select<StaffingMode>
-        label="Modo"
-        value={slot.staffing_mode}
-        onChange={(v) =>
-          v && update.mutate({ staffing_mode: v as StaffingMode })
-        }
-        options={[
-          { value: "single", label: "Una persona" },
-          { value: "multiple_same", label: "Varias (mismo perfil)" },
-          { value: "team_composition", label: "Equipo" },
-        ]}
-      />
-      {slot.staffing_mode === "multiple_same" ? (
-        <input
-          type="number"
-          min={1}
-          value={slot.headcount}
-          onChange={(e) => {
-            const n = Math.max(1, Number(e.target.value) || 1);
-            update.mutate({ headcount: n });
-          }}
-          className="w-16 rounded-md border border-gray-300 px-2 py-1 text-sm"
-          aria-label="Personas"
+    <div className="ml-7 mt-2 space-y-2">
+      <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
+        <Select<DaysApplied>
+          label="Días"
+          value={slot.days_applied}
+          onChange={(v) =>
+            v && update.mutate({ days_applied: v as DaysApplied })
+          }
+          options={[
+            { value: "all", label: "Todos los días" },
+            { value: "weekdays", label: "Días laborables" },
+            { value: "weekends_holidays", label: "Findes y festivos" },
+            { value: "custom", label: "Personalizado" },
+          ]}
         />
-      ) : (
-        <span />
+        <Select<StaffingMode>
+          label="Modo"
+          value={slot.staffing_mode}
+          onChange={(v) =>
+            v && update.mutate({ staffing_mode: v as StaffingMode })
+          }
+          options={[
+            { value: "single", label: "Una persona" },
+            { value: "multiple_same", label: "Varias (mismo perfil)" },
+            { value: "team_composition", label: "Equipo" },
+          ]}
+        />
+        {slot.staffing_mode === "multiple_same" ? (
+          <input
+            type="number"
+            min={1}
+            value={slot.headcount}
+            onChange={(e) => {
+              const n = Math.max(1, Number(e.target.value) || 1);
+              update.mutate({ headcount: n });
+            }}
+            className="w-16 rounded-md border border-gray-300 px-2 py-1 text-sm"
+            aria-label="Personas"
+          />
+        ) : (
+          <span />
+        )}
+      </div>
+      {slot.days_applied === "custom" && (
+        <WeekdayPicker
+          value={slot.custom_days_bitmap ?? 0}
+          onChange={(bm) => update.mutate({ custom_days_bitmap: bm })}
+        />
+      )}
+    </div>
+  );
+}
+
+// Small reusable weekday-toggle row. Bit 0 = Lunes … bit 6 = Domingo,
+// matching the convention used by /admin/slots and the back-end
+// `Slot.custom_days_bitmap` column. Renders inline (no label header
+// — the surrounding context tells you what you're picking days for)
+// and warns when nothing is selected so the slot isn't quietly
+// configured to never run.
+const ONBOARDING_DAY_LABELS: { bit: number; short: string; long: string }[] = [
+  { bit: 0, short: "L", long: "Lunes" },
+  { bit: 1, short: "M", long: "Martes" },
+  { bit: 2, short: "X", long: "Miércoles" },
+  { bit: 3, short: "J", long: "Jueves" },
+  { bit: 4, short: "V", long: "Viernes" },
+  { bit: 5, short: "S", long: "Sábado" },
+  { bit: 6, short: "D", long: "Domingo" },
+];
+
+function WeekdayPicker({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const toggle = (bit: number) => {
+    const mask = 1 << bit;
+    onChange(value & mask ? value & ~mask : value | mask);
+  };
+  return (
+    <div>
+      <div className="flex flex-wrap gap-1">
+        {ONBOARDING_DAY_LABELS.map(({ bit, short, long }) => {
+          const active = (value & (1 << bit)) !== 0;
+          return (
+            <button
+              key={bit}
+              type="button"
+              onClick={() => toggle(bit)}
+              aria-pressed={active}
+              title={long}
+              className={
+                "flex h-9 w-9 items-center justify-center rounded-md border text-sm font-medium transition "
+                + (active
+                  ? "border-brand-600 bg-brand-600 text-white"
+                  : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50")
+              }
+            >
+              {short}
+            </button>
+          );
+        })}
+      </div>
+      {value === 0 && (
+        <p className="mt-1 text-xs text-amber-700">
+          Selecciona al menos un día.
+        </p>
       )}
     </div>
   );
