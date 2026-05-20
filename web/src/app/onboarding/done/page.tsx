@@ -2,10 +2,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Layers } from "lucide-react";
+import { CheckCircle2, Layers } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/admin/ui";
 import { StepNav } from "../_nav";
+import { StepHeader } from "../_step-header";
 
 export default function DoneStep() {
   const router = useRouter();
@@ -32,10 +33,11 @@ export default function DoneStep() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-2">Paso 5 — Resumen</h2>
-      <p className="text-sm text-gray-600 mb-6">
-        Esto es lo que has configurado:
-      </p>
+      <StepHeader
+        icon={CheckCircle2}
+        title="Paso 5 — Resumen"
+        subtitle="Esto es lo que has configurado. Cuando termines, entrarás al panel."
+      />
 
       <ul className="rounded-md border bg-white divide-y text-sm mb-6">
         <SummaryRow label="Categorías" value={counts.categories} />

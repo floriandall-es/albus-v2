@@ -1,8 +1,10 @@
 "use client";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Check } from "lucide-react";
 import { api, getToken } from "@/lib/api";
 import { useLogout } from "@/lib/use-logout";
 import { STEPS } from "./_steps";
@@ -52,21 +54,36 @@ export default function OnboardingLayout({ children }: { children: ReactNode }) 
   const currentIdx = STEPS.findIndex((s) => s.slug === currentSlug);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="border-b bg-white">
-        <div className="mx-auto max-w-3xl px-6 py-4 flex items-center justify-between">
-          <div>
-            <div className="text-sm text-gray-500">{me.data?.current_tenant.name}</div>
-            <h1 className="text-lg font-semibold">Configuración inicial</h1>
+    <div className="min-h-screen bg-gradient-to-b from-brand-50/40 to-gray-50">
+      <header className="border-b border-gray-200 bg-white/80 backdrop-blur">
+        <div className="mx-auto max-w-3xl px-6 py-5 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <Image
+              src="/logo.jpeg"
+              alt="Trivu"
+              width={48}
+              height={48}
+              priority
+              className="h-12 w-12 rounded-xl shadow-soft shrink-0"
+            />
+            <div className="min-w-0">
+              <div className="text-xs uppercase tracking-wider text-brand-700 font-semibold">
+                {me.data?.current_tenant.name}
+              </div>
+              <h1 className="text-xl font-semibold text-gray-900 leading-tight">
+                Configuración inicial
+              </h1>
+            </div>
           </div>
           <button
             onClick={() => skip.mutate()}
-            className="text-sm text-gray-500 hover:text-gray-800 underline"
+            className="shrink-0 text-sm text-gray-500 hover:text-gray-800 underline"
           >
             Saltar y configurar más tarde
           </button>
         </div>
-        <div className="mx-auto max-w-3xl px-6 pb-4">
+        <div className="mx-auto max-w-3xl px-6 pb-5">
           <Stepper currentIdx={currentIdx} />
         </div>
       </header>
@@ -82,38 +99,43 @@ export default function OnboardingLayout({ children }: { children: ReactNode }) 
 
 function Stepper({ currentIdx }: { currentIdx: number }) {
   return (
-    <ol className="flex flex-wrap items-center gap-y-1.5 gap-x-2 text-xs">
+    <ol className="flex flex-wrap items-center gap-y-1.5 gap-x-1.5 text-xs">
       {STEPS.map((s, i) => {
         const active = i === currentIdx;
         const done = i < currentIdx;
         return (
-          <li key={s.slug} className="flex items-center gap-2">
+          <li key={s.slug} className="flex items-center gap-1.5">
             <Link
               href={`/onboarding/${s.slug}`}
+              aria-current={active ? "step" : undefined}
               className={
-                "flex items-center gap-1.5 rounded-full px-3 py-1 " +
-                (active
-                  ? "bg-gray-900 text-white"
+                "flex items-center gap-1.5 rounded-full px-3 py-1 font-medium transition-colors "
+                + (active
+                  ? "bg-brand-600 text-white shadow-soft"
                   : done
-                  ? "bg-gray-200 text-gray-700"
-                  : "border border-gray-300 text-gray-500 hover:bg-gray-100")
+                    ? "bg-brand-50 text-brand-800 ring-1 ring-brand-200 hover:bg-brand-100"
+                    : "ring-1 ring-gray-300 text-gray-500 hover:bg-gray-100")
               }
             >
               <span
                 className={
-                  "inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] " +
-                  (active
-                    ? "bg-white text-gray-900"
+                  "inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] "
+                  + (active
+                    ? "bg-white/20 text-white"
                     : done
-                    ? "bg-gray-700 text-white"
-                    : "border border-gray-300")
+                      ? "bg-brand-600 text-white"
+                      : "ring-1 ring-gray-300 text-gray-500")
                 }
               >
-                {i + 1}
+                {done ? <Check className="h-3 w-3" /> : i + 1}
               </span>
               {s.label}
             </Link>
-            {i < STEPS.length - 1 && <span className="text-gray-300">›</span>}
+            {i < STEPS.length - 1 && (
+              <span className="text-gray-300" aria-hidden>
+                ›
+              </span>
+            )}
           </li>
         );
       })}

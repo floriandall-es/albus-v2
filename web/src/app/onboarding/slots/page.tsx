@@ -10,6 +10,7 @@ import {
 } from "@/lib/api";
 import { Button, ErrorText, Select, TextField } from "@/components/admin/ui";
 import { StepNav } from "../_nav";
+import { StepHeader } from "../_step-header";
 
 // Quick-pick templates grouped by typical use. Times follow Spanish
 // hospital convention (8h windows). Ticking creates the corresponding
@@ -138,20 +139,11 @@ export default function SlotsStep() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center gap-3">
-        <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-brand-100 text-brand-700 shrink-0">
-          <Clock className="h-5 w-5" />
-        </span>
-        <div>
-          <h2 className="text-2xl font-semibold text-gray-900">
-            Paso 3 — Actividades
-          </h2>
-          <p className="text-sm text-gray-600">
-            Marca las que se hacen en tu servicio. Cada actividad se
-            asigna luego automáticamente y de forma equitativa.
-          </p>
-        </div>
-      </div>
+      <StepHeader
+        icon={Clock}
+        title="Paso 3 — Actividades"
+        subtitle="Marca las que se hacen en tu servicio. Cada actividad se asigna luego automáticamente y de forma equitativa."
+      />
 
       <div className="mb-6 rounded-xl border border-brand-100 bg-brand-50/60 p-4 flex items-start gap-3">
         <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white text-brand-700 ring-1 ring-brand-200 shrink-0">

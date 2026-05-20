@@ -7,11 +7,13 @@ import {
   ScissorsLineDashed,
   Check,
   MapPin,
+  Sparkles,
 } from "lucide-react";
 import { api, type PresetKind } from "@/lib/api";
 import { ErrorText, Select } from "@/components/admin/ui";
 import { ES_REGIONS } from "@/lib/regions";
 import { StepNav } from "../_nav";
+import { StepHeader } from "../_step-header";
 
 /**
  * First wizard step. The admin picks one of three onboarding
@@ -121,14 +123,11 @@ export default function PresetStep() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-2">
-        Paso 1 — ¿Qué tipo de equipo gestionas?
-      </h2>
-      <p className="text-sm text-gray-600 mb-6">
-        Elige la plantilla que más se parece a tu servicio. Pre-rellenamos
-        los siguientes pasos con valores razonables; puedes editar todo
-        después.
-      </p>
+      <StepHeader
+        icon={Sparkles}
+        title="Paso 1 — Tipo de equipo"
+        subtitle="Elige la plantilla que más se parece a tu servicio. Pre-rellenamos los siguientes pasos con valores razonables."
+      />
 
       <div className="grid gap-3 sm:grid-cols-3">
         {PRESETS.map((p) => {

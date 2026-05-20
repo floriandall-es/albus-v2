@@ -1,11 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Users } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button, ErrorText, Select, TextField } from "@/components/admin/ui";
 import { BulkInviteModal } from "@/components/admin/BulkInviteModal";
 import { InviteDeliveryPill } from "@/components/admin/InviteDeliveryPill";
 import { StepNav } from "../_nav";
+import { StepHeader } from "../_step-header";
 
 type GeneratedInvite = {
   email: string;
@@ -58,17 +60,16 @@ export default function TeamStep() {
 
   return (
     <div>
-      <div className="flex items-start justify-between mb-2">
-        <h2 className="text-2xl font-semibold">Paso 4 — Equipo</h2>
+      <div className="flex items-start justify-between mb-6 gap-3">
+        <StepHeader
+          icon={Users}
+          title="Paso 4 — Equipo"
+          subtitle="Invita a tus compañeros. Recibirán un email con el enlace para crear su contraseña; si no llega, puedes reenviarlo o copiar el enlace desde la lista."
+        />
         <Button variant="secondary" onClick={() => setBulkOpen(true)}>
           Importar Lista
         </Button>
       </div>
-      <p className="text-sm text-gray-600 mb-6">
-        Invita a tus compañeros. Recibirán un email con el enlace para crear su
-        contraseña. Si no llega (revisa también la carpeta de spam), puedes
-        copiar el enlace de abajo y compartirlo manualmente.
-      </p>
       <BulkInviteModal open={bulkOpen} onClose={() => setBulkOpen(false)} />
 
       <MyProfileCard />

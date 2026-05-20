@@ -1,9 +1,11 @@
 "use client";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Tag } from "lucide-react";
 import { api, type Category } from "@/lib/api";
 import { Button, ErrorText, TextField } from "@/components/admin/ui";
 import { StepNav } from "../_nav";
+import { StepHeader } from "../_step-header";
 
 // Common roles across Spanish hospital departments, grouped so the
 // checklist stays scannable. Each row toggles independently — admins
@@ -75,12 +77,11 @@ export default function CategoriesStep() {
 
   return (
     <div>
-      <h2 className="text-2xl font-semibold mb-2">Paso 2 — Categorías</h2>
-      <p className="text-sm text-gray-600 mb-6">
-        Las categorías describen los niveles de tu equipo. Las usaremos más
-        adelante para asignar actividades y calcular equidad. Marca las que
-        apliquen a tu servicio y añade las que falten.
-      </p>
+      <StepHeader
+        icon={Tag}
+        title="Paso 2 — Categorías"
+        subtitle="Los niveles profesionales de tu equipo. Marca los que apliquen y añade los que falten."
+      />
 
       <div className="rounded-md border bg-white mb-4 divide-y">
         {DEFAULT_GROUPS.map((group) => (
