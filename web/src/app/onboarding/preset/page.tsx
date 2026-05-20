@@ -9,7 +9,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { api, type PresetKind } from "@/lib/api";
-import { ErrorText, Select } from "@/components/admin/ui";
+import { Button, ErrorText, Select } from "@/components/admin/ui";
 import { ES_REGIONS } from "@/lib/regions";
 import { StepNav } from "../_nav";
 
@@ -64,6 +64,11 @@ export default function PresetStep() {
   const qc = useQueryClient();
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
 
+  // Picking a preset card flags it as selected and saves to the
+  // server, but DOES NOT advance the wizard. That lets the user
+  // also touch the region picker below the cards on the same step
+  // before continuing. Explicit "Continuar" button at the bottom
+  // owns the navigation.
   const choose = useMutation({
     mutationFn: (kind: PresetKind) => api.setOnboardingPreset(kind),
     onSuccess: () => {
@@ -72,7 +77,6 @@ export default function PresetStep() {
       // next step's source of truth) so the user sees the fresh data.
       qc.invalidateQueries({ queryKey: ["me"] });
       qc.invalidateQueries({ queryKey: ["categories"] });
-      router.push("/onboarding/categories");
     },
   });
 
@@ -193,10 +197,11 @@ export default function PresetStep() {
       </p>
 
       {/* Region picker — kept on this step so the regional festivos
-          import happens before the admin gets to the planning, but
-          placed AFTER the preset cards so it doesn't visually
-          interrupt the "question → cards" flow. Optional: the
-          wizard continues fine without it. */}
+          import happens before the admin gets to the planning. Placed
+          after the preset cards (so it doesn't visually interrupt the
+          question → cards flow) but reachable because picking a card
+          no longer auto-advances. Optional: the explicit Continuar
+          button below doesn't require a region to be set. */}
       <div className="mt-8 rounded-xl border border-gray-200 bg-white p-4 flex items-start gap-3">
         <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-brand-50 text-brand-700 shrink-0">
           <MapPin className="h-5 w-5" />
@@ -234,6 +239,15 @@ export default function PresetStep() {
             </p>
           )}
         </div>
+      </div>
+
+      <div className="mt-8 flex justify-end">
+        <Button
+          onClick={() => router.push("/onboarding/categories")}
+          disabled={!currentKind || choose.isPending}
+        >
+          Continuar
+        </Button>
       </div>
 
       <StepNav currentSlug="preset" />
