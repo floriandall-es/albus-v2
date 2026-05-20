@@ -41,33 +41,21 @@ const PRESETS: PresetCard[] = [
     icon: ScissorsLineDashed,
     title: "Servicio quirúrgico",
     subtitle: "Hospital, con quirófano + consulta + guardia",
-    bullets: [
-      "Categorías: Jefe de servicio, Adjunto, Residente R1–R5",
-      "Pensado para Cirugía, ORL, Trauma, Urología, Gineco…",
-      "Personaliza las actividades en el paso 4",
-    ],
+    bullets: ["Pensado para Cirugía, ORL, Trauma, Urología, Gineco…"],
   },
   {
     kind: "medico",
     icon: Stethoscope,
     title: "Servicio médico",
     subtitle: "Hospital, sin quirófano (planta, consulta, guardia)",
-    bullets: [
-      "Categorías: Jefe de servicio, Adjunto, Residente R1–R5",
-      "Pensado para Medicina interna, Cardio, Pediatría…",
-      "Sin plantillas de quirófano",
-    ],
+    bullets: ["Pensado para Medicina interna, Cardio, Pediatría…"],
   },
   {
     kind: "otro",
     icon: Building2,
     title: "Otro — empezar en blanco",
     subtitle: "Configuro mis categorías y actividades desde cero",
-    bullets: [
-      "Ninguna categoría predefinida",
-      "Útil si tu equipo no encaja con los anteriores",
-      "Tardarás un poco más en los siguientes pasos",
-    ],
+    bullets: ["Útil si tu equipo no encaja con los anteriores"],
   },
 ];
 
