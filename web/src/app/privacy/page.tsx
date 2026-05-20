@@ -38,13 +38,6 @@ export default function PrivacyPage() {
             Versión {PRIVACY_VERSION} · Última actualización: {LAST_UPDATED}
           </p>
 
-          <p className="mt-2 rounded-md bg-amber-50 ring-1 ring-amber-200 p-3 text-xs text-amber-900">
-            <strong>PENDIENTE DE REVISIÓN LEGAL.</strong> Este texto es
-            un borrador interno. Antes del lanzamiento público debe
-            revisarse con un abogado especialista en protección de
-            datos para asegurar el cumplimiento del RGPD y la LOPDGDD.
-          </p>
-
           <section className="mt-6">
             <h2>1. Responsable del tratamiento</h2>
             <p>

@@ -34,13 +34,6 @@ export default function TermsPage() {
             Versión {TERMS_VERSION} · Última actualización: {LAST_UPDATED}
           </p>
 
-          <p className="mt-2 rounded-md bg-amber-50 ring-1 ring-amber-200 p-3 text-xs text-amber-900">
-            <strong>PENDIENTE DE REVISIÓN LEGAL.</strong> Este texto es
-            un borrador interno. Revisar y reemplazar con la versión
-            definitiva preparada por un abogado antes del lanzamiento
-            público.
-          </p>
-
           <section className="mt-6">
             <h2>1. Objeto</h2>
             <p>
