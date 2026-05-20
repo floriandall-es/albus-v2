@@ -162,14 +162,28 @@ export default function MeLayout({ children }: { children: ReactNode }) {
           {/* Dynamic sub-team plans — same shape as the admin
               sidebar's Sub-equipos section. Members see only
               published group plans (the per-group page handles
-              "not yet published" empty states). */}
-          {groups.data && groups.data.length > 0 && (
+              "not yet published" empty states).
+              We hide the user's OWN group, because /me/turnos
+              already shows that planning for them — the sidebar
+              entry would just be a duplicate route to the same
+              data. Other groups stay visible so cross-cohort
+              snooping (adjunto checking who's on guardia) works. */}
+          {(() => {
+            const currentMembership = me.data?.memberships.find(
+              (m) => m.tenant_id === me.data?.current_tenant.id,
+            );
+            const myGroupId = currentMembership?.group_id ?? null;
+            const visibleGroups = (groups.data ?? []).filter(
+              (g) => g.id !== myGroupId,
+            );
+            if (visibleGroups.length === 0) return null;
+            return (
             <div>
               <div className="px-2 mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                 Sub-equipos
               </div>
               <div className="space-y-0.5">
-                {groups.data.map((g) => {
+                {visibleGroups.map((g) => {
                   const href = `/me/sub-equipos/${g.id}`;
                   const active = pathname?.startsWith(href);
                   return (
@@ -197,7 +211,8 @@ export default function MeLayout({ children }: { children: ReactNode }) {
                 })}
               </div>
             </div>
-          )}
+            );
+          })()}
         </nav>
 
         <div className="border-t border-gray-100 px-3 py-3">
