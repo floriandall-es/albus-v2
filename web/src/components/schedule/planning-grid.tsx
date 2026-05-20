@@ -4,6 +4,7 @@ import {
   avatarSrc,
   personLastName,
   type Assignment,
+  type MeetingInstance,
   type TeamAbsence,
 } from "@/lib/api";
 
@@ -34,6 +35,11 @@ export type PlanningGridProps = {
    * read-only views and the published/archived schedule view leave
    * this undefined and the Libre row stays non-interactive. */
   onAbsenceCellClick?: (date: string) => void;
+  /** Meeting occurrences (ad-hoc + expanded regular templates) the
+   * caller is allowed to see. When provided, a "Reuniones" row appears
+   * above Libre with one chip per meeting per date. Meetings outside
+   * the grid's date range are silently ignored. */
+  meetings?: MeetingInstance[];
 };
 
 export function PlanningGrid({
@@ -44,9 +50,26 @@ export function PlanningGrid({
   highlightPersonId = null,
   absences,
   onAbsenceCellClick,
+  meetings,
 }: PlanningGridProps) {
   const grid = useMemo(() => buildGrid(assignments), [assignments]);
   const interactive = !!onCellClick;
+
+  // Group meetings by date so each grid column knows which to show.
+  // Sort within a date by start_time for a stable order.
+  const meetingsByDate = useMemo(() => {
+    if (!meetings) return null;
+    const map = new Map<string, MeetingInstance[]>();
+    for (const m of meetings) {
+      const list = map.get(m.date) ?? [];
+      list.push(m);
+      map.set(m.date, list);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => a.start_time.localeCompare(b.start_time));
+    }
+    return map;
+  }, [meetings]);
 
   // Expand each absence range into a per-date list of absent persons.
   // Same person can appear in multiple blocks; dedupe by person_id.
@@ -314,6 +337,61 @@ export function PlanningGrid({
                 })}
               </tr>
             ))}
+            {meetingsByDate && (
+              <tr className="bg-violet-50/30 border-t-2 border-gray-200">
+                <td className="sticky left-0 z-10 bg-violet-50/60 px-3 py-2 border-r border-gray-200 font-medium text-gray-800">
+                  <span className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full shrink-0 bg-violet-500" />
+                    <span>Reuniones</span>
+                  </span>
+                </td>
+                {grid.dates.map((d) => {
+                  const items = meetingsByDate.get(d) ?? [];
+                  const isToday = d === today;
+                  return (
+                    <td
+                      key={d}
+                      className={
+                        "align-top px-1.5 py-2 border-b border-gray-100 "
+                        + (isToday ? "bg-brand-50/20 " : "")
+                      }
+                    >
+                      {items.length === 0 ? (
+                        <span className="text-[11px] text-gray-300">—</span>
+                      ) : (
+                        <div className="flex flex-col gap-1">
+                          {items.map((m) => (
+                            <span
+                              key={`${m.meeting_id}_${m.start_time}`}
+                              className="inline-flex flex-col leading-tight"
+                              title={
+                                [
+                                  m.location,
+                                  m.organizer_name
+                                    ? `Organiza ${m.organizer_name}`
+                                    : null,
+                                  m.description,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" · ") || undefined
+                              }
+                            >
+                              <span className="font-medium text-violet-800 truncate">
+                                {m.title}
+                              </span>
+                              <span className="text-[10px] text-violet-600">
+                                {m.start_time.slice(0, 5)}
+                                –{m.end_time.slice(0, 5)}
+                              </span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            )}
             {absencesByDate && (
               <tr className="bg-emerald-50/30 border-t-2 border-gray-200">
                 <td className="sticky left-0 z-10 bg-emerald-50/60 px-3 py-2 border-r border-gray-200 font-medium text-gray-800">

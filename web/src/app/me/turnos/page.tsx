@@ -107,6 +107,22 @@ export default function TurnosPage() {
     },
     enabled: !!detail.data,
   });
+  // Meeting occurrences for the selected month. The backend filters
+  // to meetings the user is in the audience of, so the row only
+  // shows reuniones relevant to them.
+  const meetingInstances = useQuery({
+    queryKey: ["meeting-instances", detail.data?.period],
+    queryFn: () => {
+      const period = detail.data!.period;
+      const y = Number(period.slice(0, 4));
+      const m = Number(period.slice(5, 7));
+      const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      const from = `${period.slice(0, 7)}-01`;
+      const to = `${period.slice(0, 7)}-${String(last).padStart(2, "0")}`;
+      return api.listMeetingInstances(from, to);
+    },
+    enabled: !!detail.data,
+  });
   const holidayDates = useMemo(
     () => new Set((holidays.data ?? []).map((h) => h.date)),
     [holidays.data],
@@ -213,6 +229,7 @@ export default function TurnosPage() {
                   && !a.locked_at
                 }
                 absences={absences.data}
+                meetings={meetingInstances.data}
               />
             </>
           )}

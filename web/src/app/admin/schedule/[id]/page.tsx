@@ -121,6 +121,23 @@ export default function ScheduleDetailPage() {
     enabled: !!detail.data,
   });
 
+  // Meeting occurrences for this month — drives the "Reuniones"
+  // row in the planning grid. Admin sees every meeting (the
+  // backend's audience filter is bypassed for admins).
+  const meetingInstances = useQuery({
+    queryKey: ["meeting-instances", detail.data?.period],
+    queryFn: () => {
+      const period = detail.data!.period;
+      const y = Number(period.slice(0, 4));
+      const m = Number(period.slice(5, 7));
+      const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      const from = `${period.slice(0, 7)}-01`;
+      const to = `${period.slice(0, 7)}-${String(last).padStart(2, "0")}`;
+      return api.listMeetingInstances(from, to);
+    },
+    enabled: !!detail.data,
+  });
+
   const holidayDates = useMemo(
     () => new Set((holidays.data ?? []).map((h) => h.date)),
     [holidays.data],
@@ -273,6 +290,7 @@ export default function ScheduleDetailPage() {
         holidayDates={holidayDates}
         onCellClick={isEditable ? (a) => setEditing(a) : undefined}
         absences={absences.data}
+        meetings={meetingInstances.data}
         // Libre row only becomes interactive while the schedule is
         // still a draft. Once published / archived the team has
         // already seen the planning, so absence edits should go

@@ -10,6 +10,7 @@ import {
   Home,
   Layers,
   LogOut,
+  MessageSquare,
   Settings,
   type LucideIcon,
 } from "lucide-react";
@@ -19,6 +20,7 @@ import { useLogout } from "@/lib/use-logout";
 const NAV: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/me", label: "Inicio", icon: Home },
   { href: "/me/turnos", label: "Mis turnos", icon: CalendarDays },
+  { href: "/me/reuniones", label: "Reuniones", icon: MessageSquare },
   { href: "/me/swaps", label: "Cambios", icon: ArrowLeftRight },
   { href: "/me/bloqueos", label: "Mis bloqueos", icon: CalendarOff },
   { href: "/me/settings", label: "Mi cuenta", icon: Settings },

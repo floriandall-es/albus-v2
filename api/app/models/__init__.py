@@ -24,6 +24,7 @@ from app.models.holiday import Holiday
 from app.models.availability_block import AvailabilityBlock
 from app.models.schedule import Schedule, Assignment, ScheduleGroupPublication
 from app.models.shift_swap import ShiftSwapOffer, ShiftSwapResponse
+from app.models.meeting import Meeting, MeetingAudienceGroup, MeetingAudiencePerson
 
 __all__ = [
     "Tenant",
@@ -52,4 +53,7 @@ __all__ = [
     "ScheduleGroupPublication",
     "ShiftSwapOffer",
     "ShiftSwapResponse",
+    "Meeting",
+    "MeetingAudienceGroup",
+    "MeetingAudiencePerson",
 ]

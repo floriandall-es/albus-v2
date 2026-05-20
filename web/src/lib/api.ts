@@ -330,6 +330,52 @@ export type Group = {
   created_at: string;
 };
 
+export type MeetingKind = "regular" | "ad_hoc";
+
+export type MeetingAudience = {
+  include_main_team: boolean;
+  group_ids: number[];
+  person_ids: number[];
+  /** Aligned with `group_ids` by index. */
+  group_names: string[];
+  /** Aligned with `person_ids` by index. */
+  person_names: string[];
+};
+
+export type Meeting = {
+  id: number;
+  tenant_id: number;
+  kind: MeetingKind;
+  title: string;
+  description: string | null;
+  location: string | null;
+  /** Set for ad-hoc only. */
+  date: string | null;
+  /** 0=Monday..6=Sunday. Set for regular only. */
+  weekday: number | null;
+  /** "HH:MM:SS" */
+  start_time: string;
+  end_time: string;
+  organizer_membership_id: number | null;
+  organizer_name: string | null;
+  audience: MeetingAudience;
+  created_at: string;
+};
+
+export type MeetingInstance = {
+  meeting_id: number;
+  kind: MeetingKind;
+  title: string;
+  description: string | null;
+  location: string | null;
+  /** ISO date YYYY-MM-DD. */
+  date: string;
+  start_time: string;
+  end_time: string;
+  organizer_name: string | null;
+  can_edit: boolean;
+};
+
 export type Incident = {
   id: number;
   tenant_id: number;
@@ -882,6 +928,82 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ membership_ids }),
     }),
+
+  // Meetings (reuniones). Plain members see only meetings they're
+  // in the audience of; admins see everything.
+  listMeetings: () => request<Meeting[]>("/api/meetings"),
+  listMeetingInstances: (from: string, to: string) =>
+    request<MeetingInstance[]>(
+      `/api/meetings/instances?from=${from}&to=${to}`,
+    ),
+  createRegularMeeting: (body: {
+    title: string;
+    description?: string | null;
+    location?: string | null;
+    weekday: number;
+    start_time: string;
+    end_time: string;
+    include_main_team: boolean;
+    group_ids: number[];
+    person_ids: number[];
+  }) =>
+    request<Meeting>("/api/meetings/regular", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateRegularMeeting: (
+    id: number,
+    body: {
+      title: string;
+      description?: string | null;
+      location?: string | null;
+      weekday: number;
+      start_time: string;
+      end_time: string;
+      include_main_team: boolean;
+      group_ids: number[];
+      person_ids: number[];
+    },
+  ) =>
+    request<Meeting>(`/api/meetings/${id}/regular`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  createAdHocMeeting: (body: {
+    title: string;
+    description?: string | null;
+    location?: string | null;
+    date: string;
+    start_time: string;
+    end_time: string;
+    include_main_team: boolean;
+    group_ids: number[];
+    person_ids: number[];
+  }) =>
+    request<Meeting>("/api/meetings/ad-hoc", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateAdHocMeeting: (
+    id: number,
+    body: {
+      title: string;
+      description?: string | null;
+      location?: string | null;
+      date: string;
+      start_time: string;
+      end_time: string;
+      include_main_team: boolean;
+      group_ids: number[];
+      person_ids: number[];
+    },
+  ) =>
+    request<Meeting>(`/api/meetings/${id}/ad-hoc`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteMeeting: (id: number) =>
+    request<void>(`/api/meetings/${id}`, { method: "DELETE" }),
 
   // Tenant defaults
   updateTenantDefaults: (body: {

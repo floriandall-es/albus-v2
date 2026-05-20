@@ -1,0 +1,148 @@
+from datetime import date, datetime, time
+
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    SmallInteger,
+    String,
+    Text,
+    Time,
+    UniqueConstraint,
+    func,
+)
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.db.base import Base
+
+
+class Meeting(Base):
+    """Reuniones — sesiones clínicas, pase de guardia, etc.
+
+    Two flavours share one table:
+      - kind='regular': weekly template. `weekday` set (0=Mon),
+        `date` NULL. Expanded into concrete occurrences by the
+        /instances endpoint when a date range is requested.
+      - kind='ad_hoc' : one-off. `date` set, `weekday` NULL.
+
+    Audience is the union of (a) the `include_main_team` boolean,
+    (b) MeetingAudienceGroup rows (whole sub-equipos), and (c)
+    MeetingAudiencePerson rows (specific people). A caller is
+    "in the audience" iff they match any of those three.
+    """
+
+    __tablename__ = "meetings"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('regular','ad_hoc')",
+            name="ck_meetings_kind",
+        ),
+        CheckConstraint(
+            "(kind = 'regular' AND weekday IS NOT NULL AND date IS NULL) "
+            "OR (kind = 'ad_hoc' AND date IS NOT NULL AND weekday IS NULL)",
+            name="ck_meetings_kind_shape",
+        ),
+        CheckConstraint(
+            "weekday IS NULL OR (weekday >= 0 AND weekday <= 6)",
+            name="ck_meetings_weekday_range",
+        ),
+        CheckConstraint(
+            "end_time > start_time",
+            name="ck_meetings_time_order",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    start_time: Mapped[time] = mapped_column(Time, nullable=False)
+    end_time: Mapped[time] = mapped_column(Time, nullable=False)
+    weekday: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    include_main_team: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    organizer_membership_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("memberships.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class MeetingAudienceGroup(Base):
+    """Adds a whole sub-equipo to a meeting's audience. One row
+    per (meeting, group). CASCADE on both ends so deleting a
+    group or a meeting cleans up audience pointers automatically.
+    """
+
+    __tablename__ = "meeting_audience_groups"
+    __table_args__ = (
+        UniqueConstraint(
+            "meeting_id", "group_id", name="uq_meeting_audience_group"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    meeting_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("meetings.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    group_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("groups.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+
+class MeetingAudiencePerson(Base):
+    """Adds one specific person to a meeting's audience."""
+
+    __tablename__ = "meeting_audience_persons"
+    __table_args__ = (
+        UniqueConstraint(
+            "meeting_id", "person_id", name="uq_meeting_audience_person"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    meeting_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("meetings.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    person_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("persons.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
