@@ -135,7 +135,7 @@ export default function RulesPage() {
       <SetupBanner
         area="rules"
         title="Reglas globales de asignación"
-        description="Restricciones que Trivu respeta al repartir los turnos: qué actividades no pueden coincidir el mismo día (p. ej. no doblar guardia + consulta), qué actividad debe seguir a otra (sucesión), y cuántas veces como máximo puede una persona hacer una actividad en un periodo."
+        description="Restricciones que Trivu respeta al repartir los turnos: qué actividades no pueden coincidir el mismo día (p. ej. no doblar quirófano + consulta), qué actividad debe seguir a otra (sucesión), y cuántas veces como máximo puede una persona hacer una actividad en un periodo."
       />
       {/* Each section lives in its own card so the visual boundary is
           obvious. Without cards three "+ Añadir regla" buttons next to
