@@ -64,12 +64,6 @@ const SLOT_TEMPLATES: { items: TemplateSlot[] } = {
 
 const ALL_TEMPLATE_NAMES = new Set(SLOT_TEMPLATES.items.map((i) => i.name));
 
-function formatTimeRange(s: Slot): string {
-  if (!s.start_time || !s.end_time) return "sin horario";
-  const fmt = (t: string) => t.slice(0, 5);
-  return `${fmt(s.start_time)}–${fmt(s.end_time)}${s.crosses_midnight ? " (+1d)" : ""}`;
-}
-
 export default function SlotsStep() {
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
@@ -167,10 +161,6 @@ export default function SlotsStep() {
             const isPending =
               (createTemplate.isPending && createTemplate.variables?.name === t.name) ||
               (del.isPending && del.variables === existingSlot?.id);
-            const subtitle =
-              t.start_time && t.end_time
-                ? `${t.start_time.slice(0, 5)}–${t.end_time.slice(0, 5)}`
-                : "sin horario fijo";
             return (
               <li key={t.name} className="px-4 py-2 text-sm">
                 <div className="flex items-center">
@@ -186,8 +176,7 @@ export default function SlotsStep() {
                     htmlFor={`slot-${t.name}`}
                     className="flex-1 cursor-pointer"
                   >
-                    {t.name}{" "}
-                    <span className="text-xs text-gray-500">({subtitle})</span>
+                    {t.name}
                   </label>
                   {isPending && (
                     <span className="text-xs text-gray-400">guardando…</span>
@@ -232,10 +221,7 @@ export default function SlotsStep() {
                       htmlFor={`slot-custom-${s.id}`}
                       className="flex-1 cursor-pointer"
                     >
-                      {s.name}{" "}
-                      <span className="text-xs text-gray-500">
-                        ({formatTimeRange(s)})
-                      </span>
+                      {s.name}
                     </label>
                     {isPending && (
                       <span className="text-xs text-gray-400">guardando…</span>
