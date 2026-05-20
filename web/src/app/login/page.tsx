@@ -80,6 +80,14 @@ export default function LoginPage() {
               {loading ? "Entrando…" : "Entrar"}
             </button>
           </form>
+          <p className="mt-4 text-center text-sm text-gray-600">
+            <a
+              className="text-brand-700 font-medium hover:underline"
+              href="/forgot-password"
+            >
+              ¿Has olvidado tu contraseña?
+            </a>
+          </p>
         </div>
         <p className="mt-4 text-center text-sm text-gray-600">
           ¿No tienes cuenta?{" "}

@@ -789,6 +789,21 @@ export const api = {
    * Auth-required (bearer); silently no-op if already verified. */
   resendVerification: () =>
     request<void>("/api/auth/resend-verification", { method: "POST" }),
+
+  /** Request a password-reset email. Always succeeds — even for
+   * addresses with no account — to avoid enumeration. */
+  forgotPassword: (email: string) =>
+    request<void>("/api/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
+  /** Set a new password using the token from the reset email.
+   * Public; doesn't require an active session. */
+  resetPassword: (token: string, new_password: string) =>
+    request<void>("/api/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token, new_password }),
+    }),
   uploadAvatar: async (file: File): Promise<Person> => {
     const fd = new FormData();
     fd.append("file", file);

@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     # short enough that abandoned signups stop showing as
     # legitimate-looking accounts within a sprint.
     email_verify_ttl_hours: int = 24 * 7
+    # TTL for the password-reset link emailed by /forgot-password.
+    # 1 hour is the canonical window — long enough for "open email
+    # on phone, finish on laptop", short enough that a stolen
+    # mailbox doesn't yield long-term reset capability.
+    password_reset_ttl_minutes: int = 60
     cors_origins: str = "http://localhost:3000"
     # Used to build invite accept URLs. In dev this points at the web service
     # exposed on the host; in prod it's the public domain.

@@ -214,6 +214,35 @@ def schedule_reopened_member_email(
     return subject, body
 
 
+def password_reset_email(
+    *,
+    recipient_name: str,
+    reset_url: str,
+    ttl_minutes: int,
+) -> tuple[str, str]:
+    """Sent when the user clicks "He olvidado mi contraseña" and
+    enters their address. Body is intentionally generic — the
+    address either belongs to a Trivu account (and the link
+    works) or it doesn't (the address is the recipient's own
+    inbox, no harm).
+
+    1h TTL is the canonical window; we don't mention "single-use"
+    because the binding-to-current-hash trick makes that the
+    behaviour without needing to state it."""
+    subject = "Restablece tu contraseña de Trivu"
+    body = (
+        f"Hola {recipient_name},\n\n"
+        f"Has solicitado restablecer la contraseña de tu cuenta "
+        f"Trivu. Abre este enlace para elegir una nueva:\n\n"
+        f"{reset_url}\n\n"
+        f"El enlace caduca en {ttl_minutes} minutos. Si no has sido "
+        f"tú, ignora este correo — tu contraseña actual sigue "
+        f"funcionando.\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body
+
+
 def email_verify_signup_email(
     *,
     recipient_name: str,

@@ -24,6 +24,15 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetRequest(BaseModel):
+    token: str
+    new_password: str = Field(min_length=8, max_length=255)
+
+
 class SelectTenantRequest(BaseModel):
     pre_auth_token: str
     tenant_id: int

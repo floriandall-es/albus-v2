@@ -13,10 +13,13 @@ from app.core.config import settings
 from app.core.security import (
     create_access_token,
     create_email_verify_token,
+    create_password_reset_token,
     create_pre_auth_token,
     decode_email_verify_token,
+    decode_password_reset_token,
     decode_pre_auth_token,
     hash_password,
+    password_fingerprint,
     verify_password,
 )
 from app.db.session import get_db, set_tenant
@@ -25,7 +28,9 @@ from app.routes.deps import RequestContext, get_current_context
 from app.services.person_name import compose_name
 from app.schemas.auth import (
     AuthResponse,
+    ForgotPasswordRequest,
     LoginRequest,
+    PasswordResetRequest,
     PersonOut,
     SelectTenantRequest,
     SignupRequest,
@@ -369,3 +374,89 @@ def resend_verification(
     if ctx.person.email_verified_at is not None:
         return  # already verified — silent no-op
     _send_verification_email(ctx.person, ctx.tenant.name)
+
+
+@router.post(
+    "/auth/forgot-password", status_code=status.HTTP_204_NO_CONTENT
+)
+def forgot_password(
+    payload: ForgotPasswordRequest, db: Session = Depends(get_db)
+) -> None:
+    """Email a password-reset link to the address — IF it belongs to
+    a Trivu account.
+
+    Always returns 204 regardless of whether the address exists.
+    Distinguishing the two cases would let an attacker enumerate
+    registered accounts; staying silent costs us nothing (the user
+    knows their own email, and if it's not registered they just
+    don't get a link).
+
+    SMTP failures are logged and swallowed by send_email — the
+    public endpoint is intentionally lossy on the rare relay
+    outage rather than leaking via a different status code.
+    """
+    email = payload.email.lower()
+    person = db.query(Person).filter(Person.email == email).first()
+    if not person:
+        return  # silent — no enumeration
+
+    token = create_password_reset_token(
+        person_id=person.id,
+        password_fp=password_fingerprint(person.hashed_password),
+    )
+    reset_url = (
+        f"{settings.public_base_url.rstrip('/')}/reset-password"
+        f"?token={token}"
+    )
+
+    from app.services.email import send_email
+    from app.services.email_templates import password_reset_email
+
+    subject, body = password_reset_email(
+        recipient_name=person.name,
+        reset_url=reset_url,
+        ttl_minutes=settings.password_reset_ttl_minutes,
+    )
+    send_email(to=person.email, subject=subject, body_text=body)
+
+
+@router.post("/auth/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+def reset_password(
+    payload: PasswordResetRequest, db: Session = Depends(get_db)
+) -> None:
+    """Set a new password using the token from the reset email.
+
+    Token is invalidated implicitly: it carries a fingerprint of
+    the CURRENT hash, and once we rotate the hash the fingerprint
+    won't match the next request. No token table needed.
+
+    Side effect: also marks the person email-verified. Clicking
+    a link delivered to the mailbox is stronger proof than the
+    original signup-time verification, so it's a free win to
+    promote here if they hadn't already.
+    """
+    try:
+        claims = decode_password_reset_token(payload.token)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=400, detail="El enlace ha caducado"
+        )
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=400, detail="Enlace inválido")
+
+    person = db.get(Person, claims["person_id"])
+    if not person:
+        raise HTTPException(status_code=400, detail="Enlace inválido")
+    if password_fingerprint(person.hashed_password) != claims["fp"]:
+        # Hash already rotated since the link was issued. Either the
+        # link was used (single-use semantics) or the user changed
+        # their password by some other route. Same opaque 400 either
+        # way.
+        raise HTTPException(
+            status_code=400,
+            detail="El enlace ya se ha usado. Solicita uno nuevo.",
+        )
+    person.hashed_password = hash_password(payload.new_password)
+    if person.email_verified_at is None:
+        person.email_verified_at = datetime.now(timezone.utc)
+    db.commit()

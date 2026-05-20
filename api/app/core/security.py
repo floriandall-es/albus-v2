@@ -139,3 +139,61 @@ def decode_email_verify_token(token: str) -> dict[str, Any]:
     if not payload.get("person_id"):
         raise jwt.InvalidTokenError("Malformed email-verify token")
     return payload
+
+
+def create_password_reset_token(*, person_id: int, password_fp: str) -> str:
+    """Self-contained JWT carrying a password-reset grant.
+
+    Sent to the user's email after they request a reset. Bound to
+    `password_fp` (a short fingerprint of the current bcrypt hash);
+    once the password actually changes, the fingerprint moves and
+    any still-in-flight token for the old password becomes invalid.
+    Gives us single-use semantics without a token table.
+
+    1h TTL is the standard window — long enough for the user to
+    open the email on a phone, short enough that a stolen mailbox
+    doesn't yield long-term reset capability."""
+    now = datetime.now(timezone.utc)
+    payload: dict[str, Any] = {
+        "kind": "password_reset",
+        "person_id": person_id,
+        "fp": password_fp,
+        "iat": int(now.timestamp()),
+        "exp": int(
+            (
+                now
+                + timedelta(minutes=settings.password_reset_ttl_minutes)
+            ).timestamp()
+        ),
+    }
+    return jwt.encode(
+        payload, settings.jwt_secret, algorithm=settings.jwt_algorithm
+    )
+
+
+def decode_password_reset_token(token: str) -> dict[str, Any]:
+    payload = jwt.decode(
+        token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
+    )
+    if payload.get("kind") != "password_reset":
+        raise jwt.InvalidTokenError("Not a password-reset token")
+    if not payload.get("person_id") or not payload.get("fp"):
+        raise jwt.InvalidTokenError("Malformed password-reset token")
+    return payload
+
+
+def password_fingerprint(hashed_password: str) -> str:
+    """Short stable derivative of the current password hash. Embedded
+    in password-reset tokens so a single reset link can be used only
+    once: the next reset rotates the hash, the fingerprint changes,
+    and any in-flight link from the previous request becomes invalid.
+
+    We hash the bcrypt string (not the cleartext password — we don't
+    have it) with SHA-256 and keep the first 16 hex chars (64 bits).
+    Bcrypt strings contain a random salt so distinct passwords yield
+    distinct fingerprints; the truncation is safe because we only
+    compare server-side as an equality check, not as a security
+    primitive."""
+    import hashlib
+
+    return hashlib.sha256(hashed_password.encode("utf-8")).hexdigest()[:16]
