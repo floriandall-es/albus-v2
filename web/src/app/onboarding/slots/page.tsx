@@ -6,7 +6,6 @@ import {
   type DaysApplied,
   type Slot,
   type SlotInput,
-  type StaffingMode,
 } from "@/lib/api";
 import { Button, ErrorText, Select, TextField } from "@/components/admin/ui";
 import { StepNav } from "../_nav";
@@ -311,7 +310,7 @@ function SlotInlineEditor({ slot }: { slot: Slot }) {
 
   return (
     <div className="ml-7 mt-2 space-y-2">
-      <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
+      <div className="max-w-xs">
         <Select<DaysApplied>
           label="Días"
           value={slot.days_applied}
@@ -325,33 +324,6 @@ function SlotInlineEditor({ slot }: { slot: Slot }) {
             { value: "custom", label: "Personalizado" },
           ]}
         />
-        <Select<StaffingMode>
-          label="Modo"
-          value={slot.staffing_mode}
-          onChange={(v) =>
-            v && update.mutate({ staffing_mode: v as StaffingMode })
-          }
-          options={[
-            { value: "single", label: "Una persona" },
-            { value: "multiple_same", label: "Varias (mismo perfil)" },
-            { value: "team_composition", label: "Equipo" },
-          ]}
-        />
-        {slot.staffing_mode === "multiple_same" ? (
-          <input
-            type="number"
-            min={1}
-            value={slot.headcount}
-            onChange={(e) => {
-              const n = Math.max(1, Number(e.target.value) || 1);
-              update.mutate({ headcount: n });
-            }}
-            className="w-16 rounded-md border border-gray-300 px-2 py-1 text-sm"
-            aria-label="Personas"
-          />
-        ) : (
-          <span />
-        )}
       </div>
       {slot.days_applied === "custom" && (
         <WeekdayPicker
