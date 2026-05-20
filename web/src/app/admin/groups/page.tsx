@@ -51,7 +51,7 @@ export default function GroupsPage() {
       <SetupBanner
         area="subteams"
         title="Sub-equipos con su propio responsable"
-        description="Un sub-equipo (residentes, becarios, etc.) gestiona sus propias actividades y planificación sin mezclarse con el equipo principal. Crea uno, elige a un miembro como responsable, y se convertirá en administrador de ese sub-equipo. Si no necesitas sub-equipos ahora, marca como completado."
+        description="Un sub-equipo (residentes, becarios, etc.) gestiona sus propias actividades y planificación sin mezclarse con el equipo principal. Crea uno, elige a un miembro como responsable, y se convertirá en administrador de ese sub-equipo."
       />
 
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}

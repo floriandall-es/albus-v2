@@ -111,7 +111,7 @@ export default function AdminDashboard() {
             done={state.teamDone}
             icon={<Users className="h-5 w-5" />}
             title="Revisa tu equipo"
-            description="Las invitaciones ya se enviaron durante el alta. Asigna a cada miembro su categoría profesional para que la solver pueda repartir las actividades."
+            description="Las invitaciones ya se enviaron durante el alta. Asigna a cada miembro su categoría profesional para que el solver pueda repartir las actividades."
             ctaLabel="Ir al equipo"
             href="/admin/team"
             primary={

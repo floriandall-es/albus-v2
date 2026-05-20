@@ -135,7 +135,7 @@ export default function RulesPage() {
       <SetupBanner
         area="rules"
         title="Reglas para el solver"
-        description="Define cómo se reparten las actividades: qué actividades no pueden coincidir en el mismo día (p. ej. no doblar guardia + consulta), qué actividad debe seguir a otra (sucesión) y cuántas veces como máximo puede hacer una persona una actividad en un periodo. Si no necesitas ninguna, marca como completado."
+        description="Restricciones globales que el solver respeta al repartir los turnos: qué actividades no pueden coincidir el mismo día (p. ej. no doblar guardia + consulta), qué actividad debe seguir a otra (sucesión), y cuántas veces como máximo puede una persona hacer una actividad en un periodo."
       />
       {/* Each section lives in its own card so the visual boundary is
           obvious. Without cards three "+ Añadir regla" buttons next to
