@@ -260,8 +260,17 @@ export function Modal({
   const widthClass = size === "lg" ? "max-w-3xl" : "max-w-lg";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-      <div className={`w-full ${widthClass} rounded-lg bg-white shadow-lg`}>
-        <div className="flex items-center justify-between border-b px-4 py-3">
+      {/* Cap the modal at viewport height (minus the backdrop's 1rem
+          padding on each side) and turn the body into the scroll
+          container. The header stays sticky so the title and × are
+          always reachable, no matter how tall the form is. */}
+      <div
+        className={
+          "flex max-h-[calc(100vh-2rem)] w-full flex-col rounded-lg bg-white shadow-lg "
+          + widthClass
+        }
+      >
+        <div className="flex items-center justify-between border-b px-4 py-3 shrink-0">
           <h2 className="text-base font-semibold">{title}</h2>
           <button
             onClick={onClose}
@@ -271,7 +280,7 @@ export function Modal({
             ×
           </button>
         </div>
-        <div className="p-4">{children}</div>
+        <div className="p-4 overflow-y-auto">{children}</div>
       </div>
     </div>
   );
