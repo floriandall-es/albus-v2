@@ -114,9 +114,9 @@ export default function SlotsPage() {
                       <span className="ml-1 text-xs text-gray-400">#{s.id}</span>
                     )}
                   </td>
-                  <td className="px-4 py-2">
+                  <td className="px-4 py-2 whitespace-nowrap">
                     {s.start_time && s.end_time ? (
-                      `${s.start_time}–${s.end_time}${s.crosses_midnight ? " (+1d)" : ""}`
+                      `${s.start_time.slice(0, 5)}–${s.end_time.slice(0, 5)}${s.crosses_midnight ? " (+1d)" : ""}`
                     ) : (
                       <span className="text-gray-500">Todo el día</span>
                     )}
@@ -182,18 +182,20 @@ export default function SlotsPage() {
                       </button>
                     </span>
                   </td>
-                  <td className="px-4 py-2 text-right space-x-2">
-                    <Button variant="secondary" onClick={() => setEditing(s)}>
-                      Editar
-                    </Button>
-                    <Button
-                      variant="danger"
-                      onClick={() => {
-                        if (confirm(`¿Eliminar actividad "${s.name}"?`)) del.mutate(s.id);
-                      }}
-                    >
-                      Eliminar
-                    </Button>
+                  <td className="px-4 py-2">
+                    <div className="flex justify-end gap-2 whitespace-nowrap">
+                      <Button variant="secondary" onClick={() => setEditing(s)}>
+                        Editar
+                      </Button>
+                      <Button
+                        variant="danger"
+                        onClick={() => {
+                          if (confirm(`¿Eliminar actividad "${s.name}"?`)) del.mutate(s.id);
+                        }}
+                      >
+                        Eliminar
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
