@@ -77,7 +77,7 @@ export default function SlotsPage() {
       <SetupBanner
         area="activities"
         title="Define las actividades de tu servicio"
-        description="Cada actividad es un tipo de turno: consulta, guardia, quirófano, planta. Para cada una eliges nombre, horario, qué días aplica y cómo se reparte entre el equipo (automática, rotación, días fijos por persona o manual)."
+        description="Cada actividad es un tipo de turno: consulta, guardia, quirófano, planta. Para cada una eliges nombre, horario, qué días aplica y cómo se reparte (automática, rotación, días fijos o manual). Una misma actividad puede tener varias reglas para grupos de días distintos (p. ej. automática de lunes a viernes y rotación los fines de semana) y dividirse en varias posiciones cuando necesita más de una persona con rol distinto (p. ej. Cirujano 1 + Cirujano 2 dentro de Quirófano)."
       />
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
       {list.isError && <ErrorText>{(list.error as Error).message}</ErrorText>}
