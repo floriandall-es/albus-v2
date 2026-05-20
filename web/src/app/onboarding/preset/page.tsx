@@ -9,7 +9,7 @@ import {
   MapPin,
 } from "lucide-react";
 import { api, type PresetKind } from "@/lib/api";
-import { Button, ErrorText, Select } from "@/components/admin/ui";
+import { ErrorText, Select } from "@/components/admin/ui";
 import { ES_REGIONS } from "@/lib/regions";
 import { StepNav } from "../_nav";
 
@@ -239,15 +239,6 @@ export default function PresetStep() {
             </p>
           )}
         </div>
-      </div>
-
-      <div className="mt-8 flex justify-end">
-        <Button
-          onClick={() => router.push("/onboarding/categories")}
-          disabled={!currentKind || choose.isPending}
-        >
-          Continuar
-        </Button>
       </div>
 
       <StepNav currentSlug="preset" />
