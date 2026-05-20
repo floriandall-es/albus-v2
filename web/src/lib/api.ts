@@ -201,6 +201,48 @@ export type ScheduleDetail = Schedule & {
   assignments: Assignment[];
 };
 
+/**
+ * One rule breach detected in a schedule's current assignments.
+ * Surfaced by GET /api/schedules/{id}/violations and inside
+ * AssignmentSaveResponse.warnings after a PATCH or POST. Warning
+ * only — the backend never blocks a save.
+ */
+export type ViolationKind =
+  | "incompatibility"
+  | "succession"
+  | "frequency"
+  | "time_overlap"
+  | "post_rest";
+
+export type ViolationCell = {
+  assignment_id: number;
+  date: string;
+  slot_id: number;
+  person_id: number;
+};
+
+export type Violation = {
+  kind: ViolationKind;
+  message: string;
+  cells: ViolationCell[];
+  /** Tenant-rule row id when the violation comes from a configured
+   * rule; null for implicit checks (time_overlap, post_rest). */
+  rule_id: number | null;
+  /** Hard / soft from the rule definition. Null for implicit
+   * checks. UI uses this for banner colour, not for blocking. */
+  severity: "hard" | "soft" | null;
+};
+
+/** Wrapper returned by PATCH and POST /assignments. Same as the
+ * old AssignmentOut on the `assignment` field, plus `warnings`
+ * carrying every rule breach in the schedule (whole-schedule
+ * snapshot — frontend can diff against the previous list to
+ * highlight just the new ones in a toast). */
+export type AssignmentSaveResponse = {
+  assignment: Assignment;
+  warnings: Violation[];
+};
+
 export type Person = {
   id: number;
   email: string;
@@ -1306,7 +1348,7 @@ export const api = {
     assignmentId: number,
     body: { person_id?: number | null; clear_person?: boolean; team_role_id?: number | null },
   ) =>
-    request<Assignment>(
+    request<AssignmentSaveResponse>(
       `/api/schedules/${scheduleId}/assignments/${assignmentId}`,
       { method: "PATCH", body: JSON.stringify(body) },
     ),
@@ -1323,10 +1365,18 @@ export const api = {
       team_role_id?: number | null;
     },
   ) =>
-    request<Assignment>(`/api/schedules/${scheduleId}/assignments`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
+    request<AssignmentSaveResponse>(
+      `/api/schedules/${scheduleId}/assignments`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
+  /** Full list of rule breaches in the schedule's current
+   * assignments. Used by /admin/schedule/[id] for the banner +
+   * per-cell markers. Warnings only — never blocks. */
+  listScheduleViolations: (scheduleId: number) =>
+    request<Violation[]>(`/api/schedules/${scheduleId}/violations`),
   deleteAssignment: (scheduleId: number, assignmentId: number) =>
     request<void>(
       `/api/schedules/${scheduleId}/assignments/${assignmentId}`,

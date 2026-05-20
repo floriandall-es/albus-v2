@@ -6,6 +6,42 @@ from pydantic import BaseModel, Field
 
 ScheduleStatus = Literal["draft", "published", "archived"]
 SolverUsed = Literal["cpsat", "greedy"]
+ViolationKind = Literal[
+    "incompatibility", "succession", "frequency", "time_overlap", "post_rest"
+]
+
+
+class ViolationCellOut(BaseModel):
+    assignment_id: int
+    date: date
+    slot_id: int
+    person_id: int
+
+
+class ViolationOut(BaseModel):
+    """One rule breach detected against a schedule's current
+    assignments. Warning only — never blocks a save. See
+    app/services/violations.py for the detection logic.
+    """
+
+    kind: ViolationKind
+    message: str
+    cells: list[ViolationCellOut]
+    rule_id: int | None = None
+    # Hard / soft from the rule definition, when available. Implicit
+    # checks (time_overlap, post_rest) have no rule row → null.
+    severity: Literal["hard", "soft"] | None = None
+
+
+class AssignmentSaveResponse(BaseModel):
+    """Wrapper returned by PATCH and POST /assignments. Used to
+    surface new rule warnings the edit triggered without changing
+    the AssignmentOut shape (which is used in many other contexts
+    where warnings don't apply).
+    """
+
+    assignment: "AssignmentOut"
+    warnings: list[ViolationOut] = []
 
 
 class ScheduleOut(BaseModel):
@@ -95,3 +131,8 @@ class ScheduleDetail(ScheduleOut):
 
 class ScheduleGenerateRequest(BaseModel):
     period: date
+
+
+# AssignmentSaveResponse forward-refs AssignmentOut; resolve once
+# both classes are in scope.
+AssignmentSaveResponse.model_rebuild()

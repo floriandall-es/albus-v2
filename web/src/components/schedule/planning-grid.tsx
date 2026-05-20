@@ -40,6 +40,12 @@ export type PlanningGridProps = {
    * above Libre with one chip per meeting per date. Meetings outside
    * the grid's date range are silently ignored. */
   meetings?: MeetingInstance[];
+  /** Assignment ids that participate in at least one rule violation.
+   * Cells matching one of these get a small rose-coloured corner
+   * marker so the admin can spot the conflicts on the grid. Tooltip
+   * lives on the ViolationsBanner above the grid; this is purely a
+   * visual cue. */
+  flaggedAssignmentIds?: Set<number>;
 };
 
 export function PlanningGrid({
@@ -51,6 +57,7 @@ export function PlanningGrid({
   absences,
   onAbsenceCellClick,
   meetings,
+  flaggedAssignmentIds,
 }: PlanningGridProps) {
   const grid = useMemo(() => buildGrid(assignments), [assignments]);
   const interactive = !!onCellClick;
@@ -263,6 +270,13 @@ export function PlanningGrid({
                             )}
                             {a.swap_offer_id != null && (
                               <SwapIcon className="h-3 w-3 text-sky-600 shrink-0" />
+                            )}
+                            {flaggedAssignmentIds?.has(a.id) && (
+                              <span
+                                className="inline-block h-1.5 w-1.5 rounded-full bg-rose-500 shrink-0"
+                                title="Esta asignación participa en al menos un conflicto. Mira el aviso encima de la planificación."
+                                aria-hidden
+                              />
                             )}
                               {a.person_id === null ? (
                                 <span className="text-rose-700 font-medium">

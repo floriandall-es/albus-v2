@@ -17,6 +17,7 @@ import {
   TextField,
 } from "@/components/admin/ui";
 import { Avatar, PlanningGrid } from "@/components/schedule/planning-grid";
+import { ViolationsBanner } from "@/components/schedule/ViolationsBanner";
 import { formatPeriod } from "@/components/admin/month-picker";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -142,6 +143,23 @@ export default function ScheduleDetailPage() {
     () => new Set((holidays.data ?? []).map((h) => h.date)),
     [holidays.data],
   );
+
+  // Rule-violation list for the ViolationsBanner + per-cell markers
+  // in the planning grid. Refetched whenever the schedule is
+  // invalidated (after any assignment save) so the count stays
+  // current as the admin edits cells.
+  const violations = useQuery({
+    queryKey: ["schedule-violations", id],
+    queryFn: () => api.listScheduleViolations(id),
+    enabled: !!detail.data,
+  });
+  const flaggedAssignmentIds = useMemo(() => {
+    const s = new Set<number>();
+    for (const v of violations.data ?? []) {
+      for (const c of v.cells) s.add(c.assignment_id);
+    }
+    return s;
+  }, [violations.data]);
 
   if (detail.isLoading) {
     return <p className="text-sm text-gray-500">Cargando…</p>;
@@ -285,12 +303,15 @@ export default function ScheduleDetailPage() {
         )}
       </p>
 
+      <ViolationsBanner violations={violations.data ?? []} />
+
       <PlanningGrid
         assignments={s.assignments}
         holidayDates={holidayDates}
         onCellClick={isEditable ? (a) => setEditing(a) : undefined}
         absences={absences.data}
         meetings={meetingInstances.data}
+        flaggedAssignmentIds={flaggedAssignmentIds}
         // Libre row only becomes interactive while the schedule is
         // still a draft. Once published / archived the team has
         // already seen the planning, so absence edits should go
@@ -379,8 +400,13 @@ function AssignmentEditModal({
     queryFn: () => api.listEligiblePersons(scheduleId, assignment.id),
   });
 
-  const invalidate = () =>
+  const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["schedule", scheduleId] });
+    // Re-fetch violations so the banner + cell markers reflect the
+    // new assignment state. Cheap (<100ms server-side) and the
+    // immediate visual feedback is the whole point of the feature.
+    qc.invalidateQueries({ queryKey: ["schedule-violations", scheduleId] });
+  };
 
   const save = useMutation({
     mutationFn: () =>

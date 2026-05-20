@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy.orm import Session
 
 from app.models import (
     Assignment,
@@ -28,13 +29,17 @@ from app.schemas.schedule import (
     AssignmentCreate,
     AssignmentOut,
     AssignmentPatch,
+    AssignmentSaveResponse,
     EligiblePersonOut,
     ScheduleDetail,
     ScheduleGenerateRequest,
     ScheduleOut,
+    ViolationCellOut,
+    ViolationOut,
 )
 from app.services import scheduler
 from app.services.scheduler import _Context, is_eligible
+from app.services.violations import find_violations as _find_violations
 from app.services.pdf import (
     PdfAbsence,
     build_absences_by_date,
@@ -234,6 +239,54 @@ def list_schedules(
         )
         for s in schedules
     ]
+
+
+def _serialize_violations(schedule: Schedule, db: Session) -> list[ViolationOut]:
+    """Run the violations engine and convert its dataclasses into the
+    Pydantic wire shape. Used by GET /schedules/{id}/violations and
+    inside the PATCH/POST assignment responses."""
+    raw = _find_violations(db, schedule)
+    return [
+        ViolationOut(
+            kind=v.kind,  # type: ignore[arg-type]
+            message=v.message,
+            cells=[
+                ViolationCellOut(
+                    assignment_id=c.assignment_id,
+                    date=c.date,
+                    slot_id=c.slot_id,
+                    person_id=c.person_id,
+                )
+                for c in v.cells
+            ],
+            rule_id=v.rule_id,
+            severity=v.severity,  # type: ignore[arg-type]
+        )
+        for v in raw
+    ]
+
+
+@router.get(
+    "/schedules/{schedule_id}/violations",
+    response_model=list[ViolationOut],
+)
+def get_schedule_violations(
+    schedule_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> list[ViolationOut]:
+    """Return every rule breach detected against the schedule's
+    current assignments. Warning data only — never blocks anything.
+    The schedule detail page calls this to drive the violations
+    banner + per-cell markers.
+
+    Visible to any caller who can read the schedule itself (tenant
+    admin always; group leads on their own group's slots; plain
+    members get only their assignments, but they don't see this
+    endpoint surface in the UI today)."""
+    s = ctx.db.get(Schedule, schedule_id)
+    if not s or s.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    return _serialize_violations(s, ctx.db)
 
 
 @router.get("/schedules/{schedule_id}", response_model=ScheduleDetail)
@@ -1003,14 +1056,14 @@ def _serialize_assignment(ctx: RequestContext, a: Assignment) -> AssignmentOut:
 
 @router.patch(
     "/schedules/{schedule_id}/assignments/{assignment_id}",
-    response_model=AssignmentOut,
+    response_model=AssignmentSaveResponse,
 )
 def patch_assignment(
     schedule_id: int,
     assignment_id: int,
     payload: AssignmentPatch,
     ctx: RequestContext = Depends(get_current_context),
-) -> AssignmentOut:
+) -> AssignmentSaveResponse:
     scope = caller_scope(ctx)
     if not scope.has_admin_powers:
         raise HTTPException(
@@ -1071,19 +1124,25 @@ def patch_assignment(
             a.notes = None
 
     ctx.db.flush()
-    return _serialize_assignment(ctx, a)
+    # Run the violations engine on the post-edit state and surface
+    # warnings to the admin. Pure read-only; never blocks the save.
+    warnings = _serialize_violations(schedule, ctx.db)
+    return AssignmentSaveResponse(
+        assignment=_serialize_assignment(ctx, a),
+        warnings=warnings,
+    )
 
 
 @router.post(
     "/schedules/{schedule_id}/assignments",
-    response_model=AssignmentOut,
+    response_model=AssignmentSaveResponse,
     status_code=status.HTTP_201_CREATED,
 )
 def create_assignment(
     schedule_id: int,
     payload: AssignmentCreate,
     ctx: RequestContext = Depends(get_current_context),
-) -> AssignmentOut:
+) -> AssignmentSaveResponse:
     """Create a new Assignment row. Used by group leads to add
     cells for their group's slots — the solver never creates rows
     for group slots, so a lead opening a "new" cell needs to insert
@@ -1153,7 +1212,11 @@ def create_assignment(
     )
     ctx.db.add(a)
     ctx.db.flush()
-    return _serialize_assignment(ctx, a)
+    warnings = _serialize_violations(schedule, ctx.db)
+    return AssignmentSaveResponse(
+        assignment=_serialize_assignment(ctx, a),
+        warnings=warnings,
+    )
 
 
 @router.delete("/schedules/{schedule_id}/assignments/{assignment_id}")
