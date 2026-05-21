@@ -118,6 +118,11 @@ export type StatsRow = {
   slot_id: number;
   slot_name: string;
   slot_color: string | null;
+  /** Mirrors Slot.group_id — null for main-team activities,
+   * non-null for sub-equipo activities. Drives the scope toggle
+   * on /admin/stats so admins can switch between main-team and
+   * per-sub-equipo views of the same date range. */
+  slot_group_id: number | null;
   team_role_id: number | null;
   team_role_label: string | null;
   year_month: string; // "YYYY-MM"

@@ -71,6 +71,11 @@ export default function StatsPage() {
   const [toPeriod, setToPeriod] = useState<string>(
     isoFromMonthYear(today.getMonth(), today.getFullYear()),
   );
+  // Scope toggle. `null` means main team (Slot.group_id IS NULL);
+  // a number means that group's sub-equipo. Defaults to main team
+  // — the most common admin view. Pill only renders when at least
+  // one sub-equipo exists, so single-team tenants see no clutter.
+  const [scopeGroupId, setScopeGroupId] = useState<number | null>(null);
 
   const fromDate = fromPeriod; // YYYY-MM-01
   const toDate = lastDayOfMonthIso(toPeriod);
@@ -79,6 +84,22 @@ export default function StatsPage() {
     queryKey: ["stats-assignments", fromDate, toDate],
     queryFn: () => api.statsAssignments({ from: fromDate, to: toDate }),
   });
+  const groups = useQuery({
+    queryKey: ["groups"],
+    queryFn: api.listGroups,
+  });
+
+  // Filter raw rows once by the active scope. Everything
+  // downstream (per-slot charts, weekend chart, detail table)
+  // reads from `scopedRows` rather than q.data.rows directly so
+  // a single source of truth drives the whole page.
+  const scopedRows = useMemo(
+    () =>
+      (q.data?.rows ?? []).filter(
+        (r) => (r.slot_group_id ?? null) === scopeGroupId,
+      ),
+    [q.data, scopeGroupId],
+  );
 
   // Pivot rows by slot for chart legends + color mapping.
   const slotMeta = useMemo(() => {
@@ -95,7 +116,7 @@ export default function StatsPage() {
     };
     const m = new Map<string, ChartMeta>();
     let idx = 0;
-    for (const r of q.data?.rows ?? []) {
+    for (const r of scopedRows) {
       const key = `${r.slot_id}|${r.team_role_id ?? ""}`;
       if (m.has(key)) continue;
       m.set(key, {
@@ -117,7 +138,7 @@ export default function StatsPage() {
       if (a.team_role_label !== null && b.team_role_label === null) return 1;
       return (a.team_role_label ?? "").localeCompare(b.team_role_label ?? "");
     });
-  }, [q.data]);
+  }, [scopedRows]);
 
   // Chart: per (person, month) weekend/holiday counts. Stacked by month
   // the same way per-slot charts are.
@@ -127,7 +148,7 @@ export default function StatsPage() {
       number,
       { person: string; total: number; cells: Record<string, number> }
     >();
-    for (const r of q.data?.rows ?? []) {
+    for (const r of scopedRows) {
       if (r.weekend_or_holiday_count === 0) continue;
       let row = byPid.get(r.person_id);
       if (!row) {
@@ -148,7 +169,7 @@ export default function StatsPage() {
     });
     list.sort((a, b) => (b.total as number) - (a.total as number));
     return { list, months };
-  }, [q.data, fromDate, toDate]);
+  }, [scopedRows, fromDate, toDate]);
 
   const weekendShades = useMemo(
     () => shadeStops("#f59e0b", weekendData.months.length),
@@ -166,8 +187,22 @@ export default function StatsPage() {
   }, [weekendData]);
 
   const totalAssignments = useMemo(
-    () =>
-      (q.data?.rows ?? []).reduce((acc, r) => acc + r.count, 0),
+    () => scopedRows.reduce((acc, r) => acc + r.count, 0),
+    [scopedRows],
+  );
+
+  // Which groups actually have assignments in the current date
+  // range. We hide pills for groups with zero rows so the toggle
+  // stays useful — no point in offering a tab that's empty.
+  const groupsWithData = useMemo(() => {
+    const ids = new Set<number>();
+    for (const r of q.data?.rows ?? []) {
+      if (r.slot_group_id !== null) ids.add(r.slot_group_id);
+    }
+    return (groups.data ?? []).filter((g) => ids.has(g.id));
+  }, [q.data, groups.data]);
+  const hasMainTeamData = useMemo(
+    () => (q.data?.rows ?? []).some((r) => r.slot_group_id === null),
     [q.data],
   );
 
@@ -190,24 +225,54 @@ export default function StatsPage() {
         )}
       </div>
 
+      {/* Scope toggle. Render only when there's actually
+          something to switch between — single-team tenants
+          never see this pill. Switching to a sub-equipo flips
+          every section below (per-slot charts, weekend chart,
+          detail table) to that group's data in one go. */}
+      {q.data && groupsWithData.length > 0 && (
+        <div className="mb-5">
+          <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 shadow-soft">
+            <ScopePill
+              label="Equipo principal"
+              active={scopeGroupId === null}
+              disabled={!hasMainTeamData}
+              onClick={() => setScopeGroupId(null)}
+            />
+            {groupsWithData.map((g) => (
+              <ScopePill
+                key={g.id}
+                label={g.name}
+                active={scopeGroupId === g.id}
+                onClick={() => setScopeGroupId(g.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {q.isLoading && (
         <p className="text-sm text-gray-500">Cargando…</p>
       )}
-      {q.data && q.data.rows.length === 0 && (
+      {q.data && scopedRows.length === 0 && (
         <EmptyState
           icon={<BarChart3 className="h-5 w-5" />}
           title="Sin datos en el rango seleccionado"
-          description="Solo se contabilizan asignaciones de planificaciones publicadas o archivadas."
+          description={
+            scopeGroupId === null
+              ? "Solo se contabilizan asignaciones de planificaciones publicadas o archivadas."
+              : "Este sub-equipo no tiene asignaciones publicadas en el rango seleccionado."
+          }
         />
       )}
 
-      {q.data && q.data.rows.length > 0 && (
+      {q.data && scopedRows.length > 0 && (
         <div className="space-y-6">
           {slotMeta.map((slot) => (
             <PerSlotChart
               key={slot.key}
               slot={slot}
-              rows={q.data!.rows}
+              rows={scopedRows}
               months={monthsBetween(fromDate, toDate)}
             />
           ))}
@@ -289,10 +354,43 @@ export default function StatsPage() {
             )}
           </ChartCard>
 
-          <DetailTable rows={q.data.rows} slotMeta={slotMeta} />
+          <DetailTable rows={scopedRows} slotMeta={slotMeta} />
         </div>
       )}
     </>
+  );
+}
+
+// Single pill inside the scope-toggle bar. Visual style mirrors
+// the ViewSwitcher segmented control elsewhere — the active tab
+// is white-on-shadow against the gray track. `disabled` is for
+// the rare case the main-team has zero data; we still show the
+// pill but block it so the toggle layout doesn't shift around.
+function ScopePill({
+  label,
+  active,
+  disabled = false,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={
+        "rounded-md px-3 py-1.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 "
+        + (active
+          ? "bg-brand-50 text-brand-700 shadow-sm"
+          : "text-gray-600 hover:text-gray-900")
+      }
+    >
+      {label}
+    </button>
   );
 }
 
