@@ -49,7 +49,13 @@ def list_team(ctx: RequestContext = Depends(get_current_context)) -> list[TeamMe
         .join(Person, Person.id == Membership.person_id)
         .outerjoin(Category, Category.id == Membership.category_id)
         .outerjoin(Group, Group.id == Membership.group_id)
-        .order_by(Person.name)
+        # Order by category first so members cluster together
+        # (Adjunto / Neumólogo / Residente sit in three blocks
+        # instead of being interleaved alphabetically by surname).
+        # Postgres puts NULL category names last by default in
+        # ascending order, which is exactly what we want for any
+        # rare uncategorised admin / lead row.
+        .order_by(Category.name.asc(), Person.name.asc())
     )
     # Group lead sees only their group's members. Tenant admin and
     # plain members see everyone (the plain-member view is read-only
