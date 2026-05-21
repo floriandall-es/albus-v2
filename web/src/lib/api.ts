@@ -596,6 +596,13 @@ export type TeamMemberUpdate = {
    * (or clear with `clear_group: true`). */
   group_id?: number | null;
   clear_group?: boolean;
+  /** Admin override for a PENDIENTE member's email. Backend
+   * rejects with 400 if the member already activated (they
+   * change their own email via /me/email's confirmation flow).
+   * Rejects with 409 on email collisions. Common use: replace
+   * placeholder *.invalid emails left by a CSV migration with
+   * the real addresses before sending invitations. */
+  email?: string;
 };
 
 export type TenantSummaryCounts = {

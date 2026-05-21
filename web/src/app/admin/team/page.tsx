@@ -313,6 +313,11 @@ function TeamEditDialog({
   const [categoryId, setCategoryId] = useState<number | "">(member.category_id ?? "");
   const [ftePct, setFtePct] = useState<string>(member.fte_pct.toString());
   const [active, setActive] = useState<boolean>(!member.disabled_at);
+  // Admin email override — only honoured server-side for pendientes
+  // (Person.hashed_password IS NULL). For activos we still render
+  // the value but locked, with a hint pointing the member at their
+  // own profile.
+  const [email, setEmail] = useState<string>(member.person_email);
   // Inverse view of slot_allowed_persons: which activities this
   // person is authorized on. We track ONLY explicit toggles in
   // `overrides`; initial state for each slot is derived from the
@@ -367,6 +372,13 @@ function TeamEditDialog({
         activityOverrides.size > 0
           ? slots.filter(isAllowed).map((s) => s.id)
           : undefined;
+      // Only send the email override when the admin actually
+      // changed it AND the member is still pendiente. Activos use
+      // /me/email's confirmation flow; sending it for them would
+      // get rejected anyway (400).
+      const trimmedEmail = email.trim().toLowerCase();
+      const emailChanged =
+        member.is_pending && trimmedEmail !== member.person_email.toLowerCase();
       return api.updateTeamMember(member.id, {
         category_id: categoryId === "" ? null : Number(categoryId),
         fte_pct: Number(ftePct),
@@ -374,6 +386,7 @@ function TeamEditDialog({
         ...(allowedSlotIdsPayload !== undefined
           ? { allowed_slot_ids: allowedSlotIdsPayload }
           : {}),
+        ...(emailChanged ? { email: trimmedEmail } : {}),
       });
     },
     onSuccess: () => {
@@ -451,6 +464,33 @@ function TeamEditDialog({
   return (
     <Modal open={true} onClose={onClose} title={`Editar — ${member.person_name}`}>
       <form className="space-y-3" onSubmit={handleSubmit}>
+        {member.is_pending ? (
+          <TextField
+            label="Email"
+            hint={
+              <>
+                El miembro aún no ha activado su cuenta. Puedes corregir
+                su email aquí antes de enviarle la invitación — por
+                ejemplo, para sustituir un email provisional importado
+                de otro sistema.
+              </>
+            }
+            type="email"
+            value={email}
+            onChange={setEmail}
+          />
+        ) : (
+          <div>
+            <span className="text-sm font-medium text-gray-700">Email</span>
+            <div className="mt-1 block w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+              {member.person_email}
+            </div>
+            <p className="mt-1 text-xs text-gray-500">
+              Tras activar su cuenta, el miembro cambia su email desde su
+              propio perfil (con confirmación por correo).
+            </p>
+          </div>
+        )}
         <Select
           label="Categoría"
           value={categoryId}

@@ -99,6 +99,38 @@ def update_team_member(
             status_code=403,
             detail="Solo el administrador puede mover personas entre sub-equipos.",
         )
+    # Admin can rewrite a pendiente member's email — the common case
+    # is replacing a placeholder address (from the legacy CSV
+    # migration) with the real one before sending an invitation.
+    # Activos go through /me/email's confirmation flow instead.
+    new_email = data.pop("email", None)
+    if new_email is not None:
+        new_email = new_email.lower()
+        target_person = ctx.db.get(Person, m.person_id)
+        if target_person is None:
+            raise HTTPException(
+                status_code=404, detail="Person record missing for membership."
+            )
+        if target_person.hashed_password is not None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Este miembro ya activó su cuenta. Solo puede "
+                    "cambiar el email desde su propio perfil."
+                ),
+            )
+        if new_email != target_person.email:
+            collision = (
+                ctx.db.query(Person)
+                .filter(Person.email == new_email, Person.id != target_person.id)
+                .first()
+            )
+            if collision is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Ya existe una cuenta con ese email.",
+                )
+            target_person.email = new_email
     if data.get("category_id") is not None:
         cat = ctx.db.get(Category, data["category_id"])
         if not cat or cat.tenant_id != ctx.tenant.id:

@@ -34,3 +34,8 @@ Thumbs.db
 *.log
 coverage/
 *.tsbuildinfo
+
+# Customer data — legacy CSV dumps for migration. Real PII;
+# never commit. Keep the migration script committable; the
+# data lives in a sibling folder that stays local-only.
+data/legacy-migration/

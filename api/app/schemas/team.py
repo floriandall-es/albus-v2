@@ -58,6 +58,14 @@ class TeamMemberUpdate(BaseModel):
     # endpoint — they use POST /api/groups/{id}/members instead.
     group_id: int | None = None
     clear_group: bool = False
+    # Admin override for a pendiente member's email. Only honoured
+    # when the underlying Person is still pendiente (hashed_password
+    # IS NULL). Once a member has activated, they change their own
+    # email via /me/email's confirmation flow — admins can't reset
+    # it from this endpoint. Used during migration to swap the
+    # placeholder *.invalid emails the customer's residents got out
+    # for their real addresses.
+    email: EmailStr | None = None
 
 
 class TeamInviteRequest(BaseModel):
