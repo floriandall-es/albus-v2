@@ -1191,32 +1191,40 @@ function FixedWeeklyEditor({
     <div className="space-y-2">
       {days.map((d) => {
         const pinsForDay = rule.weekly_pins.filter((p) => p.weekday === d.bit);
-        const mismatch = pinsForDay.length !== headcount;
+        const exceedsDefault = pinsForDay.length > headcount;
         return (
           <div key={d.bit} className="rounded border bg-white p-2 text-xs">
             <div className="mb-1 flex items-center justify-between">
               <span className="font-medium text-gray-700">
                 {d.long}
-                <span className="ml-1 text-gray-400 font-normal">
-                  ({pinsForDay.length}/{headcount})
+                <span
+                  className={
+                    "ml-1 font-normal "
+                    + (exceedsDefault ? "text-amber-600" : "text-gray-400")
+                  }
+                  title={
+                    exceedsDefault
+                      ? `Este día tiene ${pinsForDay.length} personas, por encima de la plantilla por defecto del turno (${headcount}). Permitido en Día fijo; el planning emitirá una asignación por persona.`
+                      : undefined
+                  }
+                >
+                  ({pinsForDay.length}
+                  {exceedsDefault ? "" : `/${headcount}`})
                 </span>
               </span>
               <button
                 type="button"
                 onClick={() => addPin(d.bit)}
+                // Día fijo deliberately doesn't enforce
+                // pinsForDay <= headcount — the admin can pin
+                // extra people on individual days (1-person
+                // Consulta with 6 people across 5 weekdays, one
+                // day doubles up). The cap stays at "every
+                // active team member", which is the only
+                // physical upper bound.
                 disabled={
                   team.length === 0
                   || pinsForDay.length >= team.length
-                  // Same cap as rotation positions: a 1-person turno
-                  // gets 1 pinned person per weekday. To assign different
-                  // people across weekdays use one row per weekday; a
-                  // turno needing N people uses headcount=N.
-                  || pinsForDay.length >= headcount
-                }
-                title={
-                  pinsForDay.length >= headcount
-                    ? `Este día ya tiene ${headcount} persona${headcount === 1 ? "" : "s"} (el máximo de la actividad).`
-                    : undefined
                 }
                 className="text-blue-700 hover:underline disabled:text-gray-400 disabled:no-underline"
               >
@@ -1253,7 +1261,7 @@ function FixedWeeklyEditor({
                 </button>
               </div>
             ))}
-            {mismatch && (
+            {pinsForDay.length < headcount && (
               <p className="mt-1 text-amber-700">
                 {d.long}: {pinsForDay.length} persona{pinsForDay.length === 1 ? "" : "s"}
                 {" "}asignada{pinsForDay.length === 1 ? "" : "s"} (la actividad requiere{" "}

@@ -726,21 +726,16 @@ def _validate_rules(rules: list[SlotRuleIn], slot_headcount: int = 1) -> None:
                         ),
                     )
                 seen_pin.add(key)
-            # A weekday can hold at most `slot.headcount` pins. For a
-            # 1-person turno that's 1 person per weekday. To pin
-            # different people on different weekdays, use one pin per
-            # (weekday, person). Headcount stays the cap on parallel
-            # plazas, not on alternatives.
-            for wd, n in pins_per_weekday.items():
-                if n > slot_headcount:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=(
-                            f"Regla {idx + 1}, día {wd}: tiene {n}"
-                            f" personas pero el turno solo permite"
-                            f" {slot_headcount}."
-                        ),
-                    )
+            # Pins per weekday are intentionally NOT capped at
+            # slot.headcount for fixed_weekly. The strategy means
+            # "admin knows who's on duty that day" — including the
+            # case where one weekday genuinely has more people than
+            # the slot's default headcount (e.g. a 1-person Consulta
+            # with 6 people across 5 weekdays, so one day doubles
+            # up). The scheduler emits one assignment per pin and
+            # the planning grid renders them stacked. Other
+            # strategies (solver, rotation) still respect headcount
+            # via their own validation paths above.
 
 
 @router.put("/slots/{slot_id}/rules", response_model=SlotOut)
