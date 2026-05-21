@@ -985,6 +985,17 @@ export const api = {
   listTeam: () => request<TeamMember[]>("/api/team"),
   updateTeamMember: (id: number, body: TeamMemberUpdate) =>
     request<TeamMember>(`/api/team/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  /** Issue a fresh invitation for an EXISTING pendiente Membership.
+   * Used by the per-row "Enviar invitación" button on /admin/team.
+   * Server revokes any prior live invites for this email, creates a
+   * new one, emails it, and returns the accept_url so the admin can
+   * copy it manually if SMTP fails. Rejects 400 if the member has
+   * already activated their account. */
+  issueMembershipInvitation: (membershipId: number) =>
+    request<InviteCreateResponse>(
+      `/api/team/${membershipId}/invitation`,
+      { method: "POST" },
+    ),
   inviteTeamMember: (body: {
     email: string;
     person_name: string;

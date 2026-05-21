@@ -84,10 +84,29 @@ function TeamAvatar({
 }
 
 export default function TeamPage() {
+  const qc = useQueryClient();
   const list = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
   const cats = useQuery({ queryKey: ["categories"], queryFn: api.listCategories });
   const [editing, setEditing] = useState<TeamMember | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
+  // Inline feedback per row after the admin clicks "Enviar
+  // invitación". Holds the accept_url returned by the server so it
+  // can be copied even if SMTP failed silently. Keyed by membership id.
+  const [issuedFor, setIssuedFor] = useState<Map<number, string>>(
+    () => new Map(),
+  );
+  const issueInvite = useMutation({
+    mutationFn: (membershipId: number) =>
+      api.issueMembershipInvitation(membershipId),
+    onSuccess: (res, membershipId) => {
+      setIssuedFor((cur) => {
+        const m = new Map(cur);
+        m.set(membershipId, res.accept_url);
+        return m;
+      });
+      qc.invalidateQueries({ queryKey: ["invitations"] });
+    },
+  });
 
   return (
     <>
@@ -196,10 +215,55 @@ export default function TeamPage() {
                     )}
                   </td>
                   <td className="px-4 py-2">{m.fte_pct}%</td>
-                  <td className="px-4 py-2 text-right">
-                    <Button variant="secondary" onClick={() => setEditing(m)}>
-                      Editar
-                    </Button>
+                  <td className="px-4 py-2">
+                    <div className="flex justify-end gap-2 whitespace-nowrap">
+                      {m.is_pending && !isDisabled && (
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            if (
+                              confirm(
+                                `¿Enviar invitación a ${m.person_email}? Se generará un nuevo enlace y se enviará por email.`,
+                              )
+                            ) {
+                              issueInvite.mutate(m.id);
+                            }
+                          }}
+                          disabled={
+                            issueInvite.isPending
+                            && issueInvite.variables === m.id
+                          }
+                        >
+                          {issueInvite.isPending
+                          && issueInvite.variables === m.id
+                            ? "Enviando…"
+                            : "Enviar invitación"}
+                        </Button>
+                      )}
+                      <Button variant="secondary" onClick={() => setEditing(m)}>
+                        Editar
+                      </Button>
+                    </div>
+                    {/* Inline accept-URL fallback: surfaced AFTER the
+                        server confirms the invitation was created, so
+                        admin can copy the link manually when SMTP
+                        bounces silently. */}
+                    {issuedFor.get(m.id) && (
+                      <div className="mt-1 text-right text-[11px] text-gray-500">
+                        Enlace enviado.{" "}
+                        <button
+                          type="button"
+                          className="text-brand-700 hover:underline"
+                          onClick={() => {
+                            navigator.clipboard.writeText(
+                              issuedFor.get(m.id)!,
+                            );
+                          }}
+                        >
+                          Copiar enlace
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
                 );

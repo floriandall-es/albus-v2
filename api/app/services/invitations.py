@@ -201,6 +201,56 @@ def create_invitation(
     )
 
 
+def issue_invitation_for_existing_pendiente(
+    db: Session,
+    *,
+    tenant_id: int,
+    person: Person,
+    membership: Membership,
+) -> CreatedInvitation:
+    """Create a fresh Invitation token for a Person + Membership pair
+    that already exist (legacy migration, prior cross-tenant invite,
+    etc.) but are still pendiente. Skips the find-or-create Person +
+    Membership steps of `create_invitation` — those would 409 on the
+    existing rows.
+
+    Called from:
+      - POST /api/team/{membership_id}/invitation — the per-row
+        "Enviar invitación" button on /admin/team.
+      - scripts/bootstrap_admin_invitation.py for the first admin
+        of a freshly-migrated tenant.
+
+    Revokes any live Invitations for (tenant, email) first, so prior
+    URLs stop working. Caller is responsible for sending the email
+    (or otherwise delivering the URL) and for flushing/committing.
+    """
+    now = datetime.now(timezone.utc)
+    revoke_live_invitations(db, tenant_id, person.email, now=now)
+
+    raw_token = secrets.token_urlsafe(32)
+    inv = Invitation(
+        tenant_id=tenant_id,
+        email=person.email,
+        person_name=person.name,
+        token_hash=pwd_context.hash(raw_token),
+        token_lookup=invitation_token_lookup(raw_token),
+        expires_at=now + INVITE_TTL,
+        # No created_by_membership_id captured here — the caller can
+        # set it post-return if they want; for the legacy bootstrap
+        # there's no admin acting yet.
+        created_by_membership_id=None,
+        category_id=membership.category_id,
+        roles=list(membership.roles),
+    )
+    db.add(inv)
+    db.flush()
+    return CreatedInvitation(
+        invitation=inv,
+        raw_token=raw_token,
+        accept_url=build_accept_url(raw_token),
+    )
+
+
 def send_invitation_email(
     db: Session,
     *,

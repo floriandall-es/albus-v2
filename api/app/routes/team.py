@@ -5,7 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.models import Category, Group, Membership, Person, Slot, SlotAllowedPerson
 from app.routes.deps import RequestContext, get_current_context
 from app.routes.scope import caller_scope
+from app.schemas.invitation import InviteCreateResponse
 from app.schemas.team import TeamMemberOut, TeamMemberUpdate
+from app.services.invitations import (
+    issue_invitation_for_existing_pendiente,
+    send_invitation_email,
+)
 
 router = APIRouter()
 
@@ -160,6 +165,74 @@ def update_team_member(
     group = ctx.db.get(Group, m.group_id) if m.group_id else None
     assert person is not None
     return _serialize(m, person, cat, group.name if group else None)
+
+
+@router.post(
+    "/team/{membership_id}/invitation",
+    response_model=InviteCreateResponse,
+)
+def issue_membership_invitation(
+    membership_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> InviteCreateResponse:
+    """Issue a fresh invitation for an EXISTING pendiente Membership.
+
+    Use case: legacy CSV migration creates Person+Membership rows but
+    no Invitation tokens. Without this endpoint there's no way for
+    the admin to onboard those people short of running a CLI script
+    per person. With it, /admin/team gets a per-row "Enviar
+    invitación" button on every pendiente — one click revokes any
+    stale tokens, issues a new one, emails it, and returns the
+    accept_url so the admin can copy it as a fallback if SMTP fails.
+
+    Rejects (400) if the Person has already activated — they can
+    use /forgot-password instead, and we don't want to invalidate
+    their existing session by handing out an invitation token.
+    """
+    scope = caller_scope(ctx)
+    if not scope.has_admin_powers:
+        raise HTTPException(
+            status_code=403, detail="Permisos insuficientes."
+        )
+    m = _get_member_or_404(ctx, membership_id)
+    if scope.is_group_lead and m.group_id != scope.group_id:
+        raise HTTPException(
+            status_code=403,
+            detail="No puedes enviar invitaciones a personas fuera de tu sub-equipo.",
+        )
+    person = ctx.db.get(Person, m.person_id)
+    if person is None:
+        raise HTTPException(
+            status_code=404, detail="Person record missing for membership."
+        )
+    if person.hashed_password is not None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Esta persona ya ha activado su cuenta. Pídele que "
+                "use 'He olvidado mi contraseña' si no puede acceder."
+            ),
+        )
+    created = issue_invitation_for_existing_pendiente(
+        ctx.db,
+        tenant_id=ctx.tenant.id,
+        person=person,
+        membership=m,
+    )
+    # Stamp the inviting admin so the audit trail isn't anonymous —
+    # the service function leaves created_by NULL because it's
+    # also used by the bootstrap script (no admin caller there).
+    created.invitation.created_by_membership_id = ctx.membership.id
+    send_invitation_email(
+        ctx.db, tenant_id=ctx.tenant.id, created=created
+    )
+    ctx.db.flush()
+    return InviteCreateResponse(
+        invitation_id=created.invitation.id,
+        email=created.invitation.email,
+        expires_at=created.invitation.expires_at,
+        accept_url=created.accept_url,
+    )
 
 
 def _sync_allowed_activities(

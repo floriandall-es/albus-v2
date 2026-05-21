@@ -36,20 +36,15 @@ Safety guards:
 from __future__ import annotations
 
 import argparse
-import secrets
 import sys
-from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.core.security import pwd_context
 from app.db.session import SessionLocal, set_tenant
-from app.models import Invitation, Membership, Person, Tenant
+from app.models import Membership, Person, Tenant
 from app.services.invitations import (
     INVITE_TTL,
-    build_accept_url,
-    invitation_token_lookup,
-    revoke_live_invitations,
+    issue_invitation_for_existing_pendiente,
 )
 
 
@@ -100,31 +95,13 @@ def bootstrap(db: Session, tenant_slug: str, email: str) -> str:
             file=sys.stderr,
         )
 
-    now = datetime.now(timezone.utc)
-    # Drop any live invitations so prior bootstrap attempts (or a
-    # forgotten team-page invite) don't leave stale URLs working.
-    revoke_live_invitations(db, tenant.id, email, now=now)
-
-    raw_token = secrets.token_urlsafe(32)
-    inv = Invitation(
+    created = issue_invitation_for_existing_pendiente(
+        db,
         tenant_id=tenant.id,
-        email=email,
-        person_name=person.name,
-        token_hash=pwd_context.hash(raw_token),
-        token_lookup=invitation_token_lookup(raw_token),
-        expires_at=now + INVITE_TTL,
-        # No `created_by_membership_id` — there's no admin acting
-        # on behalf of anyone here. The Invitation FK is nullable
-        # exactly for this case (and migration imports of legacy
-        # invitations).
-        created_by_membership_id=None,
-        category_id=membership.category_id,
-        roles=list(membership.roles),
+        person=person,
+        membership=membership,
     )
-    db.add(inv)
-    db.flush()
-
-    return build_accept_url(raw_token)
+    return created.accept_url
 
 
 def main() -> int:
