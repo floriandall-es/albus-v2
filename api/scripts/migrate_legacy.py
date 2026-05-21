@@ -15,8 +15,13 @@ Reads the Cloud SQL Studio CSV exports from
     `neumologo`, etc.).
   - 5 monthly schedules (Feb–Jun 2026) with DRAFT / PUBLISHED
     status preserved, plus ~2 400 assignments.
-  - 102 availability_blocks from the source `vacations` table,
-    16 holidays, and 25 incident-log entries from `notes`.
+  - 102 availability_blocks from the source `vacations` table
+    PLUS additional blocks from `libre` shift rows. `libre`
+    means "this person is taking the day off" (a vacation day),
+    so each libre row becomes an availability_block — deduped
+    against the explicit vacations table so a 5-day vacation
+    doesn't get re-blocked five times.
+  - 16 holidays, and 25 incident-log entries from `notes`.
 
 Skipped on purpose (counts go in the final report):
 
@@ -27,7 +32,6 @@ Skipped on purpose (counts go in the final report):
   - `events` (317), `vacation_locks` (76) — purpose unclear,
     customer chose skip.
   - `swap_*` (16 total) — history only.
-  - `libre` shift rows — they mean "off", not an assignment.
 
 Usage (from `api/`):
 
@@ -522,23 +526,103 @@ def run_migration(db: Session) -> dict[str, Any]:
     report["counts"]["schedules"] = len(schedule_by_month)
 
     # ------------------------------------------------------------------
-    # 10. Surgeon assignments
+    # 10. Off-day tracking — `vacations` rows AND `libre` shift rows
+    #     both represent "this person is taking the day off". They
+    #     overlap: a 5-day approved vacation also shows up as 5
+    #     `libre` rows in the shifts table. We process vacations
+    #     first (richer metadata: reason, status, multi-day range)
+    #     and track which (person, date) pairs are already covered;
+    #     libre rows for already-covered dates are deduped away in
+    #     the shift loops below.
+    # ------------------------------------------------------------------
+    off_days_covered: set[tuple[int, date]] = set()
+    vac_blocks_created = 0
+    vac_blocks_skipped = 0
+    for v in src_vacations:
+        status = (v.get("status") or "").upper()
+        if status not in ("APPROVED", "DECLINED"):
+            vac_blocks_skipped += 1
+            continue
+        person = person_by_surgeon_id.get(v.get("surgeon_id") or "")
+        if person is None:
+            vac_blocks_skipped += 1
+            continue
+        start = parse_date(v["start_date"])
+        end = parse_date(v["end_date"])
+        ab = AvailabilityBlock(
+            tenant_id=tenant.id,
+            person_id=person.id,
+            start_date=start,
+            end_date=end,
+            block_type=map_vacation_reason(v.get("reason", "")),
+            notes=v.get("reason") or None,
+            status="approved" if status == "APPROVED" else "denied",
+        )
+        db.add(ab)
+        vac_blocks_created += 1
+        # Mark every day in this range as already-covered so the
+        # libre rows below don't re-block.
+        d_iter = start
+        while d_iter <= end:
+            off_days_covered.add((person.id, d_iter))
+            d_iter = date.fromordinal(d_iter.toordinal() + 1)
+    report["counts"]["availability_blocks_from_vacations"] = vac_blocks_created
+    report["skipped"]["vacations"] = vac_blocks_skipped
+
+    def record_off_day(person: Person, d: date) -> bool:
+        """Create a single-day availability_block for this person on
+        d, unless (person, d) is already covered by a previously
+        created block. Returns True if a new block was created."""
+        key = (person.id, d)
+        if key in off_days_covered:
+            return False
+        off_days_covered.add(key)
+        db.add(
+            AvailabilityBlock(
+                tenant_id=tenant.id,
+                person_id=person.id,
+                start_date=d,
+                end_date=d,
+                block_type="vacation",
+                notes="libre",
+                status="approved",
+            )
+        )
+        return True
+
+    # ------------------------------------------------------------------
+    # 11. Surgeon assignments (libre rows → off-day blocks, deduped)
     # ------------------------------------------------------------------
     assignments_main = 0
-    skipped_libre = 0
+    libre_blocks_main_new = 0
+    libre_main_already_covered = 0
+    libre_main_no_person = 0
     skipped_unknown_role = 0
     unresolved_assignee_names: Counter = Counter()
 
     for row in src_surgeon_shifts:
         role = row["role"]
+        d = parse_date(row["date"])
+
         if role == "libre":
-            skipped_libre += 1
+            # libre = "this person is off today". Convert to a
+            # single-day availability_block — but only if not
+            # already covered by an explicit vacation row.
+            surgeon_id = row.get("surgeon_id") or ""
+            person = person_by_surgeon_id.get(surgeon_id) if surgeon_id else None
+            if person is None:
+                libre_main_no_person += 1
+                continue
+            if record_off_day(person, d):
+                libre_blocks_main_new += 1
+            else:
+                libre_main_already_covered += 1
             continue
+
         slot = slot_by_main_role.get(role)
         if slot is None:
             skipped_unknown_role += 1
             continue
-        d = parse_date(row["date"])
         sched = schedule_by_month[(d.year, d.month)]
 
         surgeon_id = row.get("surgeon_id") or ""
@@ -573,7 +657,13 @@ def run_migration(db: Session) -> dict[str, Any]:
         assignments_main += 1
 
     report["counts"]["assignments_main"] = assignments_main
-    report["skipped"]["surgeon_shifts.libre"] = skipped_libre
+    report["counts"]["availability_blocks_from_libre_main"] = libre_blocks_main_new
+    if libre_main_already_covered:
+        report["skipped"]["surgeon_shifts.libre_already_covered"] = (
+            libre_main_already_covered
+        )
+    if libre_main_no_person:
+        report["skipped"]["surgeon_shifts.libre_no_person"] = libre_main_no_person
     if skipped_unknown_role:
         report["warnings"].append(
             f"{skipped_unknown_role} surgeon_shifts row(s) had a role "
@@ -586,21 +676,35 @@ def run_migration(db: Session) -> dict[str, Any]:
         )
 
     # ------------------------------------------------------------------
-    # 11. Resident assignments
+    # 12. Resident assignments (libre rows → off-day blocks, deduped)
     # ------------------------------------------------------------------
     assignments_residentes = 0
-    skipped_libre_residentes = 0
+    libre_blocks_residentes_new = 0
+    libre_residentes_already_covered = 0
+    libre_residentes_no_person = 0
     skipped_unknown_role_residentes = 0
     for row in src_resident_shifts:
         role = row["role"]
+        d = parse_date(row["date"])
+
         if role == "libre":
-            skipped_libre_residentes += 1
+            resident_id = row.get("resident_id") or ""
+            person = (
+                person_by_resident_id.get(resident_id) if resident_id else None
+            )
+            if person is None:
+                libre_residentes_no_person += 1
+                continue
+            if record_off_day(person, d):
+                libre_blocks_residentes_new += 1
+            else:
+                libre_residentes_already_covered += 1
             continue
+
         slot = slot_by_resident_role.get(role)
         if slot is None:
             skipped_unknown_role_residentes += 1
             continue
-        d = parse_date(row["date"])
         sched = schedule_by_month[(d.year, d.month)]
 
         resident_id = row.get("resident_id") or ""
@@ -617,41 +721,22 @@ def run_migration(db: Session) -> dict[str, Any]:
         assignments_residentes += 1
 
     report["counts"]["assignments_residentes"] = assignments_residentes
-    report["skipped"]["resident_shifts.libre"] = skipped_libre_residentes
+    report["counts"]["availability_blocks_from_libre_residentes"] = (
+        libre_blocks_residentes_new
+    )
+    if libre_residentes_already_covered:
+        report["skipped"]["resident_shifts.libre_already_covered"] = (
+            libre_residentes_already_covered
+        )
+    if libre_residentes_no_person:
+        report["skipped"]["resident_shifts.libre_no_person"] = (
+            libre_residentes_no_person
+        )
     if skipped_unknown_role_residentes:
         report["warnings"].append(
             f"{skipped_unknown_role_residentes} resident_shifts row(s) had "
             "a role not in RESIDENT_SLOTS — skipped."
         )
-
-    # ------------------------------------------------------------------
-    # 12. Vacations → availability_blocks. surgeon_id → person resolved
-    #     through the same map as shifts.
-    # ------------------------------------------------------------------
-    blocks_created = 0
-    blocks_skipped = 0
-    for v in src_vacations:
-        status = (v.get("status") or "").upper()
-        if status not in ("APPROVED", "DECLINED"):
-            blocks_skipped += 1
-            continue
-        person = person_by_surgeon_id.get(v.get("surgeon_id") or "")
-        if person is None:
-            blocks_skipped += 1
-            continue
-        ab = AvailabilityBlock(
-            tenant_id=tenant.id,
-            person_id=person.id,
-            start_date=parse_date(v["start_date"]),
-            end_date=parse_date(v["end_date"]),
-            block_type=map_vacation_reason(v.get("reason", "")),
-            notes=v.get("reason") or None,
-            status="approved" if status == "APPROVED" else "denied",
-        )
-        db.add(ab)
-        blocks_created += 1
-    report["counts"]["availability_blocks"] = blocks_created
-    report["skipped"]["vacations"] = blocks_skipped
 
     # ------------------------------------------------------------------
     # 13. Holidays
