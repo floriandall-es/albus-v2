@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BarChart3, Filter, X } from "lucide-react";
@@ -8,6 +8,7 @@ import {
   personLastName,
   type TransplantCase,
   type TransplantCaseInput,
+  type TransplantProcedure,
   type TransplantProcedureInput,
   type TransplantProcedureType,
 } from "@/lib/api";
@@ -23,6 +24,39 @@ import {
   TextField,
 } from "@/components/admin/ui";
 import { formatLongDate, todayIso } from "@/lib/dates";
+
+// Compact Spanish weekday + month tables, used by the dense list
+// view. Existing /lib/dates.ts gives "Lunes 18 mayo" (verbose);
+// for a table column we want "Lun 19" (no month — the month
+// header above the row carries that context).
+const WEEKDAY_ABBR_ES = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+const MONTH_LONG_ES = [
+  "enero",
+  "febrero",
+  "marzo",
+  "abril",
+  "mayo",
+  "junio",
+  "julio",
+  "agosto",
+  "septiembre",
+  "octubre",
+  "noviembre",
+  "diciembre",
+];
+
+function shortDateLabel(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  const wd = WEEKDAY_ABBR_ES[dt.getDay()];
+  return `${wd.charAt(0).toUpperCase()}${wd.slice(1)} ${d}`;
+}
+
+function monthHeaderLabel(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  const name = MONTH_LONG_ES[m - 1];
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)} ${y}`;
+}
 
 /**
  * Admin transplant case log. The lung-transplant service uses
@@ -125,6 +159,24 @@ export default function TrasplantesPage() {
     setFilterTo("");
   }
 
+  // Group cases by their YYYY-MM, newest month first. Renders as a
+  // single table with non-data "month header" rows breaking up the
+  // groups — much denser than card-per-case and much closer to how
+  // the customer actually thinks about the archive ("we did X
+  // transplants in March").
+  const groupedByMonth = useMemo(() => {
+    const map = new Map<string, TransplantCase[]>();
+    for (const c of list.data ?? []) {
+      const ym = c.occurred_on.slice(0, 7);
+      const arr = map.get(ym) ?? [];
+      arr.push(c);
+      map.set(ym, arr);
+    }
+    return Array.from(map.entries()).sort((a, b) =>
+      b[0].localeCompare(a[0]),
+    );
+  }, [list.data]);
+
   return (
     <>
       <PageHeader
@@ -143,91 +195,85 @@ export default function TrasplantesPage() {
         }
       />
 
-      <Card>
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-gray-500">
-            <Filter className="h-3.5 w-3.5" />
-            Filtros
-          </div>
-          <div className="min-w-[160px]">
-            <Select
-              label="Cirujano"
-              value={filterPersonId}
-              onChange={(v) =>
-                setFilterPersonId(v === "" ? "" : Number(v))
-              }
-              options={[
-                { value: "", label: "— Cualquier cirujano —" },
-                ...surgeonOptions.map((m) => ({
-                  value: m.person_id,
-                  label: m.display_name,
-                })),
-              ]}
-            />
-          </div>
-          <div className="min-w-[140px]">
-            <Select
-              label="Tipo"
-              value={filterType}
-              onChange={(v) =>
-                setFilterType(
-                  (v === ""
-                    ? ""
-                    : (v as TransplantProcedureType)) as
-                    | TransplantProcedureType
-                    | "",
-                )
-              }
-              options={[
-                { value: "", label: "Cualquiera" },
-                { value: "explante", label: "Solo explantes" },
-                { value: "implante", label: "Solo implantes" },
-              ]}
-            />
-          </div>
-          <div className="min-w-[160px]">
-            <Select
-              label="Cross-hospital"
-              value={filterCross}
-              onChange={(v) => setFilterCross(v as "" | "yes" | "no")}
-              options={[
-                { value: "", label: "Cualquiera" },
-                { value: "yes", label: "Sí" },
-                { value: "no", label: "No (solo locales)" },
-              ]}
-            />
-          </div>
-          <div>
-            <TextField
-              label="Desde"
-              type="date"
-              value={filterFrom}
-              onChange={setFilterFrom}
-            />
-          </div>
-          <div>
-            <TextField
-              label="Hasta"
-              type="date"
-              value={filterTo}
-              onChange={setFilterTo}
-            />
-          </div>
-          {filtersActive && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2.5 py-1 text-xs text-gray-600 hover:bg-gray-50"
-            >
-              <X className="h-3 w-3" />
-              Limpiar
-            </button>
-          )}
-        </div>
-      </Card>
+      {/* Compact filter bar — single inline row, no per-input
+          labels (the placeholders + icon carry enough). Doesn't
+          wrap a Card so it reads as a toolbar, not a section. */}
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-soft">
+        <span className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-gray-500">
+          <Filter className="h-3.5 w-3.5" />
+          Filtros
+        </span>
+        <select
+          value={filterPersonId === "" ? "" : String(filterPersonId)}
+          onChange={(e) =>
+            setFilterPersonId(e.target.value === "" ? "" : Number(e.target.value))
+          }
+          className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
+        >
+          <option value="">Cualquier cirujano</option>
+          {surgeonOptions.map((m) => (
+            <option key={m.person_id} value={m.person_id}>
+              {m.display_name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={filterType}
+          onChange={(e) =>
+            setFilterType(
+              (e.target.value as TransplantProcedureType | ""),
+            )
+          }
+          className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
+        >
+          <option value="">Cualquier tipo</option>
+          <option value="explante">Solo explantes</option>
+          <option value="implante">Solo implantes</option>
+        </select>
+        <select
+          value={filterCross}
+          onChange={(e) => setFilterCross(e.target.value as "" | "yes" | "no")}
+          className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
+        >
+          <option value="">Cross-hospital: cualquiera</option>
+          <option value="yes">Solo cross-hospital</option>
+          <option value="no">Solo locales</option>
+        </select>
+        <input
+          type="date"
+          value={filterFrom}
+          onChange={(e) => setFilterFrom(e.target.value)}
+          placeholder="Desde"
+          aria-label="Desde"
+          className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+        />
+        <input
+          type="date"
+          value={filterTo}
+          onChange={(e) => setFilterTo(e.target.value)}
+          placeholder="Hasta"
+          aria-label="Hasta"
+          className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+        />
+        {filtersActive && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50"
+          >
+            <X className="h-3 w-3" />
+            Limpiar
+          </button>
+        )}
+        {list.data && list.data.length > 0 && (
+          <span className="ml-auto text-xs text-gray-500">
+            {list.data.length} caso{list.data.length === 1 ? "" : "s"}
+          </span>
+        )}
+      </div>
 
       {list.isLoading && (
-        <div className="mt-4 text-sm text-gray-500">Cargando…</div>
+        <div className="text-sm text-gray-500">Cargando…</div>
       )}
       {list.isError && (
         <ErrorText>{(list.error as Error).message}</ErrorText>
@@ -239,25 +285,57 @@ export default function TrasplantesPage() {
             : "Aún no hay trasplantes registrados. Pulsa 'Nuevo trasplante' para crear el primero."}
         </Empty>
       )}
-      {list.data && list.data.length > 0 && (
-        <div className="mt-4 space-y-3">
-          {list.data.map((c) => (
-            <CaseRow
-              key={c.id}
-              c={c}
-              onEdit={() => setEditing(c)}
-              onDelete={() => {
-                if (
-                  confirm(
-                    `¿Eliminar trasplante del ${formatLongDate(c.occurred_on)}? Esta acción no se puede deshacer.`,
-                  )
-                ) {
-                  del.mutate(c.id);
-                }
-              }}
-            />
-          ))}
-        </div>
+
+      {groupedByMonth.length > 0 && (
+        <Card>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                <th className="px-3 py-2 w-24">Fecha</th>
+                <th className="px-3 py-2 w-20">Caso</th>
+                <th className="px-3 py-2 w-32">Estado</th>
+                <th className="px-3 py-2">Explante</th>
+                <th className="px-3 py-2">Implante</th>
+                <th className="px-3 py-2">Notas</th>
+                <th className="px-3 py-2 text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {groupedByMonth.map(([ym, cases]) => (
+                <Fragment key={ym}>
+                  <tr className="bg-gray-50/70">
+                    <td
+                      colSpan={7}
+                      className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-600"
+                    >
+                      {monthHeaderLabel(ym)}
+                      <span className="ml-2 font-normal text-gray-400">
+                        · {cases.length} trasplante
+                        {cases.length === 1 ? "" : "s"}
+                      </span>
+                    </td>
+                  </tr>
+                  {cases.map((c) => (
+                    <CaseRow
+                      key={c.id}
+                      c={c}
+                      onEdit={() => setEditing(c)}
+                      onDelete={() => {
+                        if (
+                          confirm(
+                            `¿Eliminar trasplante del ${formatLongDate(c.occurred_on)}? Esta acción no se puede deshacer.`,
+                          )
+                        ) {
+                          del.mutate(c.id);
+                        }
+                      }}
+                    />
+                  ))}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </Card>
       )}
 
       {editing && (
@@ -271,6 +349,9 @@ export default function TrasplantesPage() {
   );
 }
 
+/** One row per case in the dense list. Both procedures are
+ * rendered inline (explante in one column, implante in the next)
+ * so the customer can scan a month's worth at a glance. */
 function CaseRow({
   c,
   onEdit,
@@ -280,32 +361,57 @@ function CaseRow({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const explante = c.procedures.find((p) => p.type === "explante");
+  const implante = c.procedures.find((p) => p.type === "implante");
+  // Collapse all the case-level + per-procedure notes into a
+  // single comma-separated cell. Dedupe — many migrated rows
+  // share the same note across explante + implante ("No válido")
+  // and showing it twice is noise.
+  const notesSet = new Set<string>();
+  if (c.notes) notesSet.add(c.notes);
+  for (const p of c.procedures) {
+    if (p.notes) notesSet.add(p.notes);
+  }
+  const notes = Array.from(notesSet).join(" · ");
+
+  let statusTone: "success" | "warning" | "info" | "neutral" = "neutral";
+  let statusLabel: string = "—";
+  if (c.is_cross_hospital) {
+    statusTone = "info";
+    statusLabel = "Cross-hospital";
+  } else if (c.has_explante && c.has_implante) {
+    statusTone = "success";
+    statusLabel = "Completo";
+  } else if (c.has_explante) {
+    statusTone = "warning";
+    statusLabel = "Solo explante";
+  } else if (c.has_implante) {
+    statusTone = "warning";
+    statusLabel = "Solo implante";
+  }
+
   return (
-    <div className="rounded-lg border border-gray-200 bg-white shadow-soft overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 bg-gray-50/40 px-4 py-2.5">
-        <div className="flex items-center gap-2 text-sm">
-          <span className="font-semibold text-gray-900">
-            {formatLongDate(c.occurred_on)}
-          </span>
-          {c.external_case_id && (
-            <span className="text-xs text-gray-500">
-              · Caso #{c.external_case_id}
-            </span>
-          )}
-          {c.is_cross_hospital && (
-            <StatusPill tone="info">Cross-hospital</StatusPill>
-          )}
-          {c.has_explante && c.has_implante && (
-            <StatusPill tone="success">Completo</StatusPill>
-          )}
-          {c.has_explante && !c.has_implante && (
-            <StatusPill tone="warning">Solo explante</StatusPill>
-          )}
-          {!c.has_explante && c.has_implante && (
-            <StatusPill tone="warning">Solo implante</StatusPill>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
+    <tr className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors">
+      <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-900">
+        {shortDateLabel(c.occurred_on)}
+      </td>
+      <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
+        {c.external_case_id ? `#${c.external_case_id}` : "—"}
+      </td>
+      <td className="px-3 py-2 whitespace-nowrap">
+        <StatusPill tone={statusTone}>{statusLabel}</StatusPill>
+      </td>
+      <td className="px-3 py-2">
+        <SurgeonCell proc={explante} />
+      </td>
+      <td className="px-3 py-2">
+        <SurgeonCell proc={implante} />
+      </td>
+      <td className="px-3 py-2 text-xs italic text-gray-500 truncate max-w-[240px]">
+        {notes || <span className="not-italic text-gray-300">—</span>}
+      </td>
+      <td className="px-3 py-2">
+        <div className="flex justify-end gap-1 whitespace-nowrap">
           <button
             type="button"
             onClick={onEdit}
@@ -321,54 +427,35 @@ function CaseRow({
             Eliminar
           </button>
         </div>
-      </div>
-      <div className="divide-y divide-gray-100">
-        {c.procedures.map((p) => (
-          <div
-            key={p.id}
-            className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm"
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <span
-                className={
-                  "inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider "
-                  + (p.type === "explante"
-                    ? "bg-amber-50 text-amber-800"
-                    : "bg-emerald-50 text-emerald-800")
-                }
-              >
-                {p.type}
-              </span>
-              <span className="text-gray-700 truncate">
-                {p.primary_person_name
-                  ? personLastName({ name: p.primary_person_name })
-                  : (
-                    <span className="italic text-gray-400">
-                      Sin cirujano local
-                    </span>
-                  )}
-                {p.secondary_person_name && (
-                  <span className="text-gray-500">
-                    {" "}
-                    + {personLastName({ name: p.secondary_person_name })}
-                  </span>
-                )}
-              </span>
-            </div>
-            {p.notes && (
-              <span className="shrink-0 text-xs italic text-gray-500 max-w-[40%] truncate">
-                {p.notes}
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-      {c.notes && (
-        <div className="border-t border-gray-100 bg-gray-50/40 px-4 py-2 text-xs text-gray-600">
-          {c.notes}
-        </div>
+      </td>
+    </tr>
+  );
+}
+
+/** Single surgeon cell — primary on top with optional secondary in
+ * grey beneath. Renders an empty-dash placeholder when this case
+ * doesn't have a procedure of the expected type at all, and an
+ * italic "Sin local" when the procedure exists but the primary is
+ * NULL (cross-hospital). */
+function SurgeonCell({ proc }: { proc: TransplantProcedure | undefined }) {
+  if (!proc) {
+    return <span className="text-gray-300">—</span>;
+  }
+  if (!proc.primary_person_name) {
+    return (
+      <span className="italic text-gray-400">Sin local</span>
+    );
+  }
+  return (
+    <span className="text-gray-800">
+      {personLastName({ name: proc.primary_person_name })}
+      {proc.secondary_person_name && (
+        <span className="text-gray-500">
+          {" "}
+          + {personLastName({ name: proc.secondary_person_name })}
+        </span>
       )}
-    </div>
+    </span>
   );
 }
 
