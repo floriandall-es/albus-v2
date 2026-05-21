@@ -13,7 +13,7 @@ import { Card } from "@/components/admin/ui";
  */
 export default function LeadInicio() {
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
-  const slots = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
+  const slots = useQuery({ queryKey: ["slots"], queryFn: () => api.listSlots() });
   const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
 
   if (me.isLoading) {

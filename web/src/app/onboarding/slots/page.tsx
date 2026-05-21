@@ -68,7 +68,7 @@ const ALL_TEMPLATE_NAMES = new Set(SLOT_TEMPLATES.items.map((i) => i.name));
 
 export default function SlotsStep() {
   const qc = useQueryClient();
-  const list = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
+  const list = useQuery({ queryKey: ["slots"], queryFn: () => api.listSlots() });
 
   // Manual form state. Custom slots are created as "una persona" by
   // default; the staffing mode picker lives in the inline editor that

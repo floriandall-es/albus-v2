@@ -11,7 +11,7 @@ export default function DoneStep() {
   const router = useRouter();
   const qc = useQueryClient();
   const cats = useQuery({ queryKey: ["categories"], queryFn: api.listCategories });
-  const slots = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
+  const slots = useQuery({ queryKey: ["slots"], queryFn: () => api.listSlots() });
   const invs = useQuery({ queryKey: ["invitations"], queryFn: api.listInvitations });
 
   const finish = useMutation({

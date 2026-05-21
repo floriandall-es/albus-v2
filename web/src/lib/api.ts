@@ -945,7 +945,11 @@ export const api = {
     request<void>(`/api/categories/${id}`, { method: "DELETE" }),
 
   // Slots
-  listSlots: () => request<Slot[]>("/api/slots"),
+  listSlots: (opts?: { mainTeamOnly?: boolean }) =>
+    request<Slot[]>(
+      "/api/slots"
+      + (opts?.mainTeamOnly ? "?main_team_only=true" : ""),
+    ),
   getSlot: (id: number) => request<Slot>(`/api/slots/${id}`),
   createSlot: (body: SlotInput) =>
     request<Slot>("/api/slots", { method: "POST", body: JSON.stringify(body) }),

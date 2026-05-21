@@ -56,7 +56,7 @@ const DAY_LABELS: { bit: number; short: string }[] = [
 
 export default function LeadActividadesPage() {
   const qc = useQueryClient();
-  const list = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
+  const list = useQuery({ queryKey: ["slots"], queryFn: () => api.listSlots() });
   const [editing, setEditing] = useState<Slot | "new" | null>(null);
 
   const del = useMutation({

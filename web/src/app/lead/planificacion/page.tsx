@@ -50,7 +50,7 @@ export default function LeadPlanificacionPage() {
     [schedules.data, period],
   );
 
-  const slots = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
+  const slots = useQuery({ queryKey: ["slots"], queryFn: () => api.listSlots() });
   const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   const detail = useQuery({

@@ -59,7 +59,7 @@ export default function MemberSubEquipoPage() {
     enabled: !!schedule && isPublishedForGroup,
   });
 
-  const slots = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
+  const slots = useQuery({ queryKey: ["slots"], queryFn: () => api.listSlots() });
   const groupSlots = useMemo(
     () => (slots.data ?? []).filter((s) => s.group_id === groupId),
     [slots.data, groupId],

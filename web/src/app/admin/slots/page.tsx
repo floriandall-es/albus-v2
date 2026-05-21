@@ -43,25 +43,35 @@ const STAFFING: { value: StaffingMode; label: string }[] = [
 
 export default function SlotsPage() {
   const qc = useQueryClient();
-  const list = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
+  // Main-team slots only. Sub-equipo slots belong to their lead;
+  // they're managed from the lead's /lead/actividades (and,
+  // separately, from a future /admin/groups/[id] flow). Distinct
+  // query key so the planning grid + team modal etc. can still
+  // request the full list under ["slots"] without colliding with
+  // our filtered view.
+  const list = useQuery({
+    queryKey: ["slots", "main-team"],
+    queryFn: () => api.listSlots({ mainTeamOnly: true }),
+  });
   const cats = useQuery({ queryKey: ["categories"], queryFn: api.listCategories });
   const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
-  const groups = useQuery({ queryKey: ["groups"], queryFn: api.listGroups });
   const [editing, setEditing] = useState<Slot | "new" | null>(null);
 
   const del = useMutation({
     mutationFn: (id: number) => api.deleteSlot(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["slots"] }),
   });
-  // Sprint 17: admin-controlled ordering. The endpoint returns the
-  // full reordered list; we drop it straight into the cache so the
-  // table updates without a refetch round-trip. queryKey must match
-  // what `list` uses above.
+  // Sprint 17: admin-controlled ordering. The endpoint returns
+  // the full reordered list (across the whole tenant). The
+  // active query here is filtered to main-team only, and other
+  // pages may use the unfiltered ["slots"] key — invalidate the
+  // prefix so every variant refetches with fresh positions
+  // rather than chosing the wrong cache shape via setQueryData.
   const move = useMutation({
     mutationFn: ({ id, direction }: { id: number; direction: "up" | "down" }) =>
       api.moveSlot(id, direction),
-    onSuccess: (data) => {
-      qc.setQueryData(["slots"], data);
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["slots"] });
       // The planning grid also needs the new positions next time it
       // refetches the schedule (slot_position is on Assignment now).
       qc.invalidateQueries({ queryKey: ["schedule"] });
@@ -99,7 +109,6 @@ export default function SlotsPage() {
                 <th className="px-4 py-2 font-medium">Días</th>
                 <th className="px-4 py-2 font-medium">Modo</th>
                 <th className="px-4 py-2 font-medium">Plazas</th>
-                <th className="px-4 py-2 font-medium">Sub-equipo</th>
                 <th className="px-4 py-2 font-medium">Equipo autorizado</th>
                 <th className="px-4 py-2 font-medium">Orden</th>
                 <th className="px-4 py-2 font-medium text-right">Acciones</th>
@@ -133,20 +142,6 @@ export default function SlotsPage() {
                         ? s.team_roles.reduce((a, r) => a + r.headcount, 0)
                           || s.headcount
                         : s.headcount}
-                  </td>
-                  <td className="px-4 py-2">
-                    {(() => {
-                      const g = (groups.data ?? []).find(
-                        (x) => x.id === s.group_id,
-                      );
-                      return g ? (
-                        <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700">
-                          {g.name}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">—</span>
-                      );
-                    })()}
                   </td>
                   <td className="px-4 py-2 text-gray-600">
                     {s.allowed_person_ids.length === 0 ? (
@@ -210,7 +205,12 @@ export default function SlotsPage() {
           initial={editing === "new" ? null : editing}
           categories={cats.data ?? []}
           team={team.data ?? []}
-          groups={groups.data ?? []}
+          // Sub-equipo slots are managed by the lead, not from
+          // here. Hand the dialog an empty list so the group
+          // selector hides automatically — admin can't
+          // accidentally create a slot that would immediately
+          // disappear from this view.
+          groups={[]}
           onClose={() => setEditing(null)}
         />
       )}

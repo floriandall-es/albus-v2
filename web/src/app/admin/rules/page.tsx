@@ -116,7 +116,7 @@ function SoftWeightPicker({
 }
 
 export default function RulesPage() {
-  const slots = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
+  const slots = useQuery({ queryKey: ["slots"], queryFn: () => api.listSlots() });
   const slotById = useMemo(() => {
     const m: Record<number, Slot> = {};
     (slots.data ?? []).forEach((s) => {

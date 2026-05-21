@@ -46,7 +46,7 @@ export default function AdminGroupPlanificacionPage() {
     [schedules.data, period],
   );
 
-  const slots = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
+  const slots = useQuery({ queryKey: ["slots"], queryFn: () => api.listSlots() });
   // The admin's default /api/slots is main-team-only; force-fetch
   // the group's slots by hitting the endpoint with a different
   // query key. We piggyback on the fact that the same endpoint

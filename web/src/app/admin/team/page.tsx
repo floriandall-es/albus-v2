@@ -329,7 +329,7 @@ function TeamEditDialog({
     Map<number, boolean>
   >(new Map());
 
-  const slotsQ = useQuery({ queryKey: ["slots"], queryFn: api.listSlots });
+  const slotsQ = useQuery({ queryKey: ["slots"], queryFn: () => api.listSlots() });
   const slots = useMemo(() => slotsQ.data ?? [], [slotsQ.data]);
 
   // Effective "is this person allowed on this activity?" — used

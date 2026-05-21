@@ -294,17 +294,30 @@ def _replace_allowed_persons(
 
 
 @router.get("/slots", response_model=list[SlotOut])
-def list_slots(ctx: RequestContext = Depends(get_current_context)) -> list[SlotOut]:
+def list_slots(
+    ctx: RequestContext = Depends(get_current_context),
+    main_team_only: bool = False,
+) -> list[SlotOut]:
     # Admin-controlled order (sprint 17): position is the primary
     # sort key, with name + id as deterministic tiebreakers in the
     # (rare) case two slots end up with the same position.
     #
-    # Group lead scope: only slots owned by their group. Tenant
-    # admin and plain members see everything.
+    # Scope filtering:
+    #   - Group lead: only slots owned by their group (forced;
+    #     they can't even see main-team slots via this endpoint).
+    #   - Tenant admin + plain members: all slots by default,
+    #     UNLESS the caller passes ?main_team_only=true, which
+    #     restricts to slots with group_id IS NULL. /admin/slots
+    #     uses this so sub-equipo slots don't appear in the
+    #     admin's main actividades list — sub-equipos are the
+    #     lead's responsibility, the admin manages them through
+    #     /admin/groups/[id] (still TODO at time of writing).
     scope = caller_scope(ctx)
     q = ctx.db.query(Slot).order_by(Slot.position, Slot.name, Slot.id)
     if scope.is_group_lead:
         q = q.filter(Slot.group_id == scope.group_id)
+    elif main_team_only:
+        q = q.filter(Slot.group_id.is_(None))
     return [_serialize(ctx, r) for r in q.all()]
 
 
@@ -471,40 +484,51 @@ def move_slot(
         raise HTTPException(
             status_code=422, detail="direction debe ser 'up' o 'down'"
         )
-    ordered = (
+    # Self-heal duplicate positions across the WHOLE tenant. The
+    # Sprint 17 reorder design assumes every Slot has a unique
+    # `position` value — swapping two integers is a no-op when
+    # they already match. Bulk imports (the legacy CSV migration
+    # on the alpha customer ran main-team slots 0..5 AND
+    # sub-equipo slots 0..6 in separate enumerations, producing
+    # 4 pairs of slots sharing position numbers) can produce ties
+    # that silently break the up/down arrows. Renumber to 0..N-1
+    # along the current sort order so subsequent swaps always
+    # have a real effect.
+    all_slots = (
         ctx.db.query(Slot)
         .order_by(Slot.position, Slot.name, Slot.id)
         .all()
     )
-    # Self-heal duplicate positions. The Sprint 17 reorder design
-    # assumes every slot in the tenant has a unique `position`
-    # value — swapping two integers is a no-op when they already
-    # match. Bulk imports (the legacy CSV migration on the alpha
-    # customer ran main-team slots 0..5 AND sub-equipo slots 0..6
-    # in separate enumerations, so 4 pairs of slots ended up
-    # sharing position numbers) can produce ties that silently
-    # break the up/down arrows. Renumber to 0..N-1 along the
-    # current sort order before doing the swap so the operation
-    # always has a real effect.
     seen: set[int] = set()
     has_duplicates = False
-    for s in ordered:
+    for s in all_slots:
         if s.position in seen:
             has_duplicates = True
             break
         seen.add(s.position)
     if has_duplicates:
-        for i, s in enumerate(ordered):
+        for i, s in enumerate(all_slots):
             s.position = i
         ctx.db.flush()
-    idx = next((i for i, s in enumerate(ordered) if s.id == target.id), -1)
+    # Neighbor search is SCOPED to slots in the same `group_id` as
+    # the target. Main-team slots (group_id IS NULL) only swap
+    # with other main-team slots; sub-equipo slots only swap with
+    # siblings in the same group. Without this, an admin clicking
+    # ↑ on a main-team slot could end up swapping with an
+    # invisible sub-equipo slot (the admin UI hides sub-equipo
+    # slots since their lead owns them), making the click look
+    # like a no-op even after the duplicate-position self-heal.
+    same_scope = [s for s in all_slots if s.group_id == target.group_id]
+    idx = next(
+        (i for i, s in enumerate(same_scope) if s.id == target.id), -1
+    )
     if idx == -1:
         raise HTTPException(status_code=404, detail="Slot not found")
     if payload.direction == "up" and idx == 0:
-        return [_serialize(ctx, s) for s in ordered]
-    if payload.direction == "down" and idx == len(ordered) - 1:
-        return [_serialize(ctx, s) for s in ordered]
-    neighbor = ordered[idx - 1 if payload.direction == "up" else idx + 1]
+        return [_serialize(ctx, s) for s in all_slots]
+    if payload.direction == "down" and idx == len(same_scope) - 1:
+        return [_serialize(ctx, s) for s in all_slots]
+    neighbor = same_scope[idx - 1 if payload.direction == "up" else idx + 1]
     target.position, neighbor.position = neighbor.position, target.position
     ctx.db.flush()
     new_order = (
