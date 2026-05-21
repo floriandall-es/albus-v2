@@ -387,8 +387,18 @@ class _Context:
         weeks = (d - rule.anchor_date).days // 7
         k = len(blocks)
         rank = rank_of_block[b_idx]
+        # `weeks_per_position` slows the week-to-week advance: each
+        # position holds the slot for N weeks before the rotation
+        # steps. Default 1 = historical behaviour (one position per
+        # week step). Within-week block-rotation is unaffected —
+        # daily-block rotations still rotate daily inside a week.
+        weeks_step = (
+            getattr(rule, "weeks_per_position", None) or 1
+        )
         # Python % is non-negative for negative dividends.
-        target_pos = positions_sorted[(rank + weeks * k) % p_count]
+        target_pos = positions_sorted[
+            (rank + (weeks // weeks_step) * k) % p_count
+        ]
         # Sort the team within a position by member.id so emission order
         # is deterministic and the same team always lands in the same
         # demand slot. (Members are pre-loaded ordered by (position, id)

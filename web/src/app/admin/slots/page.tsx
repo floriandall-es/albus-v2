@@ -285,6 +285,7 @@ function SlotDialog({
         ),
         strategy: "solver",
         anchor_date: null,
+        weeks_per_position: 1,
         weekly_pins: [],
         rotation_blocks: [],
         rotation_members: [],
@@ -647,6 +648,7 @@ function SlotDialog({
                     days_bitmap: 0,
                     strategy: "solver",
                     anchor_date: null,
+                    weeks_per_position: 1,
                     weekly_pins: [],
                     rotation_blocks: [],
                     rotation_members: [],
@@ -822,6 +824,10 @@ type RuleDraft = {
   days_bitmap: number;
   strategy: SlotRuleStrategy;
   anchor_date: string | null;
+  /** Multi-week rotation: each position holds for this many weeks
+   * before advancing. Default 1 (one position per week step). Only
+   * meaningful for strategy='rotation'. */
+  weeks_per_position: number;
   weekly_pins: { weekday: number; person_id: number }[];
   rotation_blocks: { position: number; days_bitmap: number }[];
   rotation_members: { position: number; person_id: number }[];
@@ -832,6 +838,7 @@ function ruleToDraft(r: SlotRule): RuleDraft {
     days_bitmap: r.days_bitmap,
     strategy: r.strategy,
     anchor_date: r.anchor_date,
+    weeks_per_position: r.weeks_per_position ?? 1,
     weekly_pins: r.weekly_pins.map((p) => ({
       weekday: p.weekday,
       person_id: p.person_id,
@@ -852,6 +859,8 @@ function draftToInput(r: RuleDraft): SlotRuleInput {
     days_bitmap: r.days_bitmap,
     strategy: r.strategy,
     anchor_date: r.strategy === "rotation" ? r.anchor_date : null,
+    weeks_per_position:
+      r.strategy === "rotation" ? r.weeks_per_position : 1,
     weekly_pins:
       r.strategy === "fixed_weekly"
         ? r.weekly_pins.filter((p) => r.days_bitmap & (1 << p.weekday))
@@ -1380,6 +1389,34 @@ function RotationEditor({
             ...ROT_PRESETS.map((p) => ({ value: p.value, label: p.label })),
           ]}
         />
+      </div>
+      <div className="mt-1">
+        <label className="block">
+          <span className="text-sm font-medium text-gray-700">
+            Cada cuántas semanas avanza la rotación
+            <InfoHint>
+              Por defecto 1: cada posición de la rotación cubre 1
+              semana antes de pasar a la siguiente persona. Con 2,
+              cada persona se queda 2 semanas seguidas antes de
+              relevar; con 4, un mes; etc. Útil para rotaciones
+              largas (guardia mensual, supervisión de planta) donde
+              cambiar cada semana es demasiado overhead.
+            </InfoHint>
+          </span>
+          <input
+            type="number"
+            min={1}
+            max={52}
+            value={rule.weeks_per_position}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (Number.isFinite(n) && n >= 1 && n <= 52) {
+                onChange({ weeks_per_position: n });
+              }
+            }}
+            className="mt-1 block w-32 rounded-md border border-gray-300 px-3 py-2 text-sm"
+          />
+        </label>
       </div>
       <div>
         <span className="text-xs font-medium text-gray-700">Bloques</span>

@@ -505,6 +505,10 @@ export type SlotRule = {
   days_bitmap: number;
   strategy: SlotRuleStrategy;
   anchor_date: string | null;
+  /** Multi-week rotation: each position holds the slot for this
+   * many weeks before advancing. Default 1 (one position per
+   * week step). Only meaningful for strategy='rotation'. */
+  weeks_per_position: number;
   weekly_pins: SlotRuleWeeklyPin[];
   rotation_blocks: SlotRuleRotationBlock[];
   rotation_members: SlotRuleRotationMember[];
@@ -514,6 +518,7 @@ export type SlotRuleInput = {
   days_bitmap: number;
   strategy: SlotRuleStrategy;
   anchor_date?: string | null;
+  weeks_per_position?: number;
   weekly_pins?: { weekday: number; person_id: number }[];
   rotation_blocks?: { position: number; days_bitmap: number }[];
   rotation_members?: { position: number; person_id: number }[];

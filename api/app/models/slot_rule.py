@@ -27,6 +27,10 @@ class SlotRule(Base):
             "days_bitmap > 0 AND days_bitmap <= 127",
             name="ck_slot_rules_bitmap_range",
         ),
+        CheckConstraint(
+            "weeks_per_position >= 1",
+            name="ck_slot_rules_weeks_per_position_positive",
+        ),
         UniqueConstraint("slot_id", "position", name="uq_slot_rules_slot_position"),
     )
 
@@ -41,6 +45,14 @@ class SlotRule(Base):
     days_bitmap: Mapped[int] = mapped_column(Integer, nullable=False)
     strategy: Mapped[str] = mapped_column(String(16), nullable=False)
     anchor_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Rotation cycle multiplier. Each position holds the slot for
+    # this many weeks before the rotation advances. Default 1 is
+    # the historical behaviour (one position per week step). Only
+    # consulted when strategy='rotation'; ignored for other
+    # strategies. See scheduler.rotation_persons_for for the maths.
+    weeks_per_position: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

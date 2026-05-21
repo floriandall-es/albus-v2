@@ -26,6 +26,13 @@ class SlotRuleIn(BaseModel):
     days_bitmap: int = Field(ge=1, le=127)
     strategy: SlotRuleStrategy
     anchor_date: date | None = None
+    # Multi-week rotation: each position holds for N weeks before
+    # advancing. Default 1 = the rotation cycles every block step
+    # (historical behaviour). Only honoured for strategy='rotation';
+    # ignored on save for other strategies. Cap at 52 — a year-long
+    # hold is the longest semi-sensible value; anything larger is
+    # almost certainly a typo.
+    weeks_per_position: int = Field(default=1, ge=1, le=52)
     weekly_pins: list[WeeklyPinIn] = Field(default_factory=list)
     rotation_blocks: list[RotationBlockIn] = Field(default_factory=list)
     rotation_members: list[RotationMemberIn] = Field(default_factory=list)
@@ -60,6 +67,7 @@ class SlotRuleOut(BaseModel):
     days_bitmap: int
     strategy: SlotRuleStrategy
     anchor_date: date | None
+    weeks_per_position: int = 1
     weekly_pins: list[WeeklyPinOut]
     rotation_blocks: list[RotationBlockOut]
     rotation_members: list[RotationMemberOut]

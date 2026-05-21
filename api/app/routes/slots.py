@@ -164,6 +164,7 @@ def _serialize(ctx: RequestContext, slot: Slot) -> SlotOut:
             days_bitmap=r.days_bitmap,
             strategy=r.strategy,  # type: ignore[arg-type]
             anchor_date=r.anchor_date,
+            weeks_per_position=r.weeks_per_position,
             weekly_pins=[
                 WeeklyPinOut(id=p.id, weekday=p.weekday, person_id=p.person_id)
                 for p in pins_by_rule.get(r.id, [])
@@ -799,6 +800,11 @@ def replace_slot_rules(
             days_bitmap=r.days_bitmap,
             strategy=r.strategy,
             anchor_date=r.anchor_date if r.strategy == "rotation" else None,
+            # weeks_per_position only matters for rotation; other
+            # strategies store the default 1 (harmless, ignored).
+            weeks_per_position=(
+                r.weeks_per_position if r.strategy == "rotation" else 1
+            ),
         )
         ctx.db.add(rule)
         ctx.db.flush()
