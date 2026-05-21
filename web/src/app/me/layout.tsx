@@ -230,7 +230,11 @@ export default function MeLayout({ children }: { children: ReactNode }) {
           </button>
         </div>
       </aside>
-      <div className="flex-1 flex flex-col">
+      {/* min-w-0 stops wide content (planning grid, recharts
+          ResponsiveContainer) from pushing this column past
+          the viewport edge — see /admin/layout for the long
+          explanation. */}
+      <div className="flex-1 flex flex-col min-w-0">
         <EmailVerifyBanner />
         <main className="flex-1 p-8">{children}</main>
       </div>
