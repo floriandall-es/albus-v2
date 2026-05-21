@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
+  personLastName,
   type Category,
   type DaysApplied,
   type Group,
@@ -415,7 +416,14 @@ function SlotDialog({
     if (newIds.size === 0) return true;
     const removed = [...previousIds].filter((id) => !newIds.has(id));
     if (removed.length === 0) return true;
-    const personNameById = new Map(team.map((m) => [m.person_id, m.person_name]));
+    // Last-name labels for the cascade-removal confirm dialog;
+    // consistent with the pickers above.
+    const personNameById = new Map(
+      team.map((m) => [
+        m.person_id,
+        personLastName({ name: m.person_name }),
+      ]),
+    );
     const lines: string[] = [];
     for (const pid of removed) {
       const pinDays: string[] = [];
@@ -1232,7 +1240,7 @@ function FixedWeeklyEditor({
                     }
                     options={team.map((m) => ({
                       value: m.person_id,
-                      label: m.person_name,
+                      label: personLastName({ name: m.person_name }),
                     }))}
                   />
                 </div>
@@ -1503,7 +1511,10 @@ function RotationEditor({
                     t.person_id === m.person_id ||
                     !otherPersonsInRule.has(t.person_id),
                   )
-                  .map((t) => ({ value: t.person_id, label: t.person_name }));
+                  .map((t) => ({
+                    value: t.person_id,
+                    label: personLastName({ name: t.person_name }),
+                  }));
                 return (
                   <div
                     key={`${pos}-${m.person_id}`}
@@ -1723,7 +1734,7 @@ function AllowedPersonsSection({
                       className="h-4 w-4 rounded border-gray-300"
                     />
                     <span className={isUnrestricted ? "text-gray-700" : "text-gray-900"}>
-                      {m.person_name}
+                      {personLastName({ name: m.person_name })}
                     </span>
                     {m.category_name && (
                       <span className="text-xs text-gray-500">
