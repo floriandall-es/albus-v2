@@ -1128,7 +1128,15 @@ def _solve_cpsat(
                 )
             return
 
-        if len(configured) > head:
+        # Cap configured > head for rotation only. fixed_weekly is
+        # the "admin knows who's on duty that day" strategy — they're
+        # explicitly allowed to pin more people than the slot's
+        # default headcount for individual weekdays (the API + UI
+        # accept this since the previous día-fijo relaxation). The
+        # scheduler emits one assignment per pin so all of them show
+        # up in the planning grid; the headcount value just becomes
+        # the lower-bound expectation, not an upper cap.
+        if len(configured) > head and rule.strategy != "fixed_weekly":
             logger.warning(
                 "Configured team larger than headcount: slot=%s date=%s "
                 "configured=%d head=%d — taking first %d (deterministic)",
