@@ -17,6 +17,12 @@ export default function SignupPage() {
   // tenant; later drives the post-signup checklist (no nav at
   // signup time — the admin lands in /onboarding regardless).
   const [hasSubteams, setHasSubteams] = useState<boolean | null>(null);
+  // Opt-in module flag. Most services don't run a transplant
+  // program, so we default false and let the few that do tick
+  // it. Unlike has_subteams, this is a single optional checkbox
+  // (not a required Yes/No) — leaving it unchecked is the
+  // common case and shouldn't read as "answer required."
+  const [transplantsEnabled, setTransplantsEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -33,6 +39,7 @@ export default function SignupPage() {
         password,
         accept_terms: acceptTerms,
         has_subteams: hasSubteams === true,
+        transplants_enabled: transplantsEnabled,
       });
       setToken(res.access_token);
       // Fresh tenant — always go straight into the onboarding wizard.
@@ -119,6 +126,23 @@ export default function SignupPage() {
                 después.
               </p>
             </fieldset>
+            <label className="flex items-start gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={transplantsEnabled}
+                onChange={(e) => setTransplantsEnabled(e.target.checked)}
+                className="mt-0.5 shrink-0"
+              />
+              <span>
+                <span className="font-medium">¿Tu servicio realiza trasplantes?</span>
+                <span className="block text-xs text-gray-500 mt-0.5">
+                  Activa el módulo de trasplantes — registro de
+                  casos (EXPLANTE / IMPLANTE), estadísticas y
+                  filtros. Puedes dejarlo en blanco si no
+                  aplica.
+                </span>
+              </span>
+            </label>
             <label className="flex items-start gap-2 text-sm text-gray-700">
               <input
                 type="checkbox"

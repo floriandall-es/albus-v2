@@ -28,6 +28,11 @@ class SignupRequest(BaseModel):
     # checklist (a "Configura tus sub-equipos" card appears only when
     # this is True).
     has_subteams: bool = False
+    # Opt-in module flag for the transplant case log. Checked at
+    # signup by services that actually run a transplant program;
+    # ignored (left false) by everyone else, which hides the
+    # /admin/trasplantes UI + 404s /api/transplants.
+    transplants_enabled: bool = False
 
 
 class LoginRequest(BaseModel):
@@ -87,6 +92,10 @@ class TenantOut(BaseModel):
     # a "Configura tus sub-equipos" card. False by default — admins
     # who change their mind later still have /admin/groups available.
     has_subteams: bool = False
+    # Opt-in module flag: when true, the "Trasplantes" sidebar
+    # entry appears and /api/transplants is reachable. False by
+    # default — most services don't run a transplant program.
+    transplants_enabled: bool = False
     # Per-area "I'm done configuring" timestamps. NULL = pending,
     # surfaced in the Inicio checklist; non-null = admin marked it
     # done, card disappears and the first-visit banner stops

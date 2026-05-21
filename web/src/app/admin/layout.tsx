@@ -147,7 +147,20 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                 {section.title}
               </div>
               <div className="space-y-0.5">
-                {section.items.map((item) => {
+                {section.items
+                  .filter((item) => {
+                    // Module-gated entries: trasplantes only shows
+                    // when the tenant opted into the module at
+                    // signup. Most tenants never see it.
+                    if (
+                      item.href === "/admin/trasplantes"
+                      && !me.data?.current_tenant.transplants_enabled
+                    ) {
+                      return false;
+                    }
+                    return true;
+                  })
+                  .map((item) => {
                   const Icon = item.icon;
                   // /admin (Inicio) is a prefix of every other admin
                   // route, so use an exact match for it specifically —

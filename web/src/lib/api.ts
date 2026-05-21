@@ -50,6 +50,11 @@ export type Tenant = {
    * sub-equipos?". Drives whether /admin Inicio surfaces a
    * sub-equipos setup card. False by default. */
   has_subteams: boolean;
+  /** Opt-in module: trasplantes (case log + stats). False for
+   * most tenants; the customer flips it on at signup if their
+   * service runs a transplant program. When false, the
+   * "Trasplantes" sidebar entry hides and /api/transplants 404s. */
+  transplants_enabled: boolean;
   /** Per-area "I'm done configuring" timestamps. Null = pending
    * (Inicio shows the card, subpage shows the first-visit banner);
    * non-null = admin marked it done. Toggled via
@@ -816,6 +821,11 @@ export const api = {
      * tenant; later drives whether /admin Inicio surfaces a
      * sub-equipos setup card. */
     has_subteams: boolean;
+    /** Opt-in module checkbox: "¿Tu servicio realiza
+     * trasplantes?". When true, /admin/trasplantes + its stats
+     * dashboard become visible; otherwise the feature stays
+     * dormant. Most tenants leave this false. */
+    transplants_enabled?: boolean;
   }) => request<AuthResponse>("/api/signup", { method: "POST", body: JSON.stringify(body) }),
 
   // Login is conditional on how many memberships the person has:

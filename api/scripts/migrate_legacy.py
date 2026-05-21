@@ -117,6 +117,10 @@ COUNTRY_CODE = "ES"
 REGION_CODE = "ES-VC"
 PRESET_KIND = "quirurgico"
 HAS_SUBTEAMS = True
+# The customer runs the regional lung transplant program — turn
+# on the trasplantes module so the imported case log surfaces in
+# /admin/trasplantes from day one.
+TRANSPLANTS_ENABLED = True
 
 # Categorías we create. Most surgeons in the source data have no
 # explicit categoría — we put them all under "Adjunto" and the
@@ -405,6 +409,7 @@ def run_migration(db: Session) -> dict[str, Any]:
         region_code=REGION_CODE,
         preset_kind=PRESET_KIND,
         has_subteams=HAS_SUBTEAMS,
+        transplants_enabled=TRANSPLANTS_ENABLED,
         onboarding_completed_at=datetime.now(timezone.utc),
     )
     db.add(tenant)

@@ -45,6 +45,17 @@ def _require_admin(ctx: RequestContext) -> None:
         )
 
 
+def _require_transplants_enabled(ctx: RequestContext) -> None:
+    """Trasplantes is an opt-in module. When the tenant didn't
+    enable it (the default for most clinical teams), we 404 the
+    entire surface — the frontend hides the sidebar entry anyway,
+    so the only way you'd hit these endpoints with it disabled
+    is by manually probing them. 404 over 403 because we don't
+    want to leak which tenants HAVE the feature."""
+    if not ctx.tenant.transplants_enabled:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+
 def _person_name_map(ctx: RequestContext, person_ids: set[int]) -> dict[int, str]:
     """Resolve a set of person ids to display names in one query."""
     if not person_ids:
@@ -215,6 +226,7 @@ def list_transplants(
     limit: int = Query(default=500, ge=1, le=2000),
 ) -> list[TransplantCaseOut]:
     _require_admin(ctx)
+    _require_transplants_enabled(ctx)
     q = ctx.db.query(TransplantCase)
     if from_date is not None:
         q = q.filter(TransplantCase.occurred_on >= from_date)
@@ -272,6 +284,7 @@ def transplants_stats(
     to_date: date | None = Query(default=None, alias="to"),
 ) -> TransplantStatsOut:
     _require_admin(ctx)
+    _require_transplants_enabled(ctx)
     # Range filter applied at the case level — months/surgeon
     # rollups query off the procedure rows of the matching cases.
     case_q = ctx.db.query(TransplantCase.id)
@@ -381,6 +394,7 @@ def get_transplant(
     ctx: RequestContext = Depends(get_current_context),
 ) -> TransplantCaseOut:
     _require_admin(ctx)
+    _require_transplants_enabled(ctx)
     case = _get_or_404(ctx, case_id)
     return _serialize_many(ctx, [case])[0]
 
@@ -395,6 +409,7 @@ def create_transplant(
     ctx: RequestContext = Depends(get_current_context),
 ) -> TransplantCaseOut:
     _require_admin(ctx)
+    _require_transplants_enabled(ctx)
     _validate_person_ids(ctx, _collect_person_ids(payload.procedures))
     case = TransplantCase(
         tenant_id=ctx.tenant.id,
@@ -421,6 +436,7 @@ def update_transplant(
     ctx: RequestContext = Depends(get_current_context),
 ) -> TransplantCaseOut:
     _require_admin(ctx)
+    _require_transplants_enabled(ctx)
     case = _get_or_404(ctx, case_id)
     _validate_person_ids(ctx, _collect_person_ids(payload.procedures))
     case.external_case_id = (
@@ -447,6 +463,7 @@ def delete_transplant(
     ctx: RequestContext = Depends(get_current_context),
 ) -> None:
     _require_admin(ctx)
+    _require_transplants_enabled(ctx)
     case = _get_or_404(ctx, case_id)
     ctx.db.delete(case)
     ctx.db.flush()
