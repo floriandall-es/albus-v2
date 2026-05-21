@@ -4,18 +4,29 @@ thoracic-surgery scheduler).
 Reads the Cloud SQL Studio CSV exports from
 `data/legacy-migration/` and builds a fresh tenant containing:
 
-  - The customer's 9 user accounts (admin + sub-equipo lead + 7
-    surgeons), 6 neumólogos (no source user accounts), and 8
-    residents (no source user accounts). All created as
-    `pendientes` (NULL password) so they activate via the
-    existing invitation flow post-cutover.
-  - Main team membership: 7 surgeons (categoría Adjunto) + 6
-    neumólogos (categoría Neumólogo). Neumólogos are scheduled
-    in surgeon_shifts via the `neumologo` role; the source
-    `assignee_name` field carries their last name.
-  - One sub-equipo "Residentes" with the residentes user
-    account as its lead and the 8 residents as members
-    (categoría Residente).
+  - 6 surgeons (categoría Adjunto, from the source user accounts),
+    6 neumólogos (categoría Neumólogo, no source user accounts),
+    and 8 residents (categoría Residente, no source user
+    accounts). All created as `pendientes` (NULL password) so
+    they activate via the existing invitation flow post-cutover.
+    Neumólogos are scheduled in surgeon_shifts via the
+    `neumologo` role; the source `assignee_name` field carries
+    their last name. (The surgeon Pastor and the neumólogo
+    Pastor are different people per the customer — the surgeon
+    Pastor is an inactive profile in user_surgeon_map with no
+    user account; the neumólogo Pastor lands as a real
+    main-team person.)
+  - Two old-system shared logins are dropped: `test@gmail.com`
+    (the standalone "admin" account) and `residentes@local.test`
+    (the standalone sub-equipo lead). Trivu's model lets one
+    Person carry both clinical and management capabilities, so
+    instead we MERGE: surgeon Sales gets `roles=["admin",
+    "member"]` on top of their normal Adjunto membership, and
+    resident Gascón becomes the Residentes sub-equipo lead.
+    Result: one human → one login, everywhere.
+  - One sub-equipo "Residentes" with resident Gascón as its
+    lead (Group.lead_membership_id) and the 8 residents as
+    members (categoría Residente).
   - 9 main-team slots and 7 sub-equipo slots, named from the
     source role enum (`consulta`, `quirofano_1`, `implante_1`,
     `neumologo`, etc.).
@@ -100,6 +111,24 @@ CATEGORY_RESIDENTE = "Residente"
 CATEGORY_NEUMOLOGO = "Neumólogo"
 
 SUBTEAM_NAME = "Residentes"
+
+# In the legacy system, "admin" and "Residentes" were shared
+# logins decoupled from any clinical person. Trivu merges those
+# powers into the real humans' memberships so the customer has
+# one identity per person.
+#
+#   - The surgeon whose source username matches this gets
+#     roles=["admin", "member"] (clinical + admin) — the source
+#     `test@gmail.com` admin account is dropped.
+#   - The resident whose display_name matches this becomes
+#     Group.lead_membership_id of the Residentes sub-equipo — the
+#     source `residentes@local.test` account is dropped.
+#
+# Both source rows (user_id=1 ADMIN and user_id=8 RESIDENT_ADMIN)
+# are skipped by the users loop via DROP_SOURCE_USER_IDS.
+ADMIN_INHERITS_SURGEON_USERNAME = "Sales"
+SUBTEAM_LEAD_RESIDENT_DISPLAY_NAME = "Gascón"
+DROP_SOURCE_USER_IDS = {"1", "8"}
 
 
 # ---------------------------------------------------------------------------
@@ -330,20 +359,26 @@ def run_migration(db: Session) -> dict[str, Any]:
 
     # ------------------------------------------------------------------
     # 4. Persons + Memberships from `users` table.
-    #    Build indexes to resolve shift FKs later.
+    #    Build indexes to resolve shift FKs later. The two shared
+    #    logins (admin, Residentes) are dropped here; their
+    #    powers are merged into real clinical memberships below.
     # ------------------------------------------------------------------
     # source user_id → Person row + Membership row
     person_by_user_id: dict[str, Person] = {}
     membership_by_user_id: dict[str, Membership] = {}
 
-    # Find the "Residentes" user so we can mark them as lead later.
-    residentes_user = None
+    # Track Sales's membership so we can assert we found them
+    # before the merged-admin claim is true.
+    admin_inheritor_found = False
+    users_dropped = 0
 
     for u in src_users:
+        if u["id"] in DROP_SOURCE_USER_IDS:
+            users_dropped += 1
+            continue
         first, last = split_name(u["name"])
-        role = u.get("role", "")
-        is_admin = role == "ADMIN"
-        is_resident_admin = role == "RESIDENT_ADMIN"
+        username = u.get("username", "")
+        is_admin_inheritor = username == ADMIN_INHERITS_SURGEON_USERNAME
         # All migrated users start as pendientes — source hashes are
         # SHA-256, not bcrypt, so we can't reuse them. They activate
         # post-cutover via the standard invitation accept flow.
@@ -361,35 +396,43 @@ def run_migration(db: Session) -> dict[str, Any]:
         ms = Membership(
             tenant_id=tenant.id,
             person_id=person.id,
-            roles=["admin"] if is_admin else ["member"],
-            category_id=(
-                None
-                if is_admin or is_resident_admin
-                else cat_adjunto.id
-            ),
+            # Sales gets BOTH admin and member: admin powers (the
+            # /admin sidebar, planning tools) layered on top of a
+            # normal Adjunto clinical membership. They're still
+            # scheduled by the solver like any other surgeon.
+            roles=["admin", "member"] if is_admin_inheritor else ["member"],
+            category_id=cat_adjunto.id,
             fte_pct=100,
         )
         db.add(ms)
         db.flush()
         membership_by_user_id[u["id"]] = ms
+        if is_admin_inheritor:
+            admin_inheritor_found = True
 
-        if is_resident_admin:
-            residentes_user = u
+    if not admin_inheritor_found:
+        raise RuntimeError(
+            f"Could not find a source surgeon with username "
+            f"'{ADMIN_INHERITS_SURGEON_USERNAME}' to inherit the "
+            f"admin role. Update ADMIN_INHERITS_SURGEON_USERNAME "
+            f"or check the users CSV."
+        )
 
-    report["counts"]["persons_from_users"] = len(src_users)
-    report["counts"]["memberships_from_users"] = len(src_users)
+    report["counts"]["persons_from_users"] = len(src_users) - users_dropped
+    report["counts"]["memberships_from_users"] = len(src_users) - users_dropped
+    report["skipped"]["users_merged_into_clinical_memberships"] = users_dropped
 
     # ------------------------------------------------------------------
-    # 5. Residentes sub-equipo + its lead
+    # 5. Residentes sub-equipo. Lead is one of the residents (see
+    #    SUBTEAM_LEAD_RESIDENT_DISPLAY_NAME) — we know who but not
+    #    their membership id yet, so we create the Group with
+    #    lead_membership_id=None and back-fill it in step 6b once
+    #    the residents loop has run.
     # ------------------------------------------------------------------
     group = Group(
         tenant_id=tenant.id,
         name=SUBTEAM_NAME,
-        lead_membership_id=(
-            membership_by_user_id[residentes_user["id"]].id
-            if residentes_user
-            else None
-        ),
+        lead_membership_id=None,
     )
     db.add(group)
     db.flush()
@@ -446,6 +489,10 @@ def run_migration(db: Session) -> dict[str, Any]:
     #     email → placeholder.
     # ------------------------------------------------------------------
     person_by_resident_id: dict[str, Person] = {}
+    chief_resident_lead_membership: Membership | None = None
+    chief_resident_target_lastname = normalize_last_name(
+        SUBTEAM_LEAD_RESIDENT_DISPLAY_NAME
+    )
     for r in src_residents:
         display = r["display_name"]
         first, last = split_name(display)
@@ -474,6 +521,19 @@ def run_migration(db: Session) -> dict[str, Any]:
         )
         db.add(ms)
         db.flush()
+        if normalize_last_name(display) == chief_resident_target_lastname:
+            chief_resident_lead_membership = ms
+
+    if chief_resident_lead_membership is None:
+        raise RuntimeError(
+            f"Could not find a resident with display_name "
+            f"'{SUBTEAM_LEAD_RESIDENT_DISPLAY_NAME}' to make the "
+            f"Residentes sub-equipo lead. Update "
+            f"SUBTEAM_LEAD_RESIDENT_DISPLAY_NAME or check the "
+            f"residents CSV."
+        )
+    group.lead_membership_id = chief_resident_lead_membership.id
+    db.flush()
 
     report["counts"]["persons_from_residents"] = len(src_residents)
     report["counts"]["memberships_from_residents"] = len(src_residents)
