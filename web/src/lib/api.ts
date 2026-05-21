@@ -1852,10 +1852,15 @@ export type TransplantStatsMonth = {
 export type TransplantStatsSurgeon = {
   person_id: number;
   person_name: string;
+  /** Sum of explante_primary + implante_primary. Drives the
+   * default sort on the page. */
   primary_count: number;
+  /** Sum of explante_secondary + implante_secondary. */
   secondary_count: number;
-  explante_count: number;
-  implante_count: number;
+  explante_primary: number;
+  explante_secondary: number;
+  implante_primary: number;
+  implante_secondary: number;
 };
 
 export type TransplantStats = {

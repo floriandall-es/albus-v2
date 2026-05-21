@@ -97,14 +97,25 @@ class TransplantStatsMonthOut(BaseModel):
 
 class TransplantStatsSurgeonOut(BaseModel):
     """One row in the surgeon-participation table. Counts are
-    over the full requested range (default = all time)."""
+    over the full requested range (default = all time).
+
+    Each procedure attribution is split by both role (primary vs
+    secondary) AND type (explante vs implante), giving four
+    independent buckets. The frontend renders two charts — one
+    per type — using {explante_primary, explante_secondary} and
+    {implante_primary, implante_secondary}. `primary_count` and
+    `secondary_count` are kept as convenience sums (each is the
+    sum of its two type-specific siblings).
+    """
 
     person_id: int
     person_name: str
     primary_count: int
     secondary_count: int
-    explante_count: int
-    implante_count: int
+    explante_primary: int
+    explante_secondary: int
+    implante_primary: int
+    implante_secondary: int
 
 
 class TransplantStatsOut(BaseModel):

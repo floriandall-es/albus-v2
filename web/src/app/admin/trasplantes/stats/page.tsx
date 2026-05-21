@@ -51,15 +51,56 @@ export default function TrasplantesStatsPage() {
 
   const data = stats.data;
 
-  // Max primary+secondary across all surgeons, used as the
-  // domain for the participation bars so widths stay comparable.
-  const maxSurgeonBarValue = useMemo(() => {
-    if (!data) return 1;
-    return Math.max(
-      1,
-      ...data.surgeons.map((s) => s.primary_count + s.secondary_count),
-    );
+  // Per-type horizontal-bar data. Each surgeon contributes
+  // {primary, secondary} for the bar segments and a precomputed
+  // last-name display label. Sorted independently per chart so
+  // an admin who's strong on explantes but weak on implantes
+  // (or vice versa) doesn't get hidden by the global sort.
+  const explanteRows = useMemo(() => {
+    if (!data) return [] as SurgeonBarRow[];
+    return data.surgeons
+      .map((s) => ({
+        person_id: s.person_id,
+        display_name: personLastName({ name: s.person_name }),
+        primary: s.explante_primary,
+        secondary: s.explante_secondary,
+      }))
+      .filter((r) => r.primary + r.secondary > 0)
+      .sort(
+        (a, b) =>
+          b.primary - a.primary
+          || b.secondary - a.secondary
+          || a.display_name.localeCompare(b.display_name),
+      );
   }, [data]);
+  const implanteRows = useMemo(() => {
+    if (!data) return [] as SurgeonBarRow[];
+    return data.surgeons
+      .map((s) => ({
+        person_id: s.person_id,
+        display_name: personLastName({ name: s.person_name }),
+        primary: s.implante_primary,
+        secondary: s.implante_secondary,
+      }))
+      .filter((r) => r.primary + r.secondary > 0)
+      .sort(
+        (a, b) =>
+          b.primary - a.primary
+          || b.secondary - a.secondary
+          || a.display_name.localeCompare(b.display_name),
+      );
+  }, [data]);
+
+  // Single x-axis maximum across BOTH charts so the bars are
+  // visually comparable between explantes and implantes (e.g.
+  // an "I do 50 explantes" bar should look exactly twice as
+  // wide as a "25 explantes" bar AND a "25 implantes" bar).
+  const maxBarValue = useMemo(() => {
+    const all = [...explanteRows, ...implanteRows].map(
+      (r) => r.primary + r.secondary,
+    );
+    return Math.max(1, ...all);
+  }, [explanteRows, implanteRows]);
 
   return (
     <>
@@ -227,81 +268,139 @@ export default function TrasplantesStatsPage() {
             </div>
           </Card>
 
-          {/* SURGEON PARTICIPATION — horizontal stacked bars.
-              Reads like a leaderboard. Width is normalised to
-              the busiest surgeon so smaller bars stay comparable
-              instead of all running to the edge. */}
-          <Card>
-            <div className="p-5">
-              <div className="mb-1 flex items-baseline justify-between">
-                <h3 className="text-sm font-semibold text-gray-800">
-                  Participación por cirujano
-                </h3>
-                <div className="flex items-center gap-3 text-[11px] text-gray-500">
-                  <LegendDot color="#0d9488" label="Cirujano principal" />
-                  <LegendDot color="#5eead4" label="Segundo cirujano" />
-                </div>
-              </div>
-              <p className="mb-4 text-xs text-gray-500">
-                Procedimientos en los que cada cirujano aparece como
-                principal o segundo. Ordenado por principal.
-              </p>
-              <ul className="space-y-3">
-                {data.surgeons.map((s) => {
-                  const total = s.primary_count + s.secondary_count;
-                  const primaryPct =
-                    (s.primary_count / maxSurgeonBarValue) * 100;
-                  const secondaryPct =
-                    (s.secondary_count / maxSurgeonBarValue) * 100;
-                  return (
-                    <li key={s.person_id} className="grid grid-cols-[140px_1fr_auto] items-center gap-3">
-                      <div className="truncate text-sm font-medium text-gray-800">
-                        {personLastName({ name: s.person_name })}
-                      </div>
-                      <div className="relative h-6 rounded-md bg-gray-100">
-                        <div
-                          className="absolute inset-y-0 left-0 flex items-center rounded-l-md bg-brand-600 px-2 text-[11px] font-semibold text-white"
-                          style={{ width: `${primaryPct}%` }}
-                          title={`Principal: ${s.primary_count}`}
-                        >
-                          {s.primary_count > 0
-                          && primaryPct > 6
-                          && s.primary_count}
-                        </div>
-                        <div
-                          className="absolute inset-y-0 flex items-center bg-brand-300 px-2 text-[11px] font-medium text-brand-900"
-                          style={{
-                            left: `${primaryPct}%`,
-                            width: `${secondaryPct}%`,
-                            borderTopRightRadius:
-                              primaryPct + secondaryPct >= 99 ? 6 : 0,
-                            borderBottomRightRadius:
-                              primaryPct + secondaryPct >= 99 ? 6 : 0,
-                          }}
-                          title={`Segundo: ${s.secondary_count}`}
-                        >
-                          {s.secondary_count > 0
-                          && secondaryPct > 6
-                          && s.secondary_count}
-                        </div>
-                      </div>
-                      <div className="text-right text-xs tabular-nums">
-                        <span className="font-semibold text-gray-900">
-                          {total}
-                        </span>
-                        <span className="ml-1 text-gray-400">
-                          ({s.explante_count}E / {s.implante_count}I)
-                        </span>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          </Card>
+          {/* SURGEON PARTICIPATION — split into two cards, one
+              per procedure type. Bars share a global x-axis max
+              so widths stay comparable between the two charts
+              (a 50-explante bar matches a 50-implante bar). */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <SurgeonChart
+              title="Participación en explantes"
+              rows={explanteRows}
+              max={maxBarValue}
+              accent="amber"
+            />
+            <SurgeonChart
+              title="Participación en implantes"
+              rows={implanteRows}
+              max={maxBarValue}
+              accent="teal"
+            />
+          </div>
         </div>
       )}
     </>
+  );
+}
+
+type SurgeonBarRow = {
+  person_id: number;
+  display_name: string;
+  primary: number;
+  secondary: number;
+};
+
+/** Horizontal stacked bar chart, one row per surgeon. Reused for
+ * the explantes and implantes views — same layout, different
+ * accent colour. Bars are sized against the shared global max
+ * so a 50-explante bar is visually as wide as a 50-implante bar. */
+function SurgeonChart({
+  title,
+  rows,
+  max,
+  accent,
+}: {
+  title: string;
+  rows: SurgeonBarRow[];
+  max: number;
+  accent: "amber" | "teal";
+}) {
+  const palette =
+    accent === "amber"
+      ? {
+          primary: "bg-amber-500 text-white",
+          primaryHex: "#f59e0b",
+          secondary: "bg-amber-200 text-amber-900",
+          secondaryHex: "#fde68a",
+        }
+      : {
+          primary: "bg-brand-600 text-white",
+          primaryHex: "#0d9488",
+          secondary: "bg-brand-300 text-brand-900",
+          secondaryHex: "#5eead4",
+        };
+  return (
+    <Card>
+      <div className="p-5">
+        <div className="mb-1 flex items-baseline justify-between">
+          <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
+          <div className="flex items-center gap-3 text-[11px] text-gray-500">
+            <LegendDot color={palette.primaryHex} label="Principal" />
+            <LegendDot color={palette.secondaryHex} label="Segundo" />
+          </div>
+        </div>
+        <p className="mb-4 text-xs text-gray-500">
+          Ordenado por principal.
+        </p>
+        {rows.length === 0 ? (
+          <p className="text-xs text-gray-400">
+            Sin participación en este rango.
+          </p>
+        ) : (
+          <ul className="space-y-2.5">
+            {rows.map((r) => {
+              const primaryPct = (r.primary / max) * 100;
+              const secondaryPct = (r.secondary / max) * 100;
+              const total = r.primary + r.secondary;
+              const fillsFull = primaryPct + secondaryPct >= 99;
+              return (
+                <li
+                  key={r.person_id}
+                  className="grid grid-cols-[100px_1fr_56px] items-center gap-3"
+                >
+                  <div className="truncate text-sm font-medium text-gray-800">
+                    {r.display_name}
+                  </div>
+                  <div className="relative h-6 rounded-md bg-gray-100">
+                    {r.primary > 0 && (
+                      <div
+                        className={
+                          "absolute inset-y-0 left-0 flex items-center rounded-l-md px-2 text-[11px] font-semibold "
+                          + palette.primary
+                        }
+                        style={{ width: `${primaryPct}%` }}
+                        title={`Principal: ${r.primary}`}
+                      >
+                        {primaryPct > 6 && r.primary}
+                      </div>
+                    )}
+                    {r.secondary > 0 && (
+                      <div
+                        className={
+                          "absolute inset-y-0 flex items-center px-2 text-[11px] font-medium "
+                          + palette.secondary
+                        }
+                        style={{
+                          left: `${primaryPct}%`,
+                          width: `${secondaryPct}%`,
+                          borderTopRightRadius: fillsFull ? 6 : 0,
+                          borderBottomRightRadius: fillsFull ? 6 : 0,
+                        }}
+                        title={`Segundo: ${r.secondary}`}
+                      >
+                        {secondaryPct > 6 && r.secondary}
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-right text-xs font-semibold tabular-nums text-gray-900">
+                    {total}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </Card>
   );
 }
 

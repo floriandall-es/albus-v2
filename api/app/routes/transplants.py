@@ -338,22 +338,23 @@ def transplants_stats(
 
     # Surgeon participation. Aggregate primary / secondary / type
     # counts in one pass.
+    # Four-bucket aggregation: each procedure attribution is
+    # split by role AND type. Frontend renders one chart per
+    # type using these atomic counts; the *_count totals are
+    # derived sums for backwards-compatible sorting + display.
     surgeon_agg: dict[int, dict[str, int]] = defaultdict(
         lambda: {
-            "primary": 0,
-            "secondary": 0,
-            "explante": 0,
-            "implante": 0,
+            "explante_primary": 0,
+            "explante_secondary": 0,
+            "implante_primary": 0,
+            "implante_secondary": 0,
         }
     )
     for p in procs:
         if p.primary_person_id is not None:
-            surgeon_agg[p.primary_person_id]["primary"] += 1
-            surgeon_agg[p.primary_person_id][p.type] += 1
+            surgeon_agg[p.primary_person_id][f"{p.type}_primary"] += 1
         if p.secondary_person_id is not None:
-            surgeon_agg[p.secondary_person_id]["secondary"] += 1
-            # Don't double-count type for secondary slot — primary's
-            # entry already attributes the procedure to its type.
+            surgeon_agg[p.secondary_person_id][f"{p.type}_secondary"] += 1
 
     names = _person_name_map(ctx, set(surgeon_agg.keys()))
     surgeons_out = sorted(
@@ -361,15 +362,20 @@ def transplants_stats(
             TransplantStatsSurgeonOut(
                 person_id=pid,
                 person_name=names.get(pid, "(desconocido)"),
-                primary_count=v["primary"],
-                secondary_count=v["secondary"],
-                explante_count=v["explante"],
-                implante_count=v["implante"],
+                primary_count=v["explante_primary"] + v["implante_primary"],
+                secondary_count=v["explante_secondary"]
+                + v["implante_secondary"],
+                explante_primary=v["explante_primary"],
+                explante_secondary=v["explante_secondary"],
+                implante_primary=v["implante_primary"],
+                implante_secondary=v["implante_secondary"],
             )
             for pid, v in surgeon_agg.items()
         ],
-        # Primary participation drives the sort — that's the
-        # "your transplant load" number most people will compare.
+        # Primary participation drives the default sort — that's
+        # the "your transplant load" number most people compare.
+        # The frontend re-sorts per-chart for the type-specific
+        # views.
         key=lambda s: (-s.primary_count, -s.secondary_count, s.person_name),
     )
 
