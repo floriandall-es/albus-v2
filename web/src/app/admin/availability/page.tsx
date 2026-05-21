@@ -149,17 +149,26 @@ export default function AvailabilityPage() {
                     </StatusPill>
                   </td>
                   <td className="px-4 py-2 text-gray-600">{b.notes ?? "—"}</td>
-                  <td className="px-4 py-2 text-right space-x-2">
-                    <Button variant="secondary" onClick={() => setEditing(b)}>
-                      Editar
-                    </Button>
-                    <Button
-                      variant="danger"
-                      onClick={() => del.mutate(b.id)}
-                      disabled={del.isPending}
-                    >
-                      Eliminar
-                    </Button>
+                  <td className="px-4 py-2">
+                    {/* Same flex pattern /admin/slots + /admin/trasplantes
+                        use — `text-right space-x-2` was wrapping the
+                        two Buttons under each other when the row text
+                        got long, leaving them vertically stacked and
+                        visually overlapping. `whitespace-nowrap` keeps
+                        the buttons on one line; the row grows
+                        horizontally to fit instead of breaking. */}
+                    <div className="flex justify-end gap-2 whitespace-nowrap">
+                      <Button variant="secondary" onClick={() => setEditing(b)}>
+                        Editar
+                      </Button>
+                      <Button
+                        variant="danger"
+                        onClick={() => del.mutate(b.id)}
+                        disabled={del.isPending}
+                      >
+                        Eliminar
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
