@@ -106,6 +106,8 @@ function ResetPasswordInner() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={8}
+                  autoComplete="new-password"
+                  name="new-password"
                   className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                 />
               </label>
@@ -119,6 +121,8 @@ function ResetPasswordInner() {
                   onChange={(e) => setConfirm(e.target.value)}
                   required
                   minLength={8}
+                  autoComplete="new-password"
+                  name="confirm-password"
                   className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                 />
                 {confirm && confirm !== password && (

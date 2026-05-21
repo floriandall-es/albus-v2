@@ -80,30 +80,40 @@ export default function SignupPage() {
               value={tenantName}
               onChange={setTenantName}
               placeholder="ej. Hospital Universitario La Paz"
+              autoComplete="organization"
+              name="organization"
             />
             <Field
               label="Tu nombre"
               value={firstName}
               onChange={setFirstName}
               placeholder="ej. Gabriel"
+              autoComplete="given-name"
+              name="given-name"
             />
             <Field
               label="Apellidos"
               value={lastName}
               onChange={setLastName}
               placeholder="ej. Pérez García"
+              autoComplete="family-name"
+              name="family-name"
             />
             <Field
               label="Email"
               type="email"
               value={email}
               onChange={setEmail}
+              autoComplete="email"
+              name="email"
             />
             <Field
               label="Contraseña (mínimo 8 caracteres)"
               type="password"
               value={password}
               onChange={setPassword}
+              autoComplete="new-password"
+              name="new-password"
             />
             <fieldset>
               <legend className="text-sm font-medium text-gray-700 mb-1.5">
@@ -201,6 +211,12 @@ function Field(props: {
   onChange: (v: string) => void;
   type?: string;
   placeholder?: string;
+  /** Standard HTML autocomplete hint — set explicitly on every
+   * field to stop Chrome from cross-contaminating empty inputs
+   * with arbitrary saved values (saw apellidos getting an email
+   * dumped in on the invite-accept form). */
+  autoComplete?: string;
+  name?: string;
 }) {
   return (
     <label className="block">
@@ -211,6 +227,8 @@ function Field(props: {
         onChange={(e) => props.onChange(e.target.value)}
         placeholder={props.placeholder}
         required
+        autoComplete={props.autoComplete}
+        name={props.name}
         className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
       />
     </label>

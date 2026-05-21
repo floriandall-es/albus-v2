@@ -1744,6 +1744,13 @@ export type InvitationPublicView = {
   tenant_slug: string;
   email: string;
   person_name: string;
+  /** Structured names from the underlying Person row when one
+   * already exists for this email (pendiente migrated users,
+   * cross-tenant invitees). Null on fresh invites where the
+   * admin only typed a composite name — accept page falls back
+   * to splitting person_name in that case. */
+  first_name: string | null;
+  last_name: string | null;
   expires_at: string;
 };
 

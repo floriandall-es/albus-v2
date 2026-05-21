@@ -49,6 +49,15 @@ class InvitationPublicView(BaseModel):
     tenant_slug: str
     email: str
     person_name: str
+    # Structured first/last from the underlying Person row, if one
+    # exists for this email (it does for migrated-pendiente users
+    # and cross-tenant invitees). Null for fresh invites where
+    # the admin only typed a composite name. The accept form uses
+    # these to prefill the two name inputs cleanly — splitting
+    # `person_name` on whitespace mis-handles single-token last
+    # names (e.g. "Sales" landing in the first-name field).
+    first_name: str | None = None
+    last_name: str | None = None
     expires_at: datetime
 
 

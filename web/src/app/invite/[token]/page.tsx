@@ -25,13 +25,29 @@ export default function AcceptInvitePage() {
   const [confirm, setConfirm] = useState("");
   const [acceptTerms, setAcceptTerms] = useState(false);
 
-  // When preview loads, prefill the name fields with a best-effort
-  // split of the invitation's `person_name` (whatever the admin
-  // typed when sending the invite). The invitee can correct it.
+  // When preview loads, prefill the name fields. Prefer the
+  // structured first_name + last_name from the underlying Person
+  // row (present for pendiente migrated users and cross-tenant
+  // invitees). Fall back to splitting person_name on whitespace
+  // only when no structured fields are available — and even then,
+  // if the composite is a single token, treat it as the LAST name
+  // (more common than first-name-only and matches the legacy CSV
+  // shape we see).
   if (preview.data && !prefillDone) {
-    const tokens = preview.data.person_name.trim().split(/\s+/);
-    setFirstName(tokens[0] ?? "");
-    setLastName(tokens.slice(1).join(" "));
+    const { first_name, last_name, person_name } = preview.data;
+    if (first_name !== null || last_name !== null) {
+      setFirstName(first_name ?? "");
+      setLastName(last_name ?? "");
+    } else {
+      const tokens = person_name.trim().split(/\s+/);
+      if (tokens.length >= 2) {
+        setFirstName(tokens[0] ?? "");
+        setLastName(tokens.slice(1).join(" "));
+      } else {
+        setFirstName("");
+        setLastName(tokens[0] ?? "");
+      }
+    }
     setPrefillDone(true);
   }
 
@@ -91,12 +107,16 @@ export default function AcceptInvitePage() {
           value={firstName}
           onChange={setFirstName}
           required
+          autoComplete="given-name"
+          name="given-name"
         />
         <TextField
           label="Apellidos"
           value={lastName}
           onChange={setLastName}
           required
+          autoComplete="family-name"
+          name="family-name"
         />
         <TextField
           label="Contraseña (mínimo 8 caracteres)"
@@ -104,6 +124,8 @@ export default function AcceptInvitePage() {
           value={password}
           onChange={setPassword}
           required
+          autoComplete="new-password"
+          name="new-password"
         />
         <TextField
           label="Confirmar contraseña"
@@ -111,6 +133,8 @@ export default function AcceptInvitePage() {
           value={confirm}
           onChange={setConfirm}
           required
+          autoComplete="new-password"
+          name="confirm-password"
         />
         {!passwordsMatch && confirm.length > 0 && (
           <ErrorText>Las contraseñas no coinciden.</ErrorText>

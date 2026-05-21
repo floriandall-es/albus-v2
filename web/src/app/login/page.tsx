@@ -64,12 +64,16 @@ export default function LoginPage() {
               type="email"
               value={email}
               onChange={setEmail}
+              autoComplete="username"
+              name="email"
             />
             <Field
               label="Contraseña"
               type="password"
               value={password}
               onChange={setPassword}
+              autoComplete="current-password"
+              name="current-password"
             />
             {error && <p className="text-sm text-rose-600">{error}</p>}
             <button
@@ -106,6 +110,8 @@ function Field(props: {
   onChange: (v: string) => void;
   type?: string;
   placeholder?: string;
+  autoComplete?: string;
+  name?: string;
 }) {
   return (
     <label className="block">
@@ -116,6 +122,8 @@ function Field(props: {
         onChange={(e) => props.onChange(e.target.value)}
         placeholder={props.placeholder}
         required
+        autoComplete={props.autoComplete}
+        name={props.name}
         className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
       />
     </label>

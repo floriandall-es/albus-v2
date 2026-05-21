@@ -132,6 +132,8 @@ export function TextField({
   type = "text",
   placeholder,
   required,
+  autoComplete,
+  name,
 }: {
   label: string;
   /** Optional (?) badge with hover/focus tooltip rendered next to
@@ -142,6 +144,16 @@ export function TextField({
   type?: string;
   placeholder?: string;
   required?: boolean;
+  /** Standard HTML autocomplete token (e.g. "given-name",
+   * "family-name", "new-password", "email", "off"). Set
+   * explicitly on every field used in account-creation forms so
+   * Chrome doesn't dump random saved values into unlabelled
+   * inputs (we hit this on the invite-accept form, where empty
+   * apellidos got autofilled with the operator's saved email). */
+  autoComplete?: string;
+  /** Optional name attribute. Mostly useful when paired with
+   * autoComplete to give the browser a stable field identity. */
+  name?: string;
 }) {
   return (
     <label className="block">
@@ -154,6 +166,8 @@ export function TextField({
         value={value}
         placeholder={placeholder}
         required={required}
+        autoComplete={autoComplete}
+        name={name}
         onChange={(e) => onChange(e.target.value)}
         className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
       />

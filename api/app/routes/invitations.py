@@ -306,11 +306,22 @@ def get_invitation_public(raw_token: str, db: Session = Depends(_public_db)) -> 
     tenant = db.get(Tenant, inv.tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Invitation not found or expired")
+    # If there's already a Person for this email (pendiente
+    # migrated user, cross-tenant invitee, etc.), surface their
+    # structured first/last so the accept form prefills correctly
+    # instead of having the frontend guess via whitespace split.
+    existing_person = (
+        db.query(Person).filter(Person.email == inv.email.lower()).first()
+    )
+    first_name = existing_person.first_name if existing_person else None
+    last_name = existing_person.last_name if existing_person else None
     return InvitationPublicView(
         tenant_name=tenant.name,
         tenant_slug=tenant.slug,
         email=inv.email,
         person_name=inv.person_name,
+        first_name=first_name,
+        last_name=last_name,
         expires_at=inv.expires_at,
     )
 
