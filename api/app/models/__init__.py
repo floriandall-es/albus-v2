@@ -8,6 +8,7 @@ from app.models.group import Group
 from app.models.slot import (
     Slot,
     SlotAllowedPerson,
+    SlotCategory,
     SlotTeamRole,
     SlotTeamRoleCategory,
 )
@@ -37,6 +38,7 @@ __all__ = [
     "Group",
     "Slot",
     "SlotAllowedPerson",
+    "SlotCategory",
     "SlotTeamRole",
     "SlotTeamRoleCategory",
     "SlotRule",

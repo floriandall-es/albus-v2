@@ -41,6 +41,13 @@ class SlotCreate(BaseModel):
     # restriction). One or more ids = ONLY those persons are eligible.
     # Replaces the pre-0030 pool_id + skills_required mechanisms.
     allowed_person_ids: list[int] = Field(default_factory=list)
+    # Per-slot categoría restriction. Empty = any categoría;
+    # non-empty = only members whose categoría is in this list
+    # may cover the slot. Used by single + multiple_same modes;
+    # for team_composition the team_roles' own category lists are
+    # the primary mechanism, though this slot-level filter is also
+    # honoured (intersection semantics if both are set).
+    allowed_category_ids: list[int] = Field(default_factory=list)
 
 
 class SlotUpdate(BaseModel):
@@ -62,6 +69,10 @@ class SlotUpdate(BaseModel):
     # If provided, replaces the existing allow-list atomically. Send
     # an empty list to clear (= "Todo el equipo").
     allowed_person_ids: list[int] | None = None
+    # If provided, replaces the slot-level categoría restriction.
+    # Empty list = clear (any categoría); non-empty = only those
+    # categorías are eligible.
+    allowed_category_ids: list[int] | None = None
 
 
 class SlotTeamRoleOut(BaseModel):
@@ -93,6 +104,9 @@ class SlotOut(BaseModel):
     # Empty list = no restriction (everyone in the team is eligible).
     # Non-empty = only these persons are eligible.
     allowed_person_ids: list[int]
+    # Slot-level categoría restriction. Empty = any categoría;
+    # non-empty = only those categorías eligible.
+    allowed_category_ids: list[int] = []
     rules: list[SlotRuleOut]
     created_at: datetime
 

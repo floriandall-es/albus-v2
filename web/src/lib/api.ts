@@ -551,6 +551,11 @@ export type Slot = {
    * assigned to this slot. Replaces the pre-0030 pool_id +
    * skills_required mechanisms. */
   allowed_person_ids: number[];
+  /** Per-slot categoría restriction. Empty = any categoría;
+   * non-empty = only members whose categoría is in this list may
+   * cover the slot. For team_composition slots this filter applies
+   * in addition to each team_role's category list (intersection). */
+  allowed_category_ids: number[];
   rules: SlotRule[];
   created_at: string;
 };
@@ -577,6 +582,9 @@ export type SlotInput = {
   /** Empty = no restriction; non-empty = only these persons may be
    * assigned to this slot. */
   allowed_person_ids: number[];
+  /** Empty = any categoría; non-empty = only members whose categoría
+   * is in this list may cover the slot. */
+  allowed_category_ids?: number[];
 };
 
 export type TeamMember = {

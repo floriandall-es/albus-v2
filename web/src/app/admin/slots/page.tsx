@@ -270,6 +270,14 @@ function SlotDialog({
   const [allowedPersonIds, setAllowedPersonIds] = useState<number[]>(
     initial?.allowed_person_ids ?? [],
   );
+  // Slot-level categoría restriction (migration 0048). Empty = any
+  // categoría; non-empty = only members whose categoría is in this
+  // list may cover the slot. Surfaced in the editor for single +
+  // multiple_same modes; team_composition slots use the per-role
+  // category list instead.
+  const [allowedCategoryIds, setAllowedCategoryIds] = useState<number[]>(
+    initial?.allowed_category_ids ?? [],
+  );
   const [teamRoles, setTeamRoles] = useState<TeamRoleDraft[]>(
     initial?.team_roles.map((r) => ({
       role_label: r.role_label,
@@ -339,6 +347,12 @@ function SlotDialog({
           scheduleMode === "ranged" && endTime ? `${endTime}:00` : null,
         team_roles: mode === "team_composition" ? teamRoles : [],
         allowed_person_ids: allowedPersonIds,
+        // Only the single + multiple_same modes expose the slot-level
+        // categoría picker; team_composition routes the same intent
+        // through per-role category lists, so we don't echo a stale
+        // value when switching modes.
+        allowed_category_ids:
+          mode === "team_composition" ? [] : allowedCategoryIds,
       };
       const slot = initial
         ? await api.updateSlot(initial.id, body)
@@ -700,6 +714,21 @@ function SlotDialog({
           ))}
         </div>
 
+        {mode !== "team_composition" && (
+          <AllowedCategoriesSection
+            categories={categories}
+            selected={allowedCategoryIds}
+            onToggle={(cid) =>
+              setAllowedCategoryIds((cur) =>
+                cur.includes(cid)
+                  ? cur.filter((x) => x !== cid)
+                  : [...cur, cid],
+              )
+            }
+            onClear={() => setAllowedCategoryIds([])}
+          />
+        )}
+
         <AllowedPersonsSection
           team={team}
           // For team_composition slots, the union of category_ids
@@ -712,6 +741,12 @@ function SlotDialog({
           // her at scheduling time. If teamRoles is empty or
           // every role permits every categoría, no filter is
           // applied (the slot doesn't constrain by categoría).
+          //
+          // For single + multiple_same modes, the same intent comes
+          // from the slot-level allowedCategoryIds picker right
+          // above. Pass that through so the people list narrows to
+          // members of those categorías (matching the solver's
+          // eligibility check exactly).
           allowedCategoryIds={
             mode === "team_composition"
               ? (() => {
@@ -729,7 +764,9 @@ function SlotDialog({
                   }
                   return u.size > 0 ? u : null;
                 })()
-              : null
+              : allowedCategoryIds.length > 0
+                ? new Set(allowedCategoryIds)
+                : null
           }
           allowedPersonIds={allowedPersonIds}
           setAllowedPersonIds={setAllowedPersonIds}
@@ -1624,6 +1661,121 @@ function SlotColorPicker({
           style={{ backgroundColor: c }}
         />
       ))}
+    </div>
+  );
+}
+
+/**
+ * "Categorías que pueden cubrir esta actividad" picker for
+ * single + multiple_same slots (team_composition uses the
+ * per-role category list instead).
+ *
+ * Two modes:
+ *  - Empty list → cualquier categoría puede cubrir (no restriction).
+ *  - Non-empty → solo miembros de esas categorías son elegibles.
+ *
+ * Backed by slot_categories (migration 0048); the solver's
+ * eligibility_reason() rejects members whose category isn't in
+ * the set when the set is non-empty.
+ */
+function AllowedCategoriesSection({
+  categories,
+  selected,
+  onToggle,
+  onClear,
+}: {
+  categories: Category[];
+  selected: number[];
+  onToggle: (cid: number) => void;
+  onClear: () => void;
+}) {
+  const isUnrestricted = selected.length === 0;
+  // Auto-expand when there's already a restriction so editing
+  // existing limits is one click. Collapsed by default since the
+  // common case is "any categoría".
+  const [open, setOpen] = useState<boolean>(!isUnrestricted);
+  const sortedCats = [...categories].sort((a, b) =>
+    a.name.localeCompare(b.name, "es"),
+  );
+  return (
+    <div className="border-t pt-3">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <div className="flex items-center gap-2">
+          {open ? (
+            <ChevronDown className="h-4 w-4 text-gray-500" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-gray-500" />
+          )}
+          <h3 className="text-sm font-semibold">
+            Categorías que pueden cubrir esta actividad
+          </h3>
+        </div>
+        <span
+          className={
+            "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium "
+            + (isUnrestricted
+              ? "bg-gray-100 text-gray-700"
+              : "bg-brand-100 text-brand-700")
+          }
+        >
+          {isUnrestricted
+            ? "Cualquier categoría"
+            : `${selected.length} ${selected.length === 1 ? "categoría" : "categorías"}`}
+        </span>
+      </button>
+      {open && (
+        <div className="mt-3">
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <p className="text-xs text-gray-500 flex-1">
+              Por defecto cualquier categoría puede cubrir esta actividad.
+              Si sólo algunas deben poder hacerlo, márcalas aquí.
+            </p>
+            {!isUnrestricted && (
+              <button
+                type="button"
+                onClick={onClear}
+                className="shrink-0 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 whitespace-nowrap"
+              >
+                Permitir cualquier categoría
+              </button>
+            )}
+          </div>
+          {sortedCats.length === 0 ? (
+            <p className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">
+              Aún no hay categorías. Crea categorías en /admin/categorias.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {sortedCats.map((c) => {
+                const checked = selected.includes(c.id);
+                return (
+                  <label
+                    key={c.id}
+                    className={
+                      "flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs cursor-pointer "
+                      + (checked
+                        ? "border-brand-300 bg-brand-50 text-brand-800"
+                        : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50")
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => onToggle(c.id)}
+                      className="h-3.5 w-3.5 rounded border-gray-300"
+                    />
+                    {c.name}
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

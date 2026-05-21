@@ -48,6 +48,7 @@ from app.models import (
     Schedule,
     Slot,
     SlotAllowedPerson,
+    SlotCategory,
     SlotFrequencyCap,
     SlotRule,
     SlotRuleRotationBlock,
@@ -186,6 +187,16 @@ class _Context:
         self.slot_allowed_persons: dict[int, set[int]] = defaultdict(set)
         for sap in db.query(SlotAllowedPerson).all():
             self.slot_allowed_persons[sap.slot_id].add(sap.person_id)
+        # Per-slot categoría restriction (sprint 28 / migration 0048).
+        # Same semantics as the allow-list above but on categoría
+        # rather than person. Empty = unrestricted; non-empty = only
+        # members whose categoría is in the set are eligible. Applies
+        # to single + multiple_same modes; team_composition still
+        # primarily relies on team_role_categories, with this filter
+        # as an additional constraint when both are set.
+        self.slot_categories: dict[int, set[int]] = defaultdict(set)
+        for sc in db.query(SlotCategory).all():
+            self.slot_categories[sc.slot_id].add(sc.category_id)
 
         # Per-slot assignment rules. Each slot has 1+ non-overlapping rules
         # over weekdays; each rule has its own strategy (solver, fixed_weekly,
@@ -440,6 +451,12 @@ class _Context:
         allowed = self.slot_allowed_persons.get(slot.id)
         if allowed and person_id not in allowed:
             return "La persona no está en el equipo autorizado para este turno"
+        # Slot-level categoría restriction (migration 0048). Applies to
+        # every assignment of the slot regardless of staffing mode. For
+        # team_composition slots it intersects with the per-role list.
+        slot_cats = self.slot_categories.get(slot.id)
+        if slot_cats and m.category_id not in slot_cats:
+            return "Su categoría no cubre este turno"
         # Team-role categories.
         if team_role_id is not None:
             cats = self.team_role_categories.get(team_role_id)

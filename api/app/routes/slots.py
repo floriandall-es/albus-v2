@@ -9,6 +9,7 @@ from app.models import (
     Person,
     Slot,
     SlotAllowedPerson,
+    SlotCategory,
     SlotRule,
     SlotRuleRotationBlock,
     SlotRuleRotationMember,
@@ -120,6 +121,12 @@ def _serialize(ctx: RequestContext, slot: Slot) -> SlotOut:
         .order_by(SlotAllowedPerson.id)
         .all()
     )
+    allowed_cat_rows = (
+        ctx.db.query(SlotCategory)
+        .filter(SlotCategory.slot_id == slot.id)
+        .order_by(SlotCategory.id)
+        .all()
+    )
 
     rules = (
         ctx.db.query(SlotRule)
@@ -209,6 +216,7 @@ def _serialize(ctx: RequestContext, slot: Slot) -> SlotOut:
             for r in team_roles
         ],
         allowed_person_ids=sorted({a.person_id for a in allowed_rows}),
+        allowed_category_ids=sorted({c.category_id for c in allowed_cat_rows}),
         rules=rules_out,
         created_at=slot.created_at,
     )
@@ -294,6 +302,55 @@ def _replace_allowed_persons(
     ctx.db.flush()
 
 
+def _replace_allowed_categories(
+    ctx: RequestContext, slot: Slot, category_ids: list[int]
+) -> None:
+    """Atomically replace the slot's categoría restriction. Empty
+    list = clear (= any categoría). Validates that every id belongs
+    to this tenant.
+
+    No cascade against rules: changing a categoría restriction
+    doesn't break pinned weekly_pins or rotation_members the way
+    changing the per-person allow-list does. Those rules are
+    pinned by person_id and stay valid; the categoría filter
+    just affects future SOLVER-side eligibility decisions.
+    """
+    desired = list(dict.fromkeys(category_ids))  # de-dupe, preserve order
+    if desired:
+        found = {
+            cid
+            for (cid,) in ctx.db.query(Category.id)
+            .filter(
+                Category.id.in_(desired),
+                Category.tenant_id == ctx.tenant.id,
+            )
+            .all()
+        }
+        missing = [c for c in desired if c not in found]
+        if missing:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unknown category_ids: {missing}",
+            )
+    existing = (
+        ctx.db.query(SlotCategory)
+        .filter(SlotCategory.slot_id == slot.id)
+        .all()
+    )
+    for row in existing:
+        ctx.db.delete(row)
+    ctx.db.flush()
+    for cid in desired:
+        ctx.db.add(
+            SlotCategory(
+                tenant_id=ctx.tenant.id,
+                slot_id=slot.id,
+                category_id=cid,
+            )
+        )
+    ctx.db.flush()
+
+
 @router.get("/slots", response_model=list[SlotOut])
 def list_slots(
     ctx: RequestContext = Depends(get_current_context),
@@ -371,6 +428,7 @@ def create_slot(
 
     _replace_team_roles(ctx, obj, payload.team_roles)
     _replace_allowed_persons(ctx, obj, payload.allowed_person_ids)
+    _replace_allowed_categories(ctx, obj, payload.allowed_category_ids)
     # Default rule strategy depends on whether this is a main-team
     # or group-owned slot: group slots are manual-only by policy
     # (see scheduler skip + UI hide), main-team slots default to
@@ -412,6 +470,7 @@ def update_slot(
     data = payload.model_dump(exclude_unset=True)
     team_roles = data.pop("team_roles", None)
     allowed_person_ids = data.pop("allowed_person_ids", None)
+    allowed_category_ids = data.pop("allowed_category_ids", None)
     # group_id reassignment: tenant admin only. Group leads cannot
     # move slots between groups (they could otherwise hide a slot
     # from the tenant admin's view).
@@ -447,6 +506,8 @@ def update_slot(
         )
     if allowed_person_ids is not None:
         _replace_allowed_persons(ctx, obj, list(allowed_person_ids))
+    if allowed_category_ids is not None:
+        _replace_allowed_categories(ctx, obj, list(allowed_category_ids))
     ctx.db.refresh(obj)
     return _serialize(ctx, obj)
 

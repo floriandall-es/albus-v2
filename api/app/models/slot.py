@@ -132,6 +132,40 @@ class SlotTeamRoleCategory(Base):
     )
 
 
+class SlotCategory(Base):
+    """Per-slot categoría restriction. Empty list = unrestricted
+    (any categoría can cover the slot). Non-empty = only members
+    whose categoría is in the list are eligible.
+
+    Mirrors SlotTeamRoleCategory but at the slot level — used by
+    single + multiple_same slots that don't have team_roles. For
+    team_composition slots, this filter applies IN ADDITION to
+    each team_role's category list (intersection); in practice
+    admins pick one level or the other.
+    """
+
+    __tablename__ = "slot_categories"
+    __table_args__ = (
+        UniqueConstraint(
+            "slot_id", "category_id", name="uq_slot_categories_slot_category"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    slot_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("slots.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    category_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("categories.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
 class SlotAllowedPerson(Base):
     """Per-slot allow-list. If a slot has zero rows, anyone in the
     tenant team is eligible (modulo the other filters: categories
