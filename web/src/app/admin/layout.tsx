@@ -24,6 +24,7 @@ import {
 import { api, getToken } from "@/lib/api";
 import { useLogout } from "@/lib/use-logout";
 import { EmailVerifyBanner } from "@/components/email-verify-banner";
+import { ViewSwitcher } from "@/components/view-switcher";
 
 type NavSection = {
   title: string;
@@ -134,6 +135,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             {me.data?.current_tenant.name}
           </div>
         </div>
+
+        {me.data && <ViewSwitcher me={me.data} current="admin" />}
 
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
           {NAV.map((section) => (

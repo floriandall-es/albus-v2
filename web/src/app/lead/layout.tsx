@@ -14,6 +14,7 @@ import {
 import { api, getToken } from "@/lib/api";
 import { useLogout } from "@/lib/use-logout";
 import { EmailVerifyBanner } from "@/components/email-verify-banner";
+import { ViewSwitcher } from "@/components/view-switcher";
 
 /**
  * Dedicated shell for sub-team leads (the "residente mayor" and
@@ -56,16 +57,13 @@ export default function LeadLayout({ children }: { children: ReactNode }) {
     enabled: authChecked,
   });
 
-  // Route guard: only group leads get here. Tenant admins (who
-  // could happen to also be a lead) go to /admin because that's
-  // their main UI. Plain members go to /me.
+  // Route guard: anyone who isn't a lead has nothing to do here
+  // and gets bounced to /me. We used to also bounce tenant admins
+  // to /admin, but the ViewSwitcher in the sidebar gives admins
+  // a legitimate reason to be on /lead (e.g. admin+lead seeing
+  // the lead's bespoke planning UI). Let them stay.
   useEffect(() => {
     if (!me.data) return;
-    const isAdmin = me.data.memberships.some((m) => m.roles.includes("admin"));
-    if (isAdmin) {
-      router.replace("/admin");
-      return;
-    }
     if (me.data.lead_group_id === null) {
       router.replace("/me");
     }
@@ -111,6 +109,8 @@ export default function LeadLayout({ children }: { children: ReactNode }) {
             )}
           </div>
         </div>
+
+        {me.data && <ViewSwitcher me={me.data} current="lead" />}
 
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
           {NAV.map((item) => {

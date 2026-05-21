@@ -17,6 +17,7 @@ import {
 import { api, getToken } from "@/lib/api";
 import { useLogout } from "@/lib/use-logout";
 import { EmailVerifyBanner } from "@/components/email-verify-banner";
+import { ViewSwitcher } from "@/components/view-switcher";
 
 const NAV: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/me", label: "Inicio", icon: Home },
@@ -57,9 +58,13 @@ export default function MeLayout({ children }: { children: ReactNode }) {
     enabled: authChecked,
   });
 
-  // Un-onboarded admins still go through the wizard. Group leads
-  // get bounced to their dedicated /lead UI — /me is for plain
-  // members (the residentes themselves, in this domain).
+  // Un-onboarded admins still go through the wizard. We do NOT
+  // auto-bounce leads to /lead anymore — leads who also have a
+  // clinical membership (the chief resident, e.g.) need to be
+  // able to land on /me via the ViewSwitcher without immediately
+  // being kicked back. Login-time landing (in app/login/_utils.ts)
+  // still sends leads to /lead by default; this guard is only
+  // about post-login navigation.
   useEffect(() => {
     if (!me.data) return;
     const isAdmin = me.data.memberships.some((m) =>
@@ -68,14 +73,6 @@ export default function MeLayout({ children }: { children: ReactNode }) {
     if (isAdmin && me.data.current_tenant.onboarding_completed_at === null) {
       router.replace("/onboarding");
       return;
-    }
-    // Don't redirect from /me/settings — leads click "Mi cuenta"
-    // on their own sidebar and it links to /lead/settings, but
-    // we shouldn't fight users who navigate directly here.
-    const isLead = me.data.lead_group_id !== null;
-    const onSettings = pathname?.startsWith("/me/settings");
-    if (isLead && !isAdmin && !onSettings) {
-      router.replace("/lead");
     }
   }, [me.data, router, pathname]);
 
@@ -112,6 +109,8 @@ export default function MeLayout({ children }: { children: ReactNode }) {
             {me.data?.current_tenant.name}
           </div>
         </div>
+
+        {me.data && <ViewSwitcher me={me.data} current="me" />}
 
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
           <div className="space-y-0.5">
