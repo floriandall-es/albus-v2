@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { api, type StatsRow } from "@/lib/api";
+import { api, personLastName, type StatsRow } from "@/lib/api";
 import {
   Card,
   EmptyState,
@@ -152,7 +152,7 @@ export default function StatsPage() {
       if (r.weekend_or_holiday_count === 0) continue;
       let row = byPid.get(r.person_id);
       if (!row) {
-        row = { person: r.person_name, total: 0, cells: {} };
+        row = { person: personLastName({ name: r.person_name }), total: 0, cells: {} };
         byPid.set(r.person_id, row);
       }
       row.cells[r.year_month] =
@@ -486,7 +486,7 @@ function PerSlotChart({
       if ((r.team_role_id ?? null) !== slot.team_role_id) continue;
       let row = byPid.get(r.person_id);
       if (!row) {
-        row = { person: r.person_name, total: 0, cells: {} };
+        row = { person: personLastName({ name: r.person_name }), total: 0, cells: {} };
         byPid.set(r.person_id, row);
       }
       row.cells[r.year_month] = (row.cells[r.year_month] ?? 0) + r.count;
@@ -638,7 +638,9 @@ function DetailTable({
   // the whole range instead of one schedule.
   const persons = useMemo(() => {
     const m = new Map<number, string>();
-    for (const r of rows) m.set(r.person_id, r.person_name);
+    for (const r of rows) {
+      m.set(r.person_id, personLastName({ name: r.person_name }));
+    }
     return Array.from(m.entries()).sort((a, b) =>
       a[1].localeCompare(b[1]),
     );
