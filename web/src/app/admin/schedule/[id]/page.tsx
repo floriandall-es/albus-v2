@@ -328,7 +328,14 @@ export default function ScheduleDetailPage() {
       />
 
       <BalanceStats
-        assignments={s.assignments}
+        // Main planning's reparto only covers main-team
+        // assignments — sub-equipo slots belong on the
+        // sub-equipo's own balance view, mixing them in here
+        // surfaced residents in the admin's main breakdown.
+        // Same scoping as the Libre row above.
+        assignments={s.assignments.filter(
+          (a) => a.slot_group_id === null,
+        )}
         holidayDates={holidayDates}
       />
 
