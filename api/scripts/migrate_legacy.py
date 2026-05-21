@@ -45,12 +45,18 @@ Reads the Cloud SQL Studio CSV exports from
     against the explicit vacations table so a 5-day vacation
     doesn't get re-blocked five times.
   - 16 holidays, and 25 incident-log entries from `notes`.
+  - The transplant case log: 297 transplant_cases + 512
+    transplant_procedures (EXPLANTE + IMPLANTE pairs) from
+    `surgeries`. Pastor — an inactive surgeon profile with no
+    user account but 18 historical procedure references —
+    lands as a Person + disabled Membership so attribution
+    survives without polluting the active team list.
 
 Skipped on purpose (counts go in the final report):
 
-  - `surgeries` (513 rows) — historical OR case log, no Trivu
-    model.
-  - `surgeons` (8 rows) — directory used only by `surgeries`.
+  - `surgeons` (8 rows) — directory used only by `surgeries`,
+    we resolve via the same user_surgeon_map the assignments
+    migration uses.
   - `audit_log` (1 001 rows) — internal app log, zero value.
   - `events` (317), `vacation_locks` (76) — purpose unclear,
     customer chose skip.
@@ -96,6 +102,8 @@ from app.models import (
     Slot,
     SlotTeamRole,
     Tenant,
+    TransplantCase,
+    TransplantProcedure,
 )
 
 
@@ -166,7 +174,26 @@ CSV = {
     "vacations": "studio_results_20260521_1041 (1).csv",
     "holidays": "studio_results_20260521_1041 (4).csv",
     "notes": "studio_results_20260521_1041 (2).csv",
+    # 512 procedure rows, 297 cases. Grouped into transplant_cases
+    # + transplant_procedures by `case_id`. The 18 procedures
+    # attributed to the inactive surgeon Pastor resolve via
+    # PASTOR_SURGEON_ID below.
+    "surgeries": "studio_results_20260521_1044 (1).csv",
 }
+
+# The inactive surgeon profile in user_surgeon_map has no user_id
+# and so isn't migrated by the main users loop. But Pastor still
+# appears as primary/secondary on 18 historical transplant
+# procedures. We create a placeholder Person + disabled
+# Membership so attribution survives the import without
+# polluting the active /admin/team list.
+#
+# Note this is the SURGEON Pastor (user_surgeon_map.id=7), not
+# the neumólogo Pastor — per the customer they're two different
+# people sharing a last name.
+PASTOR_SURGEON_ID = "7"
+PASTOR_DISPLAY_NAME = "Pastor (inactivo)"
+PASTOR_PLACEHOLDER_EMAIL = "pastor.legacy.s7@trivu.invalid"
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +311,13 @@ def parse_date(s: str) -> date:
     """Source dates are ISO with a Z suffix; we only need the
     date portion."""
     return datetime.fromisoformat(s.replace("Z", "+00:00")).date()
+
+
+def parse_iso_datetime(s: str) -> datetime:
+    """Same source format as parse_date but preserve the full
+    timestamp — transplant_procedures.occurred_at is a tz-aware
+    datetime, not just a date."""
+    return datetime.fromisoformat(s.replace("Z", "+00:00"))
 
 
 def normalize_last_name(s: str) -> str:
@@ -573,15 +607,45 @@ def run_migration(db: Session) -> dict[str, Any]:
     # ------------------------------------------------------------------
     # 7. Surgeon-id → Person resolver
     #    surgeon_shifts.surgeon_id  →  user_surgeon_map.id  →  user_id  →  person
+    #
+    #    Special-case the inactive surgeon Pastor (surgeon_id=7,
+    #    user_id="") — they're absent from the users CSV but
+    #    appear on 18 historical transplant procedures. Create a
+    #    disabled Person + Membership so attribution survives;
+    #    disabled_at filters them out of the active team views,
+    #    schedule generation, and notification fan-outs while
+    #    keeping past procedures attributed correctly.
     # ------------------------------------------------------------------
     person_by_surgeon_id: dict[str, Person] = {}
+    pastor_disabled_membership: Membership | None = None
     for row in src_usm:
         surgeon_id = row["id"]
         user_id = row["user_id"]
         if not user_id:
-            # Deactivated profile with no user account (e.g. Pastor).
-            # We just skip the mapping; any shift referencing this
-            # surgeon_id will land with person_id=NULL.
+            if surgeon_id == PASTOR_SURGEON_ID:
+                # Pastor — create the disabled-from-day-one shim.
+                pastor_person = Person(
+                    email=PASTOR_PLACEHOLDER_EMAIL,
+                    name=PASTOR_DISPLAY_NAME,
+                    first_name=None,
+                    last_name=row.get("display_name") or "Pastor",
+                    hashed_password=None,
+                )
+                db.add(pastor_person)
+                db.flush()
+                pastor_disabled_membership = Membership(
+                    tenant_id=tenant.id,
+                    person_id=pastor_person.id,
+                    roles=["member"],
+                    category_id=cat_adjunto.id,
+                    fte_pct=100,
+                    disabled_at=datetime.now(timezone.utc),
+                )
+                db.add(pastor_disabled_membership)
+                db.flush()
+                person_by_surgeon_id[surgeon_id] = pastor_person
+            # Other surgeons without a user_id stay unmapped — shifts
+            # referencing them land with person_id=NULL.
             continue
         person = person_by_user_id.get(user_id)
         if person is None:
@@ -591,6 +655,8 @@ def run_migration(db: Session) -> dict[str, Any]:
             )
             continue
         person_by_surgeon_id[surgeon_id] = person
+    if pastor_disabled_membership is not None:
+        report["counts"]["persons_legacy_inactive_surgeons"] = 1
 
     # ------------------------------------------------------------------
     # 8. Slots
@@ -962,6 +1028,93 @@ def run_migration(db: Session) -> dict[str, Any]:
         incidents_created += 1
     report["counts"]["incidents"] = incidents_created
 
+    # ------------------------------------------------------------------
+    # 15. Transplant case log
+    #
+    # Source `surgeries` has 512 procedure rows across 297 unique
+    # case_ids. Group by case_id, derive case-level occurred_on as
+    # the earliest procedure date, attach EXPLANTE / IMPLANTE
+    # procedures with primary + optional secondary surgeon.
+    #
+    # NULL primary_person_id is preserved verbatim — it carries
+    # the "received from another hospital" / "sent elsewhere"
+    # semantics together with the free-text notes.
+    # ------------------------------------------------------------------
+    src_surgeries = read_csv(CSV["surgeries"])
+    print(f"Read transplant CSV: surgeries={len(src_surgeries)}")
+
+    # case_id → list of source rows
+    by_case: dict[str, list[dict[str, str]]] = {}
+    for row in src_surgeries:
+        by_case.setdefault(row["case_id"], []).append(row)
+
+    cases_created = 0
+    procedures_created = 0
+    skipped_unknown_type = 0
+    for external_case_id, rows in sorted(
+        by_case.items(), key=lambda kv: parse_iso_datetime(kv[1][0]["occurred_at"])
+    ):
+        # Validate types up-front; the schema has a check
+        # constraint so we won't get past flush() if any slip in.
+        usable_rows = []
+        for r in rows:
+            t = (r.get("type") or "").strip().lower()
+            if t not in ("explante", "implante"):
+                skipped_unknown_type += 1
+                continue
+            usable_rows.append((t, r))
+        if not usable_rows:
+            continue
+
+        earliest = min(
+            parse_iso_datetime(r["occurred_at"]) for _, r in usable_rows
+        )
+        case = TransplantCase(
+            tenant_id=tenant.id,
+            external_case_id=external_case_id or None,
+            occurred_on=earliest.date(),
+            notes=None,
+        )
+        db.add(case)
+        db.flush()
+        cases_created += 1
+
+        for t, r in usable_rows:
+            primary_id = (r.get("primary_surgeon_id") or "").strip()
+            secondary_id = (r.get("secondary_surgeon_id") or "").strip()
+            primary_person = (
+                person_by_surgeon_id.get(primary_id) if primary_id else None
+            )
+            secondary_person = (
+                person_by_surgeon_id.get(secondary_id) if secondary_id else None
+            )
+            note_text = (r.get("notes") or "").strip() or None
+            db.add(
+                TransplantProcedure(
+                    tenant_id=tenant.id,
+                    case_id=case.id,
+                    type=t,
+                    occurred_at=parse_iso_datetime(r["occurred_at"]),
+                    primary_person_id=(
+                        primary_person.id if primary_person else None
+                    ),
+                    secondary_person_id=(
+                        secondary_person.id if secondary_person else None
+                    ),
+                    notes=note_text,
+                )
+            )
+            procedures_created += 1
+        db.flush()
+
+    report["counts"]["transplant_cases"] = cases_created
+    report["counts"]["transplant_procedures"] = procedures_created
+    if skipped_unknown_type:
+        report["warnings"].append(
+            f"{skipped_unknown_type} surgeries row(s) had a type that "
+            "isn't EXPLANTE/IMPLANTE — skipped."
+        )
+
     return report
 
 
@@ -992,8 +1145,7 @@ def format_report(report: dict[str, Any]) -> str:
             out.append(f"  - {w}")
     out.append("")
     out.append("STATIC SKIPS (per customer / mapping plan)")
-    out.append("  surgeries.csv         — 513 rows (no Trivu OR-case model)")
-    out.append("  surgeons.csv          — 8 rows (only used by surgeries)")
+    out.append("  surgeons.csv          — 8 rows (only directory, resolved via user_surgeon_map)")
     out.append("  audit_log.csv         — 1001 rows (internal log)")
     out.append("  events.csv            — 317 rows (purpose unknown)")
     out.append("  vacation_locks.csv    — 76 rows (purpose unknown)")

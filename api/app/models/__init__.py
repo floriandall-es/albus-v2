@@ -25,6 +25,7 @@ from app.models.availability_block import AvailabilityBlock
 from app.models.schedule import Schedule, Assignment, ScheduleGroupPublication
 from app.models.shift_swap import ShiftSwapOffer, ShiftSwapResponse
 from app.models.meeting import Meeting, MeetingAudienceGroup, MeetingAudiencePerson
+from app.models.transplant import TransplantCase, TransplantProcedure
 
 __all__ = [
     "Tenant",
@@ -56,4 +57,6 @@ __all__ = [
     "Meeting",
     "MeetingAudienceGroup",
     "MeetingAudiencePerson",
+    "TransplantCase",
+    "TransplantProcedure",
 ]
