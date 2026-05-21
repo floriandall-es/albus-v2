@@ -13,7 +13,7 @@ import {
   YAxis,
 } from "recharts";
 import { ArrowLeft } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, personLastName } from "@/lib/api";
 import {
   Card,
   Empty,
@@ -199,7 +199,7 @@ export default function TrasplantesStatsPage() {
                     {data.surgeons.map((s) => (
                       <tr key={s.person_id}>
                         <td className="py-2 pr-3 text-gray-900">
-                          {s.person_name}
+                          {personLastName({ name: s.person_name })}
                         </td>
                         <td className="py-2 pr-3 text-right tabular-nums font-medium text-gray-900">
                           {s.primary_count}

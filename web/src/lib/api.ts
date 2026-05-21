@@ -284,14 +284,23 @@ export function personFirstName(p: {
 
 /** Last name(s) for tight columns (planning grid, BalanceStats). Falls
  * back to everything-after-the-first-word of `name`; if `name` is a
- * single word, returns it (typical legacy "last name only" tenants). */
+ * single word, returns it (typical legacy "last name only" tenants).
+ *
+ * Strips parenthetical suffixes like "(inactivo)" before the split —
+ * otherwise the migrated disabled-surgeon Pastor ("Pastor (inactivo)"
+ * in trasplantes case rows) would render as just "(inactivo)" when
+ * we don't have a `last_name` field on the data. */
 export function personLastName(p: {
   name: string;
   last_name?: string | null;
 }): string {
   if (p.last_name && p.last_name.trim()) return p.last_name.trim();
-  const parts = p.name.trim().split(/\s+/);
-  if (parts.length <= 1) return p.name;
+  const parts = p.name
+    .trim()
+    .split(/\s+/)
+    .filter((t) => !(t.startsWith("(") && t.endsWith(")")));
+  if (parts.length === 0) return p.name;
+  if (parts.length === 1) return parts[0];
   return parts.slice(1).join(" ");
 }
 

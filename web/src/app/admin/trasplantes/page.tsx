@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BarChart3, Filter, X } from "lucide-react";
 import {
   api,
+  personLastName,
   type TransplantCase,
   type TransplantCaseInput,
   type TransplantProcedureInput,
@@ -63,8 +64,18 @@ export default function TrasplantesPage() {
             m.person_name === "Pastor (inactivo)") &&
           m.group_id == null,
       )
+      .map((m) => ({
+        ...m,
+        // Last-name-only display label, computed once so the
+        // picker + sort use the same string the case rows show.
+        // TeamMember doesn't expose last_name; the helper's
+        // whitespace-split fallback (and the parenthetical-strip
+        // we added for the disabled-Pastor sentinel) handle every
+        // shape we have today.
+        display_name: personLastName({ name: m.person_name }),
+      }))
       .sort((a, b) =>
-        a.person_name.localeCompare(b.person_name, "es"),
+        a.display_name.localeCompare(b.display_name, "es"),
       );
   }, [team.data]);
 
@@ -149,7 +160,7 @@ export default function TrasplantesPage() {
                 { value: "", label: "— Cualquier cirujano —" },
                 ...surgeonOptions.map((m) => ({
                   value: m.person_id,
-                  label: m.person_name,
+                  label: m.display_name,
                 })),
               ]}
             />
@@ -329,15 +340,17 @@ function CaseRow({
                 {p.type}
               </span>
               <span className="text-gray-700 truncate">
-                {p.primary_person_name ?? (
-                  <span className="italic text-gray-400">
-                    Sin cirujano local
-                  </span>
-                )}
+                {p.primary_person_name
+                  ? personLastName({ name: p.primary_person_name })
+                  : (
+                    <span className="italic text-gray-400">
+                      Sin cirujano local
+                    </span>
+                  )}
                 {p.secondary_person_name && (
                   <span className="text-gray-500">
                     {" "}
-                    + {p.secondary_person_name}
+                    + {personLastName({ name: p.secondary_person_name })}
                   </span>
                 )}
               </span>
@@ -365,7 +378,9 @@ function CaseRow({
 
 type EditorSurgeon = {
   person_id: number;
-  person_name: string;
+  // Pre-computed last-name-only label so the modal selectors
+  // don't have to re-run the helper for every <option>.
+  display_name: string;
 };
 
 function TransplantEditor({
@@ -610,7 +625,7 @@ function ProcedureRow({
             { value: "", label: "— Sin cirujano local —" },
             ...surgeons.map((s) => ({
               value: s.person_id,
-              label: s.person_name,
+              label: s.display_name,
             })),
           ]}
         />
@@ -628,7 +643,7 @@ function ProcedureRow({
               .filter((s) => s.person_id !== proc.primary_person_id)
               .map((s) => ({
                 value: s.person_id,
-                label: s.person_name,
+                label: s.display_name,
               })),
           ]}
         />
