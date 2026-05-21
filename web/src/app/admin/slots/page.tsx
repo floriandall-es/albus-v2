@@ -1235,7 +1235,34 @@ function RotationEditor({
   // Sprint 15: each position is a "team card" holding 1..N people. The
   // cycle math is unchanged — position index still drives which team is
   // on duty for a given (date, block).
+  //
+  // The Forma de la rotación select binds to a local state, not to a
+  // derived-from-blocks computation. Two reasons:
+  //   1. Different presets can generate IDENTICAL block lists for
+  //      certain bitmaps (e.g. a Mon-Thu bitmap collapses daily,
+  //      weekdays, and weekdays_weekend_grouped to the same 4
+  //      blocks). Auto-detect would jump back to the first match
+  //      in the loop order ("daily") and the user's intent of
+  //      "Solo laborables" / "Laborables + finde" would silently
+  //      revert.
+  //   2. "Personalizado" doesn't generate any blocks — picking it
+  //      should keep the existing blocks so the admin can hand-edit,
+  //      not wipe them and snap the dropdown back to "Aplicar
+  //      plantilla…".
+  // Initialise from the rule's existing blocks on first mount so a
+  // rule that's clearly a daily/weekly/etc preset still binds
+  // correctly when re-opened.
+  const [selectedPreset, setSelectedPreset] = useState<string>(() =>
+    detectRotationPreset(rule.rotation_blocks, rule.days_bitmap),
+  );
   const applyPreset = (preset: string) => {
+    setSelectedPreset(preset);
+    if (preset === "custom" || preset === "") {
+      // "Personalizado" → keep current blocks so the admin can
+      // edit them by hand. "Aplicar plantilla…" → no-op (the
+      // dropdown just resets to the prompt; blocks stay).
+      return;
+    }
     onChange({ rotation_blocks: blocksFromPreset(preset, rule.days_bitmap) });
   };
 
@@ -1317,8 +1344,8 @@ function RotationEditor({
         />
         <Select
           label="Forma de la rotación"
-          value={detectRotationPreset(rule.rotation_blocks, rule.days_bitmap)}
-          onChange={(v) => v && applyPreset(String(v))}
+          value={selectedPreset}
+          onChange={(v) => applyPreset(String(v))}
           options={[
             { value: "", label: "Aplicar plantilla…" },
             ...ROT_PRESETS.map((p) => ({ value: p.value, label: p.label })),
