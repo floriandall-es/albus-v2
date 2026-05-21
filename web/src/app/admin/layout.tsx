@@ -10,6 +10,7 @@ import {
   CalendarDays,
   CalendarOff,
   Clock,
+  Heart,
   Home,
   Layers,
   LogOut,
@@ -42,6 +43,7 @@ const NAV: NavSection[] = [
       { href: "/admin/availability", label: "Bloqueos", icon: CalendarOff },
       { href: "/admin/reuniones", label: "Reuniones", icon: MessageSquare },
       { href: "/admin/incidents", label: "Incidentes", icon: AlertCircle },
+      { href: "/admin/trasplantes", label: "Trasplantes", icon: Heart },
     ],
   },
   {

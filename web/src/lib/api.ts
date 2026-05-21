@@ -1529,6 +1529,56 @@ export const api = {
     }),
   deleteFrequencyCap: (id: number) =>
     request<void>(`/api/slot-frequency-caps/${id}`, { method: "DELETE" }),
+
+  // Transplant case log (admin-only). Cases carry their full
+  // set of procedures on every read AND on every write — the
+  // server replaces procedures atomically on PUT, so callers
+  // re-send the whole list.
+  listTransplants: (params?: {
+    from?: string;
+    to?: string;
+    person_id?: number;
+    type?: TransplantProcedureType;
+    cross_hospital?: boolean;
+    limit?: number;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.from) qs.set("from", params.from);
+    if (params?.to) qs.set("to", params.to);
+    if (params?.person_id !== undefined)
+      qs.set("person_id", String(params.person_id));
+    if (params?.type) qs.set("type", params.type);
+    if (params?.cross_hospital !== undefined)
+      qs.set("cross_hospital", String(params.cross_hospital));
+    if (params?.limit !== undefined) qs.set("limit", String(params.limit));
+    const suffix = qs.toString();
+    return request<TransplantCase[]>(
+      "/api/transplants" + (suffix ? `?${suffix}` : ""),
+    );
+  },
+  getTransplant: (id: number) =>
+    request<TransplantCase>(`/api/transplants/${id}`),
+  createTransplant: (body: TransplantCaseInput) =>
+    request<TransplantCase>("/api/transplants", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateTransplant: (id: number, body: TransplantCaseInput) =>
+    request<TransplantCase>(`/api/transplants/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  deleteTransplant: (id: number) =>
+    request<void>(`/api/transplants/${id}`, { method: "DELETE" }),
+  transplantStats: (params?: { from?: string; to?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.from) qs.set("from", params.from);
+    if (params?.to) qs.set("to", params.to);
+    const suffix = qs.toString();
+    return request<TransplantStats>(
+      "/api/transplants/stats" + (suffix ? `?${suffix}` : ""),
+    );
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -1685,4 +1735,81 @@ export type InvitationPublicView = {
   email: string;
   person_name: string;
   expires_at: string;
+};
+
+// ---------------------------------------------------------------------------
+// Transplant case log
+//
+// A "case" is one transplant patient / one organ. Usually 1–2
+// procedures (EXPLANTE = donor extraction, IMPLANTE = recipient
+// surgery). Cross-hospital cases have just one local procedure
+// and a NULL primary surgeon on the missing half — the backend's
+// is_cross_hospital convenience flag surfaces that for the UI.
+// ---------------------------------------------------------------------------
+
+export type TransplantProcedureType = "explante" | "implante";
+
+export type TransplantProcedure = {
+  id: number;
+  type: TransplantProcedureType;
+  occurred_at: string;
+  primary_person_id: number | null;
+  primary_person_name: string | null;
+  secondary_person_id: number | null;
+  secondary_person_name: string | null;
+  notes: string | null;
+};
+
+export type TransplantProcedureInput = {
+  type: TransplantProcedureType;
+  occurred_at: string;
+  primary_person_id: number | null;
+  secondary_person_id: number | null;
+  notes: string | null;
+};
+
+export type TransplantCase = {
+  id: number;
+  tenant_id: number;
+  external_case_id: string | null;
+  occurred_on: string;
+  notes: string | null;
+  procedures: TransplantProcedure[];
+  has_explante: boolean;
+  has_implante: boolean;
+  is_cross_hospital: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TransplantCaseInput = {
+  external_case_id: string | null;
+  notes: string | null;
+  procedures: TransplantProcedureInput[];
+};
+
+export type TransplantStatsMonth = {
+  period: string;
+  explante_count: number;
+  implante_count: number;
+  cross_hospital_count: number;
+};
+
+export type TransplantStatsSurgeon = {
+  person_id: number;
+  person_name: string;
+  primary_count: number;
+  secondary_count: number;
+  explante_count: number;
+  implante_count: number;
+};
+
+export type TransplantStats = {
+  total_cases: number;
+  total_procedures: number;
+  explante_total: number;
+  implante_total: number;
+  cross_hospital_cases: number;
+  months: TransplantStatsMonth[];
+  surgeons: TransplantStatsSurgeon[];
 };
