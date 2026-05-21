@@ -126,7 +126,16 @@ export function PlanningGrid({
 
   return (
     <div className="overflow-x-auto rounded-xl bg-white shadow-soft ring-1 ring-gray-200">
-      <table className="text-xs">
+      {/* `border-separate border-spacing-0` is what makes
+          `sticky` actually work on the first column. Tailwind
+          preflight sets tables to `border-collapse: collapse`,
+          which prevents browsers from honouring
+          `position: sticky` on td/th — the activities column
+          would silently scroll out of view as the admin moved
+          horizontally through a month. Separate borders + zero
+          spacing keeps the visual flat-grid layout while letting
+          the sticky-left cells stay pinned. */}
+      <table className="text-xs border-separate border-spacing-0">
         <thead className="bg-gray-50">
           <tr>
             <th className="sticky left-0 bg-gray-50 z-10 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 border-b border-r border-gray-200 min-w-[180px]">
@@ -352,8 +361,13 @@ export function PlanningGrid({
               </tr>
             ))}
             {meetingsByDate && (
-              <tr className="bg-violet-50/30 border-t-2 border-gray-200">
-                <td className="sticky left-0 z-10 bg-violet-50/60 px-3 py-2 border-r border-gray-200 font-medium text-gray-800">
+              // The `border-t-2` on the <tr> would render the
+              // section separator under border-collapse:collapse;
+              // we use border-separate now, so the border has to
+              // live on the cells. Same below for the absences
+              // (emerald) row.
+              <tr className="bg-violet-50/30">
+                <td className="sticky left-0 z-10 bg-violet-50/60 px-3 py-2 border-r border-t-2 border-r-gray-200 border-t-gray-200 font-medium text-gray-800">
                   <span className="flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full shrink-0 bg-violet-500" />
                     <span>Reuniones</span>
@@ -366,7 +380,7 @@ export function PlanningGrid({
                     <td
                       key={d}
                       className={
-                        "align-top px-1.5 py-2 border-b border-gray-100 "
+                        "align-top px-1.5 py-2 border-b border-t-2 border-b-gray-100 border-t-gray-200 "
                         + (isToday ? "bg-brand-50/20 " : "")
                       }
                     >
@@ -407,8 +421,8 @@ export function PlanningGrid({
               </tr>
             )}
             {absencesByDate && (
-              <tr className="bg-emerald-50/30 border-t-2 border-gray-200">
-                <td className="sticky left-0 z-10 bg-emerald-50/60 px-3 py-2 border-r border-gray-200 font-medium text-gray-800">
+              <tr className="bg-emerald-50/30">
+                <td className="sticky left-0 z-10 bg-emerald-50/60 px-3 py-2 border-r border-t-2 border-r-gray-200 border-t-gray-200 font-medium text-gray-800">
                   <span className="flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full shrink-0 bg-emerald-500" />
                     <span>Libre</span>
@@ -457,7 +471,7 @@ export function PlanningGrid({
                       </div>
                     );
                   const baseCellClass =
-                    "align-top px-1.5 py-2 border-b border-gray-100 "
+                    "align-top px-1.5 py-2 border-b border-t-2 border-b-gray-100 border-t-gray-200 "
                     + (isToday ? "bg-brand-50/20 " : "");
                   if (onAbsenceCellClick) {
                     return (
