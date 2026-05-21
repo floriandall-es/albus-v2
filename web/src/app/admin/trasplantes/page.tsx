@@ -25,11 +25,22 @@ import {
 } from "@/components/admin/ui";
 import { formatLongDate, todayIso } from "@/lib/dates";
 
-// Compact Spanish weekday + month tables, used by the dense list
-// view. Existing /lib/dates.ts gives "Lunes 18 mayo" (verbose);
-// for a table column we want "Lun 19" (no month — the month
-// header above the row carries that context).
-const WEEKDAY_ABBR_ES = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+// Date labels for the dense list view. Existing /lib/dates.ts
+// gives "Lunes 18 mayo" — the month is redundant here because
+// the section header already says "Mayo 2026". We use full
+// Spanish weekday names (not truncated abbrevs) because the
+// natural 3-char abbreviation for martes is "mar", which
+// reads as marzo and made the column ambiguous. Lowercase
+// stays consistent with how the planning grid renders weekdays.
+const WEEKDAY_FULL_ES = [
+  "domingo",
+  "lunes",
+  "martes",
+  "miércoles",
+  "jueves",
+  "viernes",
+  "sábado",
+];
 const MONTH_LONG_ES = [
   "enero",
   "febrero",
@@ -48,8 +59,8 @@ const MONTH_LONG_ES = [
 function shortDateLabel(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
   const dt = new Date(y, m - 1, d);
-  const wd = WEEKDAY_ABBR_ES[dt.getDay()];
-  return `${wd.charAt(0).toUpperCase()}${wd.slice(1)} ${d}`;
+  const wd = WEEKDAY_FULL_ES[dt.getDay()];
+  return `${wd} ${d}`;
 }
 
 function monthHeaderLabel(ym: string): string {
@@ -291,7 +302,7 @@ export default function TrasplantesPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                <th className="px-3 py-2 w-24">Fecha</th>
+                <th className="px-3 py-2 w-32">Fecha</th>
                 <th className="px-3 py-2 w-20">Caso</th>
                 <th className="px-3 py-2 w-32">Estado</th>
                 <th className="px-3 py-2">Explante</th>
