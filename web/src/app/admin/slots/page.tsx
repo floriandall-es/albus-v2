@@ -692,6 +692,35 @@ function SlotDialog({
 
         <AllowedPersonsSection
           team={team}
+          // For team_composition slots, the union of category_ids
+          // across all team_roles caps who can EVER cover the
+          // slot regardless of the allow-list. Pass it through so
+          // the checkbox list filters out categorías that no
+          // role accepts — checking Anguera the Neumólogo for a
+          // slot whose only role is "Cirujano 1 = Adjunto" would
+          // be misleading because the solver would still reject
+          // her at scheduling time. If teamRoles is empty or
+          // every role permits every categoría, no filter is
+          // applied (the slot doesn't constrain by categoría).
+          allowedCategoryIds={
+            mode === "team_composition"
+              ? (() => {
+                  // If ANY role has no category restriction, the
+                  // slot accepts every categoría on that role's
+                  // line — so the filter is moot. Otherwise take
+                  // the union of restricted categories.
+                  const anyRoleUnrestricted = teamRoles.some(
+                    (r) => r.category_ids.length === 0,
+                  );
+                  if (anyRoleUnrestricted) return null;
+                  const u = new Set<number>();
+                  for (const r of teamRoles) {
+                    for (const cid of r.category_ids) u.add(cid);
+                  }
+                  return u.size > 0 ? u : null;
+                })()
+              : null
+          }
           allowedPersonIds={allowedPersonIds}
           setAllowedPersonIds={setAllowedPersonIds}
           togglePerson={togglePerson}
@@ -1555,11 +1584,20 @@ function SlotColorPicker({
  */
 function AllowedPersonsSection({
   team,
+  allowedCategoryIds,
   allowedPersonIds,
   setAllowedPersonIds,
   togglePerson,
 }: {
   team: TeamMember[];
+  /** Union of category_ids across all team_roles, when the slot
+   * is team_composition AND every role has at least one category
+   * restriction. Null = no filter (the slot accepts every
+   * categoría on at least one of its roles). When non-null,
+   * persons whose category is not in this set are filtered out
+   * of the list entirely — checking them would be misleading
+   * since the solver would never assign them anyway. */
+  allowedCategoryIds: Set<number> | null;
   allowedPersonIds: number[];
   setAllowedPersonIds: (ids: number[]) => void;
   togglePerson: (personId: number) => void;
@@ -1575,9 +1613,20 @@ function AllowedPersonsSection({
   // in slot_allowed_persons are kept untouched (the solver just
   // skips them via the membership filter). Truthiness check so a
   // missing field (older API build) is treated as "active".
+  // Also hide members whose categoría isn't accepted by any of
+  // the slot's team_roles — see the prop comment for why.
+  // Members with no categoría at all (rare — admins without a
+  // clinical role) stay visible since the filter shouldn't push
+  // them off the list when they might still legitimately need to
+  // be on the allow-list.
   // Sort by name so the checklist stays scannable.
   const sortedTeam = [...team]
     .filter((m) => !m.disabled_at)
+    .filter((m) => {
+      if (allowedCategoryIds === null) return true;
+      if (m.category_id === null) return true;
+      return allowedCategoryIds.has(m.category_id);
+    })
     .sort((a, b) => a.person_name.localeCompare(b.person_name, "es"));
   return (
     <div className="border-t pt-3">
