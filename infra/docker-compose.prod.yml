@@ -44,6 +44,13 @@ services:
       # Profile photos uploaded by users. Host directory is created by
       # bootstrap; back this up alongside the DB.
       - /srv/albus/avatars:/app/avatars
+      # Read-only mount for one-off CSV → Trivu migrations (the
+      # `scripts/migrate_legacy.py` path). The script computes
+      # DATA_DIR as `/data/legacy-migration` inside the container,
+      # so we mount the host directory there. Mount is harmless
+      # when the host dir is empty — Docker creates an empty dir
+      # if `/srv/albus/legacy-migration` doesn't exist yet.
+      - /srv/albus/legacy-migration:/data/legacy-migration:ro
     depends_on:
       db:
         condition: service_healthy
