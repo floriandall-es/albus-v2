@@ -486,26 +486,42 @@ function TransplantEditor({
   );
   const [notes, setNotes] = useState<string>(existing?.notes ?? "");
   const [procedures, setProcedures] = useState<TransplantProcedureInput[]>(
-    () =>
-      existing
-        ? existing.procedures.map((p) => ({
-            type: p.type,
-            occurred_at: p.occurred_at,
-            primary_person_id: p.primary_person_id,
-            secondary_person_id: p.secondary_person_id,
-            notes: p.notes,
-          }))
-        : [
-            {
-              type: "explante",
-              // Default to today at 11:00 local — most ops are
-              // mid-morning. The customer can adjust.
-              occurred_at: defaultProcedureDateTime(),
-              primary_person_id: null,
-              secondary_person_id: null,
-              notes: null,
-            },
-          ],
+    () => {
+      if (existing) {
+        return existing.procedures.map((p) => ({
+          type: p.type,
+          occurred_at: p.occurred_at,
+          primary_person_id: p.primary_person_id,
+          secondary_person_id: p.secondary_person_id,
+          notes: p.notes,
+        }));
+      }
+      // Fresh case: pre-fill BOTH halves of the transplant so
+      // the admin's eye lands on a complete shape. The surgeon
+      // selectors default to "Sin cirujano local", so a
+      // cross-hospital case where only one half was done locally
+      // just leaves the other side empty — no need to add or
+      // remove rows by hand for the common case. The admin can
+      // still drop a row entirely (× icon on each row) when one
+      // half genuinely didn't happen at all.
+      const at = defaultProcedureDateTime();
+      return [
+        {
+          type: "explante",
+          occurred_at: at,
+          primary_person_id: null,
+          secondary_person_id: null,
+          notes: null,
+        },
+        {
+          type: "implante",
+          occurred_at: at,
+          primary_person_id: null,
+          secondary_person_id: null,
+          notes: null,
+        },
+      ];
+    },
   );
 
   const save = useMutation({
