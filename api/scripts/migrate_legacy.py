@@ -27,9 +27,15 @@ Reads the Cloud SQL Studio CSV exports from
   - One sub-equipo "Residentes" with resident Gascón as its
     lead (Group.lead_membership_id) and the 8 residents as
     members (categoría Residente).
-  - 9 main-team slots and 7 sub-equipo slots, named from the
-    source role enum (`consulta`, `quirofano_1`, `implante_1`,
-    `neumologo`, etc.).
+  - 6 main-team slots, two of which use team_composition:
+    Quirófano (Cirujano 1, Cirujano 2) and Trasplante
+    (Explante, Implante 1, Implante 2). Plus 7 sub-equipo
+    slots (one per source resident role), all single-staffing.
+    Source surgeon_shifts rows with role=quirofano_1 /
+    implante_2 / etc. map onto the matching team_role inside
+    the parent slot — Assignment.team_role_id carries the
+    position so the planning grid shows "Quirófano · Cirujano 1"
+    style rows after import.
   - 5 monthly schedules (Feb–Jun 2026) with DRAFT / PUBLISHED
     status preserved, plus ~2 400 assignments.
   - 102 availability_blocks from the source `vacations` table
@@ -88,6 +94,7 @@ from app.models import (
     Person,
     Schedule,
     Slot,
+    SlotTeamRole,
     Tenant,
 )
 
@@ -167,20 +174,50 @@ CSV = {
 # excluded because it means "no assignment", not a slot)
 # ---------------------------------------------------------------------------
 
-MAIN_TEAM_SLOTS = [
-    "consulta",
-    "explante",
-    "guardia",
-    "implante_1",
-    "implante_2",
-    "neumologo",
-    "planta",
-    "quirofano_1",
-    "quirofano_2",
+# Main-team slots. The source enum is flat (quirofano_1,
+# quirofano_2, explante, implante_1, implante_2 are all separate
+# role values), but conceptually they're positions WITHIN an
+# activity, not separate activities. We collapse them here:
+#
+#   - Quirófano (team_composition): Cirujano 1, Cirujano 2
+#   - Trasplante (team_composition): Explante, Implante 1, Implante 2
+#
+# Single-role slots get staffing_mode="single" and no
+# SlotTeamRole rows. Multi-role slots get
+# staffing_mode="team_composition" + one SlotTeamRole per role,
+# and Assignment.team_role_id is set to the matching role on
+# every imported row.
+#
+# `roles` items are (source_role_slug, team_role_label_or_None).
+# None means "this slot has no named positions; everyone goes
+# in the single bucket."
+MAIN_TEAM_SLOTS: list[dict[str, Any]] = [
+    {"name": "Consulta",  "roles": [("consulta",  None)]},
+    {"name": "Guardia",   "roles": [("guardia",   None)]},
+    {"name": "Neumólogo", "roles": [("neumologo", None)]},
+    {"name": "Planta",    "roles": [("planta",    None)]},
+    {
+        "name": "Quirófano",
+        "roles": [
+            ("quirofano_1", "Cirujano 1"),
+            ("quirofano_2", "Cirujano 2"),
+        ],
+    },
+    {
+        "name": "Trasplante",
+        "roles": [
+            ("explante",   "Explante"),
+            ("implante_1", "Implante 1"),
+            ("implante_2", "Implante 2"),
+        ],
+    },
 ]
 
-# `rotacion` is a real activity for residents per customer
-# confirmation (rotating residents from other services).
+# Sub-equipo "Residentes" slots. The source enum has no
+# numbered duplicates here (one quirofano, one implante…), so
+# we keep them as flat single-staffing slots. `rotacion` is a
+# real activity for residents per customer confirmation
+# (rotating residents from other services).
 RESIDENT_SLOTS = [
     "consulta",
     "explante",
@@ -192,21 +229,16 @@ RESIDENT_SLOTS = [
 ]
 
 
-def slot_display_name(slug: str) -> str:
-    """Convert the source role slug into a human-readable name
-    for the Trivu Slot.name field. The admin can rename in
-    /admin/slots after migration."""
+def resident_slot_display_name(slug: str) -> str:
+    """Map a residents-side source slug to a human-readable Slot
+    name. Main-team slot names are spelled out directly in
+    MAIN_TEAM_SLOTS, so this helper covers residents only."""
     table = {
         "consulta": "Consulta",
         "explante": "Explante",
         "guardia": "Guardia",
-        "implante_1": "Implante 1",
-        "implante_2": "Implante 2",
         "implante": "Implante",
-        "neumologo": "Neumólogo",
         "planta": "Planta",
-        "quirofano_1": "Quirófano 1",
-        "quirofano_2": "Quirófano 2",
         "quirofano": "Quirófano",
         "rotacion": "Rotación",
     }
@@ -563,30 +595,56 @@ def run_migration(db: Session) -> dict[str, Any]:
     # ------------------------------------------------------------------
     # 8. Slots
     # ------------------------------------------------------------------
-    slot_by_main_role: dict[str, Slot] = {}
-    for pos, slug in enumerate(MAIN_TEAM_SLOTS):
+    # Source role slug → (Slot, SlotTeamRole or None). Single-role
+    # slots map to (slot, None); multi-role slots map each source
+    # slug to its matching SlotTeamRole. Drives both the assignment
+    # writer below and (implicitly) which rota row each historical
+    # shift lands on.
+    slot_role_map: dict[str, tuple[Slot, SlotTeamRole | None]] = {}
+    team_roles_created = 0
+    for pos, spec in enumerate(MAIN_TEAM_SLOTS):
+        roles = spec["roles"]
+        multi = len(roles) > 1
         s = Slot(
             tenant_id=tenant.id,
-            name=slot_display_name(slug),
+            name=spec["name"],
             start_time=None,
             end_time=None,
             days_applied="all",
-            staffing_mode="single",
-            headcount=1,
+            # Multi-role activities go through team_composition;
+            # headcount is the sum of individual role headcounts
+            # (each role is 1 here, so just the count).
+            staffing_mode="team_composition" if multi else "single",
+            headcount=len(roles),
             counts_for_equity=True,
             position=pos,
             group_id=None,
         )
         db.add(s)
         db.flush()
-        slot_by_main_role[slug] = s
-    report["counts"]["slots_main"] = len(slot_by_main_role)
+        if multi:
+            for src_slug, label in roles:
+                tr = SlotTeamRole(
+                    tenant_id=tenant.id,
+                    slot_id=s.id,
+                    role_label=label,
+                    headcount=1,
+                )
+                db.add(tr)
+                db.flush()
+                slot_role_map[src_slug] = (s, tr)
+                team_roles_created += 1
+        else:
+            src_slug, _ = roles[0]
+            slot_role_map[src_slug] = (s, None)
+    report["counts"]["slots_main"] = len(MAIN_TEAM_SLOTS)
+    report["counts"]["team_roles_main"] = team_roles_created
 
     slot_by_resident_role: dict[str, Slot] = {}
     for pos, slug in enumerate(RESIDENT_SLOTS):
         s = Slot(
             tenant_id=tenant.id,
-            name=slot_display_name(slug),
+            name=resident_slot_display_name(slug),
             start_time=None,
             end_time=None,
             days_applied="all",
@@ -594,6 +652,9 @@ def run_migration(db: Session) -> dict[str, Any]:
             headcount=1,
             counts_for_equity=True,
             position=pos,
+            # Sub-equipo slots are scoped by group_id; the partial
+            # uniqueness index lets them share names with main-team
+            # slots (e.g. both can be called "Consulta").
             group_id=group.id,
         )
         db.add(s)
@@ -731,10 +792,11 @@ def run_migration(db: Session) -> dict[str, Any]:
                 libre_main_already_covered += 1
             continue
 
-        slot = slot_by_main_role.get(role)
-        if slot is None:
+        slot_role = slot_role_map.get(role)
+        if slot_role is None:
             skipped_unknown_role += 1
             continue
+        slot, team_role = slot_role
         sched = schedule_by_month[(d.year, d.month)]
 
         surgeon_id = row.get("surgeon_id") or ""
@@ -764,6 +826,10 @@ def run_migration(db: Session) -> dict[str, Any]:
             tenant_id=tenant.id,
             schedule_id=sched.id,
             slot_id=slot.id,
+            # For team_composition slots this is the specific
+            # position (Cirujano 1, Explante, …); for single-mode
+            # slots it stays NULL.
+            team_role_id=team_role.id if team_role else None,
             date=d,
             person_id=person.id if person else None,
             notes=notes_text,

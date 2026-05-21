@@ -19,8 +19,16 @@ from app.db.base import Base
 
 class Slot(Base):
     __tablename__ = "slots"
+    # Slot-name uniqueness is enforced by two partial unique indexes
+    # rather than a UniqueConstraint (see migration 0044):
+    #   - uq_slots_main_team_name: (tenant_id, name) where group_id
+    #     IS NULL — main-team slots are unique within the tenant.
+    #   - uq_slots_group_name: (tenant_id, group_id, name) where
+    #     group_id IS NOT NULL — sub-equipo slots are unique within
+    #     their group only, so two groups can each have a "Consulta"
+    #     slot without collision.
+    # Indexes don't live in __table_args__ because they're partial.
     __table_args__ = (
-        UniqueConstraint("tenant_id", "name", name="uq_slots_tenant_name"),
         CheckConstraint(
             "days_applied IN ('all','weekdays','weekends_holidays','custom')",
             name="ck_slots_days_applied",
