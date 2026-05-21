@@ -671,9 +671,17 @@ def run_migration(db: Session) -> dict[str, Any]:
     # slug to its matching SlotTeamRole. Drives both the assignment
     # writer below and (implicitly) which rota row each historical
     # shift lands on.
+    # Global slot-position counter. Main-team slots take the
+    # lower range, sub-equipo slots continue from there — every
+    # Slot row in the tenant must end up with a UNIQUE position
+    # because /admin/slots' reorder endpoint swaps position
+    # values, which is a no-op when two slots share a number.
+    # The customer can rearrange order via the up/down arrows
+    # after migration.
+    slot_position = 0
     slot_role_map: dict[str, tuple[Slot, SlotTeamRole | None]] = {}
     team_roles_created = 0
-    for pos, spec in enumerate(MAIN_TEAM_SLOTS):
+    for spec in MAIN_TEAM_SLOTS:
         roles = spec["roles"]
         multi = len(roles) > 1
         s = Slot(
@@ -688,9 +696,10 @@ def run_migration(db: Session) -> dict[str, Any]:
             staffing_mode="team_composition" if multi else "single",
             headcount=len(roles),
             counts_for_equity=True,
-            position=pos,
+            position=slot_position,
             group_id=None,
         )
+        slot_position += 1
         db.add(s)
         db.flush()
         if multi:
@@ -712,7 +721,7 @@ def run_migration(db: Session) -> dict[str, Any]:
     report["counts"]["team_roles_main"] = team_roles_created
 
     slot_by_resident_role: dict[str, Slot] = {}
-    for pos, slug in enumerate(RESIDENT_SLOTS):
+    for slug in RESIDENT_SLOTS:
         s = Slot(
             tenant_id=tenant.id,
             name=resident_slot_display_name(slug),
@@ -722,12 +731,16 @@ def run_migration(db: Session) -> dict[str, Any]:
             staffing_mode="single",
             headcount=1,
             counts_for_equity=True,
-            position=pos,
+            # Continue the global position counter so sub-equipo
+            # slots get unique numbers (the reorder endpoint relies
+            # on no two slots in the tenant sharing a position).
+            position=slot_position,
             # Sub-equipo slots are scoped by group_id; the partial
             # uniqueness index lets them share names with main-team
             # slots (e.g. both can be called "Consulta").
             group_id=group.id,
         )
+        slot_position += 1
         db.add(s)
         db.flush()
         slot_by_resident_role[slug] = s

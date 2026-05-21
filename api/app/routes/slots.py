@@ -476,6 +476,27 @@ def move_slot(
         .order_by(Slot.position, Slot.name, Slot.id)
         .all()
     )
+    # Self-heal duplicate positions. The Sprint 17 reorder design
+    # assumes every slot in the tenant has a unique `position`
+    # value — swapping two integers is a no-op when they already
+    # match. Bulk imports (the legacy CSV migration on the alpha
+    # customer ran main-team slots 0..5 AND sub-equipo slots 0..6
+    # in separate enumerations, so 4 pairs of slots ended up
+    # sharing position numbers) can produce ties that silently
+    # break the up/down arrows. Renumber to 0..N-1 along the
+    # current sort order before doing the swap so the operation
+    # always has a real effect.
+    seen: set[int] = set()
+    has_duplicates = False
+    for s in ordered:
+        if s.position in seen:
+            has_duplicates = True
+            break
+        seen.add(s.position)
+    if has_duplicates:
+        for i, s in enumerate(ordered):
+            s.position = i
+        ctx.db.flush()
     idx = next((i for i, s in enumerate(ordered) if s.id == target.id), -1)
     if idx == -1:
         raise HTTPException(status_code=404, detail="Slot not found")
