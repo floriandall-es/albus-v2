@@ -5,11 +5,17 @@ Reads the Cloud SQL Studio CSV exports from
 `data/legacy-migration/` and builds a fresh tenant containing:
 
   - The customer's 9 user accounts (admin + sub-equipo lead + 7
-    surgeons) and 7 resident profiles, all created as
+    surgeons), 6 neumólogos (no source user accounts), and 8
+    residents (no source user accounts). All created as
     `pendientes` (NULL password) so they activate via the
     existing invitation flow post-cutover.
-  - One sub-equipo ("Residentes") with the residentes user
-    account as its lead.
+  - Main team membership: 7 surgeons (categoría Adjunto) + 6
+    neumólogos (categoría Neumólogo). Neumólogos are scheduled
+    in surgeon_shifts via the `neumologo` role; the source
+    `assignee_name` field carries their last name.
+  - One sub-equipo "Residentes" with the residentes user
+    account as its lead and the 8 residents as members
+    (categoría Residente).
   - 9 main-team slots and 7 sub-equipo slots, named from the
     source role enum (`consulta`, `quirofano_1`, `implante_1`,
     `neumologo`, etc.).
@@ -91,6 +97,7 @@ HAS_SUBTEAMS = True
 # admin can split later (Jefe, Adjunto, etc.).
 CATEGORY_ADJUNTO = "Adjunto"
 CATEGORY_RESIDENTE = "Residente"
+CATEGORY_NEUMOLOGO = "Neumólogo"
 
 SUBTEAM_NAME = "Residentes"
 
@@ -108,7 +115,16 @@ DATA_DIR = (
 CSV = {
     "users": "studio_results_20260521_1044 (2).csv",
     "user_surgeon_map": "studio_results_20260521_1042 (3).csv",
-    "residents": "studio_results_20260521_1041 (3).csv",
+    # The source has two "directory" tables that look identical at
+    # the column level but hold different people:
+    #   - 1041 (3): 6 NEUMÓLOGOS (Anguera, Montull, Reig, Selma,
+    #     Pastor, Solé) — same names appear as assignee_name on the
+    #     `neumologo` rows of surgeon_shifts.
+    #   - 1042 (1): 8 actual RESIDENTS (Cuadros, Doménech, Pérez,
+    #     Espinós, Gascón, H. Tovar, M. Garcia, David) — FK target
+    #     of resident_shifts.resident_id (1–8).
+    "neumologos": "studio_results_20260521_1041 (3).csv",
+    "residents": "studio_results_20260521_1042 (1).csv",
     "surgeon_shifts": "studio_results_20260521_1042 (2).csv",
     "resident_shifts": "studio_results_20260521_1042.csv",
     "vacations": "studio_results_20260521_1041 (1).csv",
@@ -264,6 +280,7 @@ def run_migration(db: Session) -> dict[str, Any]:
     # ------------------------------------------------------------------
     src_users = read_csv(CSV["users"])
     src_usm = read_csv(CSV["user_surgeon_map"])
+    src_neumologos = read_csv(CSV["neumologos"])
     src_residents = read_csv(CSV["residents"])
     src_surgeon_shifts = read_csv(CSV["surgeon_shifts"])
     src_resident_shifts = read_csv(CSV["resident_shifts"])
@@ -274,6 +291,7 @@ def run_migration(db: Session) -> dict[str, Any]:
     print(
         f"Read CSVs: users={len(src_users)}, "
         f"user_surgeon_map={len(src_usm)}, "
+        f"neumologos={len(src_neumologos)}, "
         f"residents={len(src_residents)}, "
         f"surgeon_shifts={len(src_surgeon_shifts)}, "
         f"resident_shifts={len(src_resident_shifts)}, "
@@ -305,9 +323,10 @@ def run_migration(db: Session) -> dict[str, Any]:
     # ------------------------------------------------------------------
     cat_adjunto = Category(tenant_id=tenant.id, name=CATEGORY_ADJUNTO)
     cat_residente = Category(tenant_id=tenant.id, name=CATEGORY_RESIDENTE)
-    db.add_all([cat_adjunto, cat_residente])
+    cat_neumologo = Category(tenant_id=tenant.id, name=CATEGORY_NEUMOLOGO)
+    db.add_all([cat_adjunto, cat_residente, cat_neumologo])
     db.flush()
-    report["counts"]["categories"] = 2
+    report["counts"]["categories"] = 3
 
     # ------------------------------------------------------------------
     # 4. Persons + Memberships from `users` table.
@@ -316,10 +335,6 @@ def run_migration(db: Session) -> dict[str, Any]:
     # source user_id → Person row + Membership row
     person_by_user_id: dict[str, Person] = {}
     membership_by_user_id: dict[str, Membership] = {}
-    # Lowercased last-name → Person, used to resolve the free-text
-    # `assignee_name` on neumologo shifts. Built up as we create
-    # users + residents.
-    person_by_lastname: dict[str, Person] = {}
 
     # Find the "Residentes" user so we can mark them as lead later.
     residentes_user = None
@@ -342,8 +357,6 @@ def run_migration(db: Session) -> dict[str, Any]:
         db.add(person)
         db.flush()
         person_by_user_id[u["id"]] = person
-        if last:
-            person_by_lastname[normalize_last_name(last)] = person
 
         ms = Membership(
             tenant_id=tenant.id,
@@ -383,18 +396,59 @@ def run_migration(db: Session) -> dict[str, Any]:
     report["counts"]["groups"] = 1
 
     # ------------------------------------------------------------------
-    # 6. Resident profiles → persons + memberships in the sub-equipo.
-    #    Source residents have no email; we generate placeholders so
-    #    the unique-email constraint holds. The admin can swap real
-    #    emails in via /admin/team if/when they want residents in the
-    #    app.
+    # 6a. Neumólogos → main-team persons + memberships with categoría
+    #     Neumólogo. NOT a sub-equipo: per the customer they sit in
+    #     the main team alongside the surgeons (different categoría).
+    #     They show up as assignee_name in surgeon_shifts' `neumologo`
+    #     rows; we resolve via last-name match against this group.
+    #     Source has no email → placeholder.
+    # ------------------------------------------------------------------
+    person_by_neumologo_id: dict[str, Person] = {}
+    person_by_neumologo_lastname: dict[str, Person] = {}
+    for n in src_neumologos:
+        display = n["display_name"]
+        first, last = split_name(display)
+        placeholder_email = (
+            f"{normalize_last_name(last or display).replace(' ', '-')}"
+            f".n{n['id']}@trivu.invalid"
+        )
+        person = Person(
+            email=placeholder_email,
+            name=display,
+            first_name=first,
+            last_name=last,
+            hashed_password=None,
+        )
+        db.add(person)
+        db.flush()
+        person_by_neumologo_id[n["id"]] = person
+        if last:
+            person_by_neumologo_lastname[normalize_last_name(last)] = person
+
+        ms = Membership(
+            tenant_id=tenant.id,
+            person_id=person.id,
+            roles=["member"],
+            category_id=cat_neumologo.id,
+            fte_pct=100,
+            group_id=None,  # main team
+        )
+        db.add(ms)
+        db.flush()
+
+    report["counts"]["persons_from_neumologos"] = len(src_neumologos)
+    report["counts"]["memberships_from_neumologos"] = len(src_neumologos)
+
+    # ------------------------------------------------------------------
+    # 6b. Residents (Cuadros, Doménech, …) → persons + memberships in
+    #     the "Residentes" sub-equipo with categoría Residente. FK
+    #     target of resident_shifts.resident_id (1–8). Source has no
+    #     email → placeholder.
     # ------------------------------------------------------------------
     person_by_resident_id: dict[str, Person] = {}
     for r in src_residents:
         display = r["display_name"]
         first, last = split_name(display)
-        # Placeholder email pattern is obvious from the UI so the
-        # admin spots them and updates the real ones.
         placeholder_email = (
             f"{normalize_last_name(last or display).replace(' ', '-')}"
             f".r{r['id']}@trivu.invalid"
@@ -409,8 +463,6 @@ def run_migration(db: Session) -> dict[str, Any]:
         db.add(person)
         db.flush()
         person_by_resident_id[r["id"]] = person
-        if last:
-            person_by_lastname.setdefault(normalize_last_name(last), person)
 
         ms = Membership(
             tenant_id=tenant.id,
@@ -633,10 +685,16 @@ def run_migration(db: Session) -> dict[str, Any]:
             person = person_by_surgeon_id.get(surgeon_id)
             if person is None:
                 # Reference to a surgeon profile that didn't resolve to
-                # a person (e.g. the deactivated Pastor profile).
+                # a person (e.g. the deactivated Pastor profile in the
+                # user_surgeon_map with no user_id).
                 notes_text = f"Origen: surgeon_id={surgeon_id} (no resuelto)"
         elif assignee_name:
-            person = person_by_lastname.get(normalize_last_name(assignee_name))
+            # neumologo rows with surgeon_id empty carry a free-text
+            # last name in assignee_name pointing at one of the 6
+            # neumólogos. Resolve by normalized last-name match.
+            person = person_by_neumologo_lastname.get(
+                normalize_last_name(assignee_name)
+            )
             if person is None:
                 unresolved_assignee_names[assignee_name] += 1
                 notes_text = f"Asignado a: {assignee_name}"
