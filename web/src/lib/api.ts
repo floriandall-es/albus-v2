@@ -1198,12 +1198,20 @@ export const api = {
     );
   },
 
-  // Team absences (public, read-only). Used by the Libre row in the
-  // planning grid; visible to any authenticated user.
-  listTeamAbsences: (params?: { from?: string; to?: string }) => {
+  // Team absences (public, read-only). Used by the Libre row in
+  // the planning grid; visible to any authenticated user. Pass
+  // mainTeamOnly when rendering the main-team planning so the
+  // Libre row hides sub-equipo members (their absences belong on
+  // the sub-equipo's own grid, not the tenant admin's).
+  listTeamAbsences: (params?: {
+    from?: string;
+    to?: string;
+    mainTeamOnly?: boolean;
+  }) => {
     const qs = new URLSearchParams();
     if (params?.from) qs.set("from", params.from);
     if (params?.to) qs.set("to", params.to);
+    if (params?.mainTeamOnly) qs.set("main_team_only", "true");
     const q = qs.toString();
     return request<TeamAbsence[]>(
       `/api/availability/team-absences${q ? `?${q}` : ""}`,

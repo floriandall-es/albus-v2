@@ -105,12 +105,20 @@ def list_blocks(
 def list_team_absences(
     from_: date | None = Query(default=None, alias="from"),
     to: date | None = None,
+    main_team_only: bool = False,
     ctx: RequestContext = Depends(get_current_context),
 ) -> list[TeamAbsence]:
     """Sanitized read-only view of APPROVED availability blocks for the
     whole tenant. Returned to any authenticated user — the team needs to
     see who's on vacation / baja for the Libre row in the planning grid.
-    No notes / review notes are exposed; only what the row needs."""
+    No notes / review notes are exposed; only what the row needs.
+
+    Scope: by default, returns absences for every person in the
+    tenant. /admin/schedule passes `main_team_only=true` so its
+    Libre row shows only people whose Membership has
+    `group_id IS NULL` — sub-equipo members' libre time belongs in
+    the sub-equipo's own planning, not in the main team's grid.
+    """
     q = (
         ctx.db.query(AvailabilityBlock, Person)
         .join(Person, Person.id == AvailabilityBlock.person_id)
@@ -120,6 +128,21 @@ def list_team_absences(
         q = q.filter(AvailabilityBlock.end_date >= from_)
     if to is not None:
         q = q.filter(AvailabilityBlock.start_date <= to)
+    if main_team_only:
+        # Restrict to persons whose Membership in THIS tenant has
+        # no group_id (main team). We can't filter on Person alone
+        # — Persons aren't tenant-scoped, only Memberships are.
+        # EXISTS subquery keeps the row count correct even when a
+        # person has multiple memberships somehow.
+        q = q.filter(
+            ctx.db.query(Membership.id)
+            .filter(
+                Membership.person_id == AvailabilityBlock.person_id,
+                Membership.tenant_id == ctx.tenant.id,
+                Membership.group_id.is_(None),
+            )
+            .exists()
+        )
     rows = q.order_by(AvailabilityBlock.start_date).all()
     return [
         TeamAbsence(
