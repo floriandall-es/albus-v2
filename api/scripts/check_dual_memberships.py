@@ -64,6 +64,26 @@ def main() -> None:
         print(f"persons with >1 Membership: {len(offenders)}")
         if not offenders:
             print("All clean. No person has more than one membership.")
+        # Also dump a full roster so we can see where each person sits.
+        # This catches the OTHER possible drift: a person who should be
+        # in a sub-equipo but whose only membership is on the main team
+        # (or vice versa). The dual-membership scan can't find this
+        # because there's only one row per person.
+        print()
+        print("=== Full roster (one line per Membership) ===")
+        from app.models import Category
+        cats_by_id = {c.id: c.name for c in db.query(Category).all()}
+        for pid, rows in sorted(by_person.items(), key=lambda kv: kv[1][0][1].name):
+            for m, p, g in rows:
+                scope = "MAIN TEAM" if g is None else f"sub-equipo {g.name!r}"
+                cat = cats_by_id.get(m.category_id, "—") if m.category_id else "—"
+                roles = ",".join(m.roles or [])
+                disabled = " (disabled)" if m.disabled_at else ""
+                print(
+                    f"  {p.name!s:30}  cat={cat!s:14}  "
+                    f"roles=[{roles}]  -> {scope}{disabled}"
+                )
+        if not offenders:
             return
         print()
         for pid, rows in offenders.items():
