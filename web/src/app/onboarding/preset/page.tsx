@@ -8,6 +8,8 @@ import {
   Check,
   MapPin,
   Sparkles,
+  Users,
+  HeartPulse,
 } from "lucide-react";
 import { api, type PresetKind } from "@/lib/api";
 import { ErrorText, Select } from "@/components/admin/ui";
@@ -116,9 +118,27 @@ export default function PresetStep() {
     },
   });
 
+  // Sprint 28: sub-equipos + trasplantes flags moved here from
+  // /signup. Both write the tenant via the same /api/tenants/me
+  // PATCH endpoint as the region picker; the value lives on the
+  // tenant so the /admin Inicio checklist (and the Trasplantes
+  // sidebar visibility) pick it up immediately.
+  const setHasSubteams = useMutation({
+    mutationFn: (v: boolean) => api.updateTenantDefaults({ has_subteams: v }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["me"] }),
+  });
+  const setTransplants = useMutation({
+    mutationFn: (v: boolean) =>
+      api.updateTenantDefaults({ transplants_enabled: v }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["me"] }),
+  });
+
   const currentKind = me.data?.current_tenant.preset_kind ?? null;
   const currentRegion =
     me.data?.current_tenant.region_code ?? "";
+  const currentHasSubteams = me.data?.current_tenant.has_subteams ?? false;
+  const currentTransplants =
+    me.data?.current_tenant.transplants_enabled ?? false;
   const busyKind = choose.isPending ? choose.variables : null;
 
   return (
@@ -240,7 +260,105 @@ export default function PresetStep() {
         </div>
       </div>
 
+      {/* Sub-equipos question — moved out of /signup so the
+          credentials page stays focused on credentials. Yes/No
+          pill row mirroring the original signup layout. The
+          answer drives whether /admin Inicio surfaces a
+          "Configura sub-equipos" card and whether the StepNav
+          shows a sub-equipos step. */}
+      <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4 flex items-start gap-3">
+        <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-brand-50 text-brand-700 shrink-0">
+          <Users className="h-5 w-5" />
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-gray-900">
+            ¿Tienes sub-equipos? (residentes, becarios, etc.)
+          </div>
+          <p className="text-xs text-gray-500 mb-2">
+            Si tienes, te mostraremos un acceso para configurarlos
+            después.
+          </p>
+          <div className="grid grid-cols-2 gap-2 max-w-xs">
+            <SubteamOption
+              label="Sí"
+              active={currentHasSubteams === true}
+              busy={setHasSubteams.isPending}
+              onClick={() => setHasSubteams.mutate(true)}
+            />
+            <SubteamOption
+              label="No"
+              active={currentHasSubteams === false}
+              busy={setHasSubteams.isPending}
+              onClick={() => setHasSubteams.mutate(false)}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Trasplantes opt-in module — same source as the signup
+          checkbox used to be. Tenants that don't run a transplant
+          program leave it unchecked; the module stays hidden. */}
+      <div className="mt-4 rounded-xl border border-gray-200 bg-white p-4 flex items-start gap-3">
+        <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-brand-50 text-brand-700 shrink-0">
+          <HeartPulse className="h-5 w-5" />
+        </span>
+        <div className="flex-1 min-w-0">
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={currentTransplants}
+              onChange={(e) => setTransplants.mutate(e.target.checked)}
+              disabled={setTransplants.isPending}
+              className="mt-0.5 shrink-0"
+            />
+            <span>
+              <span className="block text-sm font-semibold text-gray-900">
+                ¿Tu servicio realiza trasplantes?
+              </span>
+              <span className="block text-xs text-gray-500 mt-0.5">
+                Activa el módulo de trasplantes — registro de
+                casos (EXPLANTE / IMPLANTE), estadísticas y
+                filtros. Puedes dejarlo en blanco si no aplica.
+              </span>
+            </span>
+          </label>
+        </div>
+      </div>
+
       <StepNav currentSlug="preset" />
     </div>
+  );
+}
+
+// Yes/No pill row for the sub-equipos answer. Mirrors the look the
+// signup form had before the question moved here so admins coming
+// back to flip the answer see something familiar.
+function SubteamOption({
+  label,
+  active,
+  busy,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  busy: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      disabled={busy}
+      className={
+        "rounded-lg px-3 py-2 text-sm font-medium transition-colors "
+        + (active
+          ? "bg-brand-600 text-white shadow-soft"
+          : "ring-1 ring-gray-300 bg-white text-gray-800 hover:bg-gray-50")
+        + " disabled:opacity-60 disabled:cursor-wait"
+      }
+    >
+      {label}
+    </button>
   );
 }

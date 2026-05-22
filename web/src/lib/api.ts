@@ -849,14 +849,14 @@ export const api = {
     /** Affirmative ToS + Privacy acceptance. Server rejects with
      * 422 if missing or false. */
     accept_terms: boolean;
-    /** Yes/No answer to "¿Vas a usar sub-equipos?". Stored on the
-     * tenant; later drives whether /admin Inicio surfaces a
-     * sub-equipos setup card. */
-    has_subteams: boolean;
+    /** Used to be a required signup question; moved to the
+     * onboarding step 1 in sprint 28. Kept here as an optional
+     * field so the backend's defaults-to-false contract is
+     * explicit. The /signup form no longer sends it. */
+    has_subteams?: boolean;
     /** Opt-in module checkbox: "¿Tu servicio realiza
-     * trasplantes?". When true, /admin/trasplantes + its stats
-     * dashboard become visible; otherwise the feature stays
-     * dormant. Most tenants leave this false. */
+     * trasplantes?". Moved to the onboarding step 1 in sprint 28;
+     * /signup no longer sends it. Backend defaults false. */
     transplants_enabled?: boolean;
   }) => request<AuthResponse>("/api/signup", { method: "POST", body: JSON.stringify(body) }),
 
@@ -1200,6 +1200,12 @@ export const api = {
   updateTenantDefaults: (body: {
     country_code?: string | null;
     region_code?: string | null;
+    /** Onboarding step 1 sets this — drives the "Configura
+     * sub-equipos" card on /admin Inicio and the StepNav. */
+    has_subteams?: boolean;
+    /** Onboarding step 1 sets this — gates the /admin/trasplantes
+     * module visibility and the related API endpoints. */
+    transplants_enabled?: boolean;
   }) => request<Tenant>("/api/tenants/me", { method: "PATCH", body: JSON.stringify(body) }),
   /** Mark one of the four post-signup areas as completed (or undo
    * it). Server writes/clears the corresponding

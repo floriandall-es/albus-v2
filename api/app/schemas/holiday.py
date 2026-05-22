@@ -44,6 +44,12 @@ class HolidayImportResult(BaseModel):
 class TenantUpdate(BaseModel):
     country_code: str | None = Field(default=None, max_length=8)
     region_code: str | None = Field(default=None, max_length=16)
+    # Sprint 28: moved out of the signup form. The onboarding step 1
+    # (Tipo de equipo) writes these via the same endpoint, so admins
+    # answer "service shape" questions when they have authenticated
+    # context, not on the public credentials page.
+    has_subteams: bool | None = None
+    transplants_enabled: bool | None = None
 
 
 class SetupAreaUpdate(BaseModel):

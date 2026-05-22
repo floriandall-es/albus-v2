@@ -13,16 +13,6 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [acceptTerms, setAcceptTerms] = useState(false);
-  // Yes/No answer to "¿Vas a usar sub-equipos?". Stored on the
-  // tenant; later drives the post-signup checklist (no nav at
-  // signup time — the admin lands in /onboarding regardless).
-  const [hasSubteams, setHasSubteams] = useState<boolean | null>(null);
-  // Opt-in module flag. Most services don't run a transplant
-  // program, so we default false and let the few that do tick
-  // it. Unlike has_subteams, this is a single optional checkbox
-  // (not a required Yes/No) — leaving it unchecked is the
-  // common case and shouldn't read as "answer required."
-  const [transplantsEnabled, setTransplantsEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -38,8 +28,10 @@ export default function SignupPage() {
         email,
         password,
         accept_terms: acceptTerms,
-        has_subteams: hasSubteams === true,
-        transplants_enabled: transplantsEnabled,
+        // has_subteams and transplants_enabled used to live here but
+        // they were configuration questions, not credentials. Moved
+        // to /onboarding/preset (step 1) where the admin already
+        // has authenticated context. Backend defaults both to false.
       });
       setToken(res.access_token);
       // Fresh tenant — always go straight into the onboarding wizard.
@@ -115,44 +107,6 @@ export default function SignupPage() {
               autoComplete="new-password"
               name="new-password"
             />
-            <fieldset>
-              <legend className="text-sm font-medium text-gray-700 mb-1.5">
-                ¿Tienes sub-equipos? (residentes, becarios, etc.)
-              </legend>
-              <div className="grid grid-cols-2 gap-2">
-                <SubteamOption
-                  label="Sí"
-                  active={hasSubteams === true}
-                  onClick={() => setHasSubteams(true)}
-                />
-                <SubteamOption
-                  label="No"
-                  active={hasSubteams === false}
-                  onClick={() => setHasSubteams(false)}
-                />
-              </div>
-              <p className="mt-1.5 text-xs text-gray-500">
-                Si tienes, te mostraremos un acceso para configurarlos
-                después.
-              </p>
-            </fieldset>
-            <label className="flex items-start gap-2 text-sm text-gray-700">
-              <input
-                type="checkbox"
-                checked={transplantsEnabled}
-                onChange={(e) => setTransplantsEnabled(e.target.checked)}
-                className="mt-0.5 shrink-0"
-              />
-              <span>
-                <span className="font-medium">¿Tu servicio realiza trasplantes?</span>
-                <span className="block text-xs text-gray-500 mt-0.5">
-                  Activa el módulo de trasplantes — registro de
-                  casos (EXPLANTE / IMPLANTE), estadísticas y
-                  filtros. Puedes dejarlo en blanco si no
-                  aplica.
-                </span>
-              </span>
-            </label>
             <label className="flex items-start gap-2 text-sm text-gray-700">
               <input
                 type="checkbox"
@@ -184,7 +138,7 @@ export default function SignupPage() {
             {error && <p className="text-sm text-rose-600">{error}</p>}
             <button
               type="submit"
-              disabled={loading || !acceptTerms || hasSubteams === null}
+              disabled={loading || !acceptTerms}
               className="w-full rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-soft hover:bg-brand-700 disabled:opacity-50"
             >
               {loading ? "Creando…" : "Crear servicio"}
@@ -235,31 +189,3 @@ function Field(props: {
   );
 }
 
-// Two-button pill row for the sub-equipos yes/no. Type="button"
-// so it doesn't submit the form; visual state mirrors a radio
-// without the awkward native styling.
-function SubteamOption({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={
-        "rounded-lg px-3 py-2 text-sm font-medium transition-colors "
-        + (active
-          ? "bg-brand-600 text-white shadow-soft"
-          : "ring-1 ring-gray-300 bg-white text-gray-800 hover:bg-gray-50")
-      }
-    >
-      {label}
-    </button>
-  );
-}
