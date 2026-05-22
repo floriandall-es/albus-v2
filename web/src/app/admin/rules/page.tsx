@@ -116,7 +116,14 @@ function SoftWeightPicker({
 }
 
 export default function RulesPage() {
-  const slots = useQuery({ queryKey: ["slots"], queryFn: () => api.listSlots() });
+  // Main-admin scope: sub-equipo (e.g. Residentes) slots have their
+  // own rules managed by the group lead and shouldn't appear in the
+  // tenant-level Reglas pickers. Mirrors the same filter applied on
+  // /admin/slots and the main planning grid.
+  const slots = useQuery({
+    queryKey: ["slots", "main"],
+    queryFn: () => api.listSlots({ mainTeamOnly: true }),
+  });
   const slotById = useMemo(() => {
     const m: Record<number, Slot> = {};
     (slots.data ?? []).forEach((s) => {
