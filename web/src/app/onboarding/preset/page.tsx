@@ -272,11 +272,14 @@ export default function PresetStep() {
         </span>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold text-gray-900">
-            ¿Tienes sub-equipos? (residentes, becarios, etc.)
+            ¿Tienes sub-equipos que gestionan su propia planificación?
           </div>
           <p className="text-xs text-gray-500 mb-2">
-            Si tienes, te mostraremos un acceso para configurarlos
-            después.
+            Por ejemplo residentes o becarios con un jefe que organiza
+            sus turnos por separado. Si tu equipo solo tiene categorías
+            (ej. adjuntos y residentes en la misma planificación),
+            elige <strong>No</strong> — las categorías se configuran en
+            el paso siguiente.
           </p>
           <div className="grid grid-cols-2 gap-2 max-w-xs">
             <SubteamOption
