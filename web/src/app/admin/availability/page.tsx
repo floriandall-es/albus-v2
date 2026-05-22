@@ -86,10 +86,15 @@ export default function AvailabilityPage() {
             onChange={(v) => setPersonId(v === "" ? "" : Number(v))}
             options={[
               { value: "", label: "— Todas —" },
-              ...((team.data ?? []).map((m: TeamMember) => ({
-                value: m.person_id,
-                label: m.person_name,
-              })) as { value: number | ""; label: string }[]),
+              // Mismo recorte que el modal y el endpoint: los miembros
+              // de sub-equipos no aparecen aquí — su lead gestiona sus
+              // bloqueos en /lead/bloqueos.
+              ...((team.data ?? [])
+                .filter((m: TeamMember) => m.group_id === null)
+                .map((m: TeamMember) => ({
+                  value: m.person_id,
+                  label: m.person_name,
+                })) as { value: number | ""; label: string }[]),
             ]}
           />
         </div>
@@ -178,7 +183,12 @@ export default function AvailabilityPage() {
       )}
       {(adding || editing) && (
         <BlockModal
-          team={team.data ?? []}
+          // Bloqueos en /admin son sólo para el equipo principal.
+          // Los sub-equipos los gestiona su lead en /lead/bloqueos.
+          // Si abrimos el modal en modo edición sobre una baja
+          // existente, dejamos pasar el person_id de cualquier modo
+          // (no podemos cambiarlo, sólo las fechas/tipo/notas).
+          team={(team.data ?? []).filter((m) => m.group_id === null)}
           existing={editing}
           onClose={() => {
             setAdding(false);
