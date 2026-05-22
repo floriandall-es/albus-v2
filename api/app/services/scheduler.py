@@ -1539,6 +1539,29 @@ def _solve_cpsat(
                                 )
                             )
                     continue
+                # Manual rules: admin fills cells by hand. Mirror the
+                # non-team_composition path (_emit_team_prepin's manual
+                # branch) — emit NULL placeholders per role, register
+                # nothing with the solver. Without this branch a
+                # team_composition + manual slot fell through to
+                # `team = []` below, added solver demands and the
+                # solver auto-filled the cells, defeating the whole
+                # point of choosing manual.
+                if rule.strategy == "manual":
+                    for role in roles:
+                        for _ in range(max(1, role.headcount)):
+                            db.add(
+                                Assignment(
+                                    tenant_id=ctx.tenant_id,
+                                    schedule_id=schedule.id,
+                                    slot_id=slot.id,
+                                    date=d,
+                                    person_id=None,
+                                    team_role_id=role.id,
+                                    notes="Pendiente de asignar manualmente",
+                                )
+                            )
+                    continue
                 if rule.strategy == "rotation":
                     team = list(ctx.rotation_persons_for(rule, d))
                 elif rule.strategy == "fixed_weekly":
