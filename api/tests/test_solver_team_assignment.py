@@ -505,3 +505,116 @@ def test_team_composition_weekend_rotation_latin_square(auth_client, client):
             f"weekends {i-1} and {i} both got team {seen_teams[i]}; "
             "rotation didn't alternate"
         )
+
+
+def test_team_composition_rotation_varies_roles_across_blocks(auth_client, client):
+    """Sprint 28: with the cyclic Latin-rectangle role rotation, the
+    same team should NOT cover the same role on the same weekday across
+    consecutive on-call blocks.
+
+    Setup: same as the within-block Latin-square test (Fri-Sun
+    trasplante, 3+3 rotation), but generate three consecutive months so
+    each team has at least 3 on-call weekends. Then assert that for
+    each (person, weekday) the role varies across that team's blocks —
+    no person should do the same role every time they're on Friday.
+    """
+    _client, headers, _info = auth_client
+    team_a = [
+        _onboard(client, headers, f"cb_a{i}@example.com", f"CA{i}")
+        for i in range(3)
+    ]
+    team_b = [
+        _onboard(client, headers, f"cb_b{i}@example.com", f"CB{i}")
+        for i in range(3)
+    ]
+    fri_sun_mask = 0b1110000
+    s = _create_slot(
+        client,
+        headers,
+        name="Trasplante",
+        days_applied="custom",
+        custom_days_bitmap=fri_sun_mask,
+        staffing_mode="team_composition",
+        headcount=3,
+        team_roles=[
+            {"role_label": "Explante", "headcount": 1, "category_ids": []},
+            {"role_label": "Implante1", "headcount": 1, "category_ids": []},
+            {"role_label": "Implante2", "headcount": 1, "category_ids": []},
+        ],
+    )
+    anchor = date(2026, 5, 1)  # Friday
+    client.put(
+        f"/api/slots/{s['id']}/rules",
+        headers=headers,
+        json={
+            "rules": [
+                {
+                    "days_bitmap": fri_sun_mask,
+                    "strategy": "rotation",
+                    "anchor_date": anchor.isoformat(),
+                    "rotation_blocks": [
+                        {"position": 0, "days_bitmap": fri_sun_mask},
+                    ],
+                    "rotation_members": [
+                        *(
+                            {"position": 0, "person_id": pid}
+                            for pid in team_a
+                        ),
+                        *(
+                            {"position": 1, "person_id": pid}
+                            for pid in team_b
+                        ),
+                    ],
+                }
+            ]
+        },
+    )
+
+    # Generate 3 consecutive months (May, Jun, Jul) so each team gets
+    # ~3+ on-call weekends across the test horizon (alternating each
+    # weekend with 2 positions).
+    all_assignments: list[dict] = []
+    for period in ("2026-05-01", "2026-06-01", "2026-07-01"):
+        r = client.post(
+            "/api/schedules/generate",
+            headers=headers,
+            json={"period": period},
+        )
+        assert r.status_code in (200, 201), r.text
+        all_assignments.extend(
+            a for a in r.json()["assignments"] if a["slot_name"] == "Trasplante"
+        )
+
+    # Group: per (person, weekday) → list of (date, role_label) sorted by date.
+    from collections import defaultdict
+
+    per_person_weekday: dict[tuple[int, int], list[tuple[str, str]]] = defaultdict(
+        list
+    )
+    for a in all_assignments:
+        if a["person_id"] is None:
+            continue
+        d = date.fromisoformat(a["date"])
+        per_person_weekday[(a["person_id"], d.weekday())].append(
+            (a["date"], a["team_role_label"])
+        )
+
+    # For each person on each weekday they're on call: across their
+    # multiple on-call appearances, they should NOT do the same role
+    # every time. With block_rank shifting the permutation, after
+    # n=3 of a team's blocks, the role on each weekday cycles through
+    # all 3 roles exactly once.
+    saw_at_least_one = False
+    for (pid, wd), entries in per_person_weekday.items():
+        if len(entries) < 2:
+            continue  # need at least two appearances to test variance
+        saw_at_least_one = True
+        roles = {role for _, role in entries}
+        assert len(roles) > 1, (
+            f"person {pid} on weekday {wd} did role {roles.pop()} every time "
+            f"across {len(entries)} blocks — cross-block role rotation broken"
+        )
+    assert saw_at_least_one, (
+        "test horizon didn't produce enough on-call weekends to verify "
+        "cross-block rotation — check the schedule periods"
+    )

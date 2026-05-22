@@ -423,6 +423,68 @@ class _Context:
         team = self.rotation_persons_for(rule, d)
         return team[0] if team else None
 
+    def team_block_rank_for(self, rule: SlotRule, d: date) -> int:
+        """Return how many blocks of the SAME rotation team have
+        elapsed since anchor_date, up to (and including) the block
+        containing date d.
+
+        Used by the team_composition Latin-rectangle role rotation:
+        the per-block role-permutation is shifted by this value so the
+        same team doesn't always cover the same role on the same
+        weekday across consecutive on-call weekends.
+
+        Derivation: rotation_persons_for() picks
+            target_pos = positions_sorted[(rank + (weeks // weeks_step) * k) % p_count]
+        which is equivalent to indexing by an `advance_counter` that
+        increments by 1 per calendar block (within-week, then crossing
+        weeks). The block rank for a given team is then
+            advance_counter // p_count.
+
+        Returns 0 when the rule is missing anchor_date, blocks, members
+        or positions — same defensive defaults as rotation_persons_for.
+        """
+        if rule.anchor_date is None:
+            return 0
+        blocks = self.rotation_blocks_by_rule.get(rule.id, [])
+        members = self.rotation_members_by_rule.get(rule.id, [])
+        if not blocks or not members:
+            return 0
+        wd = d.weekday()
+        bit = 1 << wd
+        b_idx: int | None = None
+        for i, b in enumerate(blocks):
+            if b.days_bitmap & bit:
+                b_idx = i
+                break
+        if b_idx is None:
+            return 0
+        positions_sorted = sorted({m.position for m in members})
+        p_count = len(positions_sorted)
+        if p_count == 0:
+            return 0
+        anchor_wd = rule.anchor_date.weekday()
+        block_first_weekday: list[int] = []
+        for b in blocks:
+            for w in range(7):
+                if b.days_bitmap & (1 << w):
+                    block_first_weekday.append(w)
+                    break
+            else:
+                block_first_weekday.append(0)
+        block_offset = [
+            (block_first_weekday[i] - anchor_wd) % 7 for i in range(len(blocks))
+        ]
+        sorted_block_indices = sorted(
+            range(len(blocks)), key=lambda i: block_offset[i]
+        )
+        rank_of_block = {bi: r for r, bi in enumerate(sorted_block_indices)}
+        weeks = (d - rule.anchor_date).days // 7
+        k = len(blocks)
+        rank = rank_of_block[b_idx]
+        weeks_step = getattr(rule, "weeks_per_position", None) or 1
+        advance_counter = (weeks // weeks_step) * k + rank
+        return advance_counter // p_count
+
     def fixed_weekly_persons(self, rule: SlotRule, d: date) -> list[int]:
         """Return the pinned person_ids for the (rule, weekday) pair."""
         return list(self.weekly_pins_by_rule.get(rule.id, {}).get(d.weekday(), []))
@@ -1010,6 +1072,162 @@ def _log_infeasibility_diagnostic(
     logger.warning("=== end diagnostic ===")
 
 
+def _compute_team_composition_rotation_prepins(
+    ctx: "_Context",
+    locked_keys_set: set[tuple[date, int, int | None]],
+) -> dict[tuple[date, int, int], list[tuple[int | None, str | None]]]:
+    """Sprint 28: for each team_composition slot driven by a rotation
+    rule, walk ctx.dates to find maximal runs of consecutive dates
+    with the SAME rotation team on that slot. Each such run is a
+    "balance block". For each block we generate a deterministic
+    cyclic Latin rectangle assigning (person, role-demand-slot, day)
+    triples, indexed by a block-rank derived from the rule's anchor
+    so the role-permutation persists across schedule regenerations.
+
+    Returns:
+        {(date, slot_id, role_id): [(person_id_or_none, note_or_none),
+                                    …]}
+    The list per (date, slot, role) has exactly role.headcount entries,
+    one per demand-slot for that role on that day.
+
+    Skipped (left for the existing per-date demand path to handle):
+      - Blocks with any locked cell — the lock would conflict with the
+        rigid Latin assignment, so we defer the whole block.
+      - Teams smaller than the slot's total per-day headcount
+        (n < m) — Latin rectangle requires n >= m to keep
+        same-slot exclusivity feasible without duplicating a person
+        across two roles on the same day. The existing greedy
+        fallback at the demand level already handles this case.
+
+    Formula:
+        person_index = (day_offset + role_demand_idx + b) mod n
+    where:
+        n = len(team)
+        b = ctx.team_block_rank_for(rule, block_dates[0])
+        day_offset ∈ [0, k)  with k = len(block_dates)
+        role_demand_idx ∈ [0, m) with m = sum(role.headcount for role)
+
+    Why this works:
+      - Within a block (b fixed), varying (day, role_demand_idx)
+        produces a Latin rectangle: each (person, role) pair is
+        covered floor(k/n)..ceil(k/n) times — same balance the
+        previous CP-SAT hard constraint enforced.
+      - Across blocks of the same team, b increments by 1 each
+        block-of-this-team. After n blocks of the same team, every
+        (person, role, day_offset) triple has been covered uniformly.
+      - shift=1 works for any n ≥ 1 because gcd(1, n) = 1.
+    """
+    out: dict[
+        tuple[date, int, int], list[tuple[int | None, str | None]]
+    ] = {}
+    role_ids_by_slot: dict[int, set[int]] = {
+        s.id: {r.id for r in ctx.team_roles_by_slot.get(s.id, [])}
+        for s in ctx.slots
+        if s.staffing_mode == "team_composition"
+    }
+    for slot in ctx.slots:
+        if slot.staffing_mode != "team_composition":
+            continue
+        roles = ctx.team_roles_by_slot.get(slot.id, [])
+        if not roles:
+            continue
+        # Flat per-day demand vector: each role contributes headcount
+        # entries. Same role can appear multiple times in the list
+        # (e.g. Implante with headcount=2 → ["Implante", "Implante"]).
+        role_demand: list[int] = []
+        for role in roles:
+            for _ in range(max(1, role.headcount)):
+                role_demand.append(role.id)
+        m = len(role_demand)
+        if m == 0:
+            continue
+        role_id_set = role_ids_by_slot.get(slot.id, set())
+
+        # Block accumulator state.
+        cur_team: list[int] = []
+        cur_dates: list[date] = []
+        cur_rule_id: int | None = None
+
+        def flush() -> None:
+            nonlocal cur_team, cur_dates, cur_rule_id
+            if not cur_team or not cur_dates or cur_rule_id is None:
+                cur_team, cur_dates, cur_rule_id = [], [], None
+                return
+            n = len(cur_team)
+            if n < m:
+                # Team too small to cover one role each per day under
+                # same-slot exclusivity — fall back to the existing
+                # greedy / team-restricted solver path.
+                cur_team, cur_dates, cur_rule_id = [], [], None
+                return
+            # Any locked cell anywhere in the block aborts pre-pinning
+            # for the entire block (the lock and the Latin formula
+            # would fight each other and the resulting assignments
+            # could double-fill a person).
+            has_lock = any(
+                (dd, slot.id, rid) in locked_keys_set
+                for dd in cur_dates
+                for rid in role_id_set
+            )
+            if has_lock:
+                cur_team, cur_dates, cur_rule_id = [], [], None
+                return
+            # Recover the rule object for anchor + week-step access.
+            rule_obj: SlotRule | None = None
+            for r in ctx.rules_by_slot.get(slot.id, []):
+                if r.id == cur_rule_id:
+                    rule_obj = r
+                    break
+            if rule_obj is None:
+                cur_team, cur_dates, cur_rule_id = [], [], None
+                return
+            b = ctx.team_block_rank_for(rule_obj, cur_dates[0])
+            for day_offset, d_ in enumerate(cur_dates):
+                by_role: dict[
+                    int, list[tuple[int | None, str | None]]
+                ] = defaultdict(list)
+                for role_idx in range(m):
+                    role_id = role_demand[role_idx]
+                    pid = cur_team[(day_offset + role_idx + b) % n]
+                    reason = ctx.eligibility_reason(
+                        pid, slot, d_, role_id
+                    )
+                    if reason:
+                        by_role[role_id].append(
+                            (
+                                None,
+                                f"Persona de la rotación no disponible: {reason}",
+                            )
+                        )
+                    else:
+                        by_role[role_id].append((pid, None))
+                for role_id, entries in by_role.items():
+                    out[(d_, slot.id, role_id)] = entries
+            cur_team, cur_dates, cur_rule_id = [], [], None
+
+        for d in ctx.dates:
+            if not _slot_applies(slot, d, ctx.holiday_dates):
+                flush()
+                continue
+            rule = ctx.rule_for(slot.id, d)
+            if rule is None or rule.strategy != "rotation":
+                flush()
+                continue
+            team = list(ctx.rotation_persons_for(rule, d))
+            if not team:
+                flush()
+                continue
+            if cur_team == team and cur_rule_id == rule.id and cur_dates:
+                cur_dates.append(d)
+            else:
+                flush()
+                cur_team = team
+                cur_dates = [d]
+                cur_rule_id = rule.id
+        flush()
+    return out
+
+
 def _solve_cpsat(
     db: Session,
     ctx: _Context,
@@ -1212,6 +1430,31 @@ def _solve_cpsat(
 
     locked_keys_set = {(la.date, la.slot_id, la.team_role_id) for la in locked}
 
+    # Sprint 28: cross-block Latin-rectangle pre-pinning for
+    # team_composition rotation slots. For each maximal run of
+    # consecutive dates with the same rotation team on a
+    # team_composition slot, compute a deterministic (person, role,
+    # day) assignment using the cyclic Latin rectangle
+    #     person_index = (day_offset + role_idx + block_rank) mod n
+    # where block_rank is derived from anchor_date via
+    # Context.team_block_rank_for(). This guarantees that:
+    #   - Within a block, each person does each role floor(k/n) to
+    #     ceil(k/n) times (the same balance the existing CP-SAT hard
+    #     constraint enforced).
+    #   - Across consecutive blocks for the same team, the
+    #     role-permutation shifts so the same person doesn't always
+    #     cover the same role on the same weekday — full
+    #     (person, role, weekday) cycle every n blocks of that team.
+    # The map is consumed by the demand loop below: for any
+    # (date, slot_id, role_id) it covers, we emit pre-pinned
+    # Assignment rows directly and skip adding a solver demand. Cells
+    # where the formula picks an ineligible person become NULL with a
+    # Spanish reason; cells inside a block that contains ANY locked
+    # cell are excluded (the existing locked-key path handles them).
+    role_prepins = _compute_team_composition_rotation_prepins(
+        ctx, locked_keys_set
+    )
+
     for d in ctx.dates:
         for slot in ctx.slots:
             if not _slot_applies(slot, d, ctx.holiday_dates):
@@ -1241,6 +1484,60 @@ def _solve_cpsat(
                             notes="Slot sin roles definidos",
                         )
                     )
+                    continue
+                # Sprint 28: if the role_prepins pre-pass covered this
+                # (date, slot) — i.e. the cell belongs to a same-team
+                # rotation block, no lock conflicts, team big enough —
+                # emit the deterministic Latin-rectangle assignments
+                # directly and skip adding solver demands. This is the
+                # cross-block role-rotation mechanism: see
+                # _compute_team_composition_rotation_prepins().
+                if any(
+                    (d, slot.id, r.id) in role_prepins for r in roles
+                ):
+                    for role in roles:
+                        entries = role_prepins.get(
+                            (d, slot.id, role.id), []
+                        )
+                        for pid, note in entries:
+                            db.add(
+                                Assignment(
+                                    tenant_id=ctx.tenant_id,
+                                    schedule_id=schedule.id,
+                                    slot_id=slot.id,
+                                    date=d,
+                                    person_id=pid,
+                                    team_role_id=role.id,
+                                    notes=note,
+                                )
+                            )
+                            if pid is not None:
+                                pre_busy.add((pid, d))
+                                pre_pinned_assignments.append(
+                                    (pid, d, slot.id)
+                                )
+                                if slot.post_slot_rest:
+                                    pre_rest_block.add(
+                                        (pid, d + timedelta(days=1))
+                                    )
+                        # Pad to role.headcount if the pre-pass emitted
+                        # fewer entries (shouldn't happen because the
+                        # formula iterates all m demand-slots, but
+                        # defensive — keeps the cell count consistent
+                        # with what the planning grid expects).
+                        pad = max(1, role.headcount) - len(entries)
+                        for _ in range(pad):
+                            db.add(
+                                Assignment(
+                                    tenant_id=ctx.tenant_id,
+                                    schedule_id=schedule.id,
+                                    slot_id=slot.id,
+                                    date=d,
+                                    person_id=None,
+                                    team_role_id=role.id,
+                                    notes="Plaza adicional pendiente",
+                                )
+                            )
                     continue
                 if rule.strategy == "rotation":
                     team = list(ctx.rotation_persons_for(rule, d))
