@@ -591,6 +591,12 @@ def _greedy_fallback(
     # role-person pairing.
     role_counts: Counter[tuple[int, int]] = Counter()
     locked = locked or []
+    # Sprint 28: dismissed (slot, date) pairs. Greedy must skip them
+    # just like CP-SAT does — no demands, no fills. The dismissed
+    # rows themselves are emitted as part of the locked-carry below.
+    dismissed_slot_day_g: set[tuple[int, date]] = {
+        (la.slot_id, la.date) for la in locked if la.dismissed_at is not None
+    }
     for la in locked:
         db.add(
             Assignment(
@@ -603,6 +609,7 @@ def _greedy_fallback(
                 notes=la.notes,
                 locked_at=la.locked_at,
                 locked_by_membership_id=la.locked_by_membership_id,
+                dismissed_at=la.dismissed_at,
             )
         )
         if la.person_id is not None:
@@ -678,6 +685,11 @@ def _greedy_fallback(
         )
         for slot in slots_in_priority_order:
             if not _slot_applies(slot, d, ctx.holiday_dates):
+                continue
+            # Sprint 28: skip dismissed (slot, date) — the dismissed
+            # rows were already emitted from the locked-carry pass
+            # at the top of _greedy_fallback.
+            if (slot.id, d) in dismissed_slot_day_g:
                 continue
             rule = ctx.rule_for(slot.id, d)
             if rule is None:
@@ -1430,6 +1442,35 @@ def _solve_cpsat(
 
     locked_keys_set = {(la.date, la.slot_id, la.team_role_id) for la in locked}
 
+    # Sprint 28 / migration 0049: dismissed cells. The lock-carry
+    # mechanism preserves dismissed assignments verbatim across
+    # regenerations. Here we materialize them and build the
+    # `dismissed_slot_day` set so the demand-generation pass below
+    # knows to skip every (slot_id, date) the admin marked as
+    # "No aplica" — no demands, no team-pinning, no rotation
+    # pre-pins. The dismissal cascades to every role and headcount
+    # slot of the activity for that day (the dismiss endpoint
+    # already wrote sibling rows for each).
+    dismissed_locks = [la for la in locked if la.dismissed_at is not None]
+    dismissed_slot_day: set[tuple[int, date]] = {
+        (la.slot_id, la.date) for la in dismissed_locks
+    }
+    for la in dismissed_locks:
+        db.add(
+            Assignment(
+                tenant_id=ctx.tenant_id,
+                schedule_id=schedule.id,
+                slot_id=la.slot_id,
+                date=la.date,
+                person_id=None,
+                team_role_id=la.team_role_id,
+                notes=la.notes or "No aplica hoy",
+                locked_at=la.locked_at,
+                locked_by_membership_id=la.locked_by_membership_id,
+                dismissed_at=la.dismissed_at,
+            )
+        )
+
     # Sprint 28: cross-block Latin-rectangle pre-pinning for
     # team_composition rotation slots. For each maximal run of
     # consecutive dates with the same rotation team on a
@@ -1458,6 +1499,11 @@ def _solve_cpsat(
     for d in ctx.dates:
         for slot in ctx.slots:
             if not _slot_applies(slot, d, ctx.holiday_dates):
+                continue
+            # Sprint 28: skip entire (slot, date) when admin marked
+            # "No aplica". The dismissed rows were already emitted
+            # above; no demands, no rules, no pre-pins for this cell.
+            if (slot.id, d) in dismissed_slot_day:
                 continue
             rule = ctx.rule_for(slot.id, d)
             if rule is None:

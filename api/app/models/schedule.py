@@ -91,6 +91,13 @@ class Assignment(Base):
     locked_by_membership_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("memberships.id", ondelete="SET NULL"), nullable=True
     )
+    # Sprint 28 / migration 0049: when set, this row represents
+    # "the slot doesn't apply on this date" — distinct from
+    # "empty/unfilled" (person_id NULL with dismissed_at NULL).
+    # Dismissed rows are auto-locked so they survive regeneration.
+    dismissed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Set when an admin-applied OR member-initiated swap rewrites this
     # row. Both sides of a swap get marked. Null otherwise. SET NULL on
     # offer delete so audit cleanup doesn't blow assignments away.

@@ -455,6 +455,49 @@ function AssignmentEditModal({
       onClose();
     },
   });
+  const dismiss = useMutation({
+    mutationFn: () =>
+      assignment.dismissed_at
+        ? api.undismissAssignment(scheduleId, assignment.id)
+        : api.dismissAssignment(scheduleId, assignment.id),
+    onSuccess: () => {
+      invalidate();
+      onClose();
+    },
+  });
+  const isDismissed = assignment.dismissed_at !== null;
+
+  if (isDismissed) {
+    return (
+      <Modal
+        open={true}
+        onClose={onClose}
+        title={`${assignment.slot_name} (${assignment.date})`}
+      >
+        <div className="space-y-3">
+          <p className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Esta actividad está marcada como <strong>No aplica</strong> para
+            este día. No se asignará a nadie y el solver la ignorará al
+            regenerar la planificación.
+          </p>
+          {dismiss.isError && (
+            <ErrorText>{(dismiss.error as Error).message}</ErrorText>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" onClick={onClose}>
+              Cerrar
+            </Button>
+            <Button
+              onClick={() => dismiss.mutate()}
+              disabled={dismiss.isPending}
+            >
+              {dismiss.isPending ? "Aplicando…" : "Volver a aplicar"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal
@@ -496,14 +539,32 @@ function AssignmentEditModal({
           </p>
         )}
         {save.isError && <ErrorText>{(save.error as Error).message}</ErrorText>}
+        {dismiss.isError && (
+          <ErrorText>{(dismiss.error as Error).message}</ErrorText>
+        )}
         <div className="flex flex-wrap justify-between gap-2 pt-2">
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button
               variant="secondary"
               onClick={() => lock.mutate()}
               disabled={lock.isPending}
             >
               {assignment.locked_at ? "Desbloquear" : "Bloquear"}
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                if (
+                  confirm(
+                    `Marcar ${assignment.slot_name} como "No aplica" el ${assignment.date}? Se aplicará a todo el día.`,
+                  )
+                ) {
+                  dismiss.mutate();
+                }
+              }}
+              disabled={dismiss.isPending}
+            >
+              No aplica hoy
             </Button>
             <Button
               variant="danger"
@@ -586,6 +647,11 @@ function BalanceStats({
     const weByPerson = new Map<number, number>();          // pid -> we/holiday count
     for (const a of assignments) {
       if (a.person_id === null || a.person_name === null) continue;
+      // Sprint 28: dismissed cells aren't actually staffed — exclude
+      // them from the per-person count so the Reparto reflects real
+      // workload, not "Adán was scheduled but the activity was then
+      // cancelled".
+      if (a.dismissed_at !== null) continue;
       if (!persons.has(a.person_id)) {
         // Render the LAST name in the BalanceStats header for the
         // same reason the planning grid uses it: tight columns. The

@@ -1050,6 +1050,7 @@ def _serialize_assignment(ctx: RequestContext, a: Assignment) -> AssignmentOut:
         notes=a.notes,
         locked_at=a.locked_at,
         locked_by_membership_id=a.locked_by_membership_id,
+        dismissed_at=a.dismissed_at,
         swap_offer_id=a.swap_offer_id,
     )
 
@@ -1292,6 +1293,82 @@ def unlock_assignment(
     a = _get_assignment(ctx, schedule, assignment_id)
     a.locked_at = None
     a.locked_by_membership_id = None
+    ctx.db.flush()
+    return _serialize_assignment(ctx, a)
+
+
+@router.post(
+    "/schedules/{schedule_id}/assignments/{assignment_id}/dismiss",
+    response_model=AssignmentOut,
+)
+def dismiss_assignment(
+    schedule_id: int,
+    assignment_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> AssignmentOut:
+    """Mark this (slot, date) as "No aplica" — the cell is not staffed
+    today. Cascades to every sibling Assignment row with the same
+    (schedule_id, slot_id, date) so a single click dismisses every
+    role and headcount-slot of the activity for that day.
+
+    Each row is also auto-locked so the lock-carry mechanism preserves
+    the dismissal across regenerations.
+    """
+    _require_admin(ctx)
+    schedule = _get_draft_schedule_or_400(ctx, schedule_id)
+    a = _get_assignment(ctx, schedule, assignment_id)
+    now = datetime.now(timezone.utc)
+    siblings = (
+        ctx.db.query(Assignment)
+        .filter(
+            Assignment.schedule_id == schedule.id,
+            Assignment.slot_id == a.slot_id,
+            Assignment.date == a.date,
+        )
+        .all()
+    )
+    for sib in siblings:
+        sib.dismissed_at = now
+        sib.locked_at = now
+        sib.locked_by_membership_id = ctx.membership.id
+        # Clear any assigned person — the slot doesn't apply today.
+        sib.person_id = None
+        sib.notes = "No aplica hoy"
+    ctx.db.flush()
+    return _serialize_assignment(ctx, a)
+
+
+@router.delete(
+    "/schedules/{schedule_id}/assignments/{assignment_id}/dismiss",
+    response_model=AssignmentOut,
+)
+def undismiss_assignment(
+    schedule_id: int,
+    assignment_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> AssignmentOut:
+    """Revert "No aplica" for this (slot, date). Cascades to every
+    sibling row. Also clears the auto-lock that the dismiss flow set,
+    so the next regenerate can re-fill the cell from rules.
+    """
+    _require_admin(ctx)
+    schedule = _get_draft_schedule_or_400(ctx, schedule_id)
+    a = _get_assignment(ctx, schedule, assignment_id)
+    siblings = (
+        ctx.db.query(Assignment)
+        .filter(
+            Assignment.schedule_id == schedule.id,
+            Assignment.slot_id == a.slot_id,
+            Assignment.date == a.date,
+        )
+        .all()
+    )
+    for sib in siblings:
+        sib.dismissed_at = None
+        sib.locked_at = None
+        sib.locked_by_membership_id = None
+        if sib.notes == "No aplica hoy":
+            sib.notes = None
     ctx.db.flush()
     return _serialize_assignment(ctx, a)
 

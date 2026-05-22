@@ -199,6 +199,11 @@ export type Assignment = {
   notes: string | null;
   locked_at: string | null;
   locked_by_membership_id: number | null;
+  /** Set when admin marked this (slot, date) as "No aplica" — the
+   * cell is intentionally not staffed today. Distinct from
+   * person_id=null + locked_at=null (= empty/pending). Dismissed
+   * rows are also auto-locked so they survive regeneration. */
+  dismissed_at: string | null;
   swap_offer_id: number | null;
 };
 
@@ -1457,6 +1462,23 @@ export const api = {
   unlockAssignment: (scheduleId: number, assignmentId: number) =>
     request<Assignment>(
       `/api/schedules/${scheduleId}/assignments/${assignmentId}/lock`,
+      { method: "DELETE" },
+    ),
+  /** Mark a (slot, date) as "No aplica" — cascades to every sibling
+   * row of the same (slot, date) so a single click dismisses the
+   * full activity for that day. Dismissed rows are auto-locked so
+   * the lock-carry mechanism preserves them across regeneration. */
+  dismissAssignment: (scheduleId: number, assignmentId: number) =>
+    request<Assignment>(
+      `/api/schedules/${scheduleId}/assignments/${assignmentId}/dismiss`,
+      { method: "POST" },
+    ),
+  /** Revert "No aplica" for this (slot, date). Cascades to every
+   * sibling row and also clears the auto-lock so the next regenerate
+   * can re-populate the cell from rules. */
+  undismissAssignment: (scheduleId: number, assignmentId: number) =>
+    request<Assignment>(
+      `/api/schedules/${scheduleId}/assignments/${assignmentId}/dismiss`,
       { method: "DELETE" },
     ),
   listEligiblePersons: (scheduleId: number, assignmentId: number) =>

@@ -225,9 +225,18 @@ export function PlanningGrid({
               </td>
               {grid.dates.map((d) => {
                 const cell = row.cells[d] ?? [];
+                // Sprint 28: a cell is "dismissed" if the admin marked
+                // this (slot, date) as "No aplica". The dismissal
+                // cascades so every row in the cell shares the flag.
+                // Render distinctly from "empty" (which is the
+                // "should be staffed but no one's here yet" state).
+                const isDismissed =
+                  cell.length > 0
+                  && cell.every((a) => a.dismissed_at !== null);
                 const empty =
-                  cell.length === 0
-                  || cell.every((a) => a.person_id === null);
+                  !isDismissed
+                  && (cell.length === 0
+                    || cell.every((a) => a.person_id === null));
                 const hasMe =
                   highlightPersonId !== null
                   && cell.some((a) => a.person_id === highlightPersonId);
@@ -244,16 +253,41 @@ export function PlanningGrid({
                     className={
                       "align-top px-1.5 py-2 border-b border-gray-100 "
                       + (isFlagged ? "ring-2 ring-inset ring-rose-400 " : "")
-                      + (empty
-                        ? "bg-rose-50/70"
-                        : hasMe
-                          ? "bg-brand-50/70"
-                          : isToday
-                            ? "bg-brand-50/30"
-                            : "")
+                      + (isDismissed
+                        ? "bg-gray-100"
+                        : empty
+                          ? "bg-rose-50/70"
+                          : hasMe
+                            ? "bg-brand-50/70"
+                            : isToday
+                              ? "bg-brand-50/30"
+                              : "")
                     }
                   >
-                    {cell.length === 0 ? (
+                    {isDismissed ? (
+                      // Render ONE "No aplica" pill regardless of how
+                      // many sibling rows the dismissal cascaded to.
+                      // The admin can click any of them to re-apply.
+                      (() => {
+                        const a = cell[0];
+                        const content = (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-gray-500 italic line-through">
+                            No aplica
+                          </span>
+                        );
+                        return onCellClick ? (
+                          <button
+                            type="button"
+                            onClick={() => onCellClick(a)}
+                            className="block w-full text-left hover:bg-gray-200/60 rounded px-0.5"
+                          >
+                            {content}
+                          </button>
+                        ) : (
+                          content
+                        );
+                      })()
+                    ) : cell.length === 0 ? (
                       <span className="text-[11px] text-gray-300">—</span>
                     ) : (
                       cell.map((a) => {

@@ -99,6 +99,11 @@ class AssignmentOut(BaseModel):
     notes: str | None
     locked_at: datetime | None = None
     locked_by_membership_id: int | None = None
+    # Sprint 28 / migration 0049: set when admin marked this
+    # (slot, date) as "No aplica" — the cell is intentionally not
+    # staffed. Distinct from person_id=null/locked_at=null which
+    # means "empty/pending". Dismissed rows are auto-locked.
+    dismissed_at: datetime | None = None
     swap_offer_id: int | None = None
 
 
