@@ -179,6 +179,7 @@ def _serialize_detail(
             notes=a.notes,
             locked_at=a.locked_at,
             locked_by_membership_id=a.locked_by_membership_id,
+            dismissed_at=a.dismissed_at,
             swap_offer_id=a.swap_offer_id,
         )
         for a, s, p, tr, g in rows
