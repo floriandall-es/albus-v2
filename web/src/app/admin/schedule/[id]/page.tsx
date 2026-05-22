@@ -533,6 +533,11 @@ function AssignmentEditModal({
 // per column so outliers stand out.
 // ---------------------------------------------------------------------------
 
+// Sentinel for the "Sin categoría" chip in the BalanceStats filter.
+// Real category names are non-empty strings so the empty string is safe
+// to use as a key without colliding.
+const NO_CATEGORY = "" as const;
+
 function BalanceStats({
   assignments,
   holidayDates,
@@ -546,6 +551,13 @@ function BalanceStats({
    * residents and adjuntos in the row. */
   team: TeamMember[];
 }) {
+  // Categorías the admin has toggled OFF in the filter row. Persisted
+  // only for the lifetime of the component (no localStorage) — the
+  // initial render shows every categoría so admins don't lose track
+  // of who's missing from the breakdown.
+  const [hiddenCategories, setHiddenCategories] = useState<Set<string>>(
+    new Set(),
+  );
   const stats = useMemo(() => {
     // Sprint 16: rows are keyed by (slot_name, team_role_label) so a
     // team_composition slot like Trasplante shows up as three rows
@@ -611,7 +623,7 @@ function BalanceStats({
     // categorías last so admins like Sales don't shove the clinical
     // grouping around), then by last-name. Mirrors the /admin/team
     // page's ordering so the two views line up.
-    const personsSorted = Array.from(persons.entries()).sort((a, b) => {
+    const personsAllSorted = Array.from(persons.entries()).sort((a, b) => {
       const ca = a[1].category_name;
       const cb = b[1].category_name;
       if (ca !== cb) {
@@ -621,6 +633,26 @@ function BalanceStats({
         if (byCat !== 0) return byCat;
       }
       return a[1].name.localeCompare(b[1].name, "es");
+    });
+    // Distinct categorías present in the assignments — drives the
+    // filter chips above the table. Order matches the column sort so
+    // the chip row reads left-to-right in the same grouping.
+    const allCategories: string[] = [];
+    const seenCats = new Set<string>();
+    for (const [, meta] of personsAllSorted) {
+      const key = meta.category_name ?? NO_CATEGORY;
+      if (!seenCats.has(key)) {
+        seenCats.add(key);
+        allCategories.push(key);
+      }
+    }
+    // Apply the filter. Min/max + totals are recomputed against the
+    // filtered set so the rojo/verde highlights reflect "outlier
+    // WITHIN the visible cohort", which matches admin intuition
+    // (compare residents to residents, adjuntos to adjuntos).
+    const personsSorted = personsAllSorted.filter(([, meta]) => {
+      const key = meta.category_name ?? NO_CATEGORY;
+      return !hiddenCategories.has(key);
     });
     const rowsSorted = Array.from(rows.values()).sort((a, b) => {
       const byName = a.slot_name.localeCompare(b.slot_name);
@@ -671,6 +703,7 @@ function BalanceStats({
     }
     return {
       personsSorted,
+      allCategories,
       rowsSorted,
       keyFor,
       counts,
@@ -682,9 +715,20 @@ function BalanceStats({
       weMin,
       weMax,
     };
-  }, [assignments, holidayDates, team]);
+  }, [assignments, holidayDates, team, hiddenCategories]);
 
-  if (stats.personsSorted.length === 0) return null;
+  if (stats.personsSorted.length === 0 && stats.allCategories.length === 0) {
+    return null;
+  }
+  const toggleCategory = (key: string) => {
+    setHiddenCategories((cur) => {
+      const next = new Set(cur);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+  const showAllCategories = () => setHiddenCategories(new Set());
 
   const cellClass = (
     v: number,
@@ -700,9 +744,50 @@ function BalanceStats({
 
   return (
     <div className="mt-6 inline-block max-w-full overflow-x-auto">
-      <h2 className="mb-2 text-sm font-semibold text-gray-700">
-        Reparto por persona
-      </h2>
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <h2 className="text-sm font-semibold text-gray-700">
+          Reparto por persona
+        </h2>
+        {stats.allCategories.length > 1 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] text-gray-500">Mostrar:</span>
+            {stats.allCategories.map((catKey) => {
+              const visible = !hiddenCategories.has(catKey);
+              const label =
+                catKey === NO_CATEGORY ? "Sin categoría" : catKey;
+              return (
+                <button
+                  key={catKey}
+                  type="button"
+                  onClick={() => toggleCategory(catKey)}
+                  className={
+                    "rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors "
+                    + (visible
+                      ? "border-brand-300 bg-brand-50 text-brand-800 hover:bg-brand-100"
+                      : "border-gray-300 bg-white text-gray-500 hover:bg-gray-50")
+                  }
+                >
+                  {label}
+                </button>
+              );
+            })}
+            {hiddenCategories.size > 0 && (
+              <button
+                type="button"
+                onClick={showAllCategories}
+                className="text-[11px] text-gray-500 hover:text-gray-700 hover:underline"
+              >
+                Mostrar todas
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      {stats.personsSorted.length === 0 ? (
+        <p className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">
+          Ninguna categoría seleccionada.
+        </p>
+      ) : (
       <Card>
         <table className="text-xs">
           <thead className="border-b border-gray-200 bg-gray-50 text-left">
@@ -811,6 +896,7 @@ function BalanceStats({
           </tbody>
         </table>
       </Card>
+      )}
       <p className="mt-2 text-[11px] text-gray-500">
         <span className="text-rose-700">Rojo</span>: máximo de la fila ·{" "}
         <span className="text-emerald-700">verde</span>: mínimo. Diferencias
