@@ -134,12 +134,29 @@ def list_team_absences(
         # — Persons aren't tenant-scoped, only Memberships are.
         # EXISTS subquery keeps the row count correct even when a
         # person has multiple memberships somehow.
+        #
+        # Sprint 28 tightening: ALSO exclude persons who have ANY
+        # sub-team membership. Without this guard, a person with
+        # both a main-team and a residents-group membership (e.g.
+        # admin/lead merge into clinical membership from task #69)
+        # would still pass the EXISTS check and leak into the
+        # main planning's Libre row even though their clinical
+        # work is on the sub-team. The user-visible symptom was
+        # "veo residentes en la fila Libre del equipo principal".
         q = q.filter(
             ctx.db.query(Membership.id)
             .filter(
                 Membership.person_id == AvailabilityBlock.person_id,
                 Membership.tenant_id == ctx.tenant.id,
                 Membership.group_id.is_(None),
+            )
+            .exists()
+        ).filter(
+            ~ctx.db.query(Membership.id)
+            .filter(
+                Membership.person_id == AvailabilityBlock.person_id,
+                Membership.tenant_id == ctx.tenant.id,
+                Membership.group_id.isnot(None),
             )
             .exists()
         )
