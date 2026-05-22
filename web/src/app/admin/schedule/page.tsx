@@ -58,25 +58,49 @@ export default function SchedulesPage() {
   return (
     <>
       <PageHeader title="Planificación" />
-      <Card>
-        <div className="p-4 flex items-end gap-3">
-          <div className="w-72">
-            <MonthPicker label="Mes" value={period} onChange={setPeriod} />
+      <section aria-labelledby="generate-heading">
+        <h2
+          id="generate-heading"
+          className="text-sm font-semibold text-gray-700 mb-2"
+        >
+          Crear una nueva planificación
+        </h2>
+        <Card>
+          <div className="p-4 flex flex-wrap items-end gap-3">
+            <div className="w-72">
+              <MonthPicker label="Mes" value={period} onChange={setPeriod} />
+            </div>
+            <Button
+              onClick={() => generate.mutate()}
+              disabled={generate.isPending}
+            >
+              {generate.isPending ? "Generando…" : "Generar nueva"}
+            </Button>
+            <p className="text-xs text-gray-500 basis-full sm:basis-auto sm:ml-auto sm:self-center">
+              Elige un mes y pulsa Generar para crear el borrador del mes.
+            </p>
           </div>
-          <Button
-            onClick={() => generate.mutate()}
-            disabled={generate.isPending}
+          {generate.isError && (
+            <div className="px-4 pb-3">
+              <ErrorText>{(generate.error as Error).message}</ErrorText>
+            </div>
+          )}
+        </Card>
+      </section>
+      <section aria-labelledby="existing-heading" className="mt-8">
+        <div className="mb-2 flex items-baseline justify-between gap-3">
+          <h2
+            id="existing-heading"
+            className="text-sm font-semibold text-gray-700"
           >
-            {generate.isPending ? "Generando…" : "Generar nueva"}
-          </Button>
+            Planificaciones existentes
+          </h2>
+          {list.data && list.data.length > 0 && (
+            <span className="text-xs text-gray-500">
+              {list.data.length} {list.data.length === 1 ? "mes" : "meses"}
+            </span>
+          )}
         </div>
-        {generate.isError && (
-          <div className="px-4 pb-3">
-            <ErrorText>{(generate.error as Error).message}</ErrorText>
-          </div>
-        )}
-      </Card>
-      <div className="mt-6">
         {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
         {list.data && list.data.length === 0 && (
           <EmptyState
@@ -145,7 +169,7 @@ export default function SchedulesPage() {
             </table>
           </Card>
         )}
-      </div>
+      </section>
     </>
   );
 }
