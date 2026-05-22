@@ -7,6 +7,7 @@ import {
   personLastName,
   type Assignment,
   type AvailabilityBlockType,
+  type TeamMember,
 } from "@/lib/api";
 import {
   Button,
@@ -126,6 +127,10 @@ export default function ScheduleDetailPage() {
     },
     enabled: !!detail.data,
   });
+  // Loaded here so BalanceStats can sort columns by (categoría, name).
+  // Same query key used inside ManageAbsencesModal — react-query
+  // dedupes the request.
+  const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
 
   // Meeting occurrences for this month — drives the "Reuniones"
   // row in the planning grid. Admin sees every meeting (the
@@ -337,6 +342,7 @@ export default function ScheduleDetailPage() {
           (a) => a.slot_group_id === null,
         )}
         holidayDates={holidayDates}
+        team={team.data ?? []}
       />
 
       {editing && (
@@ -530,9 +536,15 @@ function AssignmentEditModal({
 function BalanceStats({
   assignments,
   holidayDates,
+  team,
 }: {
   assignments: Assignment[];
   holidayDates: Set<string>;
+  /** Used to sort the column headers by (categoría, name) so the
+   * Reparto matches the order admins see on /admin/team. Without it
+   * the table sorted alphabetically by last-name only and mixed
+   * residents and adjuntos in the row. */
+  team: TeamMember[];
 }) {
   const stats = useMemo(() => {
     // Sprint 16: rows are keyed by (slot_name, team_role_label) so a
@@ -542,7 +554,20 @@ function BalanceStats({
     type RowKey = { slot_name: string; team_role_label: string | null };
     const keyFor = (k: RowKey) =>
       `${k.slot_name}\x00${k.team_role_label ?? ""}`;
-    type PersonMeta = { name: string; avatar_url: string | null };
+    type PersonMeta = {
+      name: string;
+      avatar_url: string | null;
+      // Used to sort columns by (categoría, name). Pulled from the
+      // team list since Assignment payloads don't carry category info.
+      category_name: string | null;
+    };
+    const teamByPerson = new Map<
+      number,
+      { category_name: string | null }
+    >();
+    for (const m of team) {
+      teamByPerson.set(m.person_id, { category_name: m.category_name });
+    }
     const persons = new Map<number, PersonMeta>();
     const rows = new Map<string, RowKey>();
     const counts = new Map<string, Map<number, number>>(); // key -> pid -> n
@@ -561,6 +586,8 @@ function BalanceStats({
         persons.set(a.person_id, {
           name: lastName,
           avatar_url: a.person_avatar_url ?? null,
+          category_name:
+            teamByPerson.get(a.person_id)?.category_name ?? null,
         });
       }
       const rk: RowKey = {
@@ -580,9 +607,21 @@ function BalanceStats({
         weByPerson.set(a.person_id, (weByPerson.get(a.person_id) ?? 0) + 1);
       }
     }
-    const personsSorted = Array.from(persons.entries()).sort((a, b) =>
-      a[1].name.localeCompare(b[1].name),
-    );
+    // Sort columns first by categoría (alphabetical, with null
+    // categorías last so admins like Sales don't shove the clinical
+    // grouping around), then by last-name. Mirrors the /admin/team
+    // page's ordering so the two views line up.
+    const personsSorted = Array.from(persons.entries()).sort((a, b) => {
+      const ca = a[1].category_name;
+      const cb = b[1].category_name;
+      if (ca !== cb) {
+        if (ca === null) return 1;
+        if (cb === null) return -1;
+        const byCat = ca.localeCompare(cb, "es");
+        if (byCat !== 0) return byCat;
+      }
+      return a[1].name.localeCompare(b[1].name, "es");
+    });
     const rowsSorted = Array.from(rows.values()).sort((a, b) => {
       const byName = a.slot_name.localeCompare(b.slot_name);
       if (byName !== 0) return byName;
@@ -643,7 +682,7 @@ function BalanceStats({
       weMin,
       weMax,
     };
-  }, [assignments, holidayDates]);
+  }, [assignments, holidayDates, team]);
 
   if (stats.personsSorted.length === 0) return null;
 
