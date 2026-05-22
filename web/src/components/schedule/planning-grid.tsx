@@ -228,11 +228,20 @@ export function PlanningGrid({
                 // Sprint 28: a cell is "dismissed" if the admin marked
                 // this (slot, date) as "No aplica". The dismissal
                 // cascades so every row in the cell shares the flag.
-                // Render distinctly from "empty" (which is the
-                // "should be staffed but no one's here yet" state).
                 const isDismissed =
                   cell.length > 0
                   && cell.every((a) => a.dismissed_at !== null);
+                // Member views (highlightPersonId set on /me/turnos)
+                // collapse dismissed → "this day doesn't apply" so the
+                // grid stays uncluttered. Members don't need to see the
+                // admin's override marker; they just need to know "no
+                // shift for me today" — same outcome as a weekday the
+                // slot doesn't run. Admin views keep the explicit
+                // strikethrough "No aplica" pill so the override is
+                // visible and clickable to revert.
+                const memberView = highlightPersonId !== null;
+                const isDismissedAdminPill = isDismissed && !memberView;
+                const isDismissedAsEmpty = isDismissed && memberView;
                 const empty =
                   !isDismissed
                   && (cell.length === 0
@@ -253,9 +262,9 @@ export function PlanningGrid({
                     className={
                       "align-top px-1.5 py-2 border-b border-gray-100 "
                       + (isFlagged ? "ring-2 ring-inset ring-rose-400 " : "")
-                      + (isDismissed
+                      + (isDismissedAdminPill
                         ? "bg-gray-100"
-                        : empty
+                        : empty || isDismissedAsEmpty
                           ? "bg-rose-50/70"
                           : hasMe
                             ? "bg-brand-50/70"
@@ -264,7 +273,7 @@ export function PlanningGrid({
                               : "")
                     }
                   >
-                    {isDismissed ? (
+                    {isDismissedAdminPill ? (
                       // Render ONE "No aplica" pill regardless of how
                       // many sibling rows the dismissal cascaded to.
                       // The admin can click any of them to re-apply.
@@ -287,7 +296,7 @@ export function PlanningGrid({
                           content
                         );
                       })()
-                    ) : cell.length === 0 ? (
+                    ) : isDismissedAsEmpty || cell.length === 0 ? (
                       <span className="text-[11px] text-gray-300">—</span>
                     ) : (
                       cell.map((a) => {
