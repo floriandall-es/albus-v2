@@ -66,19 +66,21 @@ export default function SchedulesPage() {
           Crear una nueva planificación
         </h2>
         <Card>
-          <div className="p-4 flex flex-wrap items-end gap-3">
-            <div className="w-72">
-              <MonthPicker label="Mes" value={period} onChange={setPeriod} />
-            </div>
-            <Button
-              onClick={() => generate.mutate()}
-              disabled={generate.isPending}
-            >
-              {generate.isPending ? "Generando…" : "Generar nueva"}
-            </Button>
-            <p className="text-xs text-gray-500 basis-full sm:basis-auto sm:ml-auto sm:self-center">
+          <div className="p-4">
+            <p className="text-xs text-gray-500 mb-3">
               Elige un mes y pulsa Generar para crear el borrador del mes.
             </p>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="w-72">
+                <MonthPicker label="Mes" value={period} onChange={setPeriod} />
+              </div>
+              <Button
+                onClick={() => generate.mutate()}
+                disabled={generate.isPending}
+              >
+                {generate.isPending ? "Generando…" : "Generar nueva"}
+              </Button>
+            </div>
           </div>
           {generate.isError && (
             <div className="px-4 pb-3">
