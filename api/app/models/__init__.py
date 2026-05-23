@@ -28,6 +28,11 @@ from app.models.schedule import Schedule, Assignment, ScheduleGroupPublication
 from app.models.shift_swap import ShiftSwapOffer, ShiftSwapResponse
 from app.models.meeting import Meeting, MeetingAudienceGroup, MeetingAudiencePerson
 from app.models.transplant import TransplantCase, TransplantProcedure
+from app.models.conversation import (
+    Conversation,
+    ConversationMember,
+    Message,
+)
 
 __all__ = [
     "Hospital",
@@ -63,4 +68,7 @@ __all__ = [
     "MeetingAudiencePerson",
     "TransplantCase",
     "TransplantProcedure",
+    "Conversation",
+    "ConversationMember",
+    "Message",
 ]

@@ -11,6 +11,7 @@ import {
   Home,
   Layers,
   LogOut,
+  MessageCircle,
   MessageSquare,
   Settings,
   type LucideIcon,
@@ -30,6 +31,9 @@ const NAV: { href: string; label: string; icon: LucideIcon }[] = [
   // the current tenant has a parent hospital — handled in the
   // filter below.
   { href: "/me/directorio", label: "Directorio", icon: Building2 },
+  // Sprint 28 / Phase 2A: 1:1 DMs. Same hospital gate as the
+  // directory — DMs only work between members of the same hospital.
+  { href: "/me/mensajes", label: "Mensajes", icon: MessageCircle },
   { href: "/me/settings", label: "Mi cuenta", icon: Settings },
 ];
 
@@ -137,6 +141,13 @@ export default function MeLayout({ children }: { children: ReactNode }) {
               // anyway, so hide the entry point too.
               if (
                 item.href === "/me/directorio"
+                && me.data?.current_tenant.hospital_id == null
+              ) {
+                return false;
+              }
+              // DMs are hospital-gated the same way.
+              if (
+                item.href === "/me/mensajes"
                 && me.data?.current_tenant.hospital_id == null
               ) {
                 return false;

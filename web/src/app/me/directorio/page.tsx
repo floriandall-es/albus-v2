@@ -1,10 +1,12 @@
 "use client";
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Building2,
   Mail,
   MessageCircle,
+  MessageSquare,
   Phone,
   Search,
 } from "lucide-react";
@@ -169,7 +171,11 @@ export default function HospitalDirectoryPage() {
       {directory.data && directory.data.length > 0 && (
         <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {directory.data.map((r) => (
-            <DirectoryCard key={r.membership_id} entry={r} />
+            <DirectoryCard
+              key={r.membership_id}
+              entry={r}
+              mePersonId={me.data?.person.id ?? null}
+            />
           ))}
         </ul>
       )}
@@ -177,7 +183,21 @@ export default function HospitalDirectoryPage() {
   );
 }
 
-function DirectoryCard({ entry }: { entry: HospitalDirectoryEntry }) {
+function DirectoryCard({
+  entry,
+  mePersonId,
+}: {
+  entry: HospitalDirectoryEntry;
+  mePersonId: number | null;
+}) {
+  const router = useRouter();
+  const openDm = useMutation({
+    mutationFn: () => api.createOrGetDM(entry.person_id),
+    onSuccess: (conv) => {
+      router.push(`/me/mensajes?c=${conv.id}`);
+    },
+  });
+  const isMe = mePersonId !== null && entry.person_id === mePersonId;
   const displayName = personLastName({
     name: entry.person_name,
     last_name: entry.person_last_name,
@@ -233,8 +253,19 @@ function DirectoryCard({ entry }: { entry: HospitalDirectoryEntry }) {
           </div>
         </div>
       </div>
-      {buttons.length > 0 && (
+      {(buttons.length > 0 || !isMe) && (
         <div className="flex flex-wrap gap-1.5 pt-1">
+          {!isMe && (
+            <button
+              type="button"
+              onClick={() => openDm.mutate()}
+              disabled={openDm.isPending}
+              className="inline-flex items-center gap-1 rounded-md border border-brand-200 bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-800 hover:bg-brand-100 disabled:opacity-60"
+            >
+              <MessageSquare className="h-3 w-3" />
+              {openDm.isPending ? "Abriendo…" : "Mensaje"}
+            </button>
+          )}
           {buttons.map(({ key, href, label, Icon }) => (
             <a
               key={key}

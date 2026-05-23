@@ -401,6 +401,44 @@ export type Membership = {
   created_at: string;
 };
 
+/** Other end of a DM. Identifies the non-caller member with
+ * the same display fields the directory uses. No contact channels
+ * here — the DM itself is the contact channel. */
+export type DMPeer = {
+  person_id: number;
+  name: string;
+  last_name: string | null;
+  avatar_url: string | null;
+  category_name: string | null;
+  tenant_name: string | null;
+};
+
+/** A conversation as returned by /api/conversations and
+ * /api/dms. Today only `kind = 'dm'` exists. */
+export type DMConversation = {
+  id: number;
+  hospital_id: number;
+  kind: "dm";
+  created_at: string;
+  last_message_at: string;
+  peer: DMPeer;
+  unread_count: number;
+  last_message_preview: string | null;
+};
+
+/** Single message in a conversation. `body` is null when the
+ * message has been soft-deleted (deleted_at non-null); UI
+ * renders "mensaje borrado". */
+export type DMMessage = {
+  id: number;
+  conversation_id: number;
+  author_person_id: number | null;
+  author_name: string | null;
+  body: string | null;
+  deleted_at: string | null;
+  created_at: string;
+};
+
 /** One row of the cross-tenant hospital directory. Returned by
  * `GET /api/hospital/directory` — joins membership + person +
  * tenant + category + group for the listing UI. No emails or
@@ -986,6 +1024,47 @@ export const api = {
     }>("/api/me/contact-preferences", {
       method: "PATCH",
       body: JSON.stringify(body),
+    }),
+  /** DMs (Phase 2A). Find-or-create a 1:1 conversation with
+   * `peer_person_id`. Idempotent — server-side dedupes on the
+   * sorted pair. Returns the conversation (existing or new). */
+  createOrGetDM: (peer_person_id: number) =>
+    request<DMConversation>("/api/dms", {
+      method: "POST",
+      body: JSON.stringify({ peer_person_id }),
+    }),
+  /** My conversations across all my hospitals, sorted by
+   * last_message_at desc. Includes peer + unread_count +
+   * last_message_preview. */
+  listMyConversations: () =>
+    request<DMConversation[]>("/api/conversations"),
+  /** Paginated messages of a conversation. `before` is the
+   * cursor — pass the smallest id you have to load older. */
+  listMessages: (conversationId: number, before?: number, limit = 50) => {
+    const qs = new URLSearchParams();
+    if (before !== undefined) qs.set("before", String(before));
+    qs.set("limit", String(limit));
+    return request<DMMessage[]>(
+      `/api/conversations/${conversationId}/messages?${qs.toString()}`,
+    );
+  },
+  /** Send a message. body is plain text 1–4000 chars. Returns
+   * the inserted message. */
+  sendMessage: (conversationId: number, body: string) =>
+    request<DMMessage>(
+      `/api/conversations/${conversationId}/messages`,
+      { method: "POST", body: JSON.stringify({ body }) },
+    ),
+  /** Mark a conversation as read up to `last_message_id`. The
+   * server only ever moves the high-water mark forward; sending
+   * a smaller id is a no-op. 204. */
+  markConversationRead: (
+    conversationId: number,
+    last_message_id: number,
+  ) =>
+    request<void>(`/api/conversations/${conversationId}/read`, {
+      method: "POST",
+      body: JSON.stringify({ last_message_id }),
     }),
   updateProfile: (body: {
     /** Legacy single-field name. Sprint 18+ clients should send
