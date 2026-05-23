@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -11,9 +12,11 @@ import {
   Home,
   Layers,
   LogOut,
+  Menu,
   MessageCircle,
   MessageSquare,
   Settings,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { api, getToken } from "@/lib/api";
@@ -42,6 +45,14 @@ export default function MeLayout({ children }: { children: ReactNode }) {
   const logout = useLogout();
   const pathname = usePathname();
   const [authChecked, setAuthChecked] = useState(false);
+  // Mobile drawer state. Sidebar collapses to a hamburger on
+  // small viewports because the 240px fixed column eats 60%
+  // of a phone screen. Auto-closes on route change so tapping
+  // a nav link doesn't leave the drawer hanging open.
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     if (!getToken()) {
@@ -106,7 +117,23 @@ export default function MeLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-gray-50">
-      <aside className="w-60 shrink-0 border-r border-gray-200 bg-white flex flex-col">
+      {/* Mobile backdrop: dims the page when the drawer is open
+          and dismisses on tap. Hidden on md+ where the sidebar
+          is always visible. */}
+      {drawerOpen && (
+        <button
+          type="button"
+          aria-label="Cerrar menú"
+          onClick={() => setDrawerOpen(false)}
+          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+        />
+      )}
+      <aside
+        className={
+          "fixed inset-y-0 left-0 z-40 w-60 shrink-0 border-r border-gray-200 bg-white flex flex-col transform transition-transform duration-200 md:static md:translate-x-0 "
+          + (drawerOpen ? "translate-x-0" : "-translate-x-full")
+        }
+      >
         <div className="flex items-center gap-3 px-4 py-4 border-b border-gray-100">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -117,6 +144,16 @@ export default function MeLayout({ children }: { children: ReactNode }) {
           <div className="text-sm font-medium text-gray-700 leading-tight">
             {me.data?.current_tenant.name}
           </div>
+          {/* Mobile-only close button — gives a fast dismiss
+              without reaching for the backdrop. */}
+          <button
+            type="button"
+            aria-label="Cerrar menú"
+            onClick={() => setDrawerOpen(false)}
+            className="ml-auto rounded-md p-1 text-gray-500 hover:bg-gray-100 md:hidden"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
         {me.data && <ViewSwitcher me={me.data} current="me" />}
@@ -261,8 +298,34 @@ export default function MeLayout({ children }: { children: ReactNode }) {
           the viewport edge — see /admin/layout for the long
           explanation. */}
       <div className="flex-1 flex flex-col min-w-0">
+        {/* Mobile top bar: hamburger + tenant name. Hidden on
+            md+ where the sidebar is visible. */}
+        <div className="flex items-center gap-2 border-b border-gray-200 bg-white px-3 py-2 md:hidden">
+          <button
+            type="button"
+            aria-label="Abrir menú"
+            onClick={() => setDrawerOpen(true)}
+            className="rounded-md p-1.5 text-gray-700 hover:bg-gray-100"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <Image
+            src="/logo.jpeg"
+            alt="Trivu"
+            width={28}
+            height={28}
+            className="rounded-md object-cover"
+          />
+          <div className="min-w-0 flex-1 truncate text-sm font-medium text-gray-800">
+            {me.data?.current_tenant.name}
+          </div>
+        </div>
         <EmailVerifyBanner />
-        <main className="flex-1 p-8">{children}</main>
+        {/* Tighter horizontal padding on mobile (where 8px·2 =
+            16px is plenty) and the existing p-8 on md+. Also
+            p-4 vertical on mobile so the page header doesn't
+            sit flush to the topbar. */}
+        <main className="flex-1 p-4 md:p-8">{children}</main>
       </div>
     </div>
   );

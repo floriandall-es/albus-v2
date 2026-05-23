@@ -12,7 +12,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { MessageCircle, Send } from "lucide-react";
+import { ArrowLeft, MessageCircle, Send } from "lucide-react";
 import {
   api,
   personLastName,
@@ -65,13 +65,20 @@ export default function MensajesPage() {
     <div>
       <h1 className="mb-4 text-2xl font-semibold">Mensajes</h1>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-[260px_1fr]">
-        <ConversationList
-          conversations={conversations.data ?? []}
-          loading={conversations.isLoading}
-          activeId={activeId}
-          onPick={(id) => router.replace(`/me/mensajes?c=${id}`)}
-        />
-        <div className="min-h-[420px]">
+        {/* Mobile flow: when a conversation is open, hide the
+            list pane so the conversation fills the screen. The
+            in-conversation header gets a back arrow that returns
+            to the list (clears the ?c= query param). Desktop
+            shows both panes side-by-side regardless. */}
+        <div className={activeId !== null ? "hidden md:block" : ""}>
+          <ConversationList
+            conversations={conversations.data ?? []}
+            loading={conversations.isLoading}
+            activeId={activeId}
+            onPick={(id) => router.replace(`/me/mensajes?c=${id}`)}
+          />
+        </div>
+        <div className={activeId === null ? "hidden md:block min-h-[420px]" : "min-h-[420px]"}>
           {activeId === null && (
             <EmptyPane>
               {conversations.isLoading
@@ -85,6 +92,7 @@ export default function MensajesPage() {
               conversation={conversations.data?.find(
                 (c) => c.id === activeId,
               )}
+              onBackToList={() => router.replace("/me/mensajes")}
               onMessageSent={() => {
                 qc.invalidateQueries({ queryKey: ["conversations"] });
               }}
@@ -177,10 +185,15 @@ function ConversationList({
 function ConversationPane({
   conversationId,
   conversation,
+  onBackToList,
   onMessageSent,
 }: {
   conversationId: number;
   conversation: DMConversation | undefined;
+  /** Mobile-only "back to conversation list" callback. The
+   * desktop layout shows both panes simultaneously and ignores
+   * this. */
+  onBackToList: () => void;
   onMessageSent: () => void;
 }) {
   const qc = useQueryClient();
@@ -239,7 +252,17 @@ function ConversationPane({
   return (
     <div className="flex h-full min-h-[420px] flex-col rounded-lg border border-gray-200 bg-white">
       {conversation && (
-        <div className="flex items-center gap-3 border-b border-gray-100 px-4 py-2">
+        <div className="flex items-center gap-2 border-b border-gray-100 px-3 py-2">
+          {/* Mobile back-to-list button. Hidden on md+ where both
+              panes are side-by-side. */}
+          <button
+            type="button"
+            aria-label="Volver a la lista"
+            onClick={onBackToList}
+            className="rounded-md p-1 text-gray-500 hover:bg-gray-100 md:hidden"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
           <Avatar
             name={conversation.peer.name}
             mine={false}
