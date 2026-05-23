@@ -177,9 +177,9 @@ function ContactChannelsSection({
             Cómo me pueden contactar
           </h3>
           <p className="mt-1 text-xs text-gray-500">
-            Lo que actives aquí aparece en tu tarjeta del directorio.
-            Por defecto está todo desactivado — sólo tú decides qué
-            mostrar.
+            Lo que esté activo aquí aparece en tu tarjeta del directorio.
+            Tu email se muestra por defecto — los canales personales
+            (teléfono, WhatsApp) sólo si los activas.
           </p>
         </div>
         <div>

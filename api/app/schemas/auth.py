@@ -167,11 +167,13 @@ class MembershipOut(BaseModel):
     # (default). Frontend reads this on the settings page to render
     # the toggle's current state.
     directory_visible: bool = True
-    # Sprint 28 / migration 0053: per-channel opt-in. All default
-    # FALSE. The directory only renders the corresponding contact
-    # button when the flag is true.
+    # Sprint 28: per-channel opt-in. share_email defaults TRUE
+    # (institutional channel — migration 0054); share_phone and
+    # share_whatsapp default FALSE (personal). Directory renders
+    # the corresponding button when the flag is true AND the
+    # underlying datum exists.
     share_phone: bool = False
-    share_email: bool = False
+    share_email: bool = True
     share_whatsapp: bool = False
     created_at: datetime
 
