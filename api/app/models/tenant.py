@@ -1,9 +1,10 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.models.hospital import Hospital
 
 
 class Tenant(Base):
@@ -12,6 +13,26 @@ class Tenant(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     slug: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # Sprint 28 / migration 0051: optional parent hospital. NULL =
+    # standalone tenant (the historical default and what every
+    # pre-0051 tenant is). Non-null = this tenant is one department
+    # of a hospital — see Hospital model + signup find-or-create.
+    hospital_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("hospitals.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # Joined-load so TenantOut.model_validate can read .hospital_name
+    # without a second roundtrip. lazy="joined" because every
+    # serialization needs it and the join is cheap (single small row).
+    hospital: Mapped["Hospital | None"] = relationship(
+        "Hospital", lazy="joined"
+    )
+
+    @property
+    def hospital_name(self) -> str | None:
+        return self.hospital.name if self.hospital else None
     country: Mapped[str | None] = mapped_column(String(8), nullable=True)
     locale: Mapped[str | None] = mapped_column(String(16), nullable=True)
     country_code: Mapped[str | None] = mapped_column(String(8), nullable=True)

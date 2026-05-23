@@ -41,6 +41,13 @@ export type Tenant = {
   locale: string | null;
   country_code: string | null;
   region_code: string | null;
+  /** Sprint 28 / migration 0051: parent hospital this tenant rolls
+   * up under. Null for standalone tenants (the default). When set,
+   * hospital_name is the convenience name pulled server-side so
+   * the frontend can render "Department · Hospital" labels without
+   * an extra fetch. */
+  hospital_id: number | null;
+  hospital_name: string | null;
   created_at: string;
   onboarding_completed_at: string | null;
   /** Onboarding template chosen on the new first wizard step.
@@ -863,6 +870,12 @@ export const api = {
      * trasplantes?". Moved to the onboarding step 1 in sprint 28;
      * /signup no longer sends it. Backend defaults false. */
     transplants_enabled?: boolean;
+    /** Sprint 28 / migration 0051: optional parent hospital name.
+     * When set, the server find-or-creates a hospitals row (exact
+     * name + country_code match) and links the new tenant to it.
+     * Two departments at the same hospital signing up with the
+     * same string will link to the same row. */
+    hospital_name?: string;
   }) => request<AuthResponse>("/api/signup", { method: "POST", body: JSON.stringify(body) }),
 
   // Login is conditional on how many memberships the person has:

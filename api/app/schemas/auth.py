@@ -6,6 +6,14 @@ from pydantic import BaseModel, EmailStr, Field
 
 class SignupRequest(BaseModel):
     tenant_name: str = Field(min_length=1, max_length=255)
+    # Sprint 28 / migration 0051: optional hospital this department
+    # belongs to. When provided, the signup endpoint find-or-creates
+    # a Hospital row (matched by exact name + country_code) and links
+    # the new tenant via tenants.hospital_id. Two departments at the
+    # same hospital signing up with the same hospital_name will both
+    # link to the same hospitals row — that's the whole point.
+    # Empty/missing = standalone tenant, no hospital row created.
+    hospital_name: str | None = Field(default=None, max_length=255)
     # `person_name` is the legacy single-field name. Kept for backward
     # compatibility with older clients; the server derives it from
     # first_name + last_name when both are provided.
@@ -83,6 +91,12 @@ class TenantOut(BaseModel):
     locale: str | None = None
     country_code: str | None = None
     region_code: str | None = None
+    # Sprint 28 / migration 0051: optional parent hospital. Null on
+    # standalone tenants (the default). When set, hospital_name is
+    # populated server-side so the frontend doesn't need a second
+    # fetch for the common "show 'Department · Hospital' label" use.
+    hospital_id: int | None = None
+    hospital_name: str | None = None
     created_at: datetime
     onboarding_completed_at: datetime | None = None
     # Set by the onboarding preset step. One of 'quirurgico' / 'medico'

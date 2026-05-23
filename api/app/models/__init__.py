@@ -1,3 +1,4 @@
+from app.models.hospital import Hospital
 from app.models.tenant import Tenant
 from app.models.person import Person
 from app.models.membership import Membership
@@ -29,6 +30,7 @@ from app.models.meeting import Meeting, MeetingAudienceGroup, MeetingAudiencePer
 from app.models.transplant import TransplantCase, TransplantProcedure
 
 __all__ = [
+    "Hospital",
     "Tenant",
     "Person",
     "Membership",

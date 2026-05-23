@@ -8,6 +8,11 @@ import { api, setToken } from "@/lib/api";
 export default function SignupPage() {
   const router = useRouter();
   const [tenantName, setTenantName] = useState("");
+  // Optional hospital this department rolls up under. When provided,
+  // the backend find-or-creates a hospitals row and links the new
+  // tenant, so the second department from the same hospital
+  // auto-links to the existing row.
+  const [hospitalName, setHospitalName] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -23,6 +28,10 @@ export default function SignupPage() {
     try {
       const res = await api.signup({
         tenant_name: tenantName,
+        // Empty string = no hospital (standalone tenant). Trimmed
+        // server-side so trailing whitespace doesn't fork a hospital
+        // row from one with the same name typed cleanly.
+        hospital_name: hospitalName.trim() || undefined,
         first_name: firstName,
         last_name: lastName,
         email,
@@ -68,12 +77,21 @@ export default function SignupPage() {
           </p>
           <form onSubmit={onSubmit} className="space-y-4">
             <Field
-              label="Nombre del servicio"
-              value={tenantName}
-              onChange={setTenantName}
+              label="Hospital (opcional)"
+              value={hospitalName}
+              onChange={setHospitalName}
               placeholder="ej. Hospital Universitario La Paz"
               autoComplete="organization"
               name="organization"
+              required={false}
+            />
+            <Field
+              label="Nombre del servicio"
+              value={tenantName}
+              onChange={setTenantName}
+              placeholder="ej. Cirugía Cardiaca"
+              autoComplete="off"
+              name="service-name"
             />
             <Field
               label="Tu nombre"
@@ -171,6 +189,10 @@ function Field(props: {
    * dumped in on the invite-accept form). */
   autoComplete?: string;
   name?: string;
+  /** Defaults to true (HTML form validation). Set false for
+   * truly optional fields like Hospital, which the backend
+   * treats as "no parent hospital" when empty. */
+  required?: boolean;
 }) {
   return (
     <label className="block">
@@ -180,7 +202,7 @@ function Field(props: {
         value={props.value}
         onChange={(e) => props.onChange(e.target.value)}
         placeholder={props.placeholder}
-        required
+        required={props.required ?? true}
         autoComplete={props.autoComplete}
         name={props.name}
         className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"

@@ -23,7 +23,7 @@ from app.core.security import (
     verify_password,
 )
 from app.db.session import get_db, set_tenant
-from app.models import Group, Membership, Person, Tenant
+from app.models import Group, Hospital, Membership, Person, Tenant
 from app.routes.deps import RequestContext, get_current_context
 from app.services.person_name import compose_name
 from app.schemas.auth import (
@@ -155,12 +155,50 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthRespons
 
     slug = _generate_unique_slug(db, payload.tenant_name)
 
+    # Sprint 28 / migration 0051: find-or-create the parent hospital
+    # so multiple departments at the same site link to one row.
+    # Match is exact-name + country_code; the first signup creates
+    # the row, every subsequent signup with the same hospital_name
+    # links to it. Empty/missing hospital_name = standalone tenant.
+    hospital_id: int | None = None
+    hospital_name = (payload.hospital_name or "").strip()
+    if hospital_name:
+        existing_hospital = (
+            db.query(Hospital)
+            .filter(
+                Hospital.name == hospital_name,
+                Hospital.country_code == payload.country_code,
+            )
+            .first()
+        )
+        if existing_hospital:
+            hospital_id = existing_hospital.id
+        else:
+            h_slug = _slugify_tenant_name(hospital_name) or f"hospital-{secrets.token_hex(3)}"
+            # Slug collision: append random suffix. Hospitals are
+            # niche enough that we don't bother with the n=2..n=N
+            # gradient.
+            if (
+                db.query(Hospital).filter(Hospital.slug == h_slug).first()
+                is not None
+            ):
+                h_slug = f"{h_slug[:55]}-{secrets.token_hex(3)}"
+            new_hospital = Hospital(
+                slug=h_slug,
+                name=hospital_name,
+                country_code=payload.country_code,
+            )
+            db.add(new_hospital)
+            db.flush()
+            hospital_id = new_hospital.id
+
     tenant = Tenant(
         slug=slug,
         name=payload.tenant_name,
         country_code=payload.country_code,
         has_subteams=payload.has_subteams,
         transplants_enabled=payload.transplants_enabled,
+        hospital_id=hospital_id,
     )
     db.add(tenant)
     db.flush()
