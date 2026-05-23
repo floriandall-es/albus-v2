@@ -7,6 +7,7 @@ import {
   AlertCircle,
   ArrowLeftRight,
   BarChart3,
+  Building2,
   CalendarDays,
   CalendarOff,
   Clock,
@@ -44,6 +45,10 @@ const NAV: NavSection[] = [
       { href: "/admin/reuniones", label: "Reuniones", icon: MessageSquare },
       { href: "/admin/incidents", label: "Incidentes", icon: AlertCircle },
       { href: "/admin/trasplantes", label: "Trasplantes", icon: Heart },
+      // Sprint 28: cross-tenant hospital directory. Hidden when
+      // the current tenant has no parent hospital (standalone).
+      // Links to the member-side route — same page either way.
+      { href: "/me/directorio", label: "Directorio", icon: Building2 },
     ],
   },
   {
@@ -177,6 +182,15 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                     if (
                       item.href === "/admin/trasplantes"
                       && !me.data?.current_tenant.transplants_enabled
+                    ) {
+                      return false;
+                    }
+                    // Directory only when the tenant has a parent
+                    // hospital — the page would render an empty
+                    // state otherwise, no point linking to it.
+                    if (
+                      item.href === "/me/directorio"
+                      && me.data?.current_tenant.hospital_id == null
                     ) {
                       return false;
                     }

@@ -39,8 +39,69 @@ export function ProfileCards() {
         initialEmail={me.data.person.email}
         onSaved={invalidate}
       />
+      {/* Hospital directory opt-out — only renders when the
+          tenant has a parent hospital. Standalone tenants don't
+          have a directory to opt out of. */}
+      {me.data.current_tenant.hospital_id != null && (
+        <DirectoryVisibilitySection
+          hospitalName={me.data.current_tenant.hospital_name}
+          currentValue={
+            me.data.memberships.find(
+              (m) => m.tenant_id === me.data.current_tenant.id,
+            )?.directory_visible ?? true
+          }
+          onSaved={invalidate}
+        />
+      )}
       <PasswordSection />
     </div>
+  );
+}
+
+function DirectoryVisibilitySection({
+  hospitalName,
+  currentValue,
+  onSaved,
+}: {
+  hospitalName: string | null;
+  currentValue: boolean;
+  onSaved: () => void;
+}) {
+  const save = useMutation({
+    mutationFn: (next: boolean) => api.setMyDirectoryVisibility(next),
+    onSuccess: onSaved,
+  });
+  return (
+    <Card>
+      <div className="p-5">
+        <h3 className="text-sm font-semibold text-gray-900">
+          Directorio del hospital
+        </h3>
+        <p className="mt-1 text-xs text-gray-500">
+          Cuando está activado, otros profesionales de
+          {hospitalName ? ` ${hospitalName}` : " tu hospital"} pueden
+          encontrarte por nombre o categoría en el directorio. Desactívalo
+          si prefieres no aparecer.
+        </p>
+        <label className="mt-3 inline-flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={currentValue}
+            onChange={(e) => save.mutate(e.target.checked)}
+            disabled={save.isPending}
+            className="h-4 w-4 rounded border-gray-300"
+          />
+          <span className="text-sm text-gray-800">
+            Aparezco en el directorio
+          </span>
+        </label>
+        {save.isError && (
+          <p className="mt-2 text-xs text-rose-700">
+            {(save.error as Error).message}
+          </p>
+        )}
+      </div>
+    </Card>
   );
 }
 

@@ -52,6 +52,14 @@ class Membership(Base):
     group_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("groups.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Sprint 28 / migration 0052: hospital directory opt-out. True =
+    # visible in the cross-tenant directory of the parent hospital
+    # (default). False = the clinician chose to hide from sibling
+    # departments. Per-membership (not per-Person) because the
+    # decision is tied to the employment context.
+    directory_visible: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

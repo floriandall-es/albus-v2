@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeftRight,
+  Building2,
   CalendarDays,
   CalendarOff,
   Home,
@@ -25,6 +26,10 @@ const NAV: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/me/reuniones", label: "Reuniones", icon: MessageSquare },
   { href: "/me/swaps", label: "Cambios", icon: ArrowLeftRight },
   { href: "/me/bloqueos", label: "Mis bloqueos", icon: CalendarOff },
+  // Sprint 28: cross-tenant hospital directory. Only renders when
+  // the current tenant has a parent hospital — handled in the
+  // filter below.
+  { href: "/me/directorio", label: "Directorio", icon: Building2 },
   { href: "/me/settings", label: "Mi cuenta", icon: Settings },
 ];
 
@@ -126,6 +131,16 @@ export default function MeLayout({ children }: { children: ReactNode }) {
                 currentMembership?.group_id != null;
               if (inSubEquipo && item.href === "/me/swaps") return false;
               if (inSubEquipo && item.href === "/me/bloqueos") return false;
+              // Directory entry only when this tenant has a
+              // parent hospital. Standalone tenants get nothing
+              // to click — the page would render an empty state
+              // anyway, so hide the entry point too.
+              if (
+                item.href === "/me/directorio"
+                && me.data?.current_tenant.hospital_id == null
+              ) {
+                return false;
+              }
               return true;
             }).map((item) => {
               const Icon = item.icon;

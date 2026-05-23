@@ -384,7 +384,32 @@ export type Membership = {
    * (a residente sees the residentes' plan, an Adjunto sees the
    * main team's). */
   group_id: number | null;
+  /** Sprint 28 / migration 0052: appears in the cross-tenant
+   * hospital directory? True by default. Settings page lets the
+   * clinician flip it off. */
+  directory_visible: boolean;
   created_at: string;
+};
+
+/** One row of the cross-tenant hospital directory. Returned by
+ * `GET /api/hospital/directory` — joins membership + person +
+ * tenant + category + group for the listing UI. No emails or
+ * phones exposed in P1. */
+export type HospitalDirectoryEntry = {
+  person_id: number;
+  person_name: string;
+  person_first_name: string | null;
+  person_last_name: string | null;
+  person_avatar_url: string | null;
+  membership_id: number;
+  tenant_id: number;
+  tenant_name: string;
+  tenant_slug: string;
+  category_id: number | null;
+  category_name: string | null;
+  group_id: number | null;
+  group_name: string | null;
+  roles: string[];
 };
 
 export type Department = {
@@ -895,6 +920,38 @@ export const api = {
     }),
 
   me: () => request<MeResponse>("/api/me"),
+  /** Cross-tenant hospital directory. Returns [] when the caller's
+   * tenant has no parent hospital (standalone tenants). Optional
+   * filters: q (substring against name + last name), category_id,
+   * tenant_id. */
+  listHospitalDirectory: (params?: {
+    q?: string;
+    category_id?: number;
+    tenant_id?: number;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.q) qs.set("q", params.q);
+    if (params?.category_id != null)
+      qs.set("category_id", String(params.category_id));
+    if (params?.tenant_id != null)
+      qs.set("tenant_id", String(params.tenant_id));
+    const q = qs.toString();
+    return request<HospitalDirectoryEntry[]>(
+      `/api/hospital/directory${q ? `?${q}` : ""}`,
+    );
+  },
+  /** Toggle the caller's own membership opt-out from the hospital
+   * directory. Scoped to the current tenant's membership — if the
+   * caller has multiple memberships, they switch tenants to set
+   * this per employment. */
+  setMyDirectoryVisibility: (visible: boolean) =>
+    request<{ directory_visible: boolean }>(
+      "/api/me/directory-visibility",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ directory_visible: visible }),
+      },
+    ),
   updateProfile: (body: {
     /** Legacy single-field name. Sprint 18+ clients should send
      * first_name + last_name instead; the server composes `name`

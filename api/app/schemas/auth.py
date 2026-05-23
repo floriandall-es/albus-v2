@@ -157,6 +157,11 @@ class MembershipOut(BaseModel):
     # per-context filtering on /me/turnos so a resident sees their
     # group's planning instead of the main team's.
     group_id: int | None = None
+    # Sprint 28 / migration 0052: hospital directory opt-out. True
+    # = visible in the cross-tenant directory of the parent hospital
+    # (default). Frontend reads this on the settings page to render
+    # the toggle's current state.
+    directory_visible: bool = True
     created_at: datetime
 
     model_config = {"from_attributes": True}
