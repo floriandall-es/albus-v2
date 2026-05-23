@@ -126,36 +126,38 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen bg-gray-50">
       <aside className="w-60 shrink-0 border-r border-gray-200 bg-white flex flex-col">
-        <div className="flex items-center gap-3 px-4 py-4 border-b border-gray-100">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/logo.jpeg"
-            alt="Trivu"
-            className="h-14 w-14 rounded-lg object-cover shadow-soft"
-          />
-          <div className="min-w-0 leading-tight">
-            {/* Tenant + hospital labels can be long (the alpha
-                customer's official hospital name is 50+ chars).
-                Allow up to 2 lines via line-clamp; hover shows
-                the full string. */}
+        <div className="px-4 py-4 border-b border-gray-100">
+          {/* Top row: logo + tenant name. Tenant is line-clamped
+              to 2 because that column is narrow (sidebar width
+              minus the 56px logo + gap leaves ~150px). */}
+          <div className="flex items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo.jpeg"
+              alt="Trivu"
+              className="h-14 w-14 shrink-0 rounded-lg object-cover shadow-soft"
+            />
             <div
-              className="text-sm font-medium text-gray-700 line-clamp-2"
+              className="min-w-0 flex-1 text-sm font-medium text-gray-700 leading-tight line-clamp-2"
               title={me.data?.current_tenant.name}
             >
               {me.data?.current_tenant.name}
             </div>
-            {/* Hospital roll-up label. Renders only when the
-                tenant has a parent (migration 0051). Hidden for
-                standalone tenants so the sidebar stays clean. */}
-            {me.data?.current_tenant.hospital_name && (
-              <div
-                className="mt-0.5 text-[11px] text-gray-500 line-clamp-2"
-                title={me.data.current_tenant.hospital_name}
-              >
-                {me.data.current_tenant.hospital_name}
-              </div>
-            )}
           </div>
+          {/* Hospital roll-up label on its own row below — gets
+              the full sidebar width so a long official name like
+              "Hospital Universitari i Politècnic La Fe de
+              València" can wrap onto however many lines it
+              needs. Renders only when the tenant has a parent
+              (migration 0051); hidden for standalone tenants. */}
+          {me.data?.current_tenant.hospital_name && (
+            <div
+              className="mt-2 text-[11px] text-gray-500 leading-snug"
+              title={me.data.current_tenant.hospital_name}
+            >
+              {me.data.current_tenant.hospital_name}
+            </div>
+          )}
         </div>
 
         {me.data && <ViewSwitcher me={me.data} current="admin" />}
