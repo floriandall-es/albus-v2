@@ -174,6 +174,52 @@ export default function TrasplantesStatsPage() {
           aria-label="Hasta"
           className="rounded-md border border-gray-300 px-2 py-1 text-sm"
         />
+        {/* Quick-pick presets. Each button sets both inputs in one
+            click; the active button (preset's [from, to] matches
+            the current state) renders highlighted so admins know
+            where they stand without re-reading the dates. */}
+        <div className="flex items-center gap-1 pl-1">
+          {(() => {
+            const today = new Date();
+            const iso = (d: Date) => d.toISOString().slice(0, 10);
+            const y = today.getFullYear();
+            const ytd: [string, string] = [iso(new Date(y, 0, 1)), iso(today)];
+            const lastYear: [string, string] = [
+              `${y - 1}-01-01`,
+              `${y - 1}-12-31`,
+            ];
+            const all: [string, string] = ["", ""];
+            const presets: {
+              label: string;
+              value: [string, string];
+            }[] = [
+              { label: "YtD", value: ytd },
+              { label: "Año pasado", value: lastYear },
+              { label: "Todo", value: all },
+            ];
+            return presets.map((p) => {
+              const active = from === p.value[0] && to === p.value[1];
+              return (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => {
+                    setFrom(p.value[0]);
+                    setTo(p.value[1]);
+                  }}
+                  className={
+                    "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors "
+                    + (active
+                      ? "border-brand-300 bg-brand-50 text-brand-800"
+                      : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50")
+                  }
+                >
+                  {p.label}
+                </button>
+              );
+            });
+          })()}
+        </div>
         <span className="ml-auto text-xs text-gray-500">
           {from || to ? "Filtrado por fecha del caso" : "Histórico completo"}
         </span>
