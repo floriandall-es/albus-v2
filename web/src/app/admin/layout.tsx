@@ -133,8 +133,18 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             alt="Trivu"
             className="h-14 w-14 rounded-lg object-cover shadow-soft"
           />
-          <div className="text-sm font-medium text-gray-700 leading-tight">
-            {me.data?.current_tenant.name}
+          <div className="min-w-0 leading-tight">
+            <div className="text-sm font-medium text-gray-700 truncate">
+              {me.data?.current_tenant.name}
+            </div>
+            {/* Hospital roll-up label. Renders only when the
+                tenant has a parent (migration 0051). Hidden for
+                standalone tenants so the sidebar stays clean. */}
+            {me.data?.current_tenant.hospital_name && (
+              <div className="mt-0.5 text-[11px] text-gray-500 truncate">
+                {me.data.current_tenant.hospital_name}
+              </div>
+            )}
           </div>
         </div>
 
