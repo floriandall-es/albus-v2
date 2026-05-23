@@ -55,6 +55,11 @@ export type Tenant = {
    * service runs a transplant program. When false, the
    * "Trasplantes" sidebar entry hides and /api/transplants 404s. */
   transplants_enabled: boolean;
+  /** Per-tenant cap on cambios de turno per member per monthly
+   * schedule. Null = unlimited (default). When set, both sides of
+   * every fulfilled swap count toward the limit for the month of
+   * the original assignment. Editable on /admin/swaps. */
+  max_swaps_per_member_per_month: number | null;
   /** Per-area "I'm done configuring" timestamps. Null = pending
    * (Inicio shows the card, subpage shows the first-visit banner);
    * non-null = admin marked it done. Toggled via
@@ -1206,6 +1211,10 @@ export const api = {
     /** Onboarding step 1 sets this — gates the /admin/trasplantes
      * module visibility and the related API endpoints. */
     transplants_enabled?: boolean;
+    /** /admin/swaps writes this. Pass null to clear (= unlimited);
+     * pass a non-negative integer to cap fulfilled swaps per member
+     * per monthly schedule. */
+    max_swaps_per_member_per_month?: number | null;
   }) => request<Tenant>("/api/tenants/me", { method: "PATCH", body: JSON.stringify(body) }),
   /** Mark one of the four post-signup areas as completed (or undo
    * it). Server writes/clears the corresponding
@@ -1421,6 +1430,18 @@ export const api = {
       { method: "POST" },
     ),
   adminListSwaps: () => request<SwapOffer[]>("/api/admin/swaps"),
+  /** Per-person view of swap usage in a given month.
+   *
+   * `period` is YYYY-MM. `used` is the number of fulfilled offers
+   * where the caller was either requester or accepted responder
+   * with the original assignment in that month. `limit` mirrors
+   * tenant.max_swaps_per_member_per_month (null = unlimited). The
+   * frontend renders "X de N cambios este mes" and disables swap
+   * actions when used >= limit. */
+  getMySwapQuota: (period: string) =>
+    request<{ period: string; used: number; limit: number | null }>(
+      `/api/me/swap-quota?period=${encodeURIComponent(period)}`,
+    ),
   patchAssignment: (
     scheduleId: number,
     assignmentId: number,

@@ -88,6 +88,14 @@ export default function TurnosPage() {
     enabled: selectedId !== null,
   });
 
+  // Sub-equipo members can't request swaps yet (their lead handles
+  // it offline), so only fetch quota for main-team members.
+  const swapQuota = useQuery({
+    queryKey: ["my-swap-quota", detail.data?.period],
+    queryFn: () => api.getMySwapQuota(detail.data!.period.slice(0, 7)),
+    enabled: !!detail.data && myGroupId === null,
+  });
+
   const holidays = useQuery({
     queryKey: ["holidays-detail", detail.data?.period],
     queryFn: () =>
@@ -179,6 +187,28 @@ export default function TurnosPage() {
       {downloadPdf.isError && (
         <div className="mb-3">
           <ErrorText>{(downloadPdf.error as Error).message}</ErrorText>
+        </div>
+      )}
+
+      {/* Per-month swap quota pill — visible only when a tenant has
+          a cap set AND the user can request swaps (main-team only).
+          The number is fetched per displayed month so switching the
+          selector above refreshes it. */}
+      {swapQuota.data && swapQuota.data.limit !== null && (
+        <div className="mb-3 text-xs">
+          <span
+            className={
+              "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 "
+              + (swapQuota.data.used >= swapQuota.data.limit
+                ? "border-amber-300 bg-amber-50 text-amber-800"
+                : "border-gray-200 bg-gray-50 text-gray-700")
+            }
+          >
+            {swapQuota.data.used} / {swapQuota.data.limit} cambios este mes
+            {swapQuota.data.used >= swapQuota.data.limit && (
+              <span className="ml-1">· límite alcanzado</span>
+            )}
+          </span>
         </div>
       )}
 

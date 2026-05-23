@@ -70,6 +70,100 @@ def _offer_or_404(ctx: RequestContext, offer_id: int) -> ShiftSwapOffer:
     return o
 
 
+def _month_range(d: date_t) -> tuple[date_t, date_t]:
+    """First and last day of d's month (inclusive)."""
+    from datetime import timedelta
+    first = date_t(d.year, d.month, 1)
+    if d.month == 12:
+        next_first = date_t(d.year + 1, 1, 1)
+    else:
+        next_first = date_t(d.year, d.month + 1, 1)
+    last = next_first - timedelta(days=1)
+    return first, last
+
+
+def _swap_count_for_person_in_month(
+    ctx: RequestContext, person_id: int, period_date: date_t
+) -> int:
+    """Count fulfilled swap offers where this person was either the
+    requester or the accepted responder, AND the original assignment
+    falls in `period_date`'s month. Used to enforce
+    `tenant.max_swaps_per_member_per_month` at accept-response time
+    and surface usage via /api/me/swap-quota.
+
+    Both sides of every fulfilled swap count once. Cover responses
+    count too: the requester is giving up a shift, the responder is
+    picking it up — that's still one cambio per person in the month.
+    """
+    first, last = _month_range(period_date)
+    # Requester side: offer.requested_by_membership maps to person_id.
+    requester_q = (
+        ctx.db.query(ShiftSwapOffer.id)
+        .join(
+            Membership,
+            Membership.id == ShiftSwapOffer.requested_by_membership_id,
+        )
+        .join(Assignment, Assignment.id == ShiftSwapOffer.assignment_id)
+        .filter(
+            ShiftSwapOffer.tenant_id == ctx.tenant.id,
+            ShiftSwapOffer.status == "fulfilled",
+            Membership.person_id == person_id,
+            Assignment.date >= first,
+            Assignment.date <= last,
+        )
+    )
+    # Responder side: the accepted ShiftSwapResponse's responder
+    # maps to person_id.
+    responder_q = (
+        ctx.db.query(ShiftSwapOffer.id)
+        .join(
+            ShiftSwapResponse,
+            ShiftSwapResponse.offer_id == ShiftSwapOffer.id,
+        )
+        .join(
+            Membership,
+            Membership.id == ShiftSwapResponse.responder_membership_id,
+        )
+        .join(Assignment, Assignment.id == ShiftSwapOffer.assignment_id)
+        .filter(
+            ShiftSwapOffer.tenant_id == ctx.tenant.id,
+            ShiftSwapOffer.status == "fulfilled",
+            ShiftSwapResponse.status == "accepted",
+            Membership.person_id == person_id,
+            Assignment.date >= first,
+            Assignment.date <= last,
+        )
+    )
+    # Union (distinct offer ids) — defensive: a person can't be both
+    # requester and accepted-responder of the same offer, but DISTINCT
+    # keeps the count honest if any data ever drifts.
+    union_ids = {row[0] for row in requester_q.all()} | {
+        row[0] for row in responder_q.all()
+    }
+    return len(union_ids)
+
+
+def _enforce_swap_quota(
+    ctx: RequestContext, person_id: int, period_date: date_t, label: str
+) -> None:
+    """Raise 400 when accepting this swap would push `person_id` past
+    the tenant's per-month cap. `label` is used in the error message
+    (e.g. "tú" or last-name) so the UI can show which side is over.
+    """
+    limit = ctx.tenant.max_swaps_per_member_per_month
+    if limit is None:
+        return
+    used = _swap_count_for_person_in_month(ctx, person_id, period_date)
+    if used >= limit:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{label} ya ha alcanzado el límite de {limit} "
+                f"cambios para {period_date.strftime('%Y-%m')}."
+            ),
+        )
+
+
 def _response_or_404(
     ctx: RequestContext, offer: ShiftSwapOffer, response_id: int
 ) -> ShiftSwapResponse:
@@ -371,6 +465,14 @@ def create_offer(
             detail="Este turno está bloqueado por el admin",
         )
 
+    # If the tenant has a monthly cap, refuse to open an offer the
+    # requester wouldn't be able to accept anyway. Strictly a UX
+    # courtesy — the accept path re-enforces the cap (the requester
+    # could otherwise hit it via parallel offers).
+    _enforce_swap_quota(
+        ctx, ctx.person.id, a.date, ctx.person.last_name or ctx.person.name or "Tú"
+    )
+
     obj = ShiftSwapOffer(
         tenant_id=ctx.tenant.id,
         assignment_id=a.id,
@@ -468,6 +570,18 @@ def respond_to_offer(
             detail="Para cubrir no se ofrece otro turno",
         )
 
+    # UX courtesy: don't let a responder at quota submit a response
+    # they wouldn't be able to fulfil. accept_response still
+    # re-enforces this — the responder could otherwise hit the cap
+    # via parallel responses or fulfilments from other offers.
+    original = _assignment_or_404(ctx, o.assignment_id)
+    _enforce_swap_quota(
+        ctx,
+        ctx.person.id,
+        original.date,
+        ctx.person.last_name or ctx.person.name or "Tú",
+    )
+
     swap_assignment = None
     if payload.kind == "swap":
         swap_assignment = _assignment_or_404(ctx, payload.swap_assignment_id)  # type: ignore[arg-type]
@@ -526,6 +640,23 @@ def accept_response(
     responder_m = ctx.db.get(Membership, r.responder_membership_id)
     if responder_m is None:
         raise HTTPException(status_code=400, detail="Respondedor inválido")
+
+    # Per-tenant monthly cap. Both sides spend a cambio when an
+    # offer is fulfilled; reject the accept if either side is at
+    # the cap. Scoped to the month of `original.date` — for a swap
+    # response that crosses months we use the same period for both
+    # sides so admins can reason about "X cambios en mayo".
+    requester_label = ctx.person.last_name or ctx.person.name or "tú"
+    responder_person = ctx.db.get(Person, responder_m.person_id)
+    responder_label = (
+        (responder_person.last_name or responder_person.name)
+        if responder_person
+        else "el respondedor"
+    )
+    _enforce_swap_quota(ctx, ctx.person.id, original.date, requester_label)
+    _enforce_swap_quota(
+        ctx, responder_m.person_id, original.date, responder_label
+    )
 
     # Re-check eligibility AT ACCEPT TIME — the schedule may have changed.
     # For a SWAP, each person is GIVING UP their own assignment, so it
@@ -828,3 +959,47 @@ def admin_audit_log(
         .all()
     )
     return [_serialize_offer(ctx, o) for o in rows]
+
+
+# ---------------------------------------------------------------------------
+# Quota endpoint
+# ---------------------------------------------------------------------------
+
+
+from pydantic import BaseModel
+
+
+class SwapQuotaOut(BaseModel):
+    """Per-person view of swap usage in a given month.
+
+    `limit` is the tenant's `max_swaps_per_member_per_month` (null =
+    unlimited). `used` counts fulfilled offers where the caller was
+    either requester or accepted responder, scoped to that month.
+    The frontend uses both to render "X de N cambios este mes" and
+    disable swap actions when used >= limit.
+    """
+
+    period: str  # YYYY-MM
+    used: int
+    limit: int | None
+
+
+@router.get("/me/swap-quota", response_model=SwapQuotaOut)
+def my_swap_quota(
+    period: str,
+    ctx: RequestContext = Depends(get_current_context),
+) -> SwapQuotaOut:
+    try:
+        period_date = date_t.fromisoformat(f"{period}-01")
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail="period must be YYYY-MM"
+        ) from exc
+    used = _swap_count_for_person_in_month(
+        ctx, ctx.person.id, period_date
+    )
+    return SwapQuotaOut(
+        period=period_date.strftime("%Y-%m"),
+        used=used,
+        limit=ctx.tenant.max_swaps_per_member_per_month,
+    )

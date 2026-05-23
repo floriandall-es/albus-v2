@@ -50,6 +50,11 @@ class TenantUpdate(BaseModel):
     # context, not on the public credentials page.
     has_subteams: bool | None = None
     transplants_enabled: bool | None = None
+    # Sprint 28 / migration 0050: cap on cambios de turno per member
+    # per monthly schedule. PATCH with `null` to clear (= unlimited).
+    # Stored as int >= 0 on the tenant; values <= 0 are treated as
+    # "no swaps allowed" by the swap acceptance check.
+    max_swaps_per_member_per_month: int | None = Field(default=None, ge=0)
 
 
 class SetupAreaUpdate(BaseModel):

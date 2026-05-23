@@ -46,6 +46,15 @@ class Tenant(Base):
     transplants_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+    # Sprint 28 / migration 0050: per-tenant cap on how many cambios
+    # de turno each member can do per monthly schedule. Null =
+    # unlimited (the historical default). When set, both the
+    # requester and the accepted responder of a fulfilled swap
+    # count toward the limit, scoped to the month of the original
+    # assignment's date.
+    max_swaps_per_member_per_month: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
     # Explicit per-area "I'm done configuring this" flags, set by the
     # admin clicking "Marcar como completado" on each subpage. Drives
     # both the /admin Inicio checklist (which cards remain visible)

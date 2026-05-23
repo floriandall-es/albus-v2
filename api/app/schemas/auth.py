@@ -96,6 +96,11 @@ class TenantOut(BaseModel):
     # entry appears and /api/transplants is reachable. False by
     # default — most services don't run a transplant program.
     transplants_enabled: bool = False
+    # Sprint 28 / migration 0050: cap on cambios de turno per member
+    # per monthly schedule. Null = unlimited (historical default).
+    # When set, both sides of every fulfilled swap count toward the
+    # limit for the month of the original assignment.
+    max_swaps_per_member_per_month: int | None = None
     # Per-area "I'm done configuring" timestamps. NULL = pending,
     # surfaced in the Inicio checklist; non-null = admin marked it
     # done, card disappears and the first-visit banner stops
