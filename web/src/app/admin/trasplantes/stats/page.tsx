@@ -102,6 +102,38 @@ export default function TrasplantesStatsPage() {
     return Math.max(1, ...all);
   }, [explanteRows, implanteRows]);
 
+  // Combined totals: per surgeon, all four counts collapsed into
+  // (explantes_total, implantes_total). Sorted by grand total
+  // desc so the chart reads as a leaderboard. Used by the
+  // top-of-page summary chart that answers "who's done the
+  // most overall" before the per-type splits.
+  const totalRows = useMemo(() => {
+    if (!data) return [] as SurgeonTotalRow[];
+    return data.surgeons
+      .map((s) => {
+        const explantes = s.explante_primary + s.explante_secondary;
+        const implantes = s.implante_primary + s.implante_secondary;
+        return {
+          person_id: s.person_id,
+          display_name: personLastName({ name: s.person_name }),
+          explantes,
+          implantes,
+          total: explantes + implantes,
+        };
+      })
+      .filter((r) => r.total > 0)
+      .sort(
+        (a, b) =>
+          b.total - a.total
+          || b.explantes - a.explantes
+          || a.display_name.localeCompare(b.display_name),
+      );
+  }, [data]);
+  const totalMaxBarValue = useMemo(
+    () => Math.max(1, ...totalRows.map((r) => r.total)),
+    [totalRows],
+  );
+
   return (
     <>
       <PageHeader
@@ -268,6 +300,17 @@ export default function TrasplantesStatsPage() {
             </div>
           </Card>
 
+          {/* TOTAL PROCEDIMIENTOS — full-width leaderboard. Each
+              bar is stacked by procedure type so the rank by
+              total is visible AND the explantes/implantes
+              composition shows. Lives above the per-type split
+              charts because "who's pulling the most weight
+              overall" is the question admins ask first. */}
+          <SurgeonTotalsChart
+            rows={totalRows}
+            max={totalMaxBarValue}
+          />
+
           {/* SURGEON PARTICIPATION — split into two cards, one
               per procedure type. Bars share a global x-axis max
               so widths stay comparable between the two charts
@@ -298,6 +341,96 @@ type SurgeonBarRow = {
   primary: number;
   secondary: number;
 };
+
+type SurgeonTotalRow = {
+  person_id: number;
+  display_name: string;
+  explantes: number;
+  implantes: number;
+  total: number;
+};
+
+/** Single-card leaderboard for total procedimientos per cirujano.
+ * Each row's bar is stacked by procedure type (amber explantes,
+ * teal implantes) so the chart simultaneously communicates rank
+ * by total volume AND the explantes/implantes composition. */
+function SurgeonTotalsChart({
+  rows,
+  max,
+}: {
+  rows: SurgeonTotalRow[];
+  max: number;
+}) {
+  return (
+    <Card>
+      <div className="p-5">
+        <div className="mb-1 flex items-baseline justify-between">
+          <h3 className="text-sm font-semibold text-gray-800">
+            Total de procedimientos por cirujano
+          </h3>
+          <div className="flex items-center gap-3 text-[11px] text-gray-500">
+            <LegendDot color="#f59e0b" label="Explantes" />
+            <LegendDot color="#0d9488" label="Implantes" />
+          </div>
+        </div>
+        <p className="mb-4 text-xs text-gray-500">
+          Suma de roles principal y segundo. Ordenado por total descendente.
+        </p>
+        {rows.length === 0 ? (
+          <p className="text-xs text-gray-400">
+            Sin procedimientos en este rango.
+          </p>
+        ) : (
+          <ul className="space-y-2.5">
+            {rows.map((r) => {
+              const explantesPct = (r.explantes / max) * 100;
+              const implantesPct = (r.implantes / max) * 100;
+              const fillsFull = explantesPct + implantesPct >= 99;
+              return (
+                <li
+                  key={r.person_id}
+                  className="grid grid-cols-[120px_1fr_56px] items-center gap-3"
+                >
+                  <div className="truncate text-sm font-medium text-gray-800">
+                    {r.display_name}
+                  </div>
+                  <div className="relative h-6 rounded-md bg-gray-100">
+                    {r.explantes > 0 && (
+                      <div
+                        className="absolute inset-y-0 left-0 flex items-center rounded-l-md bg-amber-500 px-2 text-[11px] font-semibold text-white"
+                        style={{ width: `${explantesPct}%` }}
+                        title={`Explantes: ${r.explantes}`}
+                      >
+                        {explantesPct > 6 && r.explantes}
+                      </div>
+                    )}
+                    {r.implantes > 0 && (
+                      <div
+                        className="absolute inset-y-0 flex items-center bg-brand-600 px-2 text-[11px] font-semibold text-white"
+                        style={{
+                          left: `${explantesPct}%`,
+                          width: `${implantesPct}%`,
+                          borderTopRightRadius: fillsFull ? 6 : 0,
+                          borderBottomRightRadius: fillsFull ? 6 : 0,
+                        }}
+                        title={`Implantes: ${r.implantes}`}
+                      >
+                        {implantesPct > 6 && r.implantes}
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-right text-sm font-semibold tabular-nums text-gray-900">
+                    {r.total}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </Card>
+  );
+}
 
 /** Horizontal stacked bar chart, one row per surgeon. Reused for
  * the explantes and implantes views — same layout, different
