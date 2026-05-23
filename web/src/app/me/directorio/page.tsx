@@ -1,7 +1,13 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Building2, Search } from "lucide-react";
+import {
+  Building2,
+  Mail,
+  MessageCircle,
+  Phone,
+  Search,
+} from "lucide-react";
 import {
   api,
   personLastName,
@@ -176,23 +182,76 @@ function DirectoryCard({ entry }: { entry: HospitalDirectoryEntry }) {
     name: entry.person_name,
     last_name: entry.person_last_name,
   });
+  // Contact buttons render only when the entry exposes the channel
+  // (the backend already gates this on the share_* opt-in flags).
+  // WhatsApp uses the wa.me deep link — works without an API key,
+  // opens the native app on mobile and web.wa.com on desktop.
+  const waNumber = entry.whatsapp_e164?.replace(/[^0-9]/g, "") ?? "";
+  const buttons: { key: string; href: string; label: string; Icon: typeof Phone }[]
+    = [];
+  if (entry.phone_e164) {
+    buttons.push({
+      key: "phone",
+      href: `tel:${entry.phone_e164}`,
+      label: "Llamar",
+      Icon: Phone,
+    });
+  }
+  if (entry.whatsapp_e164) {
+    buttons.push({
+      key: "wa",
+      href: `https://wa.me/${waNumber}`,
+      label: "WhatsApp",
+      Icon: MessageCircle,
+    });
+  }
+  if (entry.email) {
+    buttons.push({
+      key: "email",
+      href: `mailto:${entry.email}`,
+      label: "Email",
+      Icon: Mail,
+    });
+  }
+
   return (
-    <li className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-soft">
-      <Avatar
-        name={entry.person_name}
-        mine={false}
-        imageUrl={entry.person_avatar_url}
-      />
-      <div className="min-w-0 leading-tight">
-        <div className="truncate text-sm font-medium text-gray-900">
-          {displayName}
-        </div>
-        <div className="truncate text-xs text-gray-500">
-          {[entry.category_name, entry.tenant_name, entry.group_name]
-            .filter(Boolean)
-            .join(" · ")}
+    <li className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-soft">
+      <div className="flex items-center gap-3">
+        <Avatar
+          name={entry.person_name}
+          mine={false}
+          imageUrl={entry.person_avatar_url}
+        />
+        <div className="min-w-0 leading-tight">
+          <div className="truncate text-sm font-medium text-gray-900">
+            {displayName}
+          </div>
+          <div className="truncate text-xs text-gray-500">
+            {[entry.category_name, entry.tenant_name, entry.group_name]
+              .filter(Boolean)
+              .join(" · ")}
+          </div>
         </div>
       </div>
+      {buttons.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 pt-1">
+          {buttons.map(({ key, href, label, Icon }) => (
+            <a
+              key={key}
+              href={href}
+              // Open external in new tab for WhatsApp (web flow);
+              // tel: / mailto: stay in-place so the device handler
+              // takes over without leaving an empty tab behind.
+              target={key === "wa" ? "_blank" : undefined}
+              rel={key === "wa" ? "noopener noreferrer" : undefined}
+              className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-medium text-gray-700 hover:bg-gray-100"
+            >
+              <Icon className="h-3 w-3" />
+              {label}
+            </a>
+          ))}
+        </div>
+      )}
     </li>
   );
 }

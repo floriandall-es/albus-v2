@@ -61,6 +61,22 @@ class Membership(Base):
     directory_visible: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
+    # Sprint 28 / migration 0053: per-channel opt-in for directory
+    # contact buttons. All default FALSE — surfacing phone/email/
+    # WhatsApp is a bigger leap than appearing in a list, so we
+    # require explicit consent per channel. Per-membership so a
+    # clinician can share email at one tenant and nothing at
+    # another. The data itself lives on Person (email,
+    # phone_e164); these flags govern visibility only.
+    share_phone: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    share_email: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    share_whatsapp: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

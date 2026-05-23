@@ -48,6 +48,13 @@ class HospitalDirectoryEntry(BaseModel):
     group_id: int | None = None
     group_name: str | None = None
     roles: list[str] = []
+    # Sprint 28 / migration 0053: contact channels. Only populated
+    # when the corresponding share_* flag is true on the
+    # membership — null otherwise. The frontend renders a
+    # phone / email / WhatsApp button per non-null value.
+    email: str | None = None
+    phone_e164: str | None = None
+    whatsapp_e164: str | None = None
 
 
 @router.get(
@@ -77,9 +84,11 @@ def list_hospital_directory(
     rows = ctx.db.execute(
         text(
             "SELECT person_id, person_name, person_first_name, "
-            "person_last_name, person_avatar_url, membership_id, "
-            "tenant_id, tenant_name, tenant_slug, category_id, "
-            "category_name, group_id, group_name, roles "
+            "person_last_name, person_avatar_url, person_email, "
+            "person_phone_e164, membership_id, tenant_id, "
+            "tenant_name, tenant_slug, category_id, category_name, "
+            "group_id, group_name, roles, share_phone, share_email, "
+            "share_whatsapp "
             "FROM list_hospital_directory(:hid)"
         ),
         {"hid": hospital_id},
@@ -108,7 +117,35 @@ def list_hospital_directory(
             )
             if needle not in haystack:
                 continue
-        out.append(HospitalDirectoryEntry(**r))
+        # Build the entry, gating contact fields by the share_*
+        # flags. Hide the email/phone columns when the person
+        # didn't opt in — the directory must not leak data the
+        # consent toggle is meant to govern.
+        out.append(
+            HospitalDirectoryEntry(
+                person_id=r["person_id"],
+                person_name=r["person_name"],
+                person_first_name=r["person_first_name"],
+                person_last_name=r["person_last_name"],
+                person_avatar_url=r["person_avatar_url"],
+                membership_id=r["membership_id"],
+                tenant_id=r["tenant_id"],
+                tenant_name=r["tenant_name"],
+                tenant_slug=r["tenant_slug"],
+                category_id=r["category_id"],
+                category_name=r["category_name"],
+                group_id=r["group_id"],
+                group_name=r["group_name"],
+                roles=list(r["roles"] or []),
+                email=r["person_email"] if r["share_email"] else None,
+                phone_e164=(
+                    r["person_phone_e164"] if r["share_phone"] else None
+                ),
+                whatsapp_e164=(
+                    r["person_phone_e164"] if r["share_whatsapp"] else None
+                ),
+            )
+        )
     return out
 
 
@@ -136,4 +173,48 @@ def set_my_directory_visibility(
     ctx.db.flush()
     return DirectoryVisibilityPatch(
         directory_visible=membership.directory_visible
+    )
+
+
+class ContactPreferencesPatch(BaseModel):
+    """Sprint 28 / migration 0053. Each field is optional so the
+    UI can patch one at a time without touching the others. All
+    default FALSE in the DB; the route only writes fields the
+    client explicitly sent (exclude_unset)."""
+
+    share_phone: bool | None = None
+    share_email: bool | None = None
+    share_whatsapp: bool | None = None
+
+
+class ContactPreferencesOut(BaseModel):
+    share_phone: bool
+    share_email: bool
+    share_whatsapp: bool
+
+
+@router.patch(
+    "/me/contact-preferences",
+    response_model=ContactPreferencesOut,
+)
+def set_my_contact_preferences(
+    payload: ContactPreferencesPatch,
+    ctx: RequestContext = Depends(get_current_context),
+) -> ContactPreferencesOut:
+    """Set the per-channel directory opt-ins on the caller's
+    current-tenant membership. Phone + WhatsApp both source the
+    same `persons.phone_e164` field — the flags govern which
+    channel surfaces it.
+    """
+    membership = ctx.db.get(Membership, ctx.membership.id)
+    if membership is None:
+        raise HTTPException(status_code=404, detail="Membership not found")
+    data = payload.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        setattr(membership, k, v)
+    ctx.db.flush()
+    return ContactPreferencesOut(
+        share_phone=membership.share_phone,
+        share_email=membership.share_email,
+        share_whatsapp=membership.share_whatsapp,
     )

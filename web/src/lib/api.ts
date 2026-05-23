@@ -280,6 +280,10 @@ export type Person = {
   last_name: string | null;
   locale: string | null;
   avatar_url: string | null;
+  /** Sprint 28 / migration 0053: E.164 phone (single per person
+   * across tenants). Whether it surfaces on the directory is
+   * governed by per-membership share_phone / share_whatsapp. */
+  phone_e164: string | null;
   /** ISO timestamp the user clicked the signup verification link.
    * Null = not yet verified; UI shows the "verifica tu correo"
    * banner with a resend button until cleared. */
@@ -388,6 +392,12 @@ export type Membership = {
    * hospital directory? True by default. Settings page lets the
    * clinician flip it off. */
   directory_visible: boolean;
+  /** Sprint 28 / migration 0053: per-channel opt-in. All default
+   * false. The directory only renders the corresponding button
+   * (tel:/mailto:/wa.me) when the flag is true. */
+  share_phone: boolean;
+  share_email: boolean;
+  share_whatsapp: boolean;
   created_at: string;
 };
 
@@ -410,6 +420,14 @@ export type HospitalDirectoryEntry = {
   group_id: number | null;
   group_name: string | null;
   roles: string[];
+  /** Sprint 28 / migration 0053: contact methods. Each field is
+   * populated only when the corresponding share_* flag is true
+   * on the membership AND the underlying datum exists (phone is
+   * optional on the person). UI renders one button per non-null
+   * value. */
+  email: string | null;
+  phone_e164: string | null;
+  whatsapp_e164: string | null;
 };
 
 export type Department = {
@@ -952,6 +970,23 @@ export const api = {
         body: JSON.stringify({ directory_visible: visible }),
       },
     ),
+  /** Per-channel directory opt-ins on the caller's current
+   * tenant's membership. Pass only the fields you want to
+   * change. The data itself (phone, email) lives on Person; these
+   * flags govern visibility only. */
+  setMyContactPreferences: (body: {
+    share_phone?: boolean;
+    share_email?: boolean;
+    share_whatsapp?: boolean;
+  }) =>
+    request<{
+      share_phone: boolean;
+      share_email: boolean;
+      share_whatsapp: boolean;
+    }>("/api/me/contact-preferences", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
   updateProfile: (body: {
     /** Legacy single-field name. Sprint 18+ clients should send
      * first_name + last_name instead; the server composes `name`
@@ -959,6 +994,10 @@ export const api = {
     name?: string;
     first_name?: string;
     last_name?: string;
+    /** Sprint 28 / migration 0053. E.164 ("+34..." 7-15 digits)
+     * or empty string to clear. Backend validates the shape and
+     * 422s on invalid input. */
+    phone_e164?: string;
   }) =>
     request<Person>("/api/me/profile", {
       method: "PUT",

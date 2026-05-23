@@ -134,6 +134,11 @@ def update_profile(
     ctx.person.name = name
     ctx.person.first_name = first_name
     ctx.person.last_name = last_name
+    # Sprint 28 / migration 0053. Phone is optional. Empty string
+    # clears (treats as no phone); non-empty must match E.164 — the
+    # Pydantic pattern already enforced this at request validation.
+    if payload.phone_e164 is not None:
+        ctx.person.phone_e164 = payload.phone_e164 or None
     ctx.db.flush()
     return ctx.person
 

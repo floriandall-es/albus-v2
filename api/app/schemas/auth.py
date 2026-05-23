@@ -135,6 +135,11 @@ class PersonOut(BaseModel):
     last_name: str | None = None
     locale: str | None = None
     avatar_url: str | None = None
+    # Sprint 28 / migration 0053: optional E.164 phone number.
+    # Single phone per person across tenants. Whether it's exposed
+    # in the directory is governed by per-membership
+    # share_phone / share_whatsapp flags.
+    phone_e164: str | None = None
     # Timestamp the user clicked the signup verification link.
     # Null = not yet verified — the web UI shows a "verifica tu
     # correo" banner with a resend button. Existing accounts
@@ -162,6 +167,12 @@ class MembershipOut(BaseModel):
     # (default). Frontend reads this on the settings page to render
     # the toggle's current state.
     directory_visible: bool = True
+    # Sprint 28 / migration 0053: per-channel opt-in. All default
+    # FALSE. The directory only renders the corresponding contact
+    # button when the flag is true.
+    share_phone: bool = False
+    share_email: bool = False
+    share_whatsapp: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -226,6 +237,14 @@ class ProfileUpdateRequest(BaseModel):
     name: str | None = Field(default=None, max_length=255)
     first_name: str | None = Field(default=None, max_length=255)
     last_name: str | None = Field(default=None, max_length=255)
+    # Sprint 28 / migration 0053. Optional E.164 phone. Pass an
+    # empty string to clear (parsed as None server-side). The
+    # database has a soft format check (^\+[0-9]{7,15}$); we
+    # validate the same shape here so invalid input gets a
+    # friendly 422 instead of an IntegrityError.
+    phone_e164: str | None = Field(
+        default=None, max_length=20, pattern=r"^(\+[0-9]{7,15})?$"
+    )
 
 
 class PasswordChangeRequest(BaseModel):

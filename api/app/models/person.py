@@ -32,6 +32,12 @@ class Person(Base):
     # served by FastAPI from the avatars volume. Null = no photo, UI falls
     # back to a colored-initials chip.
     avatar_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Sprint 28 / migration 0053: optional phone number in E.164
+    # format ("+34..."). Single phone per person (cross-tenant) —
+    # whether and where it's exposed is governed by per-membership
+    # share_phone / share_whatsapp flags. NULL = no phone entered.
+    # Soft format check enforced at the DB level.
+    phone_e164: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # Timestamp the user clicked the verification link sent on
     # signup. NULL = not yet verified — surfaced to the frontend
     # which shows a "verifica tu correo" banner until cleared.
