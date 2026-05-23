@@ -193,7 +193,7 @@ export default function TrasplantesStatsPage() {
               label: string;
               value: [string, string];
             }[] = [
-              { label: "YtD", value: ytd },
+              { label: "Este año", value: ytd },
               { label: "Año pasado", value: lastYear },
               { label: "Todo", value: all },
             ];
