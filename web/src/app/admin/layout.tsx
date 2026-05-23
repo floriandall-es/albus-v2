@@ -134,14 +134,24 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             className="h-14 w-14 rounded-lg object-cover shadow-soft"
           />
           <div className="min-w-0 leading-tight">
-            <div className="text-sm font-medium text-gray-700 truncate">
+            {/* Tenant + hospital labels can be long (the alpha
+                customer's official hospital name is 50+ chars).
+                Allow up to 2 lines via line-clamp; hover shows
+                the full string. */}
+            <div
+              className="text-sm font-medium text-gray-700 line-clamp-2"
+              title={me.data?.current_tenant.name}
+            >
               {me.data?.current_tenant.name}
             </div>
             {/* Hospital roll-up label. Renders only when the
                 tenant has a parent (migration 0051). Hidden for
                 standalone tenants so the sidebar stays clean. */}
             {me.data?.current_tenant.hospital_name && (
-              <div className="mt-0.5 text-[11px] text-gray-500 truncate">
+              <div
+                className="mt-0.5 text-[11px] text-gray-500 line-clamp-2"
+                title={me.data.current_tenant.hospital_name}
+              >
                 {me.data.current_tenant.hospital_name}
               </div>
             )}
