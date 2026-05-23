@@ -1,5 +1,4 @@
 "use client";
-import { Lock } from "lucide-react";
 import { type Assignment } from "@/lib/api";
 import {
   MONTH_SHORT_ES,
@@ -113,15 +112,13 @@ function ShiftRow({
               · {a.team_role_label}
             </span>
           )}
-          {isLocked && (
-            <span
-              className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700"
-              title="Turno bloqueado por el administrador"
-            >
-              <Lock className="h-3 w-3" />
-              Bloqueado
-            </span>
-          )}
+          {/* The "Bloqueado" badge used to live here. Removed
+              because members don't need to know an admin
+              pinned the shift — the lock's only behavioural
+              consequence for them is "no coverage button",
+              which the conditional render below already handles
+              silently. The internal `isLocked` flag stays so
+              that gate keeps working. */}
         </div>
         <ShiftTimeBadge a={a} inline />
       </div>

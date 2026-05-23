@@ -324,7 +324,17 @@ export function PlanningGrid({
                                 imageUrl={a.person_avatar_url}
                               />
                             )}
-                            {a.locked_at && (
+                            {/* Lock icon is admin-only. Members
+                                don't need to know an admin
+                                pinned the shift — the lock's
+                                visible behaviour for them is
+                                "the swap modal doesn't open",
+                                which the cellIsClickable prop
+                                already enforces. highlightPersonId
+                                is set on /me views and unset on
+                                /admin views — same discriminator
+                                used by the dismissed-cell render. */}
+                            {a.locked_at && highlightPersonId === null && (
                               <LockIcon className="h-3 w-3 text-amber-600 shrink-0" />
                             )}
                             {a.swap_offer_id != null && (
