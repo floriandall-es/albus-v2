@@ -22,18 +22,24 @@ import {
 import { Avatar } from "@/components/schedule/planning-grid";
 
 /**
- * /me/mensajes — Phase 2A DM UI.
+ * /me/mensajes — Phase 2A + 2B DM UI.
  *
  * Two-pane layout: conversation list on the left, active
  * conversation on the right. URL param `?c=<id>` makes the
  * active conversation linkable (the "Mensaje" buttons on the
  * directory deep-link here).
  *
- * No realtime: 30s background poll + refresh on focus. Marking
- * as read happens automatically the moment a conversation
- * becomes active and after a successful send.
+ * No realtime (Phase 3 territory). Polling strategy:
+ *   - Active conversation: 5s. Tight enough that the room
+ *     feels responsive without committing to websockets.
+ *   - Conversation list (background): 30s. Refresh-on-focus
+ *     via react-query defaults catches the "I was in another
+ *     tab" case.
+ * Marking as read happens automatically the moment a
+ * conversation becomes active and after a successful send.
  */
-const POLL_INTERVAL_MS = 30_000;
+const ACTIVE_POLL_INTERVAL_MS = 5_000;
+const LIST_POLL_INTERVAL_MS = 30_000;
 
 export default function MensajesPage() {
   const router = useRouter();
@@ -49,7 +55,7 @@ export default function MensajesPage() {
     // Poll the conversation list so unread counts + previews
     // refresh while the page is open. Focus-refetch also kicks
     // in via React Query's defaults.
-    refetchInterval: POLL_INTERVAL_MS,
+    refetchInterval: LIST_POLL_INTERVAL_MS,
   });
 
   // Auto-select the first conversation on first load so the
@@ -204,20 +210,25 @@ function ConversationPane({
   const messages = useQuery({
     queryKey: ["messages", conversationId],
     queryFn: () => api.listMessages(conversationId),
-    refetchInterval: POLL_INTERVAL_MS,
+    refetchInterval: ACTIVE_POLL_INTERVAL_MS,
   });
 
   // Auto-mark as read whenever we have the latest message id.
   // Server only moves the high-water mark forward; over-sending
-  // is a no-op. Also bumps the conversation list to reflect
-  // unread=0.
+  // is a no-op. Bumps both the conversation list (per-conv
+  // unread → 0) and the sidebar badge (total unread count).
   useEffect(() => {
     const list = messages.data ?? [];
     if (list.length === 0) return;
     const lastId = list[list.length - 1].id;
-    api.markConversationRead(conversationId, lastId).catch(() => {
-      // Swallow — read state is best-effort, not a hard fail.
-    });
+    api
+      .markConversationRead(conversationId, lastId)
+      .then(() => {
+        qc.invalidateQueries({ queryKey: ["my-unread-count"] });
+      })
+      .catch(() => {
+        // Swallow — read state is best-effort, not a hard fail.
+      });
     qc.invalidateQueries({ queryKey: ["conversations"] });
   }, [messages.data, conversationId, qc]);
 

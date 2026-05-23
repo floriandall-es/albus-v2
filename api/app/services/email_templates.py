@@ -360,3 +360,32 @@ def schedule_published_member_email(
             f"— El equipo de Trivu\n"
         )
     return subject, body
+
+
+def dm_unread_email(
+    *,
+    recipient_first_name: str,
+    sender_display_name: str,
+    body_preview: str,
+    deep_link: str,
+) -> tuple[str, str]:
+    """Sprint 28 / DMs Phase 2B: sent when a DM arrives and the
+    recipient isn't actively reading (5min window) AND we haven't
+    emailed them about this conversation in the last 2h.
+
+    Preview is the first ~200 chars of the message body; the link
+    deep-jumps to the conversation. Subject names the sender so
+    the recipient can triage from their inbox without opening."""
+    subject = f"Tienes un mensaje de {sender_display_name} en Trivu"
+    # Keep the preview readable but bounded — strip newlines so
+    # the email body stays a single paragraph.
+    preview_oneline = body_preview.replace("\r", " ").replace("\n", " ").strip()
+    body = (
+        f"Hola {recipient_first_name},\n\n"
+        f"{sender_display_name} te ha escrito en Trivu:\n\n"
+        f"  \"{preview_oneline}\"\n\n"
+        f"Responde abriendo la conversación:\n"
+        f"{deep_link}\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body

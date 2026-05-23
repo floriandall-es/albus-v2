@@ -82,6 +82,20 @@ class ConversationMember(Base):
     last_read_message_id: Mapped[int | None] = mapped_column(
         Integer, nullable=True
     )
+    # Sprint 28 / Phase 2B / migration 0056: stamped by the
+    # mark-read endpoint. Used to detect "actively watching this
+    # conversation right now" — if last_read_at is within ~5min,
+    # we skip the email since they just looked.
+    last_read_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Sprint 28 / Phase 2B / migration 0056: last time we
+    # emailed THIS member about THIS conversation. Drives the
+    # 2h cooldown so we don't spam someone who already got an
+    # "unread messages" nudge.
+    last_email_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     joined_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

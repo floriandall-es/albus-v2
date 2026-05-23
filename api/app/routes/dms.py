@@ -18,22 +18,33 @@ Privacy gates:
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Annotated
+import logging
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, func, select, text
+from sqlalchemy import func, text
 
+from app.core.config import settings
 from app.models import (
     Conversation,
     ConversationMember,
-    Membership,
     Message,
     Person,
-    Tenant,
 )
 from app.routes.deps import RequestContext, get_current_context
+
+
+logger = logging.getLogger("app.dms")
+
+
+# Phase 2B email-fallback knobs. The 2h cooldown means a member
+# gets at most one "unread messages" email per conversation per
+# 2 hours regardless of message volume. The 5min "actively
+# reading" window suppresses emails for people who just had the
+# conversation open and saw the message live.
+EMAIL_COOLDOWN = timedelta(hours=2)
+ACTIVE_READ_WINDOW = timedelta(minutes=5)
 
 
 router = APIRouter()
@@ -96,6 +107,14 @@ class MessageCreateRequest(BaseModel):
 
 class MarkReadRequest(BaseModel):
     last_message_id: int
+
+
+class UnreadCountOut(BaseModel):
+    """Sum across every conversation the caller is a member of.
+    Capped at 99 for badge readability — the sidebar pill stops
+    rendering exact numbers past that."""
+
+    total: int
 
 
 # ---------------------------------------------------------------------------
@@ -362,6 +381,15 @@ def send_message(
     # bubbles this to the top on next fetch.
     conv.last_message_at = msg.created_at
     ctx.db.flush()
+    # Phase 2B: maybe-email the other member(s). Synchronous —
+    # adds ~100-300ms to the send response when SMTP runs, but
+    # avoids needing a background worker. Failures are swallowed
+    # by send_email itself (same pattern as the swap notification
+    # path).
+    try:
+        _maybe_notify_unread(ctx, conv, msg)
+    except Exception:  # noqa: BLE001 — broadest catch is intentional
+        logger.exception("DM email-fallback notification failed")
     return MessageOut(
         id=msg.id,
         conversation_id=msg.conversation_id,
@@ -371,6 +399,107 @@ def send_message(
         deleted_at=None,
         created_at=msg.created_at,
     )
+
+
+def _maybe_notify_unread(
+    ctx: RequestContext, conv: Conversation, msg: Message
+) -> None:
+    """Email each non-author member when the cooldown + active-
+    reading rules say it's appropriate.
+
+    Rules (Phase 2B):
+      1. Skip if member.last_read_at is within ACTIVE_READ_WINDOW.
+         Means they're actively watching; native UI update is
+         enough.
+      2. Skip if member.last_email_sent_at is within
+         EMAIL_COOLDOWN. Means we already nudged them for this
+         conversation recently — don't pile on.
+      3. Otherwise: send and stamp last_email_sent_at.
+
+    Same patterns we already use elsewhere (auth.py uses lazy
+    email imports; this matches).
+    """
+    now = datetime.now(timezone.utc)
+    other_members = (
+        ctx.db.query(ConversationMember)
+        .filter(
+            ConversationMember.conversation_id == conv.id,
+            ConversationMember.person_id != ctx.person.id,
+        )
+        .all()
+    )
+    if not other_members:
+        return
+    sender_name = ctx.person.name
+    sender_last = ctx.person.last_name or sender_name
+    body_preview = msg.body[:200]
+
+    from app.services.email import send_email, should_email_person
+    from app.services.email_templates import dm_unread_email
+
+    for mem in other_members:
+        # Rule 1: actively reading right now?
+        if (
+            mem.last_read_at is not None
+            and now - mem.last_read_at < ACTIVE_READ_WINDOW
+        ):
+            continue
+        # Rule 2: cooldown?
+        if (
+            mem.last_email_sent_at is not None
+            and now - mem.last_email_sent_at < EMAIL_COOLDOWN
+        ):
+            continue
+        person = ctx.db.get(Person, mem.person_id)
+        if person is None or not should_email_person(person):
+            continue
+        deep_link = (
+            f"{settings.public_base_url.rstrip('/')}/me/mensajes?c={conv.id}"
+        )
+        subject, body_html = dm_unread_email(
+            recipient_first_name=person.first_name or person.name,
+            sender_display_name=sender_last,
+            body_preview=body_preview,
+            deep_link=deep_link,
+        )
+        send_email(person.email, subject, body_html)
+        mem.last_email_sent_at = now
+    ctx.db.flush()
+
+
+@router.get("/me/unread-count", response_model=UnreadCountOut)
+def my_unread_count(
+    ctx: RequestContext = Depends(get_current_context),
+) -> UnreadCountOut:
+    """Total unread messages across all conversations the caller
+    is a member of. Capped at 99 — drives the sidebar badge,
+    which we re-poll every 60s.
+
+    Single SQL query so the 60s poll cost stays flat regardless
+    of how many conversations the user accumulates. NULL
+    last_read_message_id means "never opened" — every non-author
+    message counts.
+    """
+    row = ctx.db.execute(
+        text(
+            """
+            SELECT COUNT(*) AS n
+            FROM messages m
+            JOIN conversation_members cm
+              ON cm.conversation_id = m.conversation_id
+             AND cm.person_id = :me
+            WHERE m.author_person_id != :me
+              AND m.deleted_at IS NULL
+              AND (
+                cm.last_read_message_id IS NULL
+                OR m.id > cm.last_read_message_id
+              )
+            """
+        ),
+        {"me": ctx.person.id},
+    ).mappings().first()
+    n = int(row["n"]) if row else 0
+    return UnreadCountOut(total=min(99, n))
 
 
 @router.post(
@@ -399,7 +528,11 @@ def mark_read(
         or payload.last_message_id > mem.last_read_message_id
     ):
         mem.last_read_message_id = payload.last_message_id
-        ctx.db.flush()
+    # Always stamp last_read_at, even when the high-water mark
+    # didn't move. We use this in the email-fallback path as
+    # "this person looked recently, don't email them."
+    mem.last_read_at = datetime.now(timezone.utc)
+    ctx.db.flush()
 
 
 # ---------------------------------------------------------------------------

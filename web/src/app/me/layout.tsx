@@ -77,6 +77,17 @@ export default function MeLayout({ children }: { children: ReactNode }) {
     queryFn: api.listGroups,
     enabled: authChecked,
   });
+  // Phase 2B: total unread DM count. Polls every 60s so the
+  // sidebar badge stays roughly fresh without becoming a
+  // perceived network expense. Skipped when the current tenant
+  // has no hospital (DMs are hospital-gated).
+  const unread = useQuery({
+    queryKey: ["my-unread-count"],
+    queryFn: api.getMyUnreadCount,
+    enabled:
+      authChecked && (me.data?.current_tenant.hospital_id ?? null) !== null,
+    refetchInterval: 60_000,
+  });
 
   // Un-onboarded admins still go through the wizard. We do NOT
   // auto-bounce leads to /lead anymore — leads who also have a
@@ -219,6 +230,17 @@ export default function MeLayout({ children }: { children: ReactNode }) {
                     }
                   />
                   <span className="truncate">{item.label}</span>
+                  {/* Phase 2B: unread DM badge next to "Mensajes".
+                      Hidden at 0; shows 99+ at the cap. */}
+                  {item.href === "/me/mensajes"
+                    && unread.data
+                    && unread.data.total > 0 && (
+                      <span className="ml-auto shrink-0 rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                        {unread.data.total >= 99
+                          ? "99+"
+                          : unread.data.total}
+                      </span>
+                    )}
                 </Link>
               );
             })}

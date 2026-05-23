@@ -1038,6 +1038,11 @@ export const api = {
    * last_message_preview. */
   listMyConversations: () =>
     request<DMConversation[]>("/api/conversations"),
+  /** Phase 2B: total unread messages across all my conversations,
+   * capped at 99. Single SQL query so the 60s sidebar poll cost
+   * stays flat. */
+  getMyUnreadCount: () =>
+    request<{ total: number }>("/api/me/unread-count"),
   /** Paginated messages of a conversation. `before` is the
    * cursor — pass the smallest id you have to load older. */
   listMessages: (conversationId: number, before?: number, limit = 50) => {
