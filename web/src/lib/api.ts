@@ -1904,11 +1904,22 @@ export type TransplantCaseInput = {
   procedures: TransplantProcedureInput[];
 };
 
+export type TransplantStatsMonthSurgeon = {
+  person_id: number;
+  count: number;
+};
+
 export type TransplantStatsMonth = {
   period: string;
   explante_count: number;
   implante_count: number;
   cross_hospital_count: number;
+  /** Sprint 28: per-surgeon attribution counts for this month.
+   * Each procedure contributes +1 for primary and +1 for
+   * secondary independently (matches the per-surgeon totals
+   * chart). Used by the "Procedimientos por mes y cirujano"
+   * stacked chart. Empty on older backends. */
+  per_surgeon?: TransplantStatsMonthSurgeon[];
 };
 
 export type TransplantStatsSurgeon = {

@@ -31,6 +31,7 @@ from app.schemas.transplant import (
     TransplantProcedureIn,
     TransplantProcedureOut,
     TransplantStatsMonthOut,
+    TransplantStatsMonthSurgeonOut,
     TransplantStatsOut,
     TransplantStatsSurgeonOut,
 )
@@ -320,18 +321,37 @@ def transplants_stats(
     months_agg: dict[tuple[int, int], dict[str, int]] = defaultdict(
         lambda: {"explante": 0, "implante": 0, "cross_hospital": 0}
     )
+    # Sprint 28: per-surgeon-per-month attribution counter. Each
+    # procedure contributes +1 to its primary AND +1 to its
+    # secondary (when set), in the bucket for the procedure's
+    # year-month. Drives the second per-month chart on the stats
+    # page (stacked bar per surgeon).
+    months_per_surgeon: dict[tuple[int, int], dict[int, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
     for p in procs:
         d = p.occurred_at.date()
         key = (d.year, d.month)
         months_agg[key][p.type] += 1
         if p.primary_person_id is None:
             months_agg[key]["cross_hospital"] += 1
+        if p.primary_person_id is not None:
+            months_per_surgeon[key][p.primary_person_id] += 1
+        if p.secondary_person_id is not None:
+            months_per_surgeon[key][p.secondary_person_id] += 1
     months_out = [
         TransplantStatsMonthOut(
             period=date(y, m, 1),
             explante_count=v["explante"],
             implante_count=v["implante"],
             cross_hospital_count=v["cross_hospital"],
+            per_surgeon=[
+                TransplantStatsMonthSurgeonOut(person_id=pid, count=n)
+                for pid, n in sorted(
+                    months_per_surgeon[(y, m)].items(),
+                    key=lambda item: (-item[1], item[0]),
+                )
+            ],
         )
         for (y, m), v in sorted(months_agg.items())
     ]

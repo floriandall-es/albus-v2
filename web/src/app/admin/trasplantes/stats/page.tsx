@@ -12,7 +12,11 @@ import {
   YAxis,
 } from "recharts";
 import { ArrowLeft } from "lucide-react";
-import { api, personLastName } from "@/lib/api";
+import {
+  api,
+  personLastName,
+  type TransplantStats,
+} from "@/lib/api";
 import {
   Card,
   Empty,
@@ -311,6 +315,14 @@ export default function TrasplantesStatsPage() {
             max={totalMaxBarValue}
           />
 
+          {/* PROCEDIMIENTOS POR MES Y CIRUJANO — same x-axis as
+              "Trasplantes por mes" but stacked by surgeon
+              instead of by procedure type. Lets admins read
+              "who carried Q3" at a glance. Palette is assigned
+              client-side from the global surgeon order so
+              colors stay stable across months. */}
+          <MonthPerSurgeonChart data={data} surgeonOrder={totalRows} />
+
           {/* SURGEON PARTICIPATION — split into two cards, one
               per procedure type. Bars share a global x-axis max
               so widths stay comparable between the two charts
@@ -427,6 +439,172 @@ function SurgeonTotalsChart({
             })}
           </ul>
         )}
+      </div>
+    </Card>
+  );
+}
+
+// Stable palette for the per-month stacked-by-surgeon chart. Tuned
+// to look distinct against each other AND not collide with the
+// brand teal / amber used by the other charts on the page. Cycles
+// when there are more surgeons than colours (very rare).
+const SURGEON_PALETTE = [
+  "#0d9488", // teal-600 (brand)
+  "#f59e0b", // amber-500
+  "#8b5cf6", // violet-500
+  "#0ea5e9", // sky-500
+  "#ef4444", // red-500
+  "#84cc16", // lime-500
+  "#d946ef", // fuchsia-500
+  "#64748b", // slate-500
+  "#f97316", // orange-500
+  "#10b981", // emerald-500
+];
+
+/** Vertical stacked bar chart: one bar per month, each bar stacked
+ * by surgeon attribution. Answers "who carried which months".
+ *
+ * The palette is assigned client-side from the totals-leaderboard
+ * order (surgeonOrder prop) so colours stay stable across months
+ * and the top performer always gets the first palette entry. */
+function MonthPerSurgeonChart({
+  data,
+  surgeonOrder,
+}: {
+  data: TransplantStats;
+  surgeonOrder: SurgeonTotalRow[];
+}) {
+  // Build a deterministic palette: surgeons by descending grand
+  // total → first SURGEON_PALETTE entry first. Keys keyed by
+  // person_id so chart segments + legend match.
+  const colorById = useMemo(() => {
+    const map = new Map<number, string>();
+    surgeonOrder.forEach((s, i) => {
+      map.set(s.person_id, SURGEON_PALETTE[i % SURGEON_PALETTE.length]);
+    });
+    return map;
+  }, [surgeonOrder]);
+
+  const nameById = useMemo(() => {
+    const map = new Map<number, string>();
+    surgeonOrder.forEach((s) => {
+      map.set(s.person_id, s.display_name);
+    });
+    // Also catch any surgeon who appears in per_surgeon but had 0
+    // primary+secondary in surgeons list (defensive — shouldn't
+    // happen since they wouldn't show up in surgeons at all then).
+    for (const s of data.surgeons) {
+      if (!map.has(s.person_id)) {
+        map.set(s.person_id, personLastName({ name: s.person_name }));
+      }
+    }
+    return map;
+  }, [surgeonOrder, data.surgeons]);
+
+  // Chart data: one row per month, one numeric key per surgeon
+  // (the count for that surgeon that month, or 0 if absent).
+  const orderedIds = surgeonOrder.map((s) => s.person_id);
+  const chartData = data.months.map((m) => {
+    const row: Record<string, string | number> = { month: monthLabel(m.period) };
+    const ps = m.per_surgeon ?? [];
+    const seen = new Set(ps.map((s) => s.person_id));
+    for (const id of orderedIds) {
+      const hit = ps.find((s) => s.person_id === id);
+      row[String(id)] = hit ? hit.count : 0;
+    }
+    // Surgeons not in orderedIds (defensive) — drop into a
+    // catch-all so the totals don't lie.
+    let other = 0;
+    for (const s of ps) {
+      if (!seen.has(s.person_id)) continue;
+      if (!orderedIds.includes(s.person_id)) other += s.count;
+    }
+    if (other > 0) row.__other__ = other;
+    return row;
+  });
+
+  // Highest stack across months — used by the user-facing
+  // total-procedimientos line under the title.
+  const grandTotal = useMemo(
+    () => surgeonOrder.reduce((acc, s) => acc + s.total, 0),
+    [surgeonOrder],
+  );
+
+  // Server backend may be older and omit per_surgeon. Hide the
+  // chart entirely when no month carries the new field (the
+  // chart would otherwise render as a flat empty axis).
+  const hasData = data.months.some(
+    (m) => (m.per_surgeon ?? []).length > 0,
+  );
+  if (!hasData) return null;
+
+  return (
+    <Card>
+      <div className="p-5">
+        <div className="mb-1 flex items-baseline justify-between">
+          <h3 className="text-sm font-semibold text-gray-800">
+            Procedimientos por mes y cirujano
+          </h3>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500">
+            {surgeonOrder.map((s) => (
+              <LegendDot
+                key={s.person_id}
+                color={colorById.get(s.person_id) ?? "#64748b"}
+                label={s.display_name}
+              />
+            ))}
+          </div>
+        </div>
+        <p className="mb-3 text-xs text-gray-500">
+          Stacked por cirujano. Cada procedimiento cuenta una vez por
+          principal y una vez por segundo. {grandTotal} eventos en{" "}
+          {data.months.length} mes
+          {data.months.length === 1 ? "" : "es"}.
+        </p>
+        <div className="h-80">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={chartData}
+              margin={{ top: 10, right: 16, left: 0, bottom: 4 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis
+                dataKey="month"
+                tick={{ fill: "#64748b", fontSize: 11 }}
+                axisLine={{ stroke: "#e5e7eb" }}
+                tickLine={false}
+              />
+              <YAxis
+                allowDecimals={false}
+                tick={{ fill: "#64748b", fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <Tooltip
+                cursor={{ fill: "rgba(13,148,136,0.06)" }}
+                contentStyle={{
+                  background: "white",
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 8,
+                  fontSize: 12,
+                }}
+                formatter={(value, key) => [
+                  value,
+                  nameById.get(Number(key)) ?? String(key),
+                ]}
+              />
+              {orderedIds.map((id, i) => (
+                <Bar
+                  key={id}
+                  dataKey={String(id)}
+                  stackId="surgeon"
+                  fill={colorById.get(id) ?? "#64748b"}
+                  radius={i === orderedIds.length - 1 ? [4, 4, 0, 0] : 0}
+                />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
     </Card>
   );

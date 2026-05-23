@@ -84,6 +84,17 @@ class TransplantCaseOut(BaseModel):
     updated_at: datetime
 
 
+class TransplantStatsMonthSurgeonOut(BaseModel):
+    """Sprint 28: one stack-segment of the "Procedimientos por
+    mes y cirujano" chart. `count` is the surgeon's total
+    attributions in that month — each procedure contributes +1
+    for primary and +1 for secondary independently, mirroring
+    how the per-surgeon totals chart counts them."""
+
+    person_id: int
+    count: int
+
+
 class TransplantStatsMonthOut(BaseModel):
     """One bar in the per-month chart. `period` is the first day
     of the month (e.g. 2026-03-01) so the frontend can format it
@@ -93,6 +104,11 @@ class TransplantStatsMonthOut(BaseModel):
     explante_count: int
     implante_count: int
     cross_hospital_count: int
+    # Sprint 28: per-surgeon breakdown for this month. Lets the
+    # frontend render a second per-month chart where each bar is
+    # stacked by surgeon (palette assigned client-side from the
+    # surgeons array's order so colors stay stable across months).
+    per_surgeon: list[TransplantStatsMonthSurgeonOut] = []
 
 
 class TransplantStatsSurgeonOut(BaseModel):
