@@ -119,21 +119,34 @@ def update_profile(
     payload: ProfileUpdateRequest,
     ctx: RequestContext = Depends(get_current_context),
 ) -> Person:
+    """Patch any subset of the caller's profile.
+    Each field group (name, work_phone, personal_phone) is
+    independent — sending only one doesn't reset the others. The
+    name validation only fires when the client actually sent a name
+    field; otherwise the previous bug where saving a phone returned
+    "Indica al menos el nombre" reappears.
+    """
     from app.services.person_name import compose_name
 
-    name, first_name, last_name = compose_name(
-        name=payload.name,
-        first_name=payload.first_name,
-        last_name=payload.last_name,
+    name_sent = (
+        payload.name is not None
+        or payload.first_name is not None
+        or payload.last_name is not None
     )
-    if not name:
-        raise HTTPException(
-            status_code=422,
-            detail="Indica al menos el nombre",
+    if name_sent:
+        name, first_name, last_name = compose_name(
+            name=payload.name,
+            first_name=payload.first_name,
+            last_name=payload.last_name,
         )
-    ctx.person.name = name
-    ctx.person.first_name = first_name
-    ctx.person.last_name = last_name
+        if not name:
+            raise HTTPException(
+                status_code=422,
+                detail="Indica al menos el nombre",
+            )
+        ctx.person.name = name
+        ctx.person.first_name = first_name
+        ctx.person.last_name = last_name
     # Migration 0057: two free-format phones. Each is independent —
     # the client can update one without touching the other. Empty
     # string clears the field; None (key omitted) leaves it alone.
