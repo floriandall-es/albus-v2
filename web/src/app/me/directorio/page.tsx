@@ -35,6 +35,12 @@ export default function HospitalDirectoryPage() {
   const [q, setQ] = useState("");
   const [tenantId, setTenantId] = useState<number | "">("");
   const [categoryId, setCategoryId] = useState<number | "">("");
+  // "Sólo de guardia" toggle — purely client-side. The directory
+  // response already carries on_guardia_today per entry (migration
+  // 0062), so toggling this doesn't refetch — we just narrow the
+  // visible rows. Lives outside the React-Query key for the same
+  // reason.
+  const [onGuardiaOnly, setOnGuardiaOnly] = useState(false);
 
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   const directory = useQuery({
@@ -49,6 +55,15 @@ export default function HospitalDirectoryPage() {
 
   const hospitalName = me.data?.current_tenant.hospital_name ?? null;
   const hospitalId = me.data?.current_tenant.hospital_id ?? null;
+
+  // Apply the "Sólo de guardia" toggle locally; the API filters
+  // by name/tenant/category but this one is presentational.
+  const visibleRows = useMemo(() => {
+    if (!directory.data) return [];
+    return onGuardiaOnly
+      ? directory.data.filter((r) => r.on_guardia_today)
+      : directory.data;
+  }, [directory.data, onGuardiaOnly]);
 
   // Derive filter dropdown options from the unfiltered result set
   // — the dropdown options stay stable as the user types in the
@@ -150,8 +165,29 @@ export default function HospitalDirectoryPage() {
             </option>
           ))}
         </select>
+        {/* Quick filter: narrow to people on guardia today. Amber
+            when active to match the pill on each card. Hidden
+            when nobody in the result set is on guardia — the
+            button would just toggle the list to empty which
+            isn't useful. */}
+        {allRows.some((r) => r.on_guardia_today) && (
+          <button
+            type="button"
+            onClick={() => setOnGuardiaOnly((v) => !v)}
+            aria-pressed={onGuardiaOnly}
+            className={
+              "inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium transition-colors "
+              + (onGuardiaOnly
+                ? "border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50")
+            }
+          >
+            Sólo de guardia
+          </button>
+        )}
         <span className="ml-auto text-xs text-gray-500">
-          {allRows.length} {allRows.length === 1 ? "persona" : "personas"}
+          {visibleRows.length}{" "}
+          {visibleRows.length === 1 ? "persona" : "personas"}
         </span>
       </div>
 
@@ -163,15 +199,17 @@ export default function HospitalDirectoryPage() {
           {(directory.error as Error).message}
         </p>
       )}
-      {directory.data && directory.data.length === 0 && (
+      {directory.data && visibleRows.length === 0 && (
         <div className="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-600">
-          Nadie aparece en el directorio con estos filtros.
+          {onGuardiaOnly && directory.data.length > 0
+            ? "Nadie del hospital está de guardia hoy según las planificaciones publicadas."
+            : "Nadie aparece en el directorio con estos filtros."}
         </div>
       )}
 
-      {directory.data && directory.data.length > 0 && (
+      {directory.data && visibleRows.length > 0 && (
         <DirectoryGroupedList
-          rows={directory.data}
+          rows={visibleRows}
           mePersonId={me.data?.person.id ?? null}
         />
       )}
