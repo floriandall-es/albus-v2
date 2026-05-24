@@ -1,6 +1,6 @@
 "use client";
 import { useParams, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
@@ -52,6 +52,20 @@ export default function ScheduleDetailPage() {
   const [addingAbsenceDate, setAddingAbsenceDate] = useState<string | null>(
     null,
   );
+
+  // Follow-up prompt for documenting a manual change on a REOPENED
+  // schedule (status=draft + reopened_at set). Set when a save /
+  // clear / dismiss mutation succeeds; rendered as a small
+  // IncidentPromptModal. Lock toggles don't trigger it — they're
+  // metadata, not a substantive change. `incidentSuppressedRef`
+  // remembers whether the admin clicked "No preguntar más" so we
+  // stop nagging during the rest of this page-load session.
+  const [incidentPrompt, setIncidentPrompt] = useState<{
+    slotName: string;
+    date: string;
+    kind: "change" | "clear" | "dismiss";
+  } | null>(null);
+  const incidentSuppressedRef = useRef(false);
 
   const detail = useQuery({
     queryKey: ["schedule", id],
@@ -350,6 +364,29 @@ export default function ScheduleDetailPage() {
           assignment={editing}
           scheduleId={id}
           onClose={() => setEditing(null)}
+          onChangeRecorded={(kind) => {
+            // Only prompt for documentation when the schedule was
+            // previously published + brought back for edits — i.e.
+            // when other people may have already seen the old
+            // version and would benefit from an explanation.
+            if (!s.reopened_at) return;
+            if (incidentSuppressedRef.current) return;
+            if (!editing) return;
+            setIncidentPrompt({
+              slotName: editing.slot_name,
+              date: editing.date,
+              kind,
+            });
+          }}
+        />
+      )}
+      {incidentPrompt && (
+        <IncidentPromptModal
+          data={incidentPrompt}
+          onClose={(suppressFurther) => {
+            setIncidentPrompt(null);
+            if (suppressFurther) incidentSuppressedRef.current = true;
+          }}
         />
       )}
       {addingAbsenceDate && (
@@ -403,10 +440,16 @@ function AssignmentEditModal({
   assignment,
   scheduleId,
   onClose,
+  onChangeRecorded,
 }: {
   assignment: Assignment;
   scheduleId: number;
   onClose: () => void;
+  /** Fires after a substantive write (person change, clear, or
+   * "No aplica" toggle) lands successfully. Parent uses it to
+   * decide whether to show the incident-prompt follow-up. Lock /
+   * unlock doesn't call this — it's pure metadata. */
+  onChangeRecorded?: (kind: "change" | "clear" | "dismiss") => void;
 }) {
   const qc = useQueryClient();
   const [selectedPid, setSelectedPid] = useState<number | "">(
@@ -434,6 +477,10 @@ function AssignmentEditModal({
       }),
     onSuccess: () => {
       invalidate();
+      // "change" covers both "set a person" and "cleared via the
+      // dropdown's Sin cubrir option" — the explicit Quitar button
+      // below uses the separate clear mutation instead.
+      onChangeRecorded?.(selectedPid === "" ? "clear" : "change");
       onClose();
     },
   });
@@ -442,6 +489,7 @@ function AssignmentEditModal({
       api.patchAssignment(scheduleId, assignment.id, { clear_person: true }),
     onSuccess: () => {
       invalidate();
+      onChangeRecorded?.("clear");
       onClose();
     },
   });
@@ -451,6 +499,10 @@ function AssignmentEditModal({
         ? api.unlockAssignment(scheduleId, assignment.id)
         : api.lockAssignment(scheduleId, assignment.id),
     onSuccess: () => {
+      // Deliberately NO onChangeRecorded — locking pins what the
+      // solver should keep on a regenerate; it's not a substantive
+      // change for the team, so we don't pester the admin to write
+      // it up.
       invalidate();
       onClose();
     },
@@ -462,6 +514,7 @@ function AssignmentEditModal({
         : api.dismissAssignment(scheduleId, assignment.id),
     onSuccess: () => {
       invalidate();
+      onChangeRecorded?.("dismiss");
       onClose();
     },
   });
@@ -1240,4 +1293,154 @@ function NotifyConfirmModal({
       </div>
     </Modal>
   );
+}
+
+/**
+ * Follow-up shown after a manual change on a REOPENED schedule.
+ * Asks the admin to optionally log why they touched a published
+ * cell — useful both as a paper trail and as a place to record
+ * the side-channel communication ("avisé a Marta por WhatsApp").
+ *
+ * Pre-fills:
+ *   - title: short summary based on the cell that changed
+ *   - occurred_at: the assignment's date (NOT today). When you
+ *     read "Incidencias del 18 mayo" later you want to see the
+ *     change associated with that day, not the day you happened
+ *     to make the edit.
+ *
+ * Skipping is the friendly default — "Ahora no" closes without
+ * writing anything. The "No volver a preguntar" checkbox is
+ * session-scoped (lives in a useRef on the parent), so the
+ * dismissal lasts only until the admin refreshes the page or
+ * navigates away. We don't persist it: tomorrow's edits should
+ * get the chance to be documented even if today they weren't in
+ * the mood.
+ */
+function IncidentPromptModal({
+  data,
+  onClose,
+}: {
+  data: {
+    slotName: string;
+    date: string;
+    kind: "change" | "clear" | "dismiss";
+  };
+  /** Pass `suppressFurther=true` when the user wants to silence
+   * the prompt for the rest of this page-load session. */
+  onClose: (suppressFurther: boolean) => void;
+}) {
+  const qc = useQueryClient();
+  // Short, human-readable summary of the change. The admin can
+  // (and usually will) edit it before saving.
+  const defaultTitle = (() => {
+    const prefix =
+      data.kind === "dismiss"
+        ? "Cancelado"
+        : data.kind === "clear"
+          ? "Quitada cobertura"
+          : "Cambio";
+    return `${prefix} en ${data.slotName} del ${formatShortDate(data.date)}`;
+  })();
+  const [title, setTitle] = useState(defaultTitle);
+  const [body, setBody] = useState("");
+  const [occurredAt, setOccurredAt] = useState(data.date);
+  const [suppress, setSuppress] = useState(false);
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.createIncident({
+        occurred_at: occurredAt,
+        title: title.trim(),
+        body: body.trim() ? body.trim() : null,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["incidents"] });
+      onClose(suppress);
+    },
+  });
+
+  return (
+    <Modal
+      open={true}
+      onClose={() => onClose(suppress)}
+      title="¿Anotar el motivo del cambio?"
+    >
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (title.trim()) save.mutate();
+        }}
+      >
+        <p className="text-sm text-gray-600">
+          Como la planificación ya estaba publicada, conviene dejar
+          constancia del cambio para el resto del equipo. Esto se
+          guarda en <strong>Incidencias</strong>.
+        </p>
+        <TextField label="Título" value={title} onChange={setTitle} required />
+        <TextField
+          label="Fecha"
+          type="date"
+          value={occurredAt}
+          onChange={setOccurredAt}
+          required
+        />
+        <div>
+          <span className="text-sm font-medium text-gray-700">
+            Motivo (opcional)
+          </span>
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={4}
+            maxLength={10000}
+            placeholder="Por qué, a quién avisaste, repercusiones…"
+            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          />
+        </div>
+        <label className="flex items-center gap-2 text-xs text-gray-600 pt-1">
+          <input
+            type="checkbox"
+            checked={suppress}
+            onChange={(e) => setSuppress(e.target.checked)}
+            className="h-3.5 w-3.5 accent-brand-600"
+          />
+          No volver a preguntar para los próximos cambios de esta sesión.
+        </label>
+        {save.isError && <ErrorText>{(save.error as Error).message}</ErrorText>}
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="secondary" onClick={() => onClose(suppress)}>
+            Ahora no
+          </Button>
+          <Button type="submit" disabled={save.isPending || !title.trim()}>
+            {save.isPending ? "Guardando…" : "Anotar incidencia"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/** "18 mayo" — short date for inline use in pre-filled incident
+ * titles. We avoid weekday + year here because the title is a
+ * one-liner; the full date lives on the incident's own
+ * `occurred_at` field. */
+function formatShortDate(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  const MONTHS = [
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
+  ];
+  return `${dt.getDate()} ${MONTHS[dt.getMonth()]}`;
 }
