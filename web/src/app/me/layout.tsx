@@ -156,12 +156,13 @@ export default function MeLayout({ children }: { children: ReactNode }) {
             {me.data?.current_tenant.name}
           </div>
           {/* Mobile-only close button — gives a fast dismiss
-              without reaching for the backdrop. */}
+              without reaching for the backdrop. 44×44 touch target
+              so it's reliably tappable. */}
           <button
             type="button"
             aria-label="Cerrar menú"
             onClick={() => setDrawerOpen(false)}
-            className="ml-auto rounded-md p-1 text-gray-500 hover:bg-gray-100 md:hidden"
+            className="ml-auto -mr-2 flex h-11 w-11 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 active:bg-gray-200 md:hidden"
           >
             <X className="h-5 w-5" />
           </button>
@@ -327,7 +328,7 @@ export default function MeLayout({ children }: { children: ReactNode }) {
             type="button"
             aria-label="Abrir menú"
             onClick={() => setDrawerOpen(true)}
-            className="rounded-md p-1.5 text-gray-700 hover:bg-gray-100"
+            className="-ml-2 flex h-11 w-11 items-center justify-center rounded-md text-gray-700 hover:bg-gray-100 active:bg-gray-200"
           >
             <Menu className="h-5 w-5" />
           </button>

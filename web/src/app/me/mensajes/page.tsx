@@ -58,11 +58,27 @@ export default function MensajesPage() {
     refetchInterval: LIST_POLL_INTERVAL_MS,
   });
 
-  // Auto-select the first conversation on first load so the
-  // right pane never starts blank when there are any.
+  // Auto-select the first conversation on FIRST load only, so the
+  // right pane doesn't start blank.
+  //
+  // The ref is critical: without it, this effect re-runs every
+  // time activeId flips to null — which is exactly what the
+  // mobile back arrow does — and immediately re-selects the same
+  // first conversation. Visually the page doesn't change, so
+  // users on phones report "the back button doesn't work".
+  //
+  // We mark "auto-select handled" once on the first render that
+  // either has an activeId already (deep-link from the directory)
+  // or successfully selects one. Subsequent renders are no-ops.
+  const autoSelectHandledRef = useRef(false);
   useEffect(() => {
-    if (activeId !== null) return;
+    if (autoSelectHandledRef.current) return;
+    if (activeId !== null) {
+      autoSelectHandledRef.current = true;
+      return;
+    }
     if (!conversations.data || conversations.data.length === 0) return;
+    autoSelectHandledRef.current = true;
     const id = conversations.data[0].id;
     router.replace(`/me/mensajes?c=${id}`);
   }, [activeId, conversations.data, router]);
@@ -265,12 +281,14 @@ function ConversationPane({
       {conversation && (
         <div className="flex items-center gap-2 border-b border-gray-100 px-3 py-2">
           {/* Mobile back-to-list button. Hidden on md+ where both
-              panes are side-by-side. */}
+              panes are side-by-side. Touch target sized to the
+              44×44 iOS / WCAG minimum so it's reliably tappable
+              even with a soft case or sweaty fingers. */}
           <button
             type="button"
             aria-label="Volver a la lista"
             onClick={onBackToList}
-            className="rounded-md p-1 text-gray-500 hover:bg-gray-100 md:hidden"
+            className="flex h-11 w-11 -ml-2 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 active:bg-gray-200 md:hidden"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
