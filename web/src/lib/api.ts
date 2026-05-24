@@ -439,6 +439,12 @@ export type Membership = {
 export type DMPeer = {
   person_id: number;
   name: string;
+  /** Split-name fields. The chat list + conversation header render
+   * "First Last" so the counterpart is recognisable at a glance —
+   * last-name-only was too curt for a chat surface, where you may
+   * be DM-ing someone you haven't met. Falls back to `name` for
+   * legacy single-token persons (migrated rows). */
+  first_name: string | null;
   last_name: string | null;
   avatar_url: string | null;
   category_name: string | null;

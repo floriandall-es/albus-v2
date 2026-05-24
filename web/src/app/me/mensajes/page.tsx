@@ -15,7 +15,7 @@ import {
 import { ArrowLeft, MessageCircle, Send } from "lucide-react";
 import {
   api,
-  personLastName,
+  personFullName,
   type DMConversation,
   type DMMessage,
 } from "@/lib/api";
@@ -150,8 +150,9 @@ function ConversationList({
       <ul className="max-h-[70vh] overflow-y-auto divide-y divide-gray-100">
         {conversations.map((c) => {
           const isActive = c.id === activeId;
-          const peerLabel = personLastName({
+          const peerLabel = personFullName({
             name: c.peer.name,
+            first_name: c.peer.first_name,
             last_name: c.peer.last_name,
           });
           return (
@@ -299,8 +300,9 @@ function ConversationPane({
           />
           <div className="min-w-0 leading-tight">
             <div className="truncate text-sm font-semibold text-gray-900">
-              {personLastName({
+              {personFullName({
                 name: conversation.peer.name,
+                first_name: conversation.peer.first_name,
                 last_name: conversation.peer.last_name,
               })}
             </div>

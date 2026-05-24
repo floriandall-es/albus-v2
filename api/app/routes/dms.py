@@ -68,6 +68,12 @@ class ConversationPeerOut(BaseModel):
 
     person_id: int
     name: str
+    # Split-name fields needed by the frontend's personFullName
+    # helper. Conversation headers + the conversation-list rows
+    # render "First Last" so jefes can recognise the counterpart
+    # at a glance — last-name-only was too curt for the chat
+    # surface where you might be DM-ing someone you haven't met.
+    first_name: str | None = None
     last_name: str | None = None
     avatar_url: str | None = None
     category_name: str | None = None
@@ -575,7 +581,7 @@ def _serialize_conversation(
             text(
                 """
                 SELECT
-                    p.id, p.name, p.last_name, p.avatar_url,
+                    p.id, p.name, p.first_name, p.last_name, p.avatar_url,
                     c.name AS category_name,
                     t.name AS tenant_name
                 FROM persons p
@@ -602,6 +608,7 @@ def _serialize_conversation(
             peer = ConversationPeerOut(
                 person_id=row["id"],
                 name=row["name"],
+                first_name=row["first_name"],
                 last_name=row["last_name"],
                 avatar_url=row["avatar_url"],
                 category_name=row["category_name"],
