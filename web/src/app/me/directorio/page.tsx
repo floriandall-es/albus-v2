@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import {
   api,
-  personLastName,
+  personFullName,
   type HospitalDirectoryEntry,
 } from "@/lib/api";
 import { Avatar } from "@/components/schedule/planning-grid";
@@ -198,8 +198,9 @@ function DirectoryCard({
     },
   });
   const isMe = mePersonId !== null && entry.person_id === mePersonId;
-  const displayName = personLastName({
+  const displayName = personFullName({
     name: entry.person_name,
+    first_name: entry.person_first_name,
     last_name: entry.person_last_name,
   });
   // Contact buttons render only when the entry exposes the channel

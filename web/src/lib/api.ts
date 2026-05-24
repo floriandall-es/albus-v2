@@ -331,6 +331,24 @@ export function personLastName(p: {
   return parts.slice(1).join(" ");
 }
 
+/** Full "first last" name for surfaces where horizontal space is
+ * generous and recognition matters more than density — e.g. the
+ * hospital directory card. Prefers the split fields when both are
+ * populated; falls back to the legacy single `name` column for
+ * persons that pre-date the split (or migrated rows that only have
+ * one or the other). Never returns "Gabriel Gabriel" when both
+ * sides collapse to the same token. */
+export function personFullName(p: {
+  name: string;
+  first_name?: string | null;
+  last_name?: string | null;
+}): string {
+  const first = p.first_name?.trim() ?? "";
+  const last = p.last_name?.trim() ?? "";
+  if (first && last) return `${first} ${last}`;
+  return p.name.trim();
+}
+
 // ---- Shift swaps ----------------------------------------------------------
 export type SwapOfferStatus = "open" | "fulfilled" | "cancelled";
 export type SwapResponseKind = "cover" | "swap";
