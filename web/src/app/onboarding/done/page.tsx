@@ -68,8 +68,6 @@ export default function DoneStep() {
         </ExpandableSummaryRow>
       </ul>
 
-      <ImportHolidaysCard />
-
       <p className="text-sm text-gray-600 mb-6">
         Puedes seguir editando todo desde la sección de administración. Cuando estés
         listo, termina la configuración para entrar al dashboard.
@@ -200,48 +198,10 @@ function InvitesDetail({ items }: { items: Invitation[] }) {
   );
 }
 
-function ImportHolidaysCard() {
-  const me = useQuery({ queryKey: ["me"], queryFn: api.me });
-  const region = me.data?.current_tenant.region_code ?? null;
-  const importMut = useMutation({
-    mutationFn: async () => {
-      const a = await api.importHolidays({
-        country_code: "ES",
-        region_code: region,
-        year: 2025,
-      });
-      const b = await api.importHolidays({
-        country_code: "ES",
-        region_code: region,
-        year: 2026,
-      });
-      return { inserted: a.inserted + b.inserted, skipped: a.skipped + b.skipped };
-    },
-  });
-  return (
-    <div className="rounded-md border bg-white p-4 mb-6 text-sm">
-      <p className="font-medium mb-1">Festivos de España (2025–2026)</p>
-      <p className="text-gray-600 mb-3">
-        Importa los festivos nacionales (y autonómicos si has fijado región) para
-        que la planificación los respete automáticamente.
-      </p>
-      <Button
-        variant="secondary"
-        onClick={() => importMut.mutate()}
-        disabled={importMut.isPending}
-      >
-        {importMut.isPending ? "Importando…" : "Importar festivos de España"}
-      </Button>
-      {importMut.isSuccess && (
-        <p className="mt-2 text-xs text-green-700">
-          Importados: {importMut.data.inserted} · Omitidos: {importMut.data.skipped}
-        </p>
-      )}
-      {importMut.isError && (
-        <p className="mt-2 text-xs text-red-600">
-          {(importMut.error as Error).message}
-        </p>
-      )}
-    </div>
-  );
-}
+// ImportHolidaysCard was here until sprint 28. The import is
+// already triggered automatically by the region picker on step 1
+// (/onboarding/preset → setRegion mutation imports current + next
+// year as a side effect), so this card was duplicative AND
+// confusing — admins picked a region, saw "Festivos cargados",
+// then arrived here and wondered if they had to import again.
+// Removed in favour of the single point of action on step 1.
