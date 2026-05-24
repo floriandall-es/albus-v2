@@ -1,5 +1,13 @@
 "use client";
-import { useEffect, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
 
 export function PageHeader({
   title,
@@ -315,6 +323,27 @@ export function ErrorText({ children }: { children: ReactNode }) {
  * `position="below"` when the field sits near the top of a modal
  * and there's no headroom for the popover.
  */
+/**
+ * "?" tooltip badge. Renders the popover via React portal to
+ * document.body with position: fixed so it escapes any clipping
+ * parent (modal with overflow:auto, scroll containers, etc.).
+ * Previously the popover used CSS `position: absolute` relative
+ * to the trigger, which got cut off inside the slot editor modal
+ * — that's the bug this rewrite fixes.
+ *
+ * Position computation: read the trigger's bounding rect on open
+ * (and on scroll/resize), then anchor the popover above or below.
+ * If the chosen side overflows the viewport, flip to the other.
+ * Horizontal centring clamps to within 8px of the viewport edges
+ * so labels near the right edge don't render off-screen.
+ *
+ * `position` is a HINT — the actual side may flip if the
+ * hint-side has no room.
+ */
+const TOOLTIP_WIDTH = 256; // matches w-64
+const VIEWPORT_PADDING = 8;
+const ARROW_OFFSET = 8;
+
 export function InfoHint({
   children,
   position = "above",
@@ -322,36 +351,161 @@ export function InfoHint({
   children: ReactNode;
   position?: "above" | "below";
 }) {
-  const popClasses =
-    position === "above"
-      ? "left-1/2 -translate-x-1/2 bottom-full mb-2"
-      : "left-1/2 -translate-x-1/2 top-full mt-2";
-  const arrowClasses =
-    position === "above"
-      ? "left-1/2 -translate-x-1/2 top-full -mt-1"
-      : "left-1/2 -translate-x-1/2 bottom-full -mb-1";
+  const triggerRef = useRef<HTMLSpanElement | null>(null);
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<{
+    top: number;
+    left: number;
+    placement: "above" | "below";
+  } | null>(null);
+
+  const computePosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    // Measure the actual tooltip if it's already mounted (more
+    // accurate for vertical flip detection); fall back to a
+    // sensible estimate before first render.
+    const tipHeight =
+      tooltipRef.current?.offsetHeight ?? 80;
+
+    // Centre horizontally on the trigger, then clamp to viewport.
+    let left =
+      rect.left + rect.width / 2 - TOOLTIP_WIDTH / 2;
+    const maxLeft =
+      window.innerWidth - TOOLTIP_WIDTH - VIEWPORT_PADDING;
+    if (left > maxLeft) left = maxLeft;
+    if (left < VIEWPORT_PADDING) left = VIEWPORT_PADDING;
+
+    // Pick vertical side. Hint = `position` prop; flip if no room.
+    let placement: "above" | "below" = position;
+    const spaceAbove = rect.top;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    if (
+      placement === "above"
+      && spaceAbove < tipHeight + ARROW_OFFSET + VIEWPORT_PADDING
+      && spaceBelow > spaceAbove
+    ) {
+      placement = "below";
+    } else if (
+      placement === "below"
+      && spaceBelow < tipHeight + ARROW_OFFSET + VIEWPORT_PADDING
+      && spaceAbove > spaceBelow
+    ) {
+      placement = "above";
+    }
+    const top =
+      placement === "above"
+        ? rect.top - tipHeight - ARROW_OFFSET
+        : rect.bottom + ARROW_OFFSET;
+    setCoords({ top, left, placement });
+  }, [position]);
+
+  // Compute on open. Use useLayoutEffect so the popover renders
+  // at the correct coords on the same frame as mount — otherwise
+  // there's a one-frame flash at (0,0).
+  useLayoutEffect(() => {
+    if (!open) {
+      setCoords(null);
+      return;
+    }
+    computePosition();
+  }, [open, computePosition]);
+
+  // Re-position on scroll / resize while open. Close on Escape
+  // for keyboard users.
+  useEffect(() => {
+    if (!open) return;
+    const onAny = () => computePosition();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("scroll", onAny, true);
+    window.addEventListener("resize", onAny);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("scroll", onAny, true);
+      window.removeEventListener("resize", onAny);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open, computePosition]);
+
+  const arrowHorizontalLeft = coords
+    ? (() => {
+        // Centre the arrow on the trigger's x-midpoint relative
+        // to the tooltip's left edge — clamps when the tooltip
+        // had to slide because of viewport clamping.
+        const trigger = triggerRef.current;
+        if (!trigger) return TOOLTIP_WIDTH / 2;
+        const rect = trigger.getBoundingClientRect();
+        const triggerCentre = rect.left + rect.width / 2;
+        const tipLeft = coords.left;
+        return Math.max(8, Math.min(triggerCentre - tipLeft, TOOLTIP_WIDTH - 8));
+      })()
+    : TOOLTIP_WIDTH / 2;
+
   return (
-    <span className="relative inline-flex items-center align-middle group ml-1">
+    <span className="relative inline-flex items-center align-middle ml-1">
       <span
+        ref={triggerRef}
         tabIndex={0}
-        className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-gray-200 text-gray-600 text-[10px] font-semibold cursor-help select-none group-hover:bg-brand-100 group-hover:text-brand-700 group-focus-within:bg-brand-100 group-focus-within:text-brand-700 transition-colors"
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        className={
+          "inline-flex h-4 w-4 items-center justify-center rounded-full bg-gray-200 text-gray-600 text-[10px] font-semibold cursor-help select-none transition-colors "
+          + (open ? "bg-brand-100 text-brand-700" : "")
+        }
         aria-label="Más información"
       >
         ?
       </span>
-      <span
-        role="tooltip"
-        className={
-          "absolute z-50 w-64 rounded-md bg-gray-900 px-3 py-2 text-xs leading-relaxed text-white opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-events-none transition-opacity shadow-lg whitespace-normal "
-          + popClasses
-        }
-      >
-        {children}
-        <span
-          aria-hidden
-          className={"absolute w-2 h-2 bg-gray-900 rotate-45 " + arrowClasses}
-        />
-      </span>
+      {open && typeof document !== "undefined"
+        && createPortal(
+          <div
+            ref={tooltipRef}
+            role="tooltip"
+            style={{
+              position: "fixed",
+              top: coords?.top ?? -9999,
+              left: coords?.left ?? -9999,
+              width: TOOLTIP_WIDTH,
+              // Only fade in once we have coords. Without this
+              // the tooltip flashes at (-9999,-9999) on slow
+              // first paints.
+              opacity: coords ? 1 : 0,
+            }}
+            className="z-[1000] pointer-events-none rounded-md bg-gray-900 px-3 py-2 text-xs leading-relaxed text-white shadow-lg whitespace-normal transition-opacity"
+          >
+            {children}
+            <span
+              aria-hidden
+              style={{
+                position: "absolute",
+                left: arrowHorizontalLeft,
+                transform: "translateX(-50%) rotate(45deg)",
+                top:
+                  coords?.placement === "above"
+                    ? "100%"
+                    : undefined,
+                bottom:
+                  coords?.placement === "below"
+                    ? "100%"
+                    : undefined,
+                marginTop:
+                  coords?.placement === "above" ? -4 : undefined,
+                marginBottom:
+                  coords?.placement === "below" ? -4 : undefined,
+                width: 8,
+                height: 8,
+              }}
+              className="bg-gray-900"
+            />
+          </div>,
+          document.body,
+        )}
     </span>
   );
 }
