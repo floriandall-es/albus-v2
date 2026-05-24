@@ -33,6 +33,17 @@ type NavSection = {
   items: { href: string; label: string; icon: LucideIcon }[];
 };
 
+/** Subset of NAV hrefs that the /admin product tour highlights.
+ * Anchored as `data-tour-id="..."` on the Link element so the
+ * spotlight backdrop can locate them. Keeping the map tight (only
+ * the items the tour cares about) avoids polluting the DOM with
+ * anchors for every nav row. */
+const TOUR_ID_BY_HREF: Record<string, string | undefined> = {
+  "/admin/schedule": "nav-planificacion",
+  "/admin/team": "nav-equipo",
+  "/admin/rules": "nav-reglas",
+};
+
 const NAV: NavSection[] = [
   {
     title: "Operativa",
@@ -167,7 +178,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
         {me.data && <ViewSwitcher me={me.data} current="admin" />}
 
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
+        <nav
+          className="flex-1 overflow-y-auto px-3 py-4 space-y-5"
+          data-tour-id="sidebar"
+        >
           {NAV.map((section) => (
             <div key={section.title}>
               <div className="px-2 mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
@@ -206,10 +220,15 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                     item.href === "/admin"
                       ? pathname === "/admin"
                       : pathname?.startsWith(item.href);
+                  // Tour anchors — populated only for the nav items
+                  // the first-visit product tour cares about. Keeps
+                  // the attribute set tight so the DOM stays clean.
+                  const tourId = TOUR_ID_BY_HREF[item.href];
                   return (
                     <Link
                       key={item.href}
                       href={item.href}
+                      data-tour-id={tourId}
                       className={
                         "group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors "
                         + (active

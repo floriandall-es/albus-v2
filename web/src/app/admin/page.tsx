@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeftRight,
@@ -17,6 +17,72 @@ import {
 import { api, personFirstName } from "@/lib/api";
 import { Card } from "@/components/admin/ui";
 import { formatPeriod } from "@/components/admin/month-picker";
+import {
+  ProductTour,
+  type TourStep,
+} from "@/components/onboarding/product-tour";
+
+// First-visit-only flag for the /admin product tour. Local to this
+// device — if the admin signs in on another browser later, they'll
+// see the tour again. Acceptable trade-off vs adding a backend
+// column for v1; can promote to a per-membership flag later if it
+// becomes a real complaint.
+const TOUR_SEEN_KEY = "trivu.admin.tourSeen";
+
+const TOUR_STEPS: TourStep[] = [
+  {
+    tourId: null,
+    title: "Bienvenido a Trivu",
+    body:
+      "Acabas de terminar la configuración inicial. Te enseñamos en "
+      + "60 segundos lo más importante para empezar.",
+  },
+  {
+    tourId: "setup-checklist",
+    title: "Lista de configuración",
+    body:
+      "Aquí ves lo que aún te queda por configurar. Cada tarjeta te "
+      + "lleva a la sección correspondiente.",
+    placement: "bottom",
+  },
+  {
+    tourId: "nav-equipo",
+    title: "Tu equipo",
+    body:
+      "Aquí tienes a cada miembro que añadiste durante el alta. "
+      + "Cuando todo esté listo, pulsa \"Enviar invitación\" en "
+      + "cada fila para que reciban el email de activación.",
+    placement: "right",
+  },
+  {
+    tourId: "nav-planificacion",
+    title: "Genera la planificación",
+    body:
+      "Cuando hayas configurado las actividades y reglas, genera "
+      + "aquí el calendario del mes. Puedes ajustarlo a mano antes "
+      + "de publicarlo.",
+    placement: "right",
+  },
+  {
+    tourId: "nav-reglas",
+    title: "Reglas de asignación",
+    body:
+      "Define cómo Trivu reparte los turnos: límites por persona, "
+      + "incompatibilidades entre actividades, días fijos, sucesión "
+      + "entre actividades…",
+    placement: "right",
+  },
+  {
+    tourId: "view-switcher",
+    title: "Vista Admin vs Personal",
+    body:
+      "Si tú también haces turnos clínicos, cambia a \"Personal\" "
+      + "para ver tu propio calendario, pedir cobertura o solicitar "
+      + "días libres. Vuelve aquí cuando quieras gestionar el "
+      + "servicio.",
+    placement: "right",
+  },
+];
 
 /**
  * Admin landing dashboard. Replaces the previous bare redirect to
@@ -33,6 +99,22 @@ export default function AdminDashboard() {
     queryKey: ["schedules"],
     queryFn: api.listSchedules,
   });
+
+  // Product-tour gate. Hydration-safe: start as null (= "don't
+  // know yet"), then on mount read localStorage and either show or
+  // mark already-seen. Avoids the "tour flashes on every refresh"
+  // bug you get when you initialise from localStorage during SSR.
+  const [showTour, setShowTour] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setShowTour(window.localStorage.getItem(TOUR_SEEN_KEY) !== "1");
+  }, []);
+  const dismissTour = () => {
+    setShowTour(false);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(TOUR_SEEN_KEY, "1");
+    }
+  };
 
   const state = useMemo(() => {
     const allSchedules = schedules.data ?? [];
@@ -71,6 +153,13 @@ export default function AdminDashboard() {
 
   return (
     <>
+      {/* First-visit guided tour. Mounted at the page root so it
+          can spotlight sidebar items (which live in the admin
+          layout, not in this page). Hydration-guarded via
+          `showTour === true` so SSR doesn't render the portal. */}
+      {showTour === true && (
+        <ProductTour steps={TOUR_STEPS} onClose={dismissTour} />
+      )}
       <header className="mb-6">
         <h1 className="text-2xl font-semibold text-gray-900">
           {state.firstName ? `Hola, ${state.firstName}` : "Hola"}
@@ -88,7 +177,10 @@ export default function AdminDashboard() {
           subpage via the SetupBanner. The sub-equipos card only
           appears when the admin answered "Sí" at signup. */}
       {!setupDone && (
-        <section className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <section
+          className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+          data-tour-id="setup-checklist"
+        >
           <StepCard
             done={state.activitiesDone}
             icon={<Stethoscope className="h-5 w-5" />}
@@ -111,7 +203,7 @@ export default function AdminDashboard() {
             done={state.teamDone}
             icon={<Users className="h-5 w-5" />}
             title="Revisa tu equipo"
-            description="Las invitaciones ya se enviaron durante el alta. Asigna a cada miembro su categoría profesional para que Trivu pueda repartir las actividades."
+            description="Estos son los miembros que añadiste durante el alta. Asigna a cada uno su categoría profesional y, cuando estés listo, pulsa Enviar invitación para que reciban el email de activación."
             ctaLabel="Ir al equipo"
             href="/admin/team"
             primary={

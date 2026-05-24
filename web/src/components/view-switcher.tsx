@@ -46,7 +46,7 @@ export function ViewSwitcher({
   if (views.length < 2) return null;
 
   return (
-    <div className="px-3 pt-3">
+    <div className="px-3 pt-3" data-tour-id="view-switcher">
       <div className="flex rounded-md bg-gray-100 p-0.5">
         {views.map((v) => {
           const active = v.key === current;
