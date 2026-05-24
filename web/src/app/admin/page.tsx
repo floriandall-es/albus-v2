@@ -51,9 +51,10 @@ const TOUR_STEPS: TourStep[] = [
     tourId: null,
     title: "Bienvenido a Trivu",
     body:
-      "Te damos un paseo rápido por las secciones del menú lateral "
-      + "para que sepas dónde está cada cosa. Cuando lo tengas "
-      + "claro, marca \"No volver a mostrar este tour\" abajo.",
+      "Te enseñamos rápidamente lo que ves en esta pantalla y "
+      + "después cada sección del menú lateral, para que sepas "
+      + "dónde está cada cosa. Cuando lo tengas claro, marca "
+      + "\"No volver a mostrar este tour\" abajo.",
   },
   {
     tourId: "setup-checklist",
