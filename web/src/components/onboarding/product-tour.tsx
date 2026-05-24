@@ -188,22 +188,26 @@ export function ProductTour({
             {step.body}
           </p>
         </div>
-        <div className="mt-4 flex items-center justify-between gap-2">
-          {/* Dot indicator on the left so the right side is anchored
-              for the action button. */}
-          <div className="flex items-center gap-1">
-            {visibleSteps.map((_, i) => (
-              <span
-                key={i}
-                aria-hidden
-                className={
-                  "block h-1.5 w-1.5 rounded-full "
-                  + (i === idx ? "bg-brand-600" : "bg-gray-300")
-                }
-              />
-            ))}
+        <div className="mt-4 space-y-3">
+          {/* Slim progress bar instead of per-step dots: with the
+              19-stop sidebar walkthrough, a dot row blew past the
+              popover width and pushed Siguiente off-screen. The
+              bar always fits any step count, and "Paso X de Y"
+              above already communicates the discrete count.
+              `aria-hidden` because the textual counter above is
+              the semantic source of truth. */}
+          <div
+            aria-hidden
+            className="h-1 rounded-full bg-gray-200 overflow-hidden"
+          >
+            <div
+              className="h-full bg-brand-600 transition-all duration-200"
+              style={{
+                width: `${((idx + 1) / visibleSteps.length) * 100}%`,
+              }}
+            />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={onClose}
