@@ -26,7 +26,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from app.models import Membership
+from sqlalchemy.exc import IntegrityError
+
+from app.models import DirectoryFavorite, Membership
 from app.routes.deps import RequestContext, get_current_context
 
 
@@ -57,6 +59,10 @@ class HospitalDirectoryEntry(BaseModel):
     work_phone: str | None = None
     personal_phone: str | None = None
     whatsapp_phone: str | None = None
+    # Set when the caller has starred this person via the
+    # directory favorites table (migration 0058). Drives the
+    # "Favoritos" section + filled-star icon on the directory card.
+    is_favorite: bool = False
 
 
 @router.get(
@@ -96,6 +102,18 @@ def list_hospital_directory(
         ),
         {"hid": hospital_id},
     ).mappings().all()
+
+    # Load the caller's favorites set in one shot — we look it up
+    # per directory row but only want a single round-trip. The
+    # query isn't tenant-scoped (DirectoryFavorite has no RLS, and
+    # we WANT cross-tenant data here: the caller may have starred
+    # someone in another department of the same hospital).
+    favorite_ids: set[int] = {
+        row.favorite_person_id
+        for row in ctx.db.query(DirectoryFavorite.favorite_person_id)
+        .filter(DirectoryFavorite.person_id == ctx.person.id)
+        .all()
+    }
 
     # Server-side filters. Keeping them in Python (not SQL) is fine
     # for the slice-0 directory — hospitals have O(100) members at
@@ -154,6 +172,7 @@ def list_hospital_directory(
                 whatsapp_phone=(
                     r["person_personal_phone"] if r["share_whatsapp"] else None
                 ),
+                is_favorite=r["person_id"] in favorite_ids,
             )
         )
     return out
@@ -233,4 +252,77 @@ def set_my_contact_preferences(
         share_personal_phone=membership.share_personal_phone,
         share_email=membership.share_email,
         share_whatsapp=membership.share_whatsapp,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Directory favorites — migration 0058. Personal preference per caller;
+# /api/hospital/directory annotates each entry with `is_favorite` from
+# the same table so the listing UI doesn't need a second fetch.
+# ---------------------------------------------------------------------------
+
+
+class DirectoryFavoriteRequest(BaseModel):
+    peer_person_id: int
+
+
+class DirectoryFavoriteAck(BaseModel):
+    """Tiny ack the POST/DELETE return so the client can confirm
+    state without a follow-up GET. The full list re-fetches via the
+    refresh of /api/hospital/directory after a successful mutation."""
+
+    peer_person_id: int
+    is_favorite: bool
+
+
+@router.post(
+    "/me/directory-favorites",
+    response_model=DirectoryFavoriteAck,
+)
+def add_directory_favorite(
+    payload: DirectoryFavoriteRequest,
+    ctx: RequestContext = Depends(get_current_context),
+) -> DirectoryFavoriteAck:
+    """Star a directory peer. Idempotent — re-issuing for the same
+    pair is a no-op (UNIQUE constraint catches it; we swallow the
+    IntegrityError and return the existing state).
+
+    Can't favorite yourself (DB CHECK + explicit 422 here so the
+    error message is friendly instead of a Postgres trace)."""
+    if payload.peer_person_id == ctx.person.id:
+        raise HTTPException(
+            status_code=422, detail="No puedes marcarte como favorito a ti mismo."
+        )
+    fav = DirectoryFavorite(
+        person_id=ctx.person.id,
+        favorite_person_id=payload.peer_person_id,
+    )
+    ctx.db.add(fav)
+    try:
+        ctx.db.flush()
+    except IntegrityError:
+        # Already favorited — fine, just report the current state.
+        ctx.db.rollback()
+    return DirectoryFavoriteAck(
+        peer_person_id=payload.peer_person_id, is_favorite=True
+    )
+
+
+@router.delete(
+    "/me/directory-favorites/{peer_person_id}",
+    response_model=DirectoryFavoriteAck,
+)
+def remove_directory_favorite(
+    peer_person_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> DirectoryFavoriteAck:
+    """Unstar a directory peer. Idempotent — deleting a non-existent
+    row is fine, returns is_favorite=False either way."""
+    ctx.db.query(DirectoryFavorite).filter(
+        DirectoryFavorite.person_id == ctx.person.id,
+        DirectoryFavorite.favorite_person_id == peer_person_id,
+    ).delete(synchronize_session=False)
+    ctx.db.flush()
+    return DirectoryFavoriteAck(
+        peer_person_id=peer_person_id, is_favorite=False
     )

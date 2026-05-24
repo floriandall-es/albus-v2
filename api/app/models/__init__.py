@@ -33,6 +33,7 @@ from app.models.conversation import (
     ConversationMember,
     Message,
 )
+from app.models.directory_favorite import DirectoryFavorite
 
 __all__ = [
     "Hospital",
@@ -71,4 +72,5 @@ __all__ = [
     "Conversation",
     "ConversationMember",
     "Message",
+    "DirectoryFavorite",
 ]

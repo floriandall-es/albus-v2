@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Building2,
   Mail,
@@ -9,6 +9,7 @@ import {
   MessageSquare,
   Phone,
   Search,
+  Star,
 } from "lucide-react";
 import {
   api,
@@ -186,6 +187,11 @@ export default function HospitalDirectoryPage() {
  * alphabetical" — we override here for a clean alpha list per
  * department.
  *
+ * Favorites get their own section at the very top, alphabetical
+ * by last name, KEEPING the entries also visible in their
+ * department below — Favoritos is a quick-access shortcut, not a
+ * "move here" operation.
+ *
  * Each card's subtitle drops the tenant name (it would just
  * duplicate the section header). Categoría + sub-equipo stay. */
 function DirectoryGroupedList({
@@ -195,7 +201,16 @@ function DirectoryGroupedList({
   rows: HospitalDirectoryEntry[];
   mePersonId: number | null;
 }) {
-  const groups = useMemo(() => {
+  const { favorites, groups } = useMemo(() => {
+    const lastNameSort = (
+      a: HospitalDirectoryEntry,
+      b: HospitalDirectoryEntry,
+    ) => {
+      const aName = (a.person_last_name ?? a.person_name).toLowerCase();
+      const bName = (b.person_last_name ?? b.person_name).toLowerCase();
+      return aName.localeCompare(bName, "es");
+    };
+    const favs = rows.filter((r) => r.is_favorite).sort(lastNameSort);
     const byDept = new Map<
       number,
       { name: string; rows: HospitalDirectoryEntry[] }
@@ -212,17 +227,36 @@ function DirectoryGroupedList({
       a.name.localeCompare(b.name, "es"),
     );
     for (const d of depts) {
-      d.rows.sort((a, b) => {
-        const aName = (a.person_last_name ?? a.person_name).toLowerCase();
-        const bName = (b.person_last_name ?? b.person_name).toLowerCase();
-        return aName.localeCompare(bName, "es");
-      });
+      d.rows.sort(lastNameSort);
     }
-    return depts;
+    return { favorites: favs, groups: depts };
   }, [rows]);
 
   return (
     <div className="space-y-6">
+      {favorites.length > 0 && (
+        <section>
+          <h2 className="mb-2 flex items-baseline gap-2 text-sm font-semibold uppercase tracking-wide text-amber-700">
+            <Star className="h-3.5 w-3.5 fill-amber-400 stroke-amber-500" />
+            Favoritos
+            <span className="text-[11px] font-normal normal-case text-gray-400">
+              {favorites.length}{" "}
+              {favorites.length === 1 ? "persona" : "personas"}
+            </span>
+          </h2>
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {favorites.map((r) => (
+              <DirectoryCard
+                // Distinct key from the department render — same
+                // entry appears in both places.
+                key={`fav-${r.membership_id}`}
+                entry={r}
+                mePersonId={mePersonId}
+              />
+            ))}
+          </ul>
+        </section>
+      )}
       {groups.map((dept) => (
         <section key={dept.name}>
           <h2 className="mb-2 flex items-baseline gap-2 text-sm font-semibold uppercase tracking-wide text-gray-600">
@@ -261,10 +295,49 @@ function DirectoryCard({
   hideDepartment?: boolean;
 }) {
   const router = useRouter();
+  const qc = useQueryClient();
   const openDm = useMutation({
     mutationFn: () => api.createOrGetDM(entry.person_id),
     onSuccess: (conv) => {
       router.push(`/me/mensajes?c=${conv.id}`);
+    },
+  });
+  // Star toggle. We optimistically flip the cached entry so the
+  // Favoritos section + star icon update instantly, then refetch
+  // on settlement to reconcile. Same entry appears in both the
+  // Favoritos section and its department — both update because
+  // they read from the same query cache.
+  const toggleFavorite = useMutation({
+    mutationFn: () =>
+      entry.is_favorite
+        ? api.removeDirectoryFavorite(entry.person_id)
+        : api.addDirectoryFavorite(entry.person_id),
+    onMutate: async () => {
+      await qc.cancelQueries({ queryKey: ["hospital-directory"] });
+      const prev = qc.getQueriesData<HospitalDirectoryEntry[]>({
+        queryKey: ["hospital-directory"],
+      });
+      for (const [key, value] of prev) {
+        if (!value) continue;
+        qc.setQueryData<HospitalDirectoryEntry[]>(
+          key,
+          value.map((r) =>
+            r.person_id === entry.person_id
+              ? { ...r, is_favorite: !entry.is_favorite }
+              : r,
+          ),
+        );
+      }
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      // Roll back on failure so the UI stays truthful.
+      ctx?.prev.forEach(([key, value]) =>
+        qc.setQueryData<HospitalDirectoryEntry[] | undefined>(key, value),
+      );
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["hospital-directory"] });
     },
   });
   const isMe = mePersonId !== null && entry.person_id === mePersonId;
@@ -316,8 +389,37 @@ function DirectoryCard({
   }
 
   return (
-    <li className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-soft">
-      <div className="flex items-center gap-3">
+    <li className="relative flex flex-col gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-soft">
+      {/* Star toggle (top-right). Hidden for the user's own
+          card — "favoriting yourself" doesn't make sense (DB
+          CHECK rejects it anyway). 44×44 hit target for thumb-
+          friendly mobile taps; positioned with negative
+          margin so the icon sits flush with the corner
+          without changing the card's perceived padding. */}
+      {!isMe && (
+        <button
+          type="button"
+          aria-pressed={entry.is_favorite}
+          aria-label={
+            entry.is_favorite
+              ? "Quitar de favoritos"
+              : "Añadir a favoritos"
+          }
+          onClick={() => toggleFavorite.mutate()}
+          disabled={toggleFavorite.isPending}
+          className="absolute right-0.5 top-0.5 flex h-11 w-11 items-center justify-center text-gray-400 hover:text-amber-500 active:text-amber-600 disabled:opacity-60"
+        >
+          <Star
+            className={
+              "h-4 w-4 transition-colors "
+              + (entry.is_favorite
+                ? "fill-amber-400 stroke-amber-500"
+                : "fill-transparent")
+            }
+          />
+        </button>
+      )}
+      <div className="flex items-center gap-3 pr-8">
         <Avatar
           name={entry.person_name}
           mine={false}

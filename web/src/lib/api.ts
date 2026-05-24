@@ -505,6 +505,10 @@ export type HospitalDirectoryEntry = {
   work_phone: string | null;
   personal_phone: string | null;
   whatsapp_phone: string | null;
+  /** True when the caller has starred this person via the
+   * directory favorites table (migration 0058). Drives the
+   * "Favoritos" section + filled-star icon on the card. */
+  is_favorite: boolean;
 };
 
 export type Department = {
@@ -1066,6 +1070,25 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  /** Star a directory peer. Idempotent. The /api/hospital/directory
+   * listing carries an `is_favorite` flag per entry, so callers
+   * typically invalidate that query after a mutation rather than
+   * holding the favorites set client-side. */
+  addDirectoryFavorite: (peer_person_id: number) =>
+    request<{ peer_person_id: number; is_favorite: boolean }>(
+      "/api/me/directory-favorites",
+      {
+        method: "POST",
+        body: JSON.stringify({ peer_person_id }),
+      },
+    ),
+  /** Unstar a directory peer. Idempotent — deleting a non-existent
+   * favorite is fine. */
+  removeDirectoryFavorite: (peer_person_id: number) =>
+    request<{ peer_person_id: number; is_favorite: boolean }>(
+      `/api/me/directory-favorites/${peer_person_id}`,
+      { method: "DELETE" },
+    ),
   /** DMs (Phase 2A). Find-or-create a 1:1 conversation with
    * `peer_person_id`. Idempotent — server-side dedupes on the
    * sorted pair. Returns the conversation (existing or new). */
