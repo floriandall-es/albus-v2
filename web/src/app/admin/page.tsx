@@ -45,9 +45,9 @@ const TOUR_STEPS: TourStep[] = [
     tourId: null,
     title: "Bienvenido a Trivu",
     body:
-      "Acabas de terminar la configuración inicial. Te damos un "
-      + "paseo rápido por las secciones del menú lateral para que "
-      + "sepas dónde está cada cosa.",
+      "Te damos un paseo rápido por las secciones del menú lateral "
+      + "para que sepas dónde está cada cosa. Cuando lo tengas "
+      + "claro, marca \"No volver a mostrar este tour\" abajo.",
   },
   {
     tourId: "setup-checklist",
@@ -227,14 +227,19 @@ export default function AdminDashboard() {
   // know yet"), then on mount read localStorage and either show or
   // mark already-seen. Avoids the "tour flashes on every refresh"
   // bug you get when you initialise from localStorage during SSR.
+  //
+  // Dismissal is OPT-IN: the tour reopens on every /admin visit
+  // until the admin actively ticks "No volver a mostrar este tour"
+  // before closing. That way a fresh admin who accidentally skips
+  // or closes still gets the tour next time around.
   const [showTour, setShowTour] = useState<boolean | null>(null);
   useEffect(() => {
     if (typeof window === "undefined") return;
     setShowTour(window.localStorage.getItem(TOUR_SEEN_KEY) !== "1");
   }, []);
-  const dismissTour = () => {
+  const dismissTour = (dismissPermanently: boolean) => {
     setShowTour(false);
-    if (typeof window !== "undefined") {
+    if (dismissPermanently && typeof window !== "undefined") {
       window.localStorage.setItem(TOUR_SEEN_KEY, "1");
     }
   };

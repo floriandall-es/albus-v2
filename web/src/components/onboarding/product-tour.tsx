@@ -4,17 +4,26 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 
 /**
- * One-shot guided tour rendered the first time an admin lands on
- * /admin after finishing onboarding. Anchors via `data-tour-id`
- * attributes on existing UI elements so the steps can move with
- * the layout. No external library — keeps the JS bundle lean and
- * the styling consistent with the rest of the app.
+ * Guided tour rendered on every /admin visit until the admin
+ * explicitly opts out. The dismissal model is intentionally
+ * "loud" — Skip / X / Esc / Terminar all simply close for now;
+ * only the "No volver a mostrar este tour" checkbox in the
+ * footer flips the persistent flag. Rationale: a fresh admin
+ * who misses or accidentally closes the tour the first time
+ * around should still get a second chance, instead of having
+ * the most important onboarding surface vanish silently.
+ *
+ * Anchors via `data-tour-id` attributes on existing UI elements
+ * so the steps can move with the layout. No external library —
+ * keeps the JS bundle lean and the styling consistent with the
+ * rest of the app.
  *
  * Design choices:
  *
@@ -31,12 +40,14 @@ import { X } from "lucide-react";
  *     errored. That's the right behaviour for the ViewSwitcher
  *     stop, which renders only for dual-role users.
  *
- *   - Skip = Finish. We mark the tour seen either way; users who
- *     dismissed it shouldn't be nagged on every page load.
+ *   - Skip = close-but-not-dismiss. The persistent flag only
+ *     flips when the admin actively ticks the "No volver a
+ *     mostrar" checkbox before closing. Without it, the tour
+ *     comes back on the next /admin load.
  *
- * Persistence (the "first visit only" semantic) is the caller's
- * job. This component just renders; the wrapper checks
- * localStorage and stamps it on close.
+ * Persistence is the caller's job. This component just renders
+ * and reports back via `onClose(dismissPermanently)`; the
+ * wrapper decides whether to stamp localStorage.
  */
 
 export type TourStep = {
@@ -65,9 +76,11 @@ export function ProductTour({
 }: {
   steps: TourStep[];
   /** Called when the user finishes the last step or hits Skip /
-   * the close button. The caller is expected to stamp the
-   * "tour-seen" flag here so it doesn't reopen. */
-  onClose: () => void;
+   * close. The `dismissPermanently` flag is true ONLY when the
+   * admin ticked the "No volver a mostrar" checkbox before
+   * closing. The caller uses it to decide whether to stamp the
+   * persistent "tour seen" flag in localStorage. */
+  onClose: (dismissPermanently: boolean) => void;
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -120,23 +133,37 @@ export function ProductTour({
     };
   }, [step]);
 
-  // Escape closes the tour. We treat that as Skip rather than
-  // Back so the persistent "seen" flag still gets set by onClose.
+  // "No volver a mostrar" — when checked at close time, the
+  // caller stamps localStorage. Lives in component state because
+  // the choice only matters for the upcoming onClose call.
+  const [dismissPermanently, setDismissPermanently] = useState(false);
+  // Stable closer that always reads the latest checkbox value
+  // without forcing the keydown effect to re-bind on every render.
+  const dismissRef = useRef(false);
+  useEffect(() => {
+    dismissRef.current = dismissPermanently;
+  }, [dismissPermanently]);
+  const closeWithFlag = useCallback(() => {
+    onClose(dismissRef.current);
+  }, [onClose]);
+
+  // Escape closes the tour. Whether it dismisses persistently
+  // depends solely on the checkbox state at the moment Esc fires.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") closeWithFlag();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [closeWithFlag]);
 
   const next = useCallback(() => {
     if (idx >= visibleSteps.length - 1) {
-      onClose();
+      closeWithFlag();
     } else {
       setIdx((i) => i + 1);
     }
-  }, [idx, visibleSteps.length, onClose]);
+  }, [idx, visibleSteps.length, closeWithFlag]);
   const back = useCallback(() => setIdx((i) => Math.max(0, i - 1)), []);
 
   if (!mounted || !step || visibleSteps.length === 0) return null;
@@ -171,7 +198,7 @@ export function ProductTour({
       >
         <button
           type="button"
-          onClick={onClose}
+          onClick={closeWithFlag}
           aria-label="Cerrar tour"
           className="absolute right-2 top-2 rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
         >
@@ -207,13 +234,29 @@ export function ProductTour({
               }}
             />
           </div>
+          {/* Opt-in persistent dismiss. Default unchecked so an
+              accidental Skip / X / Esc keeps the tour available
+              on the next /admin visit. The admin has to actively
+              tick this before closing to silence the tour
+              permanently. Sits above the action row so the
+              choice is visible whenever any close action is
+              about to fire. */}
+          <label className="flex items-center gap-2 text-xs text-gray-600 select-none cursor-pointer">
+            <input
+              type="checkbox"
+              checked={dismissPermanently}
+              onChange={(e) => setDismissPermanently(e.target.checked)}
+              className="h-3.5 w-3.5 accent-brand-600"
+            />
+            No volver a mostrar este tour
+          </label>
           <div className="flex items-center justify-end gap-2">
             <button
               type="button"
-              onClick={onClose}
+              onClick={closeWithFlag}
               className="text-xs text-gray-500 hover:text-gray-700"
             >
-              Saltar
+              {dismissPermanently ? "Cerrar" : "Saltar"}
             </button>
             {!isFirst && (
               <button
