@@ -577,17 +577,17 @@ function SlotDialog({
           />
           <p className="mt-1 text-xs text-gray-500">
             {mode === "single" &&
-              "Una sola persona cubre la actividad (1 plaza)."}
+              "Una sola persona cubre cada turno de esta actividad."}
             {mode === "multiple_same" &&
-              "Varias personas con el mismo perfil cubren la actividad. Indica cuántas plazas."}
+              "Varias personas con el mismo perfil cubren cada turno. Indica cuántas personas hay por turno."}
             {mode === "team_composition" &&
-              "Equipo con varios roles. Define los roles abajo; cada uno tiene su propia plaza y categoría."}
+              "Equipo con varios roles. Define los roles abajo; cada uno tiene su propia cantidad de personas por turno y su categoría."}
           </p>
         </div>
         {mode === "multiple_same" && (
           <TextField
-            label="Plazas"
-            hint="Cuántas personas se necesitan cada día para cubrir la actividad. Ej: planta con 3 enfermeras simultáneas → 3 plazas."
+            label="Personas por turno"
+            hint="Cuántas personas están de turno a la vez para esta actividad. Ej: planta con 3 enfermeras simultáneas en cada turno → 3."
             type="number"
             value={headcount}
             onChange={setHeadcount}
@@ -616,7 +616,8 @@ function SlotDialog({
                     onChange={(v) => updateTeamRole(i, { role_label: v })}
                   />
                   <TextField
-                    label="Plazas"
+                    label="Personas por turno"
+                    hint="Personas de este rol simultáneamente en cada turno. Ej: quirófano con 2 cirujanos a la vez → 2."
                     type="number"
                     value={String(r.headcount)}
                     onChange={(v) => updateTeamRole(i, { headcount: Number(v) || 1 })}
