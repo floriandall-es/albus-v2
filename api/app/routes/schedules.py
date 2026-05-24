@@ -31,6 +31,7 @@ from app.schemas.schedule import (
     AssignmentPatch,
     AssignmentSaveResponse,
     EligiblePersonOut,
+    GroupPublicationOut,
     ScheduleDetail,
     ScheduleGenerateRequest,
     ScheduleOut,
@@ -58,18 +59,39 @@ def _require_admin(ctx: RequestContext) -> None:
         )
 
 
-def _published_group_ids_for(
+def _published_groups_for(
     ctx: RequestContext, schedule_id: int
-) -> list[int]:
-    """All group ids whose lead has published the group's plan for
-    this schedule. Sorted ascending so the response is stable."""
+) -> list[GroupPublicationOut]:
+    """All groups whose lead has published the group's plan for this
+    schedule, with the per-group `published_at` timestamp. Sorted by
+    group id so the response is stable.
+
+    Used by every ScheduleOut/ScheduleDetail serialization. The
+    /me/turnos "Publicado el…" line picks the right timestamp from
+    here for sub-equipo members — for them, the parent
+    Schedule.published_at may still be NULL even when their lead has
+    already published.
+    """
     rows = (
-        ctx.db.query(ScheduleGroupPublication.group_id)
+        ctx.db.query(
+            ScheduleGroupPublication.group_id,
+            ScheduleGroupPublication.published_at,
+        )
         .filter(ScheduleGroupPublication.schedule_id == schedule_id)
         .order_by(ScheduleGroupPublication.group_id)
         .all()
     )
-    return [r[0] for r in rows]
+    return [
+        GroupPublicationOut(group_id=gid, published_at=ts) for gid, ts in rows
+    ]
+
+
+def _published_group_ids_for(
+    ctx: RequestContext, schedule_id: int
+) -> list[int]:
+    """Legacy helper kept for callers that only need the ids list.
+    Backed by `_published_groups_for` so the two never drift."""
+    return [g.group_id for g in _published_groups_for(ctx, schedule_id)]
 
 
 def _serialize_detail(
@@ -87,7 +109,8 @@ def _serialize_detail(
     from app.routes.scope import caller_scope
 
     scope = caller_scope(ctx)
-    published_group_ids = _published_group_ids_for(ctx, schedule.id)
+    published_groups = _published_groups_for(ctx, schedule.id)
+    published_group_ids = [g.group_id for g in published_groups]
     published_group_set = set(published_group_ids)
 
     if override_group_id is not None:
@@ -194,6 +217,7 @@ def _serialize_detail(
         reopened_at=schedule.reopened_at,
         solver_used=schedule.solver_used,  # type: ignore[arg-type]
         published_group_ids=published_group_ids,
+        published_groups=published_groups,
         created_at=schedule.created_at,
         assignments=assignments,
     )
@@ -208,12 +232,13 @@ def list_schedules(
         .order_by(Schedule.period.desc(), Schedule.id.desc())
         .all()
     )
-    # Batch-load published_group_ids per schedule. One query
-    # regardless of how many schedules there are.
+    # Batch-load published groups (id + timestamp) per schedule. One
+    # query regardless of how many schedules there are.
     pub_rows = (
         ctx.db.query(
             ScheduleGroupPublication.schedule_id,
             ScheduleGroupPublication.group_id,
+            ScheduleGroupPublication.published_at,
         )
         .filter(
             ScheduleGroupPublication.schedule_id.in_([s.id for s in schedules])
@@ -222,9 +247,14 @@ def list_schedules(
         if schedules
         else []
     )
-    pub_by_sched: dict[int, list[int]] = {}
-    for sid, gid in pub_rows:
-        pub_by_sched.setdefault(sid, []).append(gid)
+    pub_by_sched: dict[int, list[GroupPublicationOut]] = {}
+    for sid, gid, ts in pub_rows:
+        pub_by_sched.setdefault(sid, []).append(
+            GroupPublicationOut(group_id=gid, published_at=ts)
+        )
+    # Sort each per-schedule list by group_id for a stable response.
+    for groups in pub_by_sched.values():
+        groups.sort(key=lambda g: g.group_id)
     return [
         ScheduleOut(
             id=s.id,
@@ -235,7 +265,10 @@ def list_schedules(
             published_at=s.published_at,
             reopened_at=s.reopened_at,
             solver_used=s.solver_used,  # type: ignore[arg-type]
-            published_group_ids=sorted(pub_by_sched.get(s.id, [])),
+            published_group_ids=[
+                g.group_id for g in pub_by_sched.get(s.id, [])
+            ],
+            published_groups=pub_by_sched.get(s.id, []),
             created_at=s.created_at,
         )
         for s in schedules
@@ -681,6 +714,7 @@ def publish_group_schedule(
         reopened_at=s.reopened_at,
         solver_used=s.solver_used,  # type: ignore[arg-type]
         published_group_ids=_published_group_ids_for(ctx, s.id),
+        published_groups=_published_groups_for(ctx, s.id),
         created_at=s.created_at,
     )
 
@@ -734,6 +768,7 @@ def unpublish_group_schedule(
         reopened_at=s.reopened_at,
         solver_used=s.solver_used,  # type: ignore[arg-type]
         published_group_ids=_published_group_ids_for(ctx, s.id),
+        published_groups=_published_groups_for(ctx, s.id),
         created_at=s.created_at,
     )
 

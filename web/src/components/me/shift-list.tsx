@@ -1,5 +1,6 @@
 "use client";
-import { type Assignment } from "@/lib/api";
+import { personLastName, type Assignment } from "@/lib/api";
+import { Avatar } from "@/components/schedule/planning-grid";
 import {
   MONTH_SHORT_ES,
   WEEKDAY_LONG_ES,
@@ -24,6 +25,8 @@ export function ShiftSection({
   dimmed = false,
   onClickShift,
   canRequestCoverage = true,
+  showPerson = false,
+  myPersonId,
 }: {
   title: string;
   items: Assignment[];
@@ -39,6 +42,15 @@ export function ShiftSection({
    * yet — their lead handles it offline. When false the row is
    * non-interactive and the "Pedir cobertura →" hint is hidden. */
   canRequestCoverage?: boolean;
+  /** When true, each row carries an avatar + person's last name so
+   * the section can list the entire team. Used by /me/turnos's
+   * Ámbito=Equipo + Vista=Lista view. */
+  showPerson?: boolean;
+  /** Person id of the current user. Only used in tandem with
+   * `showPerson` to tint their own rows + render the avatar with the
+   * brand-blue ring, so the user can spot themselves in a long team
+   * list at a glance. */
+  myPersonId?: number | null;
 }) {
   if (items.length === 0) {
     if (!emptyText) return null;
@@ -67,6 +79,8 @@ export function ShiftSection({
             dimmed={dimmed}
             onClick={onClickShift}
             canRequestCoverage={canRequestCoverage}
+            showPerson={showPerson}
+            isMine={myPersonId != null && a.person_id === myPersonId}
           />
         ))}
       </ul>
@@ -80,22 +94,34 @@ function ShiftRow({
   dimmed,
   onClick,
   canRequestCoverage,
+  showPerson,
+  isMine,
 }: {
   a: Assignment;
   todayIso: string;
   dimmed: boolean;
   onClick: (a: Assignment) => void;
   canRequestCoverage: boolean;
+  showPerson: boolean;
+  isMine: boolean;
 }) {
   const isToday = a.date === todayIso;
   const isLocked = !!a.locked_at;
-  // Effectively "is the row clickable?" — locked turns it off, and
-  // sub-equipo members never get the coverage flow at all.
-  const isInteractive = !isLocked && canRequestCoverage;
+  // Effectively "is the row clickable?" — locked turns it off, sub-
+  // equipo members never get the coverage flow at all, and team-list
+  // rows that aren't mine are also non-interactive (can't request
+  // coverage for someone else).
+  const isInteractive =
+    !isLocked && canRequestCoverage && (!showPerson || isMine);
   // The list item is a button when clickable (not locked); plain
   // div otherwise. Either way it sits 44px+ tall for touch targets.
   const body = (
-    <div className="flex items-center gap-4 px-4 py-3">
+    <div
+      className={
+        "flex items-center gap-4 px-4 py-3 "
+        + (showPerson && isMine ? "bg-brand-50/40" : "")
+      }
+    >
       <DateBlock dateIso={a.date} highlight={isToday} dimmed={dimmed} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
@@ -122,6 +148,21 @@ function ShiftRow({
         </div>
         <ShiftTimeBadge a={a} inline />
       </div>
+      {showPerson && a.person_id != null && a.person_name && (
+        <div className="hidden sm:flex items-center gap-1.5 shrink-0 text-xs text-gray-700">
+          <Avatar
+            name={a.person_name}
+            mine={isMine}
+            imageUrl={a.person_avatar_url}
+          />
+          <span className={isMine ? "font-medium text-brand-700" : ""}>
+            {personLastName({
+              name: a.person_name,
+              last_name: a.person_last_name,
+            })}
+          </span>
+        </div>
+      )}
       {isInteractive && (
         <span className="hidden sm:inline text-xs text-brand-700 group-hover:underline">
           Pedir cobertura →

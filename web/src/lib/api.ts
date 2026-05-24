@@ -178,6 +178,12 @@ export type Schedule = {
    * Publicar/Despublicar button on /lead/planificacion and the
    * member-visibility filter in /me/turnos. */
   published_group_ids: number[];
+  /** Same set of groups as `published_group_ids` but with the
+   * per-group publish timestamps. The /me/turnos "Publicado el…"
+   * line picks the right timestamp from here for sub-equipo
+   * members — for them, the parent `published_at` may still be
+   * null even when their lead has already published. */
+  published_groups: { group_id: number; published_at: string }[];
   created_at: string;
 };
 

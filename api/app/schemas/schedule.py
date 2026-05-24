@@ -44,6 +44,20 @@ class AssignmentSaveResponse(BaseModel):
     warnings: list[ViolationOut] = []
 
 
+class GroupPublicationOut(BaseModel):
+    """Per-group publication marker carried on every Schedule serialization.
+
+    Sub-equipo members' "Mis turnos" view is gated by the publication
+    state of THEIR group, not by the parent Schedule.status. We expose
+    the timestamp here so the member-side UI can show "Publicado el
+    [date]" using the right value (the lead's publish moment, not the
+    tenant admin's).
+    """
+
+    group_id: int
+    published_at: datetime
+
+
 class ScheduleOut(BaseModel):
     id: int
     tenant_id: int
@@ -59,6 +73,14 @@ class ScheduleOut(BaseModel):
     # Publicar/Despublicar button) and /me/turnos (to decide which
     # group-slot assignments to render).
     published_group_ids: list[int] = []
+    # Same set of groups as `published_group_ids` but with their
+    # per-group `published_at` timestamps. Sprint 30: the /me/turnos
+    # "Publicado el…" line uses this for sub-equipo members so it
+    # reflects the lead's publish moment instead of the parent
+    # schedule's (which may still be draft from the admin's view).
+    # Kept as a parallel field rather than replacing the legacy
+    # ids list so existing callers that only need ids stay unchanged.
+    published_groups: list[GroupPublicationOut] = []
     created_at: datetime
 
     model_config = {"from_attributes": True}
