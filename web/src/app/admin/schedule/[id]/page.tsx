@@ -530,7 +530,7 @@ function AssignmentEditModal({
         <div className="space-y-3">
           <p className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
             Esta actividad está marcada como <strong>No aplica</strong> para
-            este día. No se asignará a nadie y el solver la ignorará al
+            este día. No se asignará a nadie y Trivu la ignorará al
             regenerar la planificación.
           </p>
           {dismiss.isError && (

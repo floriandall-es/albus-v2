@@ -103,8 +103,8 @@ const TOUR_STEPS: TourStep[] = [
     tourId: "nav-bloqueos",
     title: "Bloqueos",
     body:
-      "Vacaciones, bajas, formación y otras ausencias. El solver "
-      + "los tiene en cuenta al generar la planificación.",
+      "Vacaciones, bajas, formación y otras ausencias. Trivu las "
+      + "tiene en cuenta al generar la planificación.",
     placement: "right",
   },
   {
