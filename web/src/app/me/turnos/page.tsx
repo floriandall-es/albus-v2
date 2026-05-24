@@ -262,21 +262,11 @@ export default function TurnosPage() {
     [holidays.data],
   );
 
-  if (me.isLoading || schedules.isLoading) {
-    return <p className="text-sm text-gray-500">Cargando…</p>;
-  }
-  if (me.isError) {
-    return (
-      <p className="text-sm text-red-600">{(me.error as Error).message}</p>
-    );
-  }
-  if (!me.data) return null;
-
-  const myPersonId = me.data.person.id;
-  // Pre-filter the assignments fed into the renderer based on the
-  // Ámbito + Rango toggles. The list/table components handle "mine
-  // vs team" identically — they just render whatever you give them.
-  // Doing both filters here keeps each render branch declarative.
+  // ALL hooks must run on every render (Rules of Hooks), so the
+  // derivations that depend on the user/schedule live here BEFORE
+  // the loading/error early-returns below. Each one uses null-safe
+  // accessors against me.data / detail.data so it works during
+  // initial render when those queries haven't resolved yet.
   //
   // Rango is anchored on TODAY, not on the selected schedule's
   // period. That's what users intuitively want ("show me this week"
@@ -290,10 +280,15 @@ export default function TurnosPage() {
     () => computeDateRange(range, todayIsoStr),
     [range, todayIsoStr],
   );
+  // Pre-filter the assignments fed into the renderer based on the
+  // Ámbito + Rango toggles. The list/table components handle "mine
+  // vs team" identically — they just render whatever you give them.
+  // Doing both filters here keeps each render branch declarative.
   const visibleAssignments = useMemo(() => {
     let rows = detail.data?.assignments ?? [];
-    if (scope === "mine") {
-      rows = rows.filter((a) => a.person_id === myPersonId);
+    const myPid = me.data?.person.id ?? null;
+    if (scope === "mine" && myPid !== null) {
+      rows = rows.filter((a) => a.person_id === myPid);
     }
     if (dateRange) {
       rows = rows.filter(
@@ -304,7 +299,7 @@ export default function TurnosPage() {
       rows = rows.filter((a) => !hiddenSlotIds.has(a.slot_id));
     }
     return rows;
-  }, [detail.data, scope, myPersonId, dateRange, hiddenSlotIds]);
+  }, [detail.data, me.data, scope, dateRange, hiddenSlotIds]);
 
   // Catalogue of slot types present in the currently loaded
   // schedule. Drives the chip row below the toolbar. We derive
@@ -332,6 +327,21 @@ export default function TurnosPage() {
       return a.name.localeCompare(b.name);
     });
   }, [detail.data]);
+
+  if (me.isLoading || schedules.isLoading) {
+    return <p className="text-sm text-gray-500">Cargando…</p>;
+  }
+  if (me.isError) {
+    return (
+      <p className="text-sm text-red-600">{(me.error as Error).message}</p>
+    );
+  }
+  if (!me.data) return null;
+
+  // me.data is non-null past here, so myPersonId narrows to number.
+  // The hooks above received the nullable version via me.data?.person.id;
+  // the JSX below uses this narrowed value.
+  const myPersonId = me.data.person.id;
   const allSlotsHidden =
     slotCatalogue.length > 0
     && slotCatalogue.every((s) => hiddenSlotIds.has(s.id));
