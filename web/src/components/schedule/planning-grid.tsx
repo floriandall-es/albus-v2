@@ -717,12 +717,15 @@ export function Avatar({
   /** "sm" = 20px (default — matches the grid cells, message rows,
    * and shift list rows). "md" = 36px, used by the /me/turnos
    * Equipo+Lista row where the assigned person is the row's
-   * leading visual element. */
-  size?: "sm" | "md";
+   * leading visual element. "lg" = 56px, used by the directory
+   * cards where the avatar is the hero of each card. */
+  size?: "sm" | "md" | "lg";
 }) {
   const ringClass = mine ? "ring-2 ring-brand-500 ring-offset-1" : "";
-  const dimClass = size === "md" ? "h-9 w-9" : "h-5 w-5";
-  const initialsTextClass = size === "md" ? "text-xs" : "text-[9px]";
+  const dimClass =
+    size === "lg" ? "h-14 w-14" : size === "md" ? "h-9 w-9" : "h-5 w-5";
+  const initialsTextClass =
+    size === "lg" ? "text-lg" : size === "md" ? "text-xs" : "text-[9px]";
   const src = avatarSrc(imageUrl ?? null);
   if (src) {
     return (

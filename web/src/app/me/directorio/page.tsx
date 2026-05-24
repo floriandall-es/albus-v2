@@ -389,13 +389,12 @@ function DirectoryCard({
   }
 
   return (
-    <li className="relative flex flex-col gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-soft">
+    <li className="relative flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-soft">
       {/* Star toggle (top-right). Hidden for the user's own
           card — "favoriting yourself" doesn't make sense (DB
           CHECK rejects it anyway). 44×44 hit target for thumb-
-          friendly mobile taps; positioned with negative
-          margin so the icon sits flush with the corner
-          without changing the card's perceived padding. */}
+          friendly mobile taps; sits in the corner so it never
+          competes with the avatar / name for attention. */}
       {!isMe && (
         <button
           type="button"
@@ -407,11 +406,11 @@ function DirectoryCard({
           }
           onClick={() => toggleFavorite.mutate()}
           disabled={toggleFavorite.isPending}
-          className="absolute right-0.5 top-0.5 flex h-11 w-11 items-center justify-center text-gray-400 hover:text-amber-500 active:text-amber-600 disabled:opacity-60"
+          className="absolute right-1 top-1 flex h-11 w-11 items-center justify-center text-gray-300 hover:text-amber-500 active:text-amber-600 disabled:opacity-60"
         >
           <Star
             className={
-              "h-4 w-4 transition-colors "
+              "h-5 w-5 transition-colors "
               + (entry.is_favorite
                 ? "fill-amber-400 stroke-amber-500"
                 : "fill-transparent")
@@ -419,37 +418,38 @@ function DirectoryCard({
           />
         </button>
       )}
-      <div className="flex items-center gap-3 pr-8">
+      <div className="flex items-start gap-4 pr-8">
         <Avatar
           name={entry.person_name}
           mine={false}
           imageUrl={entry.person_avatar_url}
+          size="lg"
         />
-        <div className="min-w-0 leading-tight">
-          <div className="truncate text-sm font-medium text-gray-900">
+        <div className="min-w-0 flex-1 leading-tight pt-0.5">
+          <div className="truncate text-base font-semibold text-gray-900">
             {displayName}
           </div>
-          <div className="truncate text-xs text-gray-500">
+          <div className="mt-1 truncate text-sm text-gray-600">
             {[
               entry.category_name,
               hideDepartment ? null : entry.tenant_name,
               entry.group_name,
             ]
               .filter(Boolean)
-              .join(" · ")}
+              .join(" · ") || "—"}
           </div>
         </div>
       </div>
       {(buttons.length > 0 || !isMe) && (
-        <div className="flex flex-wrap gap-1.5 pt-1">
+        <div className="flex flex-wrap gap-1.5 border-t border-gray-100 pt-3">
           {!isMe && (
             <button
               type="button"
               onClick={() => openDm.mutate()}
               disabled={openDm.isPending}
-              className="inline-flex items-center gap-1 rounded-md border border-brand-200 bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-800 hover:bg-brand-100 disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 rounded-md border border-brand-200 bg-brand-50 px-2.5 py-1.5 text-xs font-medium text-brand-800 hover:bg-brand-100 disabled:opacity-60"
             >
-              <MessageSquare className="h-3 w-3" />
+              <MessageSquare className="h-3.5 w-3.5" />
               {openDm.isPending ? "Abriendo…" : "Mensaje"}
             </button>
           )}
@@ -462,9 +462,9 @@ function DirectoryCard({
               // takes over without leaving an empty tab behind.
               target={key === "wa" ? "_blank" : undefined}
               rel={key === "wa" ? "noopener noreferrer" : undefined}
-              className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-medium text-gray-700 hover:bg-gray-100"
+              className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
             >
-              <Icon className="h-3 w-3" />
+              <Icon className="h-3.5 w-3.5" />
               {label}
             </a>
           ))}
