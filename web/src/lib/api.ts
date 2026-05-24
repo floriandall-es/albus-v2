@@ -286,10 +286,14 @@ export type Person = {
   last_name: string | null;
   locale: string | null;
   avatar_url: string | null;
-  /** Sprint 28 / migration 0053: E.164 phone (single per person
-   * across tenants). Whether it surfaces on the directory is
-   * governed by per-membership share_phone / share_whatsapp. */
-  phone_e164: string | null;
+  /** Migration 0057: two free-format phones per person. work_phone =
+   * corporate / institutional line (switchboard, on-call); personal_phone
+   * = private cell. Both are shared across all the person's tenants;
+   * per-membership share_work_phone / share_personal_phone / share_whatsapp
+   * decide what shows in each hospital directory. WhatsApp is always
+   * linked to personal_phone. */
+  work_phone: string | null;
+  personal_phone: string | null;
   /** ISO timestamp the user clicked the signup verification link.
    * Null = not yet verified; UI shows the "verifica tu correo"
    * banner with a resend button until cleared. */
@@ -416,10 +420,14 @@ export type Membership = {
    * hospital directory? True by default. Settings page lets the
    * clinician flip it off. */
   directory_visible: boolean;
-  /** Sprint 28 / migration 0053: per-channel opt-in. All default
-   * false. The directory only renders the corresponding button
-   * (tel:/mailto:/wa.me) when the flag is true. */
-  share_phone: boolean;
+  /** Per-channel opt-in. share_email defaults true (institutional —
+   * migration 0054); the rest default false. Migration 0057 split
+   * the single share_phone into work + personal variants;
+   * share_whatsapp targets personal_phone only. The directory
+   * renders the corresponding button (tel:/mailto:/wa.me) when
+   * the flag is true AND the underlying datum exists. */
+  share_work_phone: boolean;
+  share_personal_phone: boolean;
   share_email: boolean;
   share_whatsapp: boolean;
   created_at: string;
@@ -482,14 +490,15 @@ export type HospitalDirectoryEntry = {
   group_id: number | null;
   group_name: string | null;
   roles: string[];
-  /** Sprint 28 / migration 0053: contact methods. Each field is
-   * populated only when the corresponding share_* flag is true
-   * on the membership AND the underlying datum exists (phone is
-   * optional on the person). UI renders one button per non-null
-   * value. */
+  /** Contact methods. Each field is populated only when the
+   * corresponding share_* flag is true on the membership AND the
+   * underlying datum exists. Migration 0057 split the single
+   * phone into work + personal; WhatsApp is always tied to the
+   * personal phone. UI renders one button per non-null value. */
   email: string | null;
-  phone_e164: string | null;
-  whatsapp_e164: string | null;
+  work_phone: string | null;
+  personal_phone: string | null;
+  whatsapp_phone: string | null;
 };
 
 export type Department = {
@@ -1037,12 +1046,14 @@ export const api = {
    * change. The data itself (phone, email) lives on Person; these
    * flags govern visibility only. */
   setMyContactPreferences: (body: {
-    share_phone?: boolean;
+    share_work_phone?: boolean;
+    share_personal_phone?: boolean;
     share_email?: boolean;
     share_whatsapp?: boolean;
   }) =>
     request<{
-      share_phone: boolean;
+      share_work_phone: boolean;
+      share_personal_phone: boolean;
       share_email: boolean;
       share_whatsapp: boolean;
     }>("/api/me/contact-preferences", {
@@ -1102,10 +1113,11 @@ export const api = {
     name?: string;
     first_name?: string;
     last_name?: string;
-    /** Sprint 28 / migration 0053. E.164 ("+34..." 7-15 digits)
-     * or empty string to clear. Backend validates the shape and
-     * 422s on invalid input. */
-    phone_e164?: string;
+    /** Migration 0057: two free-format phones (up to 50 chars). Pass
+     * an empty string to clear a field; omit the key to leave it
+     * unchanged. Patch one or both per call. */
+    work_phone?: string;
+    personal_phone?: string;
   }) =>
     request<Person>("/api/me/profile", {
       method: "PUT",

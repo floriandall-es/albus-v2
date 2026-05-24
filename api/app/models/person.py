@@ -32,12 +32,22 @@ class Person(Base):
     # served by FastAPI from the avatars volume. Null = no photo, UI falls
     # back to a colored-initials chip.
     avatar_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    # Sprint 28 / migration 0053: optional phone number in E.164
-    # format ("+34..."). Single phone per person (cross-tenant) —
-    # whether and where it's exposed is governed by per-membership
-    # share_phone / share_whatsapp flags. NULL = no phone entered.
-    # Soft format check enforced at the DB level.
-    phone_e164: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # Migration 0057: two optional phones per person, free format
+    # (no E.164 enforcement — admins enter "(96) 197 25 00 ext. 1234"
+    # and we don't want to fight them on it).
+    #
+    # `work_phone` — corporate / institutional line, switchboard,
+    # on-call number. Surfaced in the directory when the membership's
+    # `share_work_phone` flag is true.
+    # `personal_phone` — private cell. Surfaced in the directory
+    # when the membership's `share_personal_phone` is true; also
+    # the number used for the WhatsApp deep link when
+    # `share_whatsapp` is true. WhatsApp is never linked to the work
+    # phone — sharing your corporate line on WhatsApp is unwanted by
+    # default, and the switchboard usually isn't a WhatsApp account
+    # anyway.
+    work_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    personal_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
     # Timestamp the user clicked the verification link sent on
     # signup. NULL = not yet verified — surfaced to the frontend
     # which shows a "verifica tu correo" banner until cleared.

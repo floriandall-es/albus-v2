@@ -48,13 +48,15 @@ class HospitalDirectoryEntry(BaseModel):
     group_id: int | None = None
     group_name: str | None = None
     roles: list[str] = []
-    # Sprint 28 / migration 0053: contact channels. Only populated
-    # when the corresponding share_* flag is true on the
-    # membership — null otherwise. The frontend renders a
-    # phone / email / WhatsApp button per non-null value.
+    # Contact channels. Each field is populated only when the
+    # corresponding share_* flag on the membership is true AND the
+    # underlying datum exists. Migration 0057 split phones into
+    # work + personal; WhatsApp is always linked to the personal
+    # phone (never the work one).
     email: str | None = None
-    phone_e164: str | None = None
-    whatsapp_e164: str | None = None
+    work_phone: str | None = None
+    personal_phone: str | None = None
+    whatsapp_phone: str | None = None
 
 
 @router.get(
@@ -85,9 +87,10 @@ def list_hospital_directory(
         text(
             "SELECT person_id, person_name, person_first_name, "
             "person_last_name, person_avatar_url, person_email, "
-            "person_phone_e164, membership_id, tenant_id, "
-            "tenant_name, tenant_slug, category_id, category_name, "
-            "group_id, group_name, roles, share_phone, share_email, "
+            "person_work_phone, person_personal_phone, membership_id, "
+            "tenant_id, tenant_name, tenant_slug, category_id, "
+            "category_name, group_id, group_name, roles, "
+            "share_work_phone, share_personal_phone, share_email, "
             "share_whatsapp "
             "FROM list_hospital_directory(:hid)"
         ),
@@ -120,7 +123,9 @@ def list_hospital_directory(
         # Build the entry, gating contact fields by the share_*
         # flags. Hide the email/phone columns when the person
         # didn't opt in — the directory must not leak data the
-        # consent toggle is meant to govern.
+        # consent toggle is meant to govern. WhatsApp is ALWAYS
+        # tied to the personal phone; the work phone never gets
+        # surfaced as a WhatsApp deep link.
         out.append(
             HospitalDirectoryEntry(
                 person_id=r["person_id"],
@@ -138,11 +143,16 @@ def list_hospital_directory(
                 group_name=r["group_name"],
                 roles=list(r["roles"] or []),
                 email=r["person_email"] if r["share_email"] else None,
-                phone_e164=(
-                    r["person_phone_e164"] if r["share_phone"] else None
+                work_phone=(
+                    r["person_work_phone"] if r["share_work_phone"] else None
                 ),
-                whatsapp_e164=(
-                    r["person_phone_e164"] if r["share_whatsapp"] else None
+                personal_phone=(
+                    r["person_personal_phone"]
+                    if r["share_personal_phone"]
+                    else None
+                ),
+                whatsapp_phone=(
+                    r["person_personal_phone"] if r["share_whatsapp"] else None
                 ),
             )
         )
@@ -177,18 +187,23 @@ def set_my_directory_visibility(
 
 
 class ContactPreferencesPatch(BaseModel):
-    """Sprint 28 / migration 0053. Each field is optional so the
+    """Per-channel directory opt-ins. Each field is optional so the
     UI can patch one at a time without touching the others. All
-    default FALSE in the DB; the route only writes fields the
-    client explicitly sent (exclude_unset)."""
+    phone-related flags default FALSE in the DB; the route only
+    writes fields the client explicitly sent (exclude_unset).
+    Migration 0057 split share_phone into share_work_phone +
+    share_personal_phone; share_whatsapp targets the personal
+    phone only."""
 
-    share_phone: bool | None = None
+    share_work_phone: bool | None = None
+    share_personal_phone: bool | None = None
     share_email: bool | None = None
     share_whatsapp: bool | None = None
 
 
 class ContactPreferencesOut(BaseModel):
-    share_phone: bool
+    share_work_phone: bool
+    share_personal_phone: bool
     share_email: bool
     share_whatsapp: bool
 
@@ -202,9 +217,9 @@ def set_my_contact_preferences(
     ctx: RequestContext = Depends(get_current_context),
 ) -> ContactPreferencesOut:
     """Set the per-channel directory opt-ins on the caller's
-    current-tenant membership. Phone + WhatsApp both source the
-    same `persons.phone_e164` field — the flags govern which
-    channel surfaces it.
+    current-tenant membership. The two phone share flags govern
+    work_phone and personal_phone independently; share_whatsapp
+    surfaces personal_phone as a wa.me deep link in the directory.
     """
     membership = ctx.db.get(Membership, ctx.membership.id)
     if membership is None:
@@ -214,7 +229,8 @@ def set_my_contact_preferences(
         setattr(membership, k, v)
     ctx.db.flush()
     return ContactPreferencesOut(
-        share_phone=membership.share_phone,
+        share_work_phone=membership.share_work_phone,
+        share_personal_phone=membership.share_personal_phone,
         share_email=membership.share_email,
         share_whatsapp=membership.share_whatsapp,
     )

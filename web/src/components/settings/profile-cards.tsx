@@ -54,7 +54,8 @@ export function ProfileCards() {
             onSaved={invalidate}
           />
           <ContactChannelsSection
-            initialPhone={me.data.person.phone_e164}
+            initialWorkPhone={me.data.person.work_phone}
+            initialPersonalPhone={me.data.person.personal_phone}
             currentMembership={
               me.data.memberships.find(
                 (m) => m.tenant_id === me.data.current_tenant.id,
@@ -116,39 +117,35 @@ function DirectoryVisibilitySection({
   );
 }
 
-/** Sprint 28 / migration 0053. Phone field + three per-channel
- * opt-ins (phone, email, WhatsApp). Default = all FALSE. The
- * directory card renders one button per enabled channel; this
- * card is what makes those buttons appear. */
+/** Migration 0057. Two free-format phone fields (work + personal)
+ * plus four per-channel opt-ins (work phone, personal phone, email,
+ * WhatsApp). WhatsApp is always tied to the personal phone — the
+ * toggle is disabled unless a personal phone is on file. The
+ * directory card renders one button per enabled channel; this card
+ * is what makes those buttons appear. */
 function ContactChannelsSection({
-  initialPhone,
+  initialWorkPhone,
+  initialPersonalPhone,
   currentMembership,
   onSaved,
 }: {
-  initialPhone: string | null;
+  initialWorkPhone: string | null;
+  initialPersonalPhone: string | null;
   currentMembership: {
-    share_phone: boolean;
+    share_work_phone: boolean;
+    share_personal_phone: boolean;
     share_email: boolean;
     share_whatsapp: boolean;
   } | null;
   onSaved: () => void;
 }) {
   const qc = useQueryClient();
-  const [phone, setPhone] = useState(initialPhone ?? "");
-  const [phoneSavedNote, setPhoneSavedNote] = useState<string | null>(null);
-  useEffect(() => {
-    setPhone(initialPhone ?? "");
-  }, [initialPhone]);
 
-  const savePhone = useMutation({
-    mutationFn: () =>
-      api.updateProfile({ phone_e164: phone.trim() }),
-    onSuccess: () => {
-      setPhoneSavedNote("Guardado.");
-      window.setTimeout(() => setPhoneSavedNote(null), 2000);
-      onSaved();
-    },
-  });
+  const shareWorkPhone = currentMembership?.share_work_phone ?? false;
+  const sharePersonalPhone =
+    currentMembership?.share_personal_phone ?? false;
+  const shareEmail = currentMembership?.share_email ?? false;
+  const shareWhatsapp = currentMembership?.share_whatsapp ?? false;
 
   const setPref = useMutation({
     mutationFn: (
@@ -157,71 +154,33 @@ function ContactChannelsSection({
     onSuccess: () => qc.invalidateQueries({ queryKey: ["me"] }),
   });
 
-  const hasPhone = (initialPhone ?? "").trim() !== "";
-  const sharePhone = currentMembership?.share_phone ?? false;
-  const shareEmail = currentMembership?.share_email ?? false;
-  const shareWhatsapp = currentMembership?.share_whatsapp ?? false;
-
-  // Empty string or matches E.164 — the backend rejects anything
-  // else with 422, so guard the save button client-side too.
-  const phoneTrim = phone.trim();
-  const phoneValid =
-    phoneTrim === "" || /^\+[0-9]{7,15}$/.test(phoneTrim);
-  const phoneChanged = phoneTrim !== (initialPhone ?? "");
-
   return (
     <Card>
-      <div className="p-5 space-y-4">
+      <div className="p-5 space-y-5">
         <div>
           <h3 className="text-sm font-semibold text-gray-900">
             Cómo me pueden contactar
           </h3>
           <p className="mt-1 text-xs text-gray-500">
             Lo que esté activo aquí aparece en tu tarjeta del directorio.
-            Tu email se muestra por defecto — los canales personales
-            (teléfono, WhatsApp) sólo si los activas.
+            Tu email se muestra por defecto — los teléfonos y WhatsApp
+            sólo si los activas. WhatsApp se enlaza al teléfono personal.
           </p>
         </div>
-        <div>
-          <label className="block">
-            <span className="text-sm font-medium text-gray-700">
-              Teléfono (formato internacional)
-            </span>
-            <div className="mt-1 flex items-center gap-2">
-              <input
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+34 612 345 678"
-                className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              />
-              <Button
-                onClick={() => savePhone.mutate()}
-                disabled={
-                  !phoneValid || !phoneChanged || savePhone.isPending
-                }
-              >
-                {savePhone.isPending ? "Guardando…" : "Guardar"}
-              </Button>
-            </div>
-            {!phoneValid && (
-              <p className="mt-1 text-xs text-rose-700">
-                Usa el formato internacional: empieza con + y luego
-                7–15 dígitos.
-              </p>
-            )}
-            {savePhone.isError && (
-              <p className="mt-1 text-xs text-rose-700">
-                {(savePhone.error as Error).message}
-              </p>
-            )}
-            {phoneSavedNote && (
-              <p className="mt-1 text-xs text-emerald-700">
-                {phoneSavedNote}
-              </p>
-            )}
-          </label>
-        </div>
+        <PhoneField
+          label="Teléfono de trabajo"
+          help="Centralita, extensión, busca, número de guardia… Cualquier formato."
+          initial={initialWorkPhone}
+          onSaved={onSaved}
+          fieldKey="work_phone"
+        />
+        <PhoneField
+          label="Teléfono personal"
+          help="Tu móvil personal. Si lo añades, podrás activar WhatsApp."
+          initial={initialPersonalPhone}
+          onSaved={onSaved}
+          fieldKey="personal_phone"
+        />
         <div className="space-y-2">
           <ChannelToggle
             label="Mostrar mi email en el directorio"
@@ -230,23 +189,43 @@ function ContactChannelsSection({
             onChange={(v) => setPref.mutate({ share_email: v })}
           />
           <ChannelToggle
-            label="Mostrar mi teléfono en el directorio"
-            checked={sharePhone}
-            disabled={setPref.isPending || !hasPhone}
+            label="Mostrar mi teléfono de trabajo en el directorio"
+            checked={shareWorkPhone}
+            disabled={
+              setPref.isPending
+              || (initialWorkPhone ?? "").trim() === ""
+            }
             hint={
-              !hasPhone
-                ? "Añade un número primero para activar este canal."
+              (initialWorkPhone ?? "").trim() === ""
+                ? "Añade un número de trabajo primero para activar este canal."
                 : null
             }
-            onChange={(v) => setPref.mutate({ share_phone: v })}
+            onChange={(v) => setPref.mutate({ share_work_phone: v })}
+          />
+          <ChannelToggle
+            label="Mostrar mi teléfono personal en el directorio"
+            checked={sharePersonalPhone}
+            disabled={
+              setPref.isPending
+              || (initialPersonalPhone ?? "").trim() === ""
+            }
+            hint={
+              (initialPersonalPhone ?? "").trim() === ""
+                ? "Añade un número personal primero para activar este canal."
+                : null
+            }
+            onChange={(v) => setPref.mutate({ share_personal_phone: v })}
           />
           <ChannelToggle
             label="Permitir contactarme por WhatsApp"
             checked={shareWhatsapp}
-            disabled={setPref.isPending || !hasPhone}
+            disabled={
+              setPref.isPending
+              || (initialPersonalPhone ?? "").trim() === ""
+            }
             hint={
-              !hasPhone
-                ? "Usa el mismo número que el teléfono — añádelo primero."
+              (initialPersonalPhone ?? "").trim() === ""
+                ? "WhatsApp usa el teléfono personal — añádelo primero."
                 : null
             }
             onChange={(v) => setPref.mutate({ share_whatsapp: v })}
@@ -259,6 +238,87 @@ function ContactChannelsSection({
         )}
       </div>
     </Card>
+  );
+}
+
+/** Single phone input + Guardar button. Free format — backend
+ * caps at 50 chars but otherwise accepts any string. Pass an empty
+ * string to clear. Extracted so we can render two of them
+ * (work + personal) without duplicating the local state plumbing. */
+function PhoneField({
+  label,
+  help,
+  initial,
+  onSaved,
+  fieldKey,
+}: {
+  label: string;
+  help: string;
+  initial: string | null;
+  onSaved: () => void;
+  /** Which API field this control writes to. The two phones use
+   * the same updateProfile endpoint with distinct keys. */
+  fieldKey: "work_phone" | "personal_phone";
+}) {
+  const qc = useQueryClient();
+  const [value, setValue] = useState(initial ?? "");
+  const [savedNote, setSavedNote] = useState<string | null>(null);
+  useEffect(() => {
+    setValue(initial ?? "");
+  }, [initial]);
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.updateProfile({ [fieldKey]: value.trim() } as Parameters<
+        typeof api.updateProfile
+      >[0]),
+    onSuccess: () => {
+      setSavedNote("Guardado.");
+      window.setTimeout(() => setSavedNote(null), 2000);
+      qc.invalidateQueries({ queryKey: ["me"] });
+      onSaved();
+    },
+  });
+
+  const trimmed = value.trim();
+  const dirty = trimmed !== (initial ?? "").trim();
+  const tooLong = trimmed.length > 50;
+
+  return (
+    <div>
+      <label className="block">
+        <span className="text-sm font-medium text-gray-700">{label}</span>
+        <div className="mt-1 flex items-center gap-2">
+          <input
+            type="tel"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="ej. +34 612 345 678"
+            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          />
+          <Button
+            onClick={() => save.mutate()}
+            disabled={!dirty || tooLong || save.isPending}
+          >
+            {save.isPending ? "Guardando…" : "Guardar"}
+          </Button>
+        </div>
+        <p className="mt-1 text-xs text-gray-500">{help}</p>
+        {tooLong && (
+          <p className="mt-1 text-xs text-rose-700">
+            Máximo 50 caracteres.
+          </p>
+        )}
+        {save.isError && (
+          <p className="mt-1 text-xs text-rose-700">
+            {(save.error as Error).message}
+          </p>
+        )}
+        {savedNote && (
+          <p className="mt-1 text-xs text-emerald-700">{savedNote}</p>
+        )}
+      </label>
+    </div>
   );
 }
 

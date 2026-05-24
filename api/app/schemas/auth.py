@@ -135,11 +135,14 @@ class PersonOut(BaseModel):
     last_name: str | None = None
     locale: str | None = None
     avatar_url: str | None = None
-    # Sprint 28 / migration 0053: optional E.164 phone number.
-    # Single phone per person across tenants. Whether it's exposed
-    # in the directory is governed by per-membership
-    # share_phone / share_whatsapp flags.
-    phone_e164: str | None = None
+    # Migration 0057: two optional phones (free format), separate
+    # work + personal lines. Same phone is shared across all the
+    # person's tenants; per-membership share_work_phone /
+    # share_personal_phone / share_whatsapp flags decide which
+    # appear in any given hospital directory. WhatsApp is always
+    # linked to personal_phone.
+    work_phone: str | None = None
+    personal_phone: str | None = None
     # Timestamp the user clicked the signup verification link.
     # Null = not yet verified — the web UI shows a "verifica tu
     # correo" banner with a resend button. Existing accounts
@@ -167,12 +170,15 @@ class MembershipOut(BaseModel):
     # (default). Frontend reads this on the settings page to render
     # the toggle's current state.
     directory_visible: bool = True
-    # Sprint 28: per-channel opt-in. share_email defaults TRUE
-    # (institutional channel — migration 0054); share_phone and
-    # share_whatsapp default FALSE (personal). Directory renders
-    # the corresponding button when the flag is true AND the
-    # underlying datum exists.
-    share_phone: bool = False
+    # Per-channel opt-in. share_email defaults TRUE (institutional
+    # — migration 0054). share_work_phone, share_personal_phone and
+    # share_whatsapp default FALSE (migration 0057 / 0053).
+    # Directory renders the corresponding button when the flag is
+    # true AND the underlying datum exists. share_whatsapp always
+    # targets personal_phone — the route layer hides the WhatsApp
+    # link when personal_phone is null.
+    share_work_phone: bool = False
+    share_personal_phone: bool = False
     share_email: bool = True
     share_whatsapp: bool = False
     created_at: datetime
@@ -239,14 +245,13 @@ class ProfileUpdateRequest(BaseModel):
     name: str | None = Field(default=None, max_length=255)
     first_name: str | None = Field(default=None, max_length=255)
     last_name: str | None = Field(default=None, max_length=255)
-    # Sprint 28 / migration 0053. Optional E.164 phone. Pass an
-    # empty string to clear (parsed as None server-side). The
-    # database has a soft format check (^\+[0-9]{7,15}$); we
-    # validate the same shape here so invalid input gets a
-    # friendly 422 instead of an IntegrityError.
-    phone_e164: str | None = Field(
-        default=None, max_length=20, pattern=r"^(\+[0-9]{7,15})?$"
-    )
+    # Migration 0057: two free-format phones, work + personal. Pass
+    # an empty string to clear a field; pass None (omit the key) to
+    # leave it unchanged. Length capped at 50 chars — enough for
+    # "(96) 197 25 00 ext. 1234" style entries without giving us a
+    # storage nightmare.
+    work_phone: str | None = Field(default=None, max_length=50)
+    personal_phone: str | None = Field(default=None, max_length=50)
 
 
 class PasswordChangeRequest(BaseModel):

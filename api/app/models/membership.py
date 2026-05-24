@@ -61,20 +61,24 @@ class Membership(Base):
     directory_visible: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true"
     )
-    # Sprint 28: per-channel opt-in for directory contact buttons.
-    # Per-membership so a clinician can share different channels
-    # at different tenants. The data itself lives on Person (email,
-    # phone_e164); these flags govern visibility only.
+    # Per-channel opt-in for directory contact buttons. Per-membership
+    # so a clinician can share different channels at different
+    # tenants. The data itself lives on Person (email, work_phone,
+    # personal_phone); these flags govern visibility only.
     #
-    # share_email defaults TRUE (migration 0054). Email is
-    # institutional in clinical practice — already on signatures
-    # and badges — so making it visible in the directory matches
-    # workplace expectation. Existing memberships were backfilled
-    # by the same migration, skipping `@trivu.invalid` placeholders.
+    # Defaults:
+    #   share_email = TRUE (migration 0054). Email is institutional
+    #     — already on signatures and badges — so making it visible
+    #     matches workplace expectation.
+    #   share_work_phone, share_personal_phone, share_whatsapp = FALSE
+    #     (migration 0057 / 0053). Phones need explicit opt-in.
     #
-    # share_phone + share_whatsapp default FALSE. Personal phone
-    # numbers need explicit opt-in.
-    share_phone: Mapped[bool] = mapped_column(
+    # share_whatsapp always targets the personal phone — the route
+    # layer suppresses the WhatsApp link when personal_phone is null.
+    share_work_phone: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    share_personal_phone: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
     share_email: Mapped[bool] = mapped_column(

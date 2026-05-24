@@ -207,21 +207,31 @@ function DirectoryCard({
   // (the backend already gates this on the share_* opt-in flags).
   // WhatsApp uses the wa.me deep link — works without an API key,
   // opens the native app on mobile and web.wa.com on desktop.
-  const waNumber = entry.whatsapp_e164?.replace(/[^0-9]/g, "") ?? "";
+  // wa.me wants digits-only; strip whatever formatting the user
+  // typed when they saved their personal phone.
+  const waDigits = entry.whatsapp_phone?.replace(/[^0-9]/g, "") ?? "";
   const buttons: { key: string; href: string; label: string; Icon: typeof Phone }[]
     = [];
-  if (entry.phone_e164) {
+  if (entry.work_phone) {
     buttons.push({
-      key: "phone",
-      href: `tel:${entry.phone_e164}`,
-      label: "Llamar",
+      key: "work-phone",
+      href: `tel:${entry.work_phone}`,
+      label: "Llamar (trabajo)",
       Icon: Phone,
     });
   }
-  if (entry.whatsapp_e164) {
+  if (entry.personal_phone) {
+    buttons.push({
+      key: "personal-phone",
+      href: `tel:${entry.personal_phone}`,
+      label: "Llamar (móvil)",
+      Icon: Phone,
+    });
+  }
+  if (entry.whatsapp_phone) {
     buttons.push({
       key: "wa",
-      href: `https://wa.me/${waNumber}`,
+      href: `https://wa.me/${waDigits}`,
       label: "WhatsApp",
       Icon: MessageCircle,
     });
