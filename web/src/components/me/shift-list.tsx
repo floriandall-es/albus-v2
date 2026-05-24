@@ -120,6 +120,21 @@ function ShiftRow({
     !isLocked && canRequestCoverage && (!showPerson || isMine);
   // The list item is a button when clickable (not locked); plain
   // div otherwise. Either way it sits 44px+ tall for touch targets.
+  //
+  // Two layouts depending on `showPerson`:
+  //   - showPerson=false (Mis-only list): shift name is the lead
+  //     because every row is the same person.
+  //   - showPerson=true (Equipo list): the assigned person is the
+  //     lead — clinicians scanning the team roster need to spot
+  //     "who's on" before "what they're doing", so the name + avatar
+  //     get top billing and the slot becomes the supporting line.
+  const personPrimary =
+    showPerson && a.person_id != null && a.person_name
+      ? personLastName({
+          name: a.person_name,
+          last_name: a.person_last_name,
+        })
+      : null;
   const body = (
     <div
       className={
@@ -128,48 +143,75 @@ function ShiftRow({
       }
     >
       <DateBlock dateIso={a.date} highlight={isToday} dimmed={dimmed} />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span
-            className={
-              "text-base font-semibold "
-              + (dimmed ? "text-gray-500" : "text-gray-900")
-            }
-          >
-            {a.slot_name}
-          </span>
-          {a.team_role_label && (
-            <span className="text-sm text-gray-500">
-              · {a.team_role_label}
-            </span>
-          )}
-          {/* The "Bloqueado" badge used to live here. Removed
-              because members don't need to know an admin
-              pinned the shift — the lock's only behavioural
-              consequence for them is "no coverage button",
-              which the conditional render below already handles
-              silently. The internal `isLocked` flag stays so
-              that gate keeps working. */}
-        </div>
-        <ShiftTimeBadge a={a} inline />
-      </div>
-      {showPerson && a.person_id != null && a.person_name && (
-        <div className="hidden sm:flex items-center gap-1.5 shrink-0 text-xs text-gray-700">
+      {personPrimary && a.person_name ? (
+        <>
           <Avatar
             name={a.person_name}
             mine={isMine}
             imageUrl={a.person_avatar_url}
+            size="md"
           />
-          <span className={isMine ? "font-medium text-brand-700" : ""}>
-            {personLastName({
-              name: a.person_name,
-              last_name: a.person_last_name,
-            })}
-          </span>
+          <div className="flex-1 min-w-0">
+            <div
+              className={
+                "truncate text-base font-semibold "
+                + (isMine
+                  ? "text-brand-700"
+                  : dimmed
+                    ? "text-gray-500"
+                    : "text-gray-900")
+              }
+            >
+              {personPrimary}
+              {isMine && (
+                <span className="ml-2 text-[11px] font-medium uppercase tracking-wide text-brand-600">
+                  Tú
+                </span>
+              )}
+            </div>
+            <div
+              className={
+                "mt-0.5 flex items-baseline gap-2 flex-wrap text-sm "
+                + (dimmed ? "text-gray-400" : "text-gray-600")
+              }
+            >
+              <span>{a.slot_name}</span>
+              {a.team_role_label && (
+                <span className="text-gray-400">· {a.team_role_label}</span>
+              )}
+              <ShiftTimeBadge a={a} />
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className={
+                "text-base font-semibold "
+                + (dimmed ? "text-gray-500" : "text-gray-900")
+              }
+            >
+              {a.slot_name}
+            </span>
+            {a.team_role_label && (
+              <span className="text-sm text-gray-500">
+                · {a.team_role_label}
+              </span>
+            )}
+            {/* The "Bloqueado" badge used to live here. Removed
+                because members don't need to know an admin pinned
+                the shift — the lock's only behavioural consequence
+                for them is "no coverage button", which the
+                conditional render below already handles silently.
+                The internal `isLocked` flag stays so that gate
+                keeps working. */}
+          </div>
+          <ShiftTimeBadge a={a} inline />
         </div>
       )}
       {isInteractive && (
-        <span className="hidden sm:inline text-xs text-brand-700 group-hover:underline">
+        <span className="hidden sm:inline text-xs text-brand-700 group-hover:underline shrink-0">
           Pedir cobertura →
         </span>
       )}

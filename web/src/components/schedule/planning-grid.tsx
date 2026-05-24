@@ -709,12 +709,20 @@ export function Avatar({
   name,
   mine,
   imageUrl,
+  size = "sm",
 }: {
   name: string;
   mine: boolean;
   imageUrl?: string | null;
+  /** "sm" = 20px (default — matches the grid cells, message rows,
+   * and shift list rows). "md" = 36px, used by the /me/turnos
+   * Equipo+Lista row where the assigned person is the row's
+   * leading visual element. */
+  size?: "sm" | "md";
 }) {
   const ringClass = mine ? "ring-2 ring-brand-500 ring-offset-1" : "";
+  const dimClass = size === "md" ? "h-9 w-9" : "h-5 w-5";
+  const initialsTextClass = size === "md" ? "text-xs" : "text-[9px]";
   const src = avatarSrc(imageUrl ?? null);
   if (src) {
     return (
@@ -723,7 +731,9 @@ export function Avatar({
         src={src}
         alt=""
         className={
-          "h-5 w-5 shrink-0 rounded-full object-cover " + ringClass
+          dimClass
+          + " shrink-0 rounded-full object-cover "
+          + ringClass
         }
       />
     );
@@ -732,7 +742,11 @@ export function Avatar({
   return (
     <span
       className={
-        "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold "
+        "inline-flex shrink-0 items-center justify-center rounded-full font-semibold "
+        + dimClass
+        + " "
+        + initialsTextClass
+        + " "
         + ringClass
       }
       style={{ backgroundColor: p.bg, color: p.fg }}
