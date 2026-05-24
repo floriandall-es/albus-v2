@@ -47,6 +47,10 @@ class HospitalDirectoryEntry(BaseModel):
     tenant_slug: str
     category_id: int | None = None
     category_name: str | None = None
+    # Migration 0060: free-text job title. Cargo replaces
+    # category_name as the card's subtitle when set; falls back
+    # to category_name when null.
+    cargo: str | None = None
     group_id: int | None = None
     group_name: str | None = None
     roles: list[str] = []
@@ -93,9 +97,9 @@ def list_hospital_directory(
         text(
             "SELECT person_id, person_name, person_first_name, "
             "person_last_name, person_avatar_url, person_email, "
-            "person_work_phone, person_personal_phone, membership_id, "
-            "tenant_id, tenant_name, tenant_slug, category_id, "
-            "category_name, group_id, group_name, roles, "
+            "person_work_phone, person_personal_phone, person_cargo, "
+            "membership_id, tenant_id, tenant_name, tenant_slug, "
+            "category_id, category_name, group_id, group_name, roles, "
             "share_work_phone, share_personal_phone, share_email, "
             "share_whatsapp "
             "FROM list_hospital_directory(:hid)"
@@ -157,6 +161,7 @@ def list_hospital_directory(
                 tenant_slug=r["tenant_slug"],
                 category_id=r["category_id"],
                 category_name=r["category_name"],
+                cargo=r["person_cargo"],
                 group_id=r["group_id"],
                 group_name=r["group_name"],
                 roles=list(r["roles"] or []),

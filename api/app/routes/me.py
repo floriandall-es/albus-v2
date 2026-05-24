@@ -154,6 +154,9 @@ def update_profile(
         ctx.person.work_phone = payload.work_phone.strip() or None
     if payload.personal_phone is not None:
         ctx.person.personal_phone = payload.personal_phone.strip() or None
+    # Migration 0060: free-text job title, same patch semantics.
+    if payload.cargo is not None:
+        ctx.person.cargo = payload.cargo.strip() or None
     ctx.db.flush()
     return ctx.person
 

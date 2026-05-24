@@ -48,6 +48,12 @@ class Person(Base):
     # anyway.
     work_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
     personal_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Migration 0060: free-text job title shown on the hospital
+    # directory card ("Jefe de Servicio", "Coordinadora de
+    # Trasplantes"…). Distinct from membership.category_id, which
+    # the scheduler uses to decide who can cover which slot —
+    # cargo is purely presentational.
+    cargo: Mapped[str | None] = mapped_column(String(120), nullable=True)
     # Timestamp the user clicked the verification link sent on
     # signup. NULL = not yet verified — surfaced to the frontend
     # which shows a "verifica tu correo" banner until cleared.

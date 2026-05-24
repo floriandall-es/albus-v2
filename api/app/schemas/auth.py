@@ -143,6 +143,9 @@ class PersonOut(BaseModel):
     # linked to personal_phone.
     work_phone: str | None = None
     personal_phone: str | None = None
+    # Migration 0060: free-text job title surfaced on the directory
+    # card. Independent of the scheduling categoría.
+    cargo: str | None = None
     # Timestamp the user clicked the signup verification link.
     # Null = not yet verified — the web UI shows a "verifica tu
     # correo" banner with a resend button. Existing accounts
@@ -252,6 +255,9 @@ class ProfileUpdateRequest(BaseModel):
     # storage nightmare.
     work_phone: str | None = Field(default=None, max_length=50)
     personal_phone: str | None = Field(default=None, max_length=50)
+    # Migration 0060: free-text job title. Empty string clears;
+    # None (omitted key) leaves the existing value alone.
+    cargo: str | None = Field(default=None, max_length=120)
 
 
 class PasswordChangeRequest(BaseModel):

@@ -431,7 +431,10 @@ function DirectoryCard({
           </div>
           <div className="mt-1 truncate text-sm text-gray-600">
             {[
-              entry.category_name,
+              // Cargo (job title) wins over the scheduling
+              // categoría when the user has set one — that's the
+              // whole point of having it as a separate field.
+              entry.cargo || entry.category_name,
               hideDepartment ? null : entry.tenant_name,
               entry.group_name,
             ]

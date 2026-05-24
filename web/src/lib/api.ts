@@ -294,6 +294,10 @@ export type Person = {
    * linked to personal_phone. */
   work_phone: string | null;
   personal_phone: string | null;
+  /** Migration 0060: free-text job title shown on the directory
+   * card ("Jefe de Servicio"). Distinct from membership.category —
+   * cargo is presentational, category drives the scheduler. */
+  cargo: string | null;
   /** ISO timestamp the user clicked the signup verification link.
    * Null = not yet verified; UI shows the "verifica tu correo"
    * banner with a resend button until cleared. */
@@ -493,6 +497,9 @@ export type HospitalDirectoryEntry = {
   tenant_slug: string;
   category_id: number | null;
   category_name: string | null;
+  /** Free-text job title (migration 0060). When set, the directory
+   * card uses this as the subtitle instead of category_name. */
+  cargo: string | null;
   group_id: number | null;
   group_name: string | null;
   roles: string[];
@@ -1147,6 +1154,10 @@ export const api = {
      * unchanged. Patch one or both per call. */
     work_phone?: string;
     personal_phone?: string;
+    /** Migration 0060: free-text job title for the directory card
+     * (max 120 chars). Empty string clears; omitted key leaves
+     * the existing value alone. */
+    cargo?: string;
   }) =>
     request<Person>("/api/me/profile", {
       method: "PUT",

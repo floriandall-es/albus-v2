@@ -33,6 +33,7 @@ export function ProfileCards() {
         initialName={me.data.person.name}
         initialFirstName={me.data.person.first_name}
         initialLastName={me.data.person.last_name}
+        initialCargo={me.data.person.cargo}
         onSaved={invalidate}
       />
       <EmailSection
@@ -477,11 +478,16 @@ function ProfileSection({
   initialName,
   initialFirstName,
   initialLastName,
+  initialCargo,
   onSaved,
 }: {
   initialName: string;
   initialFirstName: string | null;
   initialLastName: string | null;
+  /** Migration 0060: free-text job title shown on the hospital
+   * directory card. Independent of the scheduling categoría
+   * (the admin still controls that on /admin/team). */
+  initialCargo: string | null;
   onSaved: () => void;
 }) {
   // Sprint 18: split-name fields. The legacy single `name` is kept
@@ -490,6 +496,7 @@ function ProfileSection({
   // from the two parts.
   const [firstName, setFirstName] = useState(initialFirstName ?? "");
   const [lastName, setLastName] = useState(initialLastName ?? "");
+  const [cargo, setCargo] = useState(initialCargo ?? "");
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(
     null,
   );
@@ -497,16 +504,18 @@ function ProfileSection({
   useEffect(() => {
     setFirstName(initialFirstName ?? "");
     setLastName(initialLastName ?? "");
-  }, [initialFirstName, initialLastName]);
+    setCargo(initialCargo ?? "");
+  }, [initialFirstName, initialLastName, initialCargo]);
 
   const save = useMutation({
     mutationFn: () =>
       api.updateProfile({
         first_name: firstName.trim(),
         last_name: lastName.trim(),
+        cargo: cargo.trim(),
       }),
     onSuccess: () => {
-      setMsg({ kind: "ok", text: "Nombre actualizado." });
+      setMsg({ kind: "ok", text: "Perfil actualizado." });
       onSaved();
     },
     onError: (e) =>
@@ -515,7 +524,8 @@ function ProfileSection({
 
   const dirty =
     firstName.trim() !== (initialFirstName ?? "").trim()
-    || lastName.trim() !== (initialLastName ?? "").trim();
+    || lastName.trim() !== (initialLastName ?? "").trim()
+    || cargo.trim() !== (initialCargo ?? "").trim();
 
   return (
     <Card>
@@ -548,6 +558,20 @@ function ProfileSection({
           onChange={setLastName}
           required
         />
+        <div>
+          <TextField
+            label="Cargo"
+            value={cargo}
+            onChange={setCargo}
+            placeholder="ej. Jefe de Servicio, Coordinadora de Trasplantes…"
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            Tu cargo profesional. Aparece en el <strong>Directorio
+            del hospital</strong> debajo de tu nombre — no afecta
+            cómo se reparten los turnos (eso lo controla tu
+            categoría, que asigna el administrador).
+          </p>
+        </div>
         <div className="flex items-center gap-3">
           <Button
             type="submit"
@@ -558,7 +582,7 @@ function ProfileSection({
               || lastName.trim().length === 0
             }
           >
-            {save.isPending ? "Guardando…" : "Guardar nombre"}
+            {save.isPending ? "Guardando…" : "Guardar perfil"}
           </Button>
           {msg && (
             <span
