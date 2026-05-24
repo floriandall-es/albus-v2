@@ -154,9 +154,15 @@ def update_profile(
         ctx.person.work_phone = payload.work_phone.strip() or None
     if payload.personal_phone is not None:
         ctx.person.personal_phone = payload.personal_phone.strip() or None
-    # Migration 0060: free-text job title, same patch semantics.
-    if payload.cargo is not None:
-        ctx.person.cargo = payload.cargo.strip() or None
+    # Migration 0061: replace the cargos list. Each entry trimmed;
+    # empty strings filtered out; per-entry cap at 120 chars
+    # (truncated rather than rejected so a UI glitch doesn't lose
+    # the rest of the payload). The pydantic schema already caps
+    # the list length at 10.
+    if payload.cargos is not None:
+        ctx.person.cargos = [
+            c.strip()[:120] for c in payload.cargos if c and c.strip()
+        ]
     ctx.db.flush()
     return ctx.person
 

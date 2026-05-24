@@ -143,9 +143,11 @@ class PersonOut(BaseModel):
     # linked to personal_phone.
     work_phone: str | None = None
     personal_phone: str | None = None
-    # Migration 0060: free-text job title surfaced on the directory
-    # card. Independent of the scheduling categoría.
-    cargo: str | None = None
+    # Migration 0061: list of free-text job titles surfaced on the
+    # directory card. A clinician can wear more than one hat.
+    # Always a list — empty when unset. Independent of the
+    # scheduling categoría.
+    cargos: list[str] = []
     # Timestamp the user clicked the signup verification link.
     # Null = not yet verified — the web UI shows a "verifica tu
     # correo" banner with a resend button. Existing accounts
@@ -255,9 +257,14 @@ class ProfileUpdateRequest(BaseModel):
     # storage nightmare.
     work_phone: str | None = Field(default=None, max_length=50)
     personal_phone: str | None = Field(default=None, max_length=50)
-    # Migration 0060: free-text job title. Empty string clears;
-    # None (omitted key) leaves the existing value alone.
-    cargo: str | None = Field(default=None, max_length=120)
+    # Migration 0061: replace the entire cargos list. Pass an empty
+    # array to clear all; omit the key to leave them alone. Each
+    # entry capped at 120 chars; total list capped at 10 to keep
+    # the directory card readable.
+    cargos: list[str] | None = Field(
+        default=None,
+        max_length=10,
+    )
 
 
 class PasswordChangeRequest(BaseModel):

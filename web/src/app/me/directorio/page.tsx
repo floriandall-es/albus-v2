@@ -429,18 +429,39 @@ function DirectoryCard({
           <div className="truncate text-base font-semibold text-gray-900">
             {displayName}
           </div>
-          <div className="mt-1 truncate text-sm text-gray-600">
-            {[
-              // Cargo (job title) wins over the scheduling
-              // categoría when the user has set one — that's the
-              // whole point of having it as a separate field.
-              entry.cargo || entry.category_name,
-              hideDepartment ? null : entry.tenant_name,
-              entry.group_name,
-            ]
-              .filter(Boolean)
-              .join(" · ") || "—"}
-          </div>
+          {/* Cargos as pills when set; otherwise fall back to the
+              scheduling categoría as plain text (legacy view for
+              users who haven't picked any cargo). */}
+          {entry.cargos.length > 0 ? (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {entry.cargos.map((c) => (
+                <span
+                  key={c}
+                  className="inline-flex items-center rounded-full border border-brand-200 bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-800"
+                >
+                  {c}
+                </span>
+              ))}
+            </div>
+          ) : (
+            entry.category_name && (
+              <div className="mt-1 truncate text-sm text-gray-600">
+                {entry.category_name}
+              </div>
+            )
+          )}
+          {/* Department + sub-equipo line (separate from cargos
+              so it stays as quiet metadata under the pills). */}
+          {(!hideDepartment && entry.tenant_name) || entry.group_name ? (
+            <div className="mt-1 truncate text-xs text-gray-500">
+              {[
+                hideDepartment ? null : entry.tenant_name,
+                entry.group_name,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </div>
+          ) : null}
         </div>
       </div>
       {(buttons.length > 0 || !isMe) && (

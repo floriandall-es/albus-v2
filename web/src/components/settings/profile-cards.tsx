@@ -33,7 +33,7 @@ export function ProfileCards() {
         initialName={me.data.person.name}
         initialFirstName={me.data.person.first_name}
         initialLastName={me.data.person.last_name}
-        initialCargo={me.data.person.cargo}
+        initialCargos={me.data.person.cargos}
         onSaved={invalidate}
       />
       <EmailSection
@@ -474,20 +474,38 @@ function AvatarSection({
   );
 }
 
+/** Hard-coded list of common Spanish hospital cargos. Generic
+ * masculine / gender-neutral forms — Spanish workplace convention
+ * for formal job titles. If a real customer needs a different
+ * label, we can add it here without a migration; the column is
+ * free text. */
+const CARGO_OPTIONS = [
+  "Jefe de Servicio",
+  "Jefe de Sección",
+  "Adjunto",
+  "Tutor de Residentes",
+  "Coordinador",
+  "Residente",
+  "Profesor Asociado",
+  "Investigador",
+  "Becario",
+  "Médico Interno",
+];
+
 function ProfileSection({
   initialName,
   initialFirstName,
   initialLastName,
-  initialCargo,
+  initialCargos,
   onSaved,
 }: {
   initialName: string;
   initialFirstName: string | null;
   initialLastName: string | null;
-  /** Migration 0060: free-text job title shown on the hospital
-   * directory card. Independent of the scheduling categoría
-   * (the admin still controls that on /admin/team). */
-  initialCargo: string | null;
+  /** Migration 0061: list of free-text job titles shown on the
+   * hospital directory card. Independent of the scheduling
+   * categoría (the admin still controls that on /admin/team). */
+  initialCargos: string[];
   onSaved: () => void;
 }) {
   // Sprint 18: split-name fields. The legacy single `name` is kept
@@ -496,7 +514,7 @@ function ProfileSection({
   // from the two parts.
   const [firstName, setFirstName] = useState(initialFirstName ?? "");
   const [lastName, setLastName] = useState(initialLastName ?? "");
-  const [cargo, setCargo] = useState(initialCargo ?? "");
+  const [cargos, setCargos] = useState<string[]>(initialCargos);
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(
     null,
   );
@@ -504,15 +522,15 @@ function ProfileSection({
   useEffect(() => {
     setFirstName(initialFirstName ?? "");
     setLastName(initialLastName ?? "");
-    setCargo(initialCargo ?? "");
-  }, [initialFirstName, initialLastName, initialCargo]);
+    setCargos(initialCargos);
+  }, [initialFirstName, initialLastName, initialCargos]);
 
   const save = useMutation({
     mutationFn: () =>
       api.updateProfile({
         first_name: firstName.trim(),
         last_name: lastName.trim(),
-        cargo: cargo.trim(),
+        cargos,
       }),
     onSuccess: () => {
       setMsg({ kind: "ok", text: "Perfil actualizado." });
@@ -522,10 +540,25 @@ function ProfileSection({
       setMsg({ kind: "err", text: (e as Error).message ?? "Error" }),
   });
 
+  // Set-equal compare for the cargos array (order-insensitive
+  // since the chip layout doesn't expose a user-visible order).
+  const cargosDirty = (() => {
+    if (cargos.length !== initialCargos.length) return true;
+    const a = new Set(cargos);
+    return initialCargos.some((c) => !a.has(c));
+  })();
   const dirty =
     firstName.trim() !== (initialFirstName ?? "").trim()
     || lastName.trim() !== (initialLastName ?? "").trim()
-    || cargo.trim() !== (initialCargo ?? "").trim();
+    || cargosDirty;
+
+  function toggleCargo(value: string) {
+    setCargos((prev) =>
+      prev.includes(value)
+        ? prev.filter((c) => c !== value)
+        : [...prev, value],
+    );
+  }
 
   return (
     <Card>
@@ -559,18 +592,37 @@ function ProfileSection({
           required
         />
         <div>
-          <TextField
-            label="Cargo"
-            value={cargo}
-            onChange={setCargo}
-            placeholder="ej. Jefe de Servicio, Coordinadora de Trasplantes…"
-          />
-          <p className="mt-1 text-xs text-gray-500">
-            Tu cargo profesional. Aparece en el <strong>Directorio
-            del hospital</strong> debajo de tu nombre — no afecta
-            cómo se reparten los turnos (eso lo controla tu
-            categoría, que asigna el administrador).
+          <span className="text-sm font-medium text-gray-700">
+            Cargo
+          </span>
+          <p className="mt-1 mb-2 text-xs text-gray-500">
+            Marca todos los cargos que ocupes. Aparecen como
+            etiquetas en tu tarjeta del <strong>Directorio del
+            hospital</strong> — no afectan cómo se reparten los
+            turnos (eso lo controla tu categoría, que asigna el
+            administrador).
           </p>
+          <div className="flex flex-wrap gap-1.5">
+            {CARGO_OPTIONS.map((opt) => {
+              const checked = cargos.includes(opt);
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => toggleCargo(opt)}
+                  aria-pressed={checked}
+                  className={
+                    "rounded-full border px-3 py-1 text-xs font-medium transition-colors "
+                    + (checked
+                      ? "border-brand-300 bg-brand-50 text-brand-800 hover:bg-brand-100"
+                      : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50")
+                  }
+                >
+                  {opt}
+                </button>
+              );
+            })}
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <Button

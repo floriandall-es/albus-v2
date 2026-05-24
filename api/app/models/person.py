@@ -1,6 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, func
+from sqlalchemy import DateTime, Integer, String, func, text
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -48,12 +49,20 @@ class Person(Base):
     # anyway.
     work_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
     personal_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    # Migration 0060: free-text job title shown on the hospital
-    # directory card ("Jefe de Servicio", "Coordinadora de
-    # Trasplantes"…). Distinct from membership.category_id, which
-    # the scheduler uses to decide who can cover which slot —
-    # cargo is purely presentational.
-    cargo: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Migration 0060 → 0061: list of free-text job titles for the
+    # hospital directory card. A clinician often wears more than
+    # one hat — "Adjunto" + "Tutor de Residentes", "Adjunto" +
+    # "Coordinador de Trasplantes". Distinct from
+    # membership.category_id, which the scheduler uses to decide
+    # who can cover which slot — cargos are purely presentational.
+    # NOT NULL with empty-array default so the rest of the code
+    # can rely on always getting a list.
+    cargos: Mapped[list[str]] = mapped_column(
+        ARRAY(String(120)),
+        nullable=False,
+        server_default=text("ARRAY[]::text[]"),
+        default=list,
+    )
     # Timestamp the user clicked the verification link sent on
     # signup. NULL = not yet verified — surfaced to the frontend
     # which shows a "verifica tu correo" banner until cleared.
