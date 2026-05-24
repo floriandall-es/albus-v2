@@ -29,10 +29,16 @@ import {
 // becomes a real complaint.
 //
 // Versioned key: bump the suffix when we change the tour content
-// enough that previously-dismissed users should see it again. v2
-// is the sidebar-walkthrough expansion (was 6 hero stops, now one
-// short stop per sidebar item).
-const TOUR_SEEN_KEY = "trivu.admin.tourSeen.v2";
+// or dismissal model enough that previously-dismissed users
+// should see it again.
+//
+//   v2 — sidebar-walkthrough expansion (6 hero stops → one short
+//        stop per sidebar item).
+//   v3 — opt-in dismissal model. v2 silenced on any close action;
+//        v3 only silences when the admin actively ticks "No
+//        volver a mostrar". Anyone who closed v2 by mistake
+//        deserves to see the new flow.
+const TOUR_SEEN_KEY = "trivu.admin.tourSeen.v3";
 
 // Stops are ordered to walk the sidebar top-to-bottom after the
 // welcome + checklist overview, with a short one-liner per item.
