@@ -27,49 +27,172 @@ import {
 // see the tour again. Acceptable trade-off vs adding a backend
 // column for v1; can promote to a per-membership flag later if it
 // becomes a real complaint.
-const TOUR_SEEN_KEY = "trivu.admin.tourSeen";
+//
+// Versioned key: bump the suffix when we change the tour content
+// enough that previously-dismissed users should see it again. v2
+// is the sidebar-walkthrough expansion (was 6 hero stops, now one
+// short stop per sidebar item).
+const TOUR_SEEN_KEY = "trivu.admin.tourSeen.v2";
 
+// Stops are ordered to walk the sidebar top-to-bottom after the
+// welcome + checklist overview, with a short one-liner per item.
+// Module-gated items (Trasplantes, Directorio) and the dual-role
+// ViewSwitcher are present here unconditionally — the ProductTour
+// component drops any step whose anchor is missing from the DOM,
+// so they only appear for tenants/users where they exist.
 const TOUR_STEPS: TourStep[] = [
   {
     tourId: null,
     title: "Bienvenido a Trivu",
     body:
-      "Acabas de terminar la configuración inicial. Te enseñamos en "
-      + "60 segundos lo más importante para empezar.",
+      "Acabas de terminar la configuración inicial. Te damos un "
+      + "paseo rápido por las secciones del menú lateral para que "
+      + "sepas dónde está cada cosa.",
   },
   {
     tourId: "setup-checklist",
     title: "Lista de configuración",
     body:
-      "Aquí ves lo que aún te queda por configurar. Cada tarjeta te "
-      + "lleva a la sección correspondiente.",
+      "Aquí ves lo que aún te queda por configurar para que tu "
+      + "servicio esté funcionando. Cada tarjeta te lleva a la "
+      + "sección correspondiente.",
     placement: "bottom",
   },
+
+  // ---------- Operativa ----------
   {
-    tourId: "nav-equipo",
-    title: "Tu equipo",
+    tourId: "nav-inicio",
+    title: "Inicio",
     body:
-      "Aquí tienes a cada miembro que añadiste durante el alta. "
-      + "Cuando todo esté listo, pulsa \"Enviar invitación\" en "
-      + "cada fila para que reciban el email de activación.",
+      "Esta pantalla. Vuelve aquí en cualquier momento para ver el "
+      + "resumen del servicio y los accesos rápidos.",
     placement: "right",
   },
   {
     tourId: "nav-planificacion",
-    title: "Genera la planificación",
+    title: "Planificación",
     body:
-      "Cuando hayas configurado las actividades y reglas, genera "
-      + "aquí el calendario del mes. Puedes ajustarlo a mano antes "
-      + "de publicarlo.",
+      "Genera, ajusta y publica el calendario mensual. Una vez "
+      + "publicado, el equipo lo verá en su sección \"Mis turnos\".",
+    placement: "right",
+  },
+  {
+    tourId: "nav-estadisticas",
+    title: "Estadísticas",
+    body:
+      "Reparto de turnos por persona, por categoría y por mes. "
+      + "Útil para comprobar que el reparto es equitativo.",
+    placement: "right",
+  },
+  {
+    tourId: "nav-swaps",
+    title: "Cambios de turno",
+    body:
+      "Los miembros pueden pedir cobertura para sus turnos. Tú "
+      + "apruebas o rechazas cada cambio desde aquí.",
+    placement: "right",
+  },
+  {
+    tourId: "nav-bloqueos",
+    title: "Bloqueos",
+    body:
+      "Vacaciones, bajas, formación y otras ausencias. El solver "
+      + "los tiene en cuenta al generar la planificación.",
+    placement: "right",
+  },
+  {
+    tourId: "nav-reuniones",
+    title: "Reuniones",
+    body:
+      "Comités y reuniones recurrentes (sesión clínica, comité de "
+      + "tumores…). Aparecen en el calendario como una fila propia.",
+    placement: "right",
+  },
+  {
+    tourId: "nav-incidencias",
+    title: "Incidencias",
+    body:
+      "Registro libre de eventos fuera de lo común: bajas "
+      + "inesperadas, conflictos en cambios de turno, quejas…",
+    placement: "right",
+  },
+  {
+    tourId: "nav-trasplantes",
+    title: "Trasplantes",
+    body:
+      "Registro detallado de cada caso (donante, receptor, equipos "
+      + "explante e implante) con estadísticas por cirujano.",
+    placement: "right",
+  },
+  {
+    tourId: "nav-directorio",
+    title: "Directorio del hospital",
+    body:
+      "Listado de contactos de otros servicios del hospital. Cada "
+      + "persona decide qué datos comparte.",
+    placement: "right",
+  },
+
+  // ---------- Configuración ----------
+  {
+    tourId: "nav-equipo",
+    title: "Equipo",
+    body:
+      "Tu equipo. Aquí asignas la categoría profesional a cada "
+      + "miembro y envías las invitaciones por email cuando todo "
+      + "esté listo.",
+    placement: "right",
+  },
+  {
+    tourId: "nav-categorias",
+    title: "Categorías",
+    body:
+      "Las categorías profesionales de tu servicio (adjunto, "
+      + "residente R1, R2…) — definen quién puede hacer cada "
+      + "actividad.",
+    placement: "right",
+  },
+  {
+    tourId: "nav-grupos",
+    title: "Sub-equipos",
+    body:
+      "Grupos dentro del servicio (residentes, becarios…) con su "
+      + "propio responsable y planificación independiente.",
+    placement: "right",
+  },
+  {
+    tourId: "nav-actividades",
+    title: "Actividades",
+    body:
+      "Las actividades que cubre tu servicio: guardia, consulta, "
+      + "quirófano, planta… Aquí defines días, horario y "
+      + "composición del equipo de cada una.",
     placement: "right",
   },
   {
     tourId: "nav-reglas",
-    title: "Reglas de asignación",
+    title: "Reglas",
     body:
-      "Define cómo Trivu reparte los turnos: límites por persona, "
+      "Cómo Trivu reparte los turnos: límites por persona, "
       + "incompatibilidades entre actividades, días fijos, sucesión "
       + "entre actividades…",
+    placement: "right",
+  },
+  {
+    tourId: "nav-festivos",
+    title: "Festivos",
+    body:
+      "Festivos importados según tu comunidad autónoma. Puedes "
+      + "añadir o quitar días manualmente.",
+    placement: "right",
+  },
+
+  // ---------- Cuenta + view switcher ----------
+  {
+    tourId: "nav-cuenta",
+    title: "Mi cuenta",
+    body:
+      "Cambiar tu contraseña, ajustes personales y cerrar sesión.",
     placement: "right",
   },
   {

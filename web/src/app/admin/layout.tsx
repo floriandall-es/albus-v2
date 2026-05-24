@@ -33,15 +33,32 @@ type NavSection = {
   items: { href: string; label: string; icon: LucideIcon }[];
 };
 
-/** Subset of NAV hrefs that the /admin product tour highlights.
- * Anchored as `data-tour-id="..."` on the Link element so the
- * spotlight backdrop can locate them. Keeping the map tight (only
- * the items the tour cares about) avoids polluting the DOM with
- * anchors for every nav row. */
+/** Tour-anchor map for the /admin product tour. Every sidebar
+ * destination the tour explains has an entry here; the value
+ * lands as `data-tour-id="..."` on the matching <Link>. Module-
+ * gated items (Trasplantes, Directorio) are present in the map
+ * too — their <Link> doesn't render when the tenant hasn't
+ * opted in, so the tour drops those steps automatically via its
+ * "missing anchor = skip" rule. Dynamic sub-team planning entries
+ * are NOT anchored individually: the "Sub-equipos" configuration
+ * step already explains the concept. */
 const TOUR_ID_BY_HREF: Record<string, string | undefined> = {
+  "/admin": "nav-inicio",
   "/admin/schedule": "nav-planificacion",
+  "/admin/stats": "nav-estadisticas",
+  "/admin/swaps": "nav-swaps",
+  "/admin/availability": "nav-bloqueos",
+  "/admin/reuniones": "nav-reuniones",
+  "/admin/incidents": "nav-incidencias",
+  "/admin/trasplantes": "nav-trasplantes",
+  "/me/directorio": "nav-directorio",
   "/admin/team": "nav-equipo",
+  "/admin/categories": "nav-categorias",
+  "/admin/groups": "nav-grupos",
+  "/admin/slots": "nav-actividades",
   "/admin/rules": "nav-reglas",
+  "/admin/holidays": "nav-festivos",
+  "/admin/settings": "nav-cuenta",
 };
 
 const NAV: NavSection[] = [
