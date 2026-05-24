@@ -27,6 +27,7 @@ import { api, getToken } from "@/lib/api";
 import { useLogout } from "@/lib/use-logout";
 import { EmailVerifyBanner } from "@/components/email-verify-banner";
 import { ViewSwitcher } from "@/components/view-switcher";
+import { InstallButton } from "@/components/pwa/install-button";
 
 type NavSection = {
   title: string;
@@ -193,6 +194,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           )}
         </div>
 
+        <InstallButton />
         {me.data && <ViewSwitcher me={me.data} current="admin" />}
 
         <nav

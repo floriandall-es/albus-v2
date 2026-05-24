@@ -23,6 +23,7 @@ import { api, getToken } from "@/lib/api";
 import { useLogout } from "@/lib/use-logout";
 import { EmailVerifyBanner } from "@/components/email-verify-banner";
 import { ViewSwitcher } from "@/components/view-switcher";
+import { InstallButton } from "@/components/pwa/install-button";
 
 const NAV: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/me", label: "Inicio", icon: Home },
@@ -168,6 +169,7 @@ export default function MeLayout({ children }: { children: ReactNode }) {
           </button>
         </div>
 
+        <InstallButton />
         {me.data && <ViewSwitcher me={me.data} current="me" />}
 
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
