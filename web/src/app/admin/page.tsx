@@ -66,6 +66,21 @@ const TOUR_STEPS: TourStep[] = [
     placement: "bottom",
   },
 
+  // ViewSwitcher sits at the very top of the sidebar (above the
+  // nav sections), so it makes sense to introduce it before we
+  // start walking the nav items. Drops silently for non-dual-role
+  // admins, who never see the pill in the first place.
+  {
+    tourId: "view-switcher",
+    title: "Vista Admin vs Personal",
+    body:
+      "Si tú también haces turnos clínicos, cambia a \"Personal\" "
+      + "para ver tu propio calendario, pedir cobertura o solicitar "
+      + "días libres. Vuelve aquí cuando quieras gestionar el "
+      + "servicio.",
+    placement: "right",
+  },
+
   // ---------- Operativa ----------
   {
     tourId: "nav-inicio",
@@ -103,16 +118,18 @@ const TOUR_STEPS: TourStep[] = [
     tourId: "nav-bloqueos",
     title: "Bloqueos",
     body:
-      "Vacaciones, bajas, formación y otras ausencias. Trivu las "
-      + "tiene en cuenta al generar la planificación.",
+      "Los miembros piden días libres (vacaciones, bajas, "
+      + "formación…) y tú los apruebas o rechazas aquí. Los "
+      + "bloqueos aprobados se reflejan en la planificación.",
     placement: "right",
   },
   {
     tourId: "nav-reuniones",
     title: "Reuniones",
     body:
-      "Comités y reuniones recurrentes (sesión clínica, comité de "
-      + "tumores…). Aparecen en el calendario como una fila propia.",
+      "Crea reuniones puntuales o recurrentes (sesión clínica, "
+      + "comité de tumores…) para que el equipo las vea en su "
+      + "planificación.",
     placement: "right",
   },
   {
@@ -200,16 +217,6 @@ const TOUR_STEPS: TourStep[] = [
     title: "Mi cuenta",
     body:
       "Cambiar tu contraseña, ajustes personales y cerrar sesión.",
-    placement: "right",
-  },
-  {
-    tourId: "view-switcher",
-    title: "Vista Admin vs Personal",
-    body:
-      "Si tú también haces turnos clínicos, cambia a \"Personal\" "
-      + "para ver tu propio calendario, pedir cobertura o solicitar "
-      + "días libres. Vuelve aquí cuando quieras gestionar el "
-      + "servicio.",
     placement: "right",
   },
 ];
