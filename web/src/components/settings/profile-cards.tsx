@@ -488,12 +488,11 @@ export const CARGO_OPTIONS = [
   "Jefe de Sección",
   "Adjunto",
   "Tutor de Residentes",
-  "Coordinador",
   "Residente",
-  "Profesor Asociado",
+  "Rotante Externo",
+  "Profesor",
   "Investigador",
   "Becario",
-  "Médico Interno",
 ];
 
 function ProfileSection({
@@ -607,7 +606,18 @@ function ProfileSection({
             administrador).
           </p>
           <div className="flex flex-wrap gap-1.5">
-            {CARGO_OPTIONS.map((opt) => {
+            {/*
+              Render the canonical CARGO_OPTIONS first, then append
+              any saved cargos the user already has that aren't in
+              the current list — keeps "legacy" values (renamed
+              defaults, deprecated chips) togglable so the user
+              can always untoggle them. The extras come at the end
+              so the predefined list stays visually consistent.
+            */}
+            {[
+              ...CARGO_OPTIONS,
+              ...cargos.filter((c) => !CARGO_OPTIONS.includes(c)),
+            ].map((opt) => {
               const checked = cargos.includes(opt);
               return (
                 <button
