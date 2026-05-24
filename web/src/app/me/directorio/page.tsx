@@ -169,16 +169,81 @@ export default function HospitalDirectoryPage() {
       )}
 
       {directory.data && directory.data.length > 0 && (
-        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {directory.data.map((r) => (
-            <DirectoryCard
-              key={r.membership_id}
-              entry={r}
-              mePersonId={me.data?.person.id ?? null}
-            />
-          ))}
-        </ul>
+        <DirectoryGroupedList
+          rows={directory.data}
+          mePersonId={me.data?.person.id ?? null}
+        />
       )}
+    </div>
+  );
+}
+
+/** Cluster the directory by department (tenant) with a header per
+ * department, alphabetical by name. Within each department, sort
+ * by last name (Spanish convention). The backend already orders
+ * by (category, last name) but the categoría sub-grouping is
+ * invisible without headers, so it just reads as "not
+ * alphabetical" — we override here for a clean alpha list per
+ * department.
+ *
+ * Each card's subtitle drops the tenant name (it would just
+ * duplicate the section header). Categoría + sub-equipo stay. */
+function DirectoryGroupedList({
+  rows,
+  mePersonId,
+}: {
+  rows: HospitalDirectoryEntry[];
+  mePersonId: number | null;
+}) {
+  const groups = useMemo(() => {
+    const byDept = new Map<
+      number,
+      { name: string; rows: HospitalDirectoryEntry[] }
+    >();
+    for (const r of rows) {
+      const existing = byDept.get(r.tenant_id);
+      if (existing) {
+        existing.rows.push(r);
+      } else {
+        byDept.set(r.tenant_id, { name: r.tenant_name, rows: [r] });
+      }
+    }
+    const depts = Array.from(byDept.values()).sort((a, b) =>
+      a.name.localeCompare(b.name, "es"),
+    );
+    for (const d of depts) {
+      d.rows.sort((a, b) => {
+        const aName = (a.person_last_name ?? a.person_name).toLowerCase();
+        const bName = (b.person_last_name ?? b.person_name).toLowerCase();
+        return aName.localeCompare(bName, "es");
+      });
+    }
+    return depts;
+  }, [rows]);
+
+  return (
+    <div className="space-y-6">
+      {groups.map((dept) => (
+        <section key={dept.name}>
+          <h2 className="mb-2 flex items-baseline gap-2 text-sm font-semibold uppercase tracking-wide text-gray-600">
+            {dept.name}
+            <span className="text-[11px] font-normal normal-case text-gray-400">
+              {dept.rows.length}{" "}
+              {dept.rows.length === 1 ? "persona" : "personas"}
+            </span>
+          </h2>
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {dept.rows.map((r) => (
+              <DirectoryCard
+                key={r.membership_id}
+                entry={r}
+                mePersonId={mePersonId}
+                hideDepartment
+              />
+            ))}
+          </ul>
+        </section>
+      ))}
     </div>
   );
 }
@@ -186,9 +251,14 @@ export default function HospitalDirectoryPage() {
 function DirectoryCard({
   entry,
   mePersonId,
+  hideDepartment = false,
 }: {
   entry: HospitalDirectoryEntry;
   mePersonId: number | null;
+  /** When the card is rendered inside a per-department section
+   * (the default layout now), the tenant_name in the subtitle is
+   * redundant with the section header — set this to drop it. */
+  hideDepartment?: boolean;
 }) {
   const router = useRouter();
   const openDm = useMutation({
@@ -258,7 +328,11 @@ function DirectoryCard({
             {displayName}
           </div>
           <div className="truncate text-xs text-gray-500">
-            {[entry.category_name, entry.tenant_name, entry.group_name]
+            {[
+              entry.category_name,
+              hideDepartment ? null : entry.tenant_name,
+              entry.group_name,
+            ]
               .filter(Boolean)
               .join(" · ")}
           </div>
