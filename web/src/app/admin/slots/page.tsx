@@ -1085,7 +1085,7 @@ function RuleCard({
   const setStrategy = (s: SlotRuleStrategy) => onChange({ strategy: s });
 
   const summary = (() => {
-    if (rule.strategy === "solver") return "Asignación automática";
+    if (rule.strategy === "solver") return "Reparto equitativo";
     if (rule.strategy === "manual") return "Asignación manual";
     if (rule.strategy === "fixed_weekly")
       return `${rule.weekly_pins.length} pin(s) en total`;
@@ -1147,11 +1147,39 @@ function RuleCard({
       <div className="flex flex-wrap gap-3 text-xs">
         {(
           [
-            { v: "solver", label: "Automático" },
-            { v: "fixed_weekly", label: "Día fijo" },
-            { v: "rotation", label: "Rotación" },
-            { v: "manual", label: "Manual" },
-          ] as { v: SlotRuleStrategy; label: string }[]
+            {
+              v: "solver",
+              label: "Reparto equitativo",
+              hint:
+                "Trivu reparte los turnos entre las personas elegibles "
+                + "buscando que todos hagan un número parecido a lo "
+                + "largo del periodo. No fija a nadie a un día concreto.",
+            },
+            {
+              v: "fixed_weekly",
+              label: "Día fijo",
+              hint:
+                "Asignas a mano qué persona cubre cada día de la "
+                + "semana. Útil cuando el mismo Adjunto hace Consulta "
+                + "todos los lunes, por ejemplo.",
+            },
+            {
+              v: "rotation",
+              label: "Rotación",
+              hint:
+                "Defines un grupo de personas que rotan en orden "
+                + "(cada semana / N semanas). Útil para guardias "
+                + "donde el orden importa pero quieres que todos "
+                + "pasen por ahí.",
+            },
+            {
+              v: "manual",
+              label: "Manual",
+              hint:
+                "Trivu no propone nada; los huecos se quedan vacíos "
+                + "y los rellenas a mano en la planificación.",
+            },
+          ] as { v: SlotRuleStrategy; label: string; hint: string }[]
         ).map((opt) => (
           <label key={opt.v} className="flex items-center gap-1">
             <input
@@ -1160,6 +1188,7 @@ function RuleCard({
               onChange={() => setStrategy(opt.v)}
             />
             {opt.label}
+            <InfoHint>{opt.hint}</InfoHint>
           </label>
         ))}
       </div>
