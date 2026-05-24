@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api, setToken } from "@/lib/api";
 import { Button, ErrorText, TextField } from "@/components/admin/ui";
+import { CARGO_OPTIONS } from "@/components/settings/profile-cards";
 
 export default function AcceptInvitePage() {
   const params = useParams<{ token: string }>();
@@ -24,6 +25,19 @@ export default function AcceptInvitePage() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [acceptTerms, setAcceptTerms] = useState(false);
+  // Optional cargos picked at first activation — same UI as the
+  // settings page. Empty by default; the invitee can pick zero,
+  // one, or several. Backend treats omission as "leave alone"
+  // and empty array as "clear", but on first-time activation
+  // the field is empty anyway so both behave the same.
+  const [cargos, setCargos] = useState<string[]>([]);
+  function toggleCargo(value: string) {
+    setCargos((prev) =>
+      prev.includes(value)
+        ? prev.filter((c) => c !== value)
+        : [...prev, value],
+    );
+  }
 
   // When preview loads, prefill the name fields. Prefer the
   // structured first_name + last_name from the underlying Person
@@ -57,6 +71,11 @@ export default function AcceptInvitePage() {
         password,
         first_name: firstName.trim() || undefined,
         last_name: lastName.trim() || undefined,
+        // Only send cargos when the user actually picked at least
+        // one — sending an empty array would be interpreted as
+        // "clear" on cross-tenant accepts (which already ignore
+        // it server-side, but no point sending noise).
+        cargos: cargos.length > 0 ? cargos : undefined,
         accept_terms: acceptTerms,
       }),
     onSuccess: (data) => {
@@ -118,6 +137,37 @@ export default function AcceptInvitePage() {
           autoComplete="family-name"
           name="family-name"
         />
+        <div>
+          <span className="text-sm font-medium text-gray-700">
+            Cargo <span className="font-normal text-gray-400">(opcional)</span>
+          </span>
+          <p className="mt-1 mb-2 text-xs text-gray-500">
+            Marca los cargos que ocupes. Aparecen como etiquetas
+            en tu tarjeta del directorio del hospital. Puedes
+            cambiarlo más tarde en tu cuenta.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {CARGO_OPTIONS.map((opt) => {
+              const checked = cargos.includes(opt);
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => toggleCargo(opt)}
+                  aria-pressed={checked}
+                  className={
+                    "rounded-full border px-3 py-1 text-xs font-medium transition-colors "
+                    + (checked
+                      ? "border-brand-300 bg-brand-50 text-brand-800 hover:bg-brand-100"
+                      : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50")
+                  }
+                >
+                  {opt}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <TextField
           label="Contraseña (mínimo 8 caracteres)"
           type="password"

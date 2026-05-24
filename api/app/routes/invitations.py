@@ -410,13 +410,21 @@ def accept_invitation(
         person.email_verified_at = now_utc
         person.terms_accepted_at = now_utc
         person.terms_accepted_version = settings.terms_current_version
+        # Cargos (migration 0061) — accepted on first activation
+        # so the directory card is populated from the start.
+        # Same trim+filter+truncate as PUT /api/me/profile.
+        if payload.cargos is not None:
+            person.cargos = [
+                c.strip()[:120] for c in payload.cargos if c and c.strip()
+            ]
         created_person = True
     else:
         # Cross-tenant accept: the Person already has a password from
         # a previous tenant's activation. Do NOT overwrite it — that
         # would let any invitation link silently reset the user's
-        # password across tenants. We also leave first/last name
-        # alone (the previous tenant's value wins).
+        # password across tenants. We also leave first/last name +
+        # cargos alone (the previous tenant's values win); the
+        # invitee can update them later via /me/settings.
         created_person = False
 
     inv.accepted_at = now_utc

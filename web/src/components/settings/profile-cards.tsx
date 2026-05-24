@@ -478,8 +478,12 @@ function AvatarSection({
  * masculine / gender-neutral forms — Spanish workplace convention
  * for formal job titles. If a real customer needs a different
  * label, we can add it here without a migration; the column is
- * free text. */
-const CARGO_OPTIONS = [
+ * free text.
+ *
+ * Exported so the invite-accept page (/invite/[token]) can offer
+ * the same multi-select on first-time activation without
+ * duplicating the list. */
+export const CARGO_OPTIONS = [
   "Jefe de Servicio",
   "Jefe de Sección",
   "Adjunto",

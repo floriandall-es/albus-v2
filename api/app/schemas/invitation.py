@@ -78,6 +78,12 @@ class InviteAcceptRequest(BaseModel):
     person_name: str | None = Field(default=None, min_length=1, max_length=255)
     first_name: str | None = Field(default=None, max_length=255)
     last_name: str | None = Field(default=None, max_length=255)
+    # Migration 0061: optional list of job titles for the directory
+    # card ("Adjunto", "Tutor de Residentes"…). Applied only on
+    # first-time activation — cross-tenant accepts don't touch
+    # person fields. Same per-entry/list caps as PUT /api/me/profile
+    # so the two surfaces stay symmetric.
+    cargos: list[str] | None = Field(default=None, max_length=10)
     # The invitee must affirmatively accept the ToS + Privacy
     # Policy. Server rejects with 422 if false. For invitees who
     # are already a Person in the db (cross-tenant invite), the

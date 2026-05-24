@@ -1336,6 +1336,11 @@ export const api = {
       person_name?: string;
       first_name?: string;
       last_name?: string;
+      /** Optional cargos (migration 0061). Applied only on first-
+       * time activation; cross-tenant accepts ignore this field
+       * since they don't touch existing person data. Omit the key
+       * to leave cargos unchanged. */
+      cargos?: string[];
       /** Affirmative ToS + Privacy acceptance. Server rejects
        * with 422 if missing or false. */
       accept_terms: boolean;
