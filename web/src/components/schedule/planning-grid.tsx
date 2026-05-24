@@ -46,6 +46,14 @@ export type PlanningGridProps = {
    * lives on the ViolationsBanner above the grid; this is purely a
    * visual cue. */
   flaggedAssignmentIds?: Set<number>;
+  /** Optional override for the date columns. When provided, the
+   * grid renders exactly these dates as columns (sorted ascending)
+   * instead of deriving them from the assignment set. Used by the
+   * /me/turnos personal table so off days appear as empty columns
+   * next to working days. Slot rows still come from `assignments`
+   * — so an empty `assignments` plus `forceDates` produces an
+   * empty grid (no rows). */
+  forceDates?: string[];
 };
 
 export function PlanningGrid({
@@ -58,8 +66,12 @@ export function PlanningGrid({
   onAbsenceCellClick,
   meetings,
   flaggedAssignmentIds,
+  forceDates,
 }: PlanningGridProps) {
-  const grid = useMemo(() => buildGrid(assignments), [assignments]);
+  const grid = useMemo(
+    () => buildGrid(assignments, forceDates),
+    [assignments, forceDates],
+  );
   const interactive = !!onCellClick;
 
   // Group meetings by date so each grid column knows which to show.
@@ -563,8 +575,15 @@ export function PlanningGrid({
   );
 }
 
-function buildGrid(assignments: Assignment[]) {
-  const dates = Array.from(new Set(assignments.map((a) => a.date))).sort();
+function buildGrid(assignments: Assignment[], forceDates?: string[]) {
+  // Date columns: either the caller-supplied override (sorted +
+  // deduped defensively), or the natural set derived from the
+  // assignments. The override path is used by /me/turnos to keep
+  // off-day columns visible even when the user has no shifts on
+  // those days.
+  const dates = forceDates
+    ? Array.from(new Set(forceDates)).sort()
+    : Array.from(new Set(assignments.map((a) => a.date))).sort();
   // Sprint 16: rows are keyed by (slot_id, team_role_label) instead of
   // just slot_id. A team_composition slot with three roles becomes
   // three rows; the left column carries the role label and each cell

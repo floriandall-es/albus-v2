@@ -18,7 +18,7 @@ import {
   formatLongDate,
   todayIso as getTodayIso,
 } from "@/lib/dates";
-import { ShiftSection } from "@/components/me/shift-list";
+import { DayByDayList, ShiftSection } from "@/components/me/shift-list";
 import { RequestCoverageModal } from "@/components/me/request-coverage-modal";
 import { CalendarExportModal } from "@/components/me/calendar-export-modal";
 
@@ -74,6 +74,35 @@ function toIsoLocal(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${dd}`;
+}
+
+/** First and last day (YYYY-MM-DD) of the calendar month referenced
+ * by the schedule's `period` field. Used by Mis turnos to enumerate
+ * every day of the month when Rango = "Mes". */
+function computeMonthBounds(periodIso: string): { from: string; to: string } {
+  const [y, m] = periodIso.split("-").map(Number);
+  const lastDay = new Date(y, m, 0).getDate(); // day 0 of next month
+  const mm = String(m).padStart(2, "0");
+  return {
+    from: `${y}-${mm}-01`,
+    to: `${y}-${mm}-${String(lastDay).padStart(2, "0")}`,
+  };
+}
+
+/** Inclusive enumeration of every YYYY-MM-DD between `from` and
+ * `to`. Defensive on the date math (uses local-time Date arithmetic
+ * via setDate) so DST transitions can't drop or duplicate days. */
+function enumerateDates(from: string, to: string): string[] {
+  const out: string[] = [];
+  const [fy, fm, fd] = from.split("-").map(Number);
+  const [ty, tm, td] = to.split("-").map(Number);
+  const cur = new Date(fy, fm - 1, fd);
+  const end = new Date(ty, tm - 1, td);
+  while (cur <= end) {
+    out.push(toIsoLocal(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return out;
 }
 
 export default function TurnosPage() {
@@ -328,6 +357,31 @@ export default function TurnosPage() {
     });
   }, [detail.data]);
 
+  // Full enumerated date list for the Mis-scope "show all days"
+  // requirement. For Mes we fall back to the selected schedule's
+  // calendar month (computed from period); for 3d/Semana the
+  // dateRange bounds already cover what we need. Drives both the
+  // day-by-day list and the PlanningGrid forceDates override.
+  const allDatesInRange = useMemo(() => {
+    if (dateRange) {
+      return enumerateDates(dateRange.from, dateRange.to);
+    }
+    const periodIso = detail.data?.period;
+    if (!periodIso) return [];
+    const m = computeMonthBounds(periodIso);
+    return enumerateDates(m.from, m.to);
+  }, [dateRange, detail.data]);
+
+  // My approved absences for the displayed month, used to label
+  // off days as "Libre · Vacaciones/Baja/…" instead of just
+  // "Sin turno". Filter to the current user; the absences query
+  // returns team-wide rows.
+  const myAbsences = useMemo(() => {
+    const myPid = me.data?.person.id ?? null;
+    if (myPid === null) return [];
+    return (absences.data ?? []).filter((b) => b.person_id === myPid);
+  }, [absences.data, me.data]);
+
   if (me.isLoading || schedules.isLoading) {
     return <p className="text-sm text-gray-500">Cargando…</p>;
   }
@@ -473,25 +527,44 @@ export default function TurnosPage() {
       {selectedId !== null && detail.data && !allSlotsHidden && (
         <>
           {view === "list" ? (
-            <ShiftListView
-              assignments={visibleAssignments}
-              myPersonId={myPersonId}
-              scope={scope}
-              range={range}
-              onClickShift={(a) => {
-                if (a.locked_at) return;
-                // Sub-equipo members can't request coverage through
-                // the system yet — their lead handles it offline.
-                if (myGroupId !== null) return;
-                // Coverage requests are only valid for your own
-                // shifts. In team-scope the list shows everyone's
-                // rows; the ShiftRow itself already gates clicks to
-                // your own, so this extra guard is belt-and-braces.
-                if (a.person_id !== myPersonId) return;
-                setSwapTarget(a);
-              }}
-              canRequestCoverage={myGroupId === null}
-            />
+            scope === "mine" ? (
+              // Mis turnos + Lista — one row per day in the active
+              // Rango, including off days. Empty days get "Sin turno"
+              // (or "Libre · Vacaciones/Baja/…" when an approved
+              // absence covers them).
+              <DayByDayList
+                dates={allDatesInRange}
+                myAssignments={visibleAssignments}
+                myAbsences={myAbsences}
+                todayIso={todayIsoStr}
+                onClickShift={(a) => {
+                  if (a.locked_at) return;
+                  if (myGroupId !== null) return;
+                  setSwapTarget(a);
+                }}
+                canRequestCoverage={myGroupId === null}
+              />
+            ) : (
+              <ShiftListView
+                assignments={visibleAssignments}
+                myPersonId={myPersonId}
+                scope={scope}
+                range={range}
+                onClickShift={(a) => {
+                  if (a.locked_at) return;
+                  // Sub-equipo members can't request coverage through
+                  // the system yet — their lead handles it offline.
+                  if (myGroupId !== null) return;
+                  // Coverage requests are only valid for your own
+                  // shifts. In team-scope the list shows everyone's
+                  // rows; the ShiftRow itself already gates clicks to
+                  // your own, so this extra guard is belt-and-braces.
+                  if (a.person_id !== myPersonId) return;
+                  setSwapTarget(a);
+                }}
+                canRequestCoverage={myGroupId === null}
+              />
+            )
           ) : (
             <>
               {myGroupId === null && scope === "team" && (
@@ -525,6 +598,13 @@ export default function TurnosPage() {
                   absences={scope === "team" ? absences.data : undefined}
                   meetings={
                     scope === "team" ? meetingInstances.data : undefined
+                  }
+                  // Mis + Tabla: force every date in the active Rango
+                  // as a column, so off days appear as empty cells
+                  // next to working days. Equipo + Tabla keeps the
+                  // legacy derivation (dates come from assignments).
+                  forceDates={
+                    scope === "mine" ? allDatesInRange : undefined
                   }
                 />
               )}

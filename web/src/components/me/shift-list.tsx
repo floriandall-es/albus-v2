@@ -1,5 +1,10 @@
 "use client";
-import { personLastName, type Assignment } from "@/lib/api";
+import {
+  personLastName,
+  type Assignment,
+  type AvailabilityBlockType,
+  type TeamAbsence,
+} from "@/lib/api";
 import { Avatar } from "@/components/schedule/planning-grid";
 import {
   MONTH_SHORT_ES,
@@ -249,5 +254,223 @@ function ShiftTimeBadge({
     >
       {hours}
     </span>
+  );
+}
+
+// User-facing labels for AvailabilityBlock.block_type. Mirrors the
+// map in planning-grid.tsx — duplicated rather than imported to
+// keep this file's dependency on planning-grid limited to <Avatar>.
+const ABSENCE_LABEL: Record<AvailabilityBlockType, string> = {
+  vacation: "Vacaciones",
+  sick: "Baja médica",
+  training: "Formación",
+  personal: "Personal",
+  other: "Otro",
+};
+
+/**
+ * /me/turnos "Mis turnos" list — one row per day in the active Rango,
+ * including days with no shift. Off days surface as "Sin turno" or
+ * "Libre · Vacaciones/Baja/…" when an approved absence covers the
+ * user. The Equipo + Lista combination keeps using the date-sectioned
+ * ShiftSection list above (different ergonomics: it groups today/
+ * mañana/próximos by date instead of enumerating each calendar day).
+ */
+export function DayByDayList({
+  dates,
+  myAssignments,
+  myAbsences,
+  todayIso,
+  onClickShift,
+  canRequestCoverage,
+}: {
+  /** Enumerated YYYY-MM-DD dates to render, in display order. */
+  dates: string[];
+  /** Assignments already filtered to the current user. May include
+   * dates outside `dates` — we filter again when bucketing. */
+  myAssignments: Assignment[];
+  /** Approved absences already filtered to the current user.
+   * Range-typed (start_date..end_date), expanded per day inside. */
+  myAbsences: TeamAbsence[];
+  todayIso: string;
+  onClickShift: (a: Assignment) => void;
+  canRequestCoverage: boolean;
+}) {
+  // assignments by date — multiple shifts on the same day are
+  // listed in their natural slot order.
+  const byDate = new Map<string, Assignment[]>();
+  for (const a of myAssignments) {
+    const list = byDate.get(a.date) ?? [];
+    list.push(a);
+    byDate.set(a.date, list);
+  }
+  for (const list of byDate.values()) {
+    list.sort((a, b) => a.slot_name.localeCompare(b.slot_name));
+  }
+
+  // Per-date absence lookup. Pick the FIRST absence covering each
+  // date (sub-day overlaps are unusual in this app, and showing
+  // multiple labels per off day would clutter the row).
+  const absenceByDate = new Map<string, TeamAbsence>();
+  for (const d of dates) {
+    const hit = myAbsences.find((b) => b.start_date <= d && d <= b.end_date);
+    if (hit) absenceByDate.set(d, hit);
+  }
+
+  return (
+    <ul className="divide-y divide-gray-100 rounded-xl bg-white ring-1 ring-gray-200 overflow-hidden">
+      {dates.map((d) => {
+        const shifts = byDate.get(d) ?? [];
+        const absence = absenceByDate.get(d);
+        const isPast = d < todayIso;
+        return (
+          <DayRow
+            key={d}
+            dateIso={d}
+            shifts={shifts}
+            absence={absence}
+            todayIso={todayIso}
+            dimmed={isPast}
+            onClickShift={onClickShift}
+            canRequestCoverage={canRequestCoverage}
+          />
+        );
+      })}
+    </ul>
+  );
+}
+
+function DayRow({
+  dateIso,
+  shifts,
+  absence,
+  todayIso,
+  dimmed,
+  onClickShift,
+  canRequestCoverage,
+}: {
+  dateIso: string;
+  shifts: Assignment[];
+  absence: TeamAbsence | undefined;
+  todayIso: string;
+  dimmed: boolean;
+  onClickShift: (a: Assignment) => void;
+  canRequestCoverage: boolean;
+}) {
+  const isToday = dateIso === todayIso;
+  return (
+    <li className={dimmed ? "bg-gray-50/40" : "bg-white"}>
+      <div className="flex items-start gap-4 px-4 py-3">
+        <DateBlock dateIso={dateIso} highlight={isToday} dimmed={dimmed} />
+        <div className="min-w-0 flex-1">
+          {shifts.length > 0 && (
+            <ul className="space-y-1.5">
+              {shifts.map((a) => (
+                <ShiftEntry
+                  key={a.id}
+                  a={a}
+                  dimmed={dimmed}
+                  canRequestCoverage={canRequestCoverage}
+                  onClick={onClickShift}
+                />
+              ))}
+            </ul>
+          )}
+          {shifts.length === 0 && (
+            <EmptyDayContent absence={absence} dimmed={dimmed} />
+          )}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+/** Single shift inside a DayRow. Same look as ShiftRow's body but
+ * without the DateBlock (DayRow already shows the date once on the
+ * left). Kept as a separate component so the "Pedir cobertura →"
+ * hint and clickability behave identically across rows. */
+function ShiftEntry({
+  a,
+  dimmed,
+  canRequestCoverage,
+  onClick,
+}: {
+  a: Assignment;
+  dimmed: boolean;
+  canRequestCoverage: boolean;
+  onClick: (a: Assignment) => void;
+}) {
+  const isLocked = !!a.locked_at;
+  const isInteractive = !isLocked && canRequestCoverage;
+  const body = (
+    <div className="flex items-baseline gap-2 flex-wrap">
+      <span
+        className={
+          "text-base font-semibold "
+          + (dimmed ? "text-gray-500" : "text-gray-900")
+        }
+      >
+        {a.slot_name}
+      </span>
+      {a.team_role_label && (
+        <span className="text-sm text-gray-500">
+          · {a.team_role_label}
+        </span>
+      )}
+      <ShiftTimeBadge a={a} />
+      {isInteractive && (
+        <span className="ml-auto hidden sm:inline text-xs text-brand-700 group-hover:underline">
+          Pedir cobertura →
+        </span>
+      )}
+    </div>
+  );
+  if (!isInteractive) {
+    return <li>{body}</li>;
+  }
+  return (
+    <li className="group">
+      <button
+        type="button"
+        onClick={() => onClick(a)}
+        className="block w-full text-left rounded hover:bg-brand-50/30 transition-colors -mx-1 px-1 py-0.5"
+        aria-label={`Pedir cobertura para ${a.slot_name} el ${a.date}`}
+      >
+        {body}
+      </button>
+    </li>
+  );
+}
+
+function EmptyDayContent({
+  absence,
+  dimmed,
+}: {
+  absence: TeamAbsence | undefined;
+  dimmed: boolean;
+}) {
+  if (absence) {
+    return (
+      <div className="text-sm">
+        <span
+          className={
+            "font-medium "
+            + (dimmed ? "text-gray-500" : "text-emerald-700")
+          }
+        >
+          Libre
+        </span>
+        <span className="text-gray-500"> · {ABSENCE_LABEL[absence.block_type]}</span>
+      </div>
+    );
+  }
+  return (
+    <div
+      className={
+        "text-sm italic " + (dimmed ? "text-gray-400" : "text-gray-500")
+      }
+    >
+      Sin turno
+    </div>
   );
 }
