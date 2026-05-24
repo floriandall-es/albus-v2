@@ -508,7 +508,20 @@ function SlotDialog({
               <input
                 type="radio"
                 checked={scheduleMode === "ranged"}
-                onChange={() => setScheduleMode("ranged")}
+                onChange={() => {
+                  setScheduleMode("ranged");
+                  // Seed sensible defaults when toggling to
+                  // ranged from empty state. Without this the
+                  // <input type="time"> renders empty and the
+                  // browser's time picker opens at the current
+                  // wall-clock time as its starting value —
+                  // which admins read as "Trivu suggested
+                  // 14:37 as my Consulta start time". 8h
+                  // morning shift is the most common Spanish
+                  // hospital default; admins edit as needed.
+                  if (!startTime) setStartTime("08:00");
+                  if (!endTime) setEndTime("15:00");
+                }}
               />
               Horario específico
             </label>
