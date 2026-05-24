@@ -10,6 +10,14 @@ class InviteCreateRequest(BaseModel):
     person_name: str = Field(min_length=1, max_length=255)
     category_id: int | None = None
     roles: list[str] = Field(default_factory=lambda: ["member"])
+    # When false, the endpoint creates the Person + Membership +
+    # Invitation row but skips the actual email send. Used by the
+    # onboarding /team step: admins want to capture the roster
+    # during signup but defer the email blast until the rest of
+    # the configuration (actividades, reglas) is ready. They'll
+    # later trigger the per-row "Enviar invitación" button on
+    # /admin/team to deliver the email.
+    send_email: bool = True
 
 
 class InvitationOut(BaseModel):

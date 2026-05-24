@@ -570,15 +570,19 @@ def commit_bulk(
             continue
 
         # Best-effort email; failure must NOT abort the batch.
-        try:
-            send_invitation_email(ctx.db, tenant_id=ctx.tenant.id, created=created)
-        except Exception as exc:  # pragma: no cover - send_invitation_email already swallows
-            logger.error(
-                "Bulk invite email failure tenant=%s email=%s err=%s",
-                ctx.tenant.slug,
-                email_norm,
-                exc,
-            )
+        # Skipped entirely when the caller passes send_email=False
+        # (onboarding bulk-import: defer the email blast until the
+        # admin triggers per-row "Enviar invitación" later).
+        if payload.send_email:
+            try:
+                send_invitation_email(ctx.db, tenant_id=ctx.tenant.id, created=created)
+            except Exception as exc:  # pragma: no cover - send_invitation_email already swallows
+                logger.error(
+                    "Bulk invite email failure tenant=%s email=%s err=%s",
+                    ctx.tenant.slug,
+                    email_norm,
+                    exc,
+                )
 
         committed += 1
         results.append(

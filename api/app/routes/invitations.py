@@ -96,12 +96,18 @@ def create_invitation(
         raise HTTPException(status_code=409, detail="Conflict creating invitation")
 
     logger.info(
-        "Invitation created tenant=%s email=%s id=%s",
+        "Invitation created tenant=%s email=%s id=%s send_email=%s",
         ctx.tenant.slug,
         email,
         created.invitation.id,
+        payload.send_email,
     )
-    send_invitation_email(ctx.db, tenant_id=ctx.tenant.id, created=created)
+    if payload.send_email:
+        send_invitation_email(ctx.db, tenant_id=ctx.tenant.id, created=created)
+    # When send_email is False the invitation row is still created
+    # (with a 7-day expiry like any other) but never delivered. The
+    # admin will trigger delivery later via the /admin/team "Enviar
+    # invitación" button, which rotates the token + sends the email.
 
     return InviteCreateResponse(
         invitation_id=created.invitation.id,

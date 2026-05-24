@@ -300,6 +300,37 @@ def test_invitation_creation_triggers_email(auth_client, client, monkeypatch):
     assert accept_url in sent[0]["body"]
 
 
+def test_invitation_send_email_false_skips_email(
+    auth_client, client, monkeypatch
+):
+    """Onboarding/team posts send_email=False so the admin can
+    bulk-add people during signup without firing off the invite
+    emails. The Person + Membership + Invitation rows are still
+    created (the invitation lives ready for the admin to deliver
+    later from /admin/team), only send_email gets short-circuited.
+    """
+    sent: list[dict] = []
+
+    def fake_send(to, subject, body_text, body_html=None):
+        sent.append({"to": to})
+
+    monkeypatch.setattr("app.services.invitations.send_email", fake_send)
+
+    _client, headers, _info = auth_client
+    r = client.post(
+        "/api/team/invite",
+        headers=headers,
+        json={
+            "email": "silent@example.com",
+            "person_name": "Silent",
+            "send_email": False,
+        },
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["accept_url"], "row was still created"
+    assert sent == [], "no SMTP send when send_email=False"
+
+
 def test_email_failure_does_not_break_invite(auth_client, client, monkeypatch):
     def boom(*a, **kw):
         raise RuntimeError("smtp down")

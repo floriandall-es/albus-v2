@@ -1,43 +1,56 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Users } from "lucide-react";
+import { Info, Users } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button, ErrorText, Select, TextField } from "@/components/admin/ui";
 import { BulkInviteModal } from "@/components/admin/BulkInviteModal";
-import { InviteDeliveryPill } from "@/components/admin/InviteDeliveryPill";
 import { StepNav } from "../_nav";
 import { StepHeader } from "../_step-header";
 
-type GeneratedInvite = {
+type AddedMember = {
   email: string;
   person_name: string;
-  accept_url: string;
+  category_id: number | null;
 };
 
 export default function TeamStep() {
   const qc = useQueryClient();
   const cats = useQuery({ queryKey: ["categories"], queryFn: api.listCategories });
+  // We still surface members the admin added in previous onboarding
+  // sessions so they don't re-add anyone. The list comes from
+  // listInvitations (every add creates a pendiente invitation row
+  // under the hood) but the UI no longer talks about emails — those
+  // get sent later from /admin/team when the admin is ready.
   const invs = useQuery({ queryKey: ["invitations"], queryFn: api.listInvitations });
 
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [categoryId, setCategoryId] = useState<number | "">("");
-  const [generated, setGenerated] = useState<GeneratedInvite[]>([]);
+  const [added, setAdded] = useState<AddedMember[]>([]);
   const [bulkOpen, setBulkOpen] = useState(false);
 
-  const invite = useMutation({
+  const addMember = useMutation({
     mutationFn: () =>
       api.inviteTeamMember({
         email,
         person_name: name,
         category_id: categoryId === "" ? null : Number(categoryId),
         roles: ["member"],
+        // Onboarding: create the Person + Membership + Invitation
+        // row but don't email anyone yet. The admin sends the
+        // emails later from /admin/team once the rest of the
+        // configuration (actividades, reglas) is finalised.
+        send_email: false,
       }),
-    onSuccess: (data) => {
-      setGenerated((cur) => [
+    onSuccess: () => {
+      setAdded((cur) => [
         ...cur,
-        { email: data.email, person_name: name, accept_url: data.accept_url },
+        {
+          email,
+          person_name: name,
+          category_id: categoryId === "" ? null : Number(categoryId),
+        },
       ]);
       setEmail("");
       setName("");
@@ -46,17 +59,24 @@ export default function TeamStep() {
     },
   });
 
-  // Resend any pending invitation. Rotates the token in-place
-  // so the row stays put, with the delivery pill updating after
-  // the next list refresh.
-  const resend = useMutation({
-    mutationFn: (id: number) => api.resendInvitation(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["invitations"] }),
-  });
+  // Map category_id -> name for the "added in this session" list,
+  // so we can show a small badge next to each row without an extra
+  // query.
+  const catNameById = new Map(
+    (cats.data ?? []).map((c) => [c.id, c.name] as const),
+  );
 
-  function copy(url: string) {
-    navigator.clipboard.writeText(url).catch(() => undefined);
-  }
+  // "Previously added" = invitation rows that already existed when
+  // the admin opened this step (they came back to onboarding from a
+  // different device, or finished a session and reopened). We hide
+  // anyone the admin added in THIS session — those appear in the
+  // "Añadidos en esta sesión" list above with full UI feedback.
+  const addedEmailsThisSession = new Set(
+    added.map((a) => a.email.toLowerCase()),
+  );
+  const previouslyAdded = (invs.data ?? []).filter(
+    (inv) => !addedEmailsThisSession.has(inv.email.toLowerCase()),
+  );
 
   return (
     <div>
@@ -64,21 +84,37 @@ export default function TeamStep() {
         <StepHeader
           icon={Users}
           title="Paso 4 — Equipo"
-          subtitle="Invita a tus compañeros. Recibirán un email con el enlace para crear su contraseña; si no llega, puedes reenviarlo o copiar el enlace desde la lista."
+          subtitle="Añade a los miembros de tu equipo. De momento sólo los registramos; les enviarás la invitación más tarde desde Admin → Equipo, cuando termines de configurar todo."
         />
         <Button variant="secondary" onClick={() => setBulkOpen(true)}>
           Importar Lista
         </Button>
       </div>
-      <BulkInviteModal open={bulkOpen} onClose={() => setBulkOpen(false)} />
+      <BulkInviteModal
+        open={bulkOpen}
+        onClose={() => setBulkOpen(false)}
+        sendEmail={false}
+      />
 
       <MyProfileCard />
+
+      <div className="mb-6 rounded-xl border border-brand-100 bg-brand-50/60 p-4 flex items-start gap-3">
+        <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white text-brand-700 ring-1 ring-brand-200 shrink-0">
+          <Info className="h-4 w-4" />
+        </span>
+        <p className="text-sm text-brand-900/80 leading-relaxed">
+          De momento sólo añadimos a la gente al equipo. Cuando hayas
+          terminado de configurar actividades y reglas, podrás
+          enviarles la invitación uno a uno desde{" "}
+          <strong>Admin → Equipo</strong>.
+        </p>
+      </div>
 
       <form
         className="space-y-3 mb-4"
         onSubmit={(e) => {
           e.preventDefault();
-          if (email && name) invite.mutate();
+          if (email && name) addMember.mutate();
         }}
       >
         <div className="grid grid-cols-2 gap-3">
@@ -94,94 +130,58 @@ export default function TeamStep() {
             ...(cats.data ?? []).map((c) => ({ value: c.id, label: c.name })),
           ]}
         />
-        <Button type="submit" disabled={!email || !name || invite.isPending}>
-          {invite.isPending ? "Invitando…" : "Invitar"}
+        <Button type="submit" disabled={!email || !name || addMember.isPending}>
+          {addMember.isPending ? "Añadiendo…" : "Añadir"}
         </Button>
-        {invite.isError && <ErrorText>{(invite.error as Error).message}</ErrorText>}
+        {addMember.isError && (
+          <ErrorText>{(addMember.error as Error).message}</ErrorText>
+        )}
       </form>
 
-      {generated.length > 0 && (
+      {added.length > 0 && (
         <section className="mb-6">
-          <h3 className="text-sm font-medium mb-1">
-            Invitaciones enviadas en esta sesión
+          <h3 className="text-sm font-medium mb-2">
+            Añadidos en esta sesión
           </h3>
-          <p className="text-xs text-gray-500 mb-2">
-            Cada persona ha recibido un email con el enlace para crear su
-            contraseña. Si no les llega (carpeta de spam, dirección errónea,
-            etc.) puedes copiar su enlace de aquí y compartírselo a mano.
-          </p>
           <ul className="rounded-md border bg-white divide-y text-sm">
-            {generated.map((g, i) => (
-              <li key={i} className="px-4 py-2">
-                <div className="font-medium">
-                  {g.person_name}{" "}
-                  <span className="text-gray-500 font-normal">{g.email}</span>
-                </div>
-                <div className="mt-1 flex items-center gap-2">
-                  <code className="flex-1 break-all rounded bg-gray-100 px-2 py-1 text-xs">
-                    {g.accept_url}
-                  </code>
-                  <button
-                    className="text-xs underline"
-                    onClick={() => copy(g.accept_url)}
-                  >
-                    Copiar
-                  </button>
-                </div>
+            {added.map((a, i) => (
+              <li
+                key={i}
+                className="flex flex-wrap items-center gap-2 px-4 py-2"
+              >
+                <span className="font-medium text-gray-900">
+                  {a.person_name}
+                </span>
+                <span className="text-gray-500">{a.email}</span>
+                {a.category_id !== null && catNameById.has(a.category_id) && (
+                  <span className="ml-auto inline-flex items-center rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-medium text-gray-700">
+                    {catNameById.get(a.category_id)}
+                  </span>
+                )}
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-xs text-gray-500">
-            Los enlaces caducan en 7 días.
-          </p>
         </section>
       )}
 
-      <section>
-        <h3 className="text-sm font-medium mb-2">Pendientes de aceptar</h3>
-        <ul className="rounded-md border bg-white divide-y text-sm">
-          {(invs.data ?? []).map((inv) => (
-            <li
-              key={inv.id}
-              className="flex flex-wrap items-center justify-between gap-2 px-4 py-2"
-            >
-              <span className="min-w-0">
-                {inv.person_name}{" "}
-                <span className="text-gray-500">{inv.email}</span>
-              </span>
-              <div className="flex items-center gap-3 ml-auto">
-                <InviteDeliveryPill inv={inv} />
-                <span className="text-xs text-gray-400">
-                  caduca {new Date(inv.expires_at).toLocaleDateString()}
+      {previouslyAdded.length > 0 && (
+        <section>
+          <h3 className="text-sm font-medium mb-2">Añadidos anteriormente</h3>
+          <ul className="rounded-md border bg-white divide-y text-sm">
+            {previouslyAdded.map((inv) => (
+              <li
+                key={inv.id}
+                className="flex flex-wrap items-center gap-2 px-4 py-2"
+              >
+                <span className="font-medium text-gray-900">
+                  {inv.person_name}
                 </span>
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    if (
-                      confirm(
-                        `¿Reenviar la invitación a ${inv.email}? Se enviará un nuevo email y el enlace anterior dejará de funcionar.`,
-                      )
-                    ) {
-                      resend.mutate(inv.id);
-                    }
-                  }}
-                  disabled={resend.isPending}
-                >
-                  Reenviar
-                </Button>
-              </div>
-            </li>
-          ))}
-          {(invs.data ?? []).length === 0 && (
-            <li className="px-4 py-3 text-gray-500">Sin invitaciones pendientes.</li>
-          )}
-        </ul>
-        {resend.isError && (
-          <div className="mt-2">
-            <ErrorText>{(resend.error as Error).message}</ErrorText>
-          </div>
-        )}
-      </section>
+                <span className="text-gray-500">{inv.email}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <StepNav currentSlug="team" />
     </div>

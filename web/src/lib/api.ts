@@ -1217,6 +1217,13 @@ export const api = {
     person_name: string;
     category_id?: number | null;
     roles?: string[];
+    /** When false, the server creates the Person + Membership +
+     * Invitation row but does NOT send the activation email. Used
+     * by the onboarding /team step so the admin can capture the
+     * roster up-front and trigger the email blast later from
+     * /admin/team. Default true (preserves the previous behaviour
+     * for /admin/team/invite). */
+    send_email?: boolean;
   }) =>
     request<InviteCreateResponse>("/api/team/invite", {
       method: "POST",
@@ -1794,10 +1801,24 @@ export const api = {
     }
     return (await res.json()) as BulkPreviewResponse;
   },
-  bulkInviteCommit: (rows: BulkCommitRow[]) =>
+  /** Commit a previously-validated bulk-import preview.
+   *
+   * `sendEmail` defaults to true (the /admin/team behaviour: create
+   * + email immediately). The onboarding /team step opts out with
+   * `false`: the rows are still created as pendiente Members but no
+   * invitation email goes out. The admin sends them later from
+   * /admin/team's per-row "Enviar invitación" button.
+   */
+  bulkInviteCommit: (
+    rows: BulkCommitRow[],
+    options?: { sendEmail?: boolean },
+  ) =>
     request<BulkCommitResponse>("/api/team/invite/bulk/commit", {
       method: "POST",
-      body: JSON.stringify({ rows }),
+      body: JSON.stringify({
+        rows,
+        send_email: options?.sendEmail ?? true,
+      }),
     }),
 
   // Slot succession rules (sprint 14)

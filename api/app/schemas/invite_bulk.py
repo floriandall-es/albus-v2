@@ -41,6 +41,13 @@ class BulkCommitRow(BaseModel):
 
 class BulkCommitRequest(BaseModel):
     rows: list[BulkCommitRow]
+    # Mirror of InviteCreateRequest.send_email: when false the
+    # endpoint creates the Person + Membership + Invitation rows but
+    # skips the email blast. Used by the onboarding /team step so
+    # the admin can bulk-load the roster up-front and deliver the
+    # invitations later from /admin/team. Default true to preserve
+    # /admin/team's existing behaviour.
+    send_email: bool = True
 
 
 class BulkCommitInvitation(BaseModel):

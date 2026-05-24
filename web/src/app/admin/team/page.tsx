@@ -127,7 +127,7 @@ export default function TeamPage() {
       <SetupBanner
         area="team"
         title="Revisa tu equipo"
-        description="Las invitaciones que pediste durante el alta ya se enviaron. Aquí ves a cada miembro y, sobre todo, le asignas su categoría profesional — Trivu la necesita para saber quién puede hacer cada actividad. También puedes reenviar la invitación si alguien no la ha recibido."
+        description="Aquí ves a cada miembro que añadiste durante el alta. Asígnale su categoría profesional — Trivu la necesita para saber quién puede hacer cada actividad — y, cuando estés listo, pulsa Enviar invitación para que reciban el email con el enlace de activación."
       />
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
       {list.isError && <ErrorText>{(list.error as Error).message}</ErrorText>}

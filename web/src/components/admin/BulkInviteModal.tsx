@@ -15,10 +15,17 @@ export function BulkInviteModal({
   open,
   onClose,
   onCommitted,
+  sendEmail = true,
 }: {
   open: boolean;
   onClose: () => void;
   onCommitted?: () => void;
+  /** When false the modal both posts send_email=false to the API
+   * (so no invitation emails go out) and switches its copy from
+   * "Confirmar e invitar" / "Hemos enviado un email…" to the
+   * onboarding wording ("Confirmar y añadir" / "Los invitarás
+   * más tarde…"). Default true preserves the /admin/team flow. */
+  sendEmail?: boolean;
 }) {
   const qc = useQueryClient();
   const [stage, setStage] = useState<Stage>("pick");
@@ -58,7 +65,7 @@ export function BulkInviteModal({
           name: r.name,
           category_id: r.category_id,
         }));
-      return api.bulkInviteCommit(rows);
+      return api.bulkInviteCommit(rows, { sendEmail });
     },
     onSuccess: (data) => {
       setResult(data);
@@ -218,7 +225,7 @@ export function BulkInviteModal({
               >
                 {commitMut.isPending
                   ? "Creando…"
-                  : `Confirmar e invitar ${validToCommit} ${
+                  : `${sendEmail ? "Confirmar e invitar" : "Confirmar y añadir"} ${validToCommit} ${
                       validToCommit === 1 ? "persona" : "personas"
                     }`}
               </Button>
@@ -280,8 +287,9 @@ export function BulkInviteModal({
               </table>
             </div>
             <p className="text-xs text-gray-500">
-              Hemos enviado un email a cada persona con su enlace. Puedes copiar
-              los enlaces de abajo como respaldo si alguien no recibe el correo.
+              {sendEmail
+                ? "Hemos enviado un email a cada persona con su enlace. Puedes copiar los enlaces de abajo como respaldo si alguien no recibe el correo."
+                : "Hemos añadido a cada persona al equipo. Cuando termines de configurar todo, podrás enviarles la invitación por email desde Admin → Equipo."}
             </p>
             <div className="flex justify-end pt-1">
               <Button onClick={onClose}>Cerrar</Button>
