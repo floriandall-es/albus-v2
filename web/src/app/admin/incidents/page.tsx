@@ -36,8 +36,8 @@ export default function IncidentsPage() {
   return (
     <>
       <PageHeader
-        title="Incidentes"
-        action={<Button onClick={() => setEditing("new")}>Nuevo incidente</Button>}
+        title="Incidencias"
+        action={<Button onClick={() => setEditing("new")}>Nueva incidencia</Button>}
       />
       <p className="-mt-4 mb-6 text-sm text-gray-600">
         Registro libre de eventos fuera de lo común: bajas
@@ -49,7 +49,7 @@ export default function IncidentsPage() {
       {list.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
       {list.isError && <ErrorText>{(list.error as Error).message}</ErrorText>}
       {list.data && list.data.length === 0 && (
-        <Empty>Aún no hay incidentes anotados.</Empty>
+        <Empty>Aún no hay incidencias anotadas.</Empty>
       )}
       {list.data && list.data.length > 0 && (
         <Card>
@@ -89,7 +89,7 @@ export default function IncidentsPage() {
                       onClick={() => {
                         if (
                           confirm(
-                            `¿Eliminar este incidente?\n\n"${inc.title}"`,
+                            `¿Eliminar esta incidencia?\n\n"${inc.title}"`,
                           )
                         ) {
                           del.mutate(inc.id);
@@ -152,7 +152,7 @@ function IncidentDialog({
     <Modal
       open={true}
       onClose={onClose}
-      title={initial ? "Editar incidente" : "Nuevo incidente"}
+      title={initial ? "Editar incidencia" : "Nueva incidencia"}
     >
       <form
         className="space-y-3"

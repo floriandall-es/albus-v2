@@ -43,7 +43,7 @@ const NAV: NavSection[] = [
       { href: "/admin/swaps", label: "Cambios de turno", icon: ArrowLeftRight },
       { href: "/admin/availability", label: "Bloqueos", icon: CalendarOff },
       { href: "/admin/reuniones", label: "Reuniones", icon: MessageSquare },
-      { href: "/admin/incidents", label: "Incidentes", icon: AlertCircle },
+      { href: "/admin/incidents", label: "Incidencias", icon: AlertCircle },
       { href: "/admin/trasplantes", label: "Trasplantes", icon: Heart },
       // Sprint 28: cross-tenant hospital directory. Hidden when
       // the current tenant has no parent hospital (standalone).
