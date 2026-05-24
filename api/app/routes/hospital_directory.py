@@ -22,6 +22,8 @@ settings page via PATCH /api/me/directory-visibility.
 
 from __future__ import annotations
 
+from datetime import date as date_type
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -68,6 +70,13 @@ class HospitalDirectoryEntry(BaseModel):
     # directory favorites table (migration 0058). Drives the
     # "Favoritos" section + filled-star icon on the directory card.
     is_favorite: bool = False
+    # Set when this person is on a guardia-named slot today in any
+    # published schedule of the hospital. Carries the slot name
+    # verbatim so the card pill matches what they're actually
+    # doing ("Guardia presencial", "Guardia localizada"…). Null
+    # when not on guardia today or when the source schedule is
+    # still a draft.
+    on_guardia_today: str | None = None
 
 
 @router.get(
@@ -118,6 +127,23 @@ def list_hospital_directory(
         for row in ctx.db.query(DirectoryFavorite.favorite_person_id)
         .filter(DirectoryFavorite.person_id == ctx.person.id)
         .all()
+    }
+
+    # "Who's on guardia today?" — one cross-tenant SECURITY DEFINER
+    # call (migration 0062). The function respects the same
+    # publication-state visibility as the schedule serializer so
+    # draft data never leaks here. We use server-local date for
+    # `today` — Spain-only customer, so timezone fuzz isn't a real
+    # concern yet.
+    guardia_rows = ctx.db.execute(
+        text(
+            "SELECT person_id, slot_name "
+            "FROM list_hospital_guardias_today(:hid, :today)"
+        ),
+        {"hid": hospital_id, "today": date_type.today()},
+    ).mappings().all()
+    guardia_by_person: dict[int, str] = {
+        r["person_id"]: r["slot_name"] for r in guardia_rows
     }
 
     # Server-side filters. Keeping them in Python (not SQL) is fine
@@ -179,6 +205,7 @@ def list_hospital_directory(
                     r["person_personal_phone"] if r["share_whatsapp"] else None
                 ),
                 is_favorite=r["person_id"] in favorite_ids,
+                on_guardia_today=guardia_by_person.get(r["person_id"]),
             )
         )
     return out

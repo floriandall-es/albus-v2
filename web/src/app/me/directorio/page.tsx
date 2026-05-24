@@ -426,8 +426,18 @@ function DirectoryCard({
           size="lg"
         />
         <div className="min-w-0 flex-1 leading-tight pt-0.5">
-          <div className="truncate text-base font-semibold text-gray-900">
-            {displayName}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="truncate text-base font-semibold text-gray-900">
+              {displayName}
+            </span>
+            {entry.on_guardia_today && (
+              <span
+                className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-800"
+                title={`De ${entry.on_guardia_today} hoy`}
+              >
+                {entry.on_guardia_today}
+              </span>
+            )}
           </div>
           {/* Cargos as pills when set; otherwise fall back to the
               scheduling categoría as plain text (legacy view for

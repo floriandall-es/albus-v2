@@ -518,6 +518,14 @@ export type HospitalDirectoryEntry = {
    * directory favorites table (migration 0058). Drives the
    * "Favoritos" section + filled-star icon on the card. */
   is_favorite: boolean;
+  /** Slot name when this person is on a guardia-named slot today
+   * in any of the hospital's published schedules (migration 0062
+   * SECURITY DEFINER function). Carries the slot verbatim
+   * ("Guardia presencial", "Guardia localizada"…) so the pill
+   * on the card matches what they're actually doing. Null when
+   * not on guardia today or when the source schedule is still a
+   * draft. */
+  on_guardia_today: string | null;
 };
 
 export type Department = {
