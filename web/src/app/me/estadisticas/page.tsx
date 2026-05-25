@@ -221,7 +221,7 @@ export default function MyStatsPage() {
             onChange={setToPeriod}
           />
         </div>
-        <div className="flex flex-wrap items-center gap-1 pb-2">
+        <div className="flex flex-wrap items-center gap-2">
           <PresetButton
             label="Este año"
             onClick={() => {
@@ -450,11 +450,14 @@ function PresetButton({
   label: string;
   onClick: () => void;
 }) {
+  // Padding + text size mirror MonthPicker's <select> (px-3 py-2
+  // text-sm) so the preset chips sit flush with the dropdowns
+  // rather than reading as a smaller secondary control.
   return (
     <button
       type="button"
       onClick={onClick}
-      className="rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+      className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
     >
       {label}
     </button>
