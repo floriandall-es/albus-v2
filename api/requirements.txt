@@ -28,6 +28,12 @@ pydyf==0.10.0
 # saves a "Save As → CSV → fix encoding" step that nobody enjoys.
 # Pure-Python wheel, ~2 MB, no system deps.
 openpyxl==3.1.2
+# In-process scheduler for the meeting-reminder worker (migration
+# 0066). BackgroundScheduler runs as a daemon thread inside the
+# FastAPI process and ticks every 5 minutes. The job is idempotent
+# (UNIQUE(meeting_id, instance_date) on meeting_reminders_sent),
+# so a restart-mid-tick or a multi-replica deploy is safe.
+APScheduler==3.10.4
 pytest==8.2.0
 pytest-asyncio==0.23.6
 asgi-lifespan==2.1.0

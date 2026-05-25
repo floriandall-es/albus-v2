@@ -6,6 +6,18 @@ from app.core.config import settings
 engine = create_engine(settings.runtime_db_url, pool_pre_ping=True, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
+# Separate engine + session factory bound to the owner/superuser
+# role (the same one Alembic uses). Used by background workers
+# that need cross-tenant reads — RLS would otherwise hide rows
+# from other tenants on the runtime role. Don't use this from
+# request-scoped code; it bypasses tenant isolation.
+_admin_engine = create_engine(
+    settings.database_url, pool_pre_ping=True, future=True
+)
+AdminSessionLocal = sessionmaker(
+    bind=_admin_engine, autoflush=False, autocommit=False, future=True
+)
+
 
 def get_db():
     """FastAPI dependency: yields a Session. Tenant context is set per-request

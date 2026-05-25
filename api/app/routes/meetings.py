@@ -194,6 +194,7 @@ def _serialize(ctx: RequestContext, m: Meeting) -> MeetingOut:
             group_names=[g_names[g] for g in group_ids],
             person_names=[p_names[p] for p in person_ids],
         ),
+        reminder_minutes_before=m.reminder_minutes_before,  # type: ignore[arg-type]
         created_at=m.created_at,
     )
 
@@ -382,6 +383,7 @@ def create_regular_meeting(
         end_time=payload.end_time,
         include_main_team=payload.include_main_team,
         organizer_membership_id=ctx.membership.id,
+        reminder_minutes_before=payload.reminder_minutes_before,
     )
     ctx.db.add(m)
     ctx.db.flush()
@@ -417,6 +419,7 @@ def create_ad_hoc_meeting(
         end_time=payload.end_time,
         include_main_team=payload.include_main_team,
         organizer_membership_id=ctx.membership.id,
+        reminder_minutes_before=payload.reminder_minutes_before,
     )
     ctx.db.add(m)
     ctx.db.flush()
@@ -455,6 +458,7 @@ def update_regular_meeting(
     m.start_time = payload.start_time
     m.end_time = payload.end_time
     m.include_main_team = payload.include_main_team
+    m.reminder_minutes_before = payload.reminder_minutes_before
     _replace_audience(ctx, m, payload.group_ids, payload.person_ids)
     ctx.db.flush()
     return _serialize(ctx, m)
@@ -488,6 +492,7 @@ def update_ad_hoc_meeting(
     m.start_time = payload.start_time
     m.end_time = payload.end_time
     m.include_main_team = payload.include_main_team
+    m.reminder_minutes_before = payload.reminder_minutes_before
     _replace_audience(ctx, m, payload.group_ids, payload.person_ids)
     ctx.db.flush()
     return _serialize(ctx, m)

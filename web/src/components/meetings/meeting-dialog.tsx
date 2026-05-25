@@ -5,6 +5,7 @@ import {
   api,
   type Group,
   type Meeting,
+  type ReminderMinutesBefore,
   type TeamMember,
 } from "@/lib/api";
 import {
@@ -72,6 +73,13 @@ export function MeetingDialog({
     (initial?.end_time ?? "11:00:00").slice(0, 5),
   );
 
+  // Migration 0066: reminder offset, in minutes before the meeting
+  // starts. null = no reminder. The Select holds "" for "off" and
+  // a stringified preset minute count otherwise.
+  const [reminderMinutes, setReminderMinutes] = useState<
+    ReminderMinutesBefore | null
+  >(initial?.reminder_minutes_before ?? null);
+
   const [includeMainTeam, setIncludeMainTeam] = useState<boolean>(
     initial?.audience.include_main_team ?? false,
   );
@@ -128,6 +136,7 @@ export function MeetingDialog({
         location: location.trim() || null,
         start_time: `${startTime}:00`,
         end_time: `${endTime}:00`,
+        reminder_minutes_before: reminderMinutes,
         ...audience,
       };
       if (kind === "regular") {
@@ -271,6 +280,26 @@ export function MeetingDialog({
             />
           </div>
         </div>
+
+        {/* Reminder picker (migration 0066). Empty = no reminder.
+            The worker reads the persisted value on each tick — for
+            regular meetings it fires once per weekly instance. */}
+        <Select
+          label="Recordatorio por email"
+          value={reminderMinutes ?? ""}
+          onChange={(v) => {
+            if (v === "") setReminderMinutes(null);
+            else setReminderMinutes(Number(v) as ReminderMinutesBefore);
+          }}
+          options={[
+            { value: "", label: "Sin recordatorio" },
+            { value: 15, label: "15 minutos antes" },
+            { value: 60, label: "1 hora antes" },
+            { value: 180, label: "3 horas antes" },
+            { value: 1440, label: "1 día antes" },
+            { value: 10080, label: "1 semana antes" },
+          ]}
+        />
 
         <div className="rounded-lg border border-gray-200 p-3 space-y-3">
           <div className="text-sm font-medium text-gray-700">

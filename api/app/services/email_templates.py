@@ -362,6 +362,47 @@ def schedule_published_member_email(
     return subject, body
 
 
+def meeting_reminder_email(
+    *,
+    recipient_first_name: str,
+    title: str,
+    when_label: str,
+    location: str | None,
+    organizer_name: str | None,
+    description: str | None,
+    app_url: str,
+) -> tuple[str, str]:
+    """Migration 0066: fires N minutes before each meeting instance
+    (N picked by the creator). Body is intentionally compact — the
+    reminder's job is "you've got something soon", not to dump the
+    whole agenda.
+
+    `when_label` is the pre-formatted human time, e.g. "hoy a las
+    10:00" / "mañana a las 10:00" / "el lunes a las 10:00 (en 1
+    hora)". The worker builds it; the template just stitches.
+    """
+    subject = f"Recordatorio: {title} — {when_label}"
+    location_line = f"Lugar: {location}\n" if location else ""
+    organizer_line = (
+        f"Organiza: {organizer_name}\n" if organizer_name else ""
+    )
+    description_block = (
+        f"\n{description.strip()}\n" if description and description.strip() else ""
+    )
+    body = (
+        f"Hola {recipient_first_name},\n\n"
+        f"Te recordamos que tienes esta reunión {when_label}:\n\n"
+        f"  {title}\n"
+        f"{location_line}"
+        f"{organizer_line}"
+        f"{description_block}\n"
+        f"Más detalles en Trivu:\n"
+        f"{app_url}\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body
+
+
 def dm_unread_email(
     *,
     recipient_first_name: str,

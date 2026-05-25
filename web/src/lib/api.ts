@@ -591,6 +591,11 @@ export type MeetingAudience = {
   person_names: string[];
 };
 
+/** Migration 0066: allowed reminder offsets (minutes before the
+ * meeting starts). Mirrors the Literal in api/app/schemas/meeting.py
+ * and the CHECK constraint on meetings.reminder_minutes_before. */
+export type ReminderMinutesBefore = 15 | 60 | 180 | 1440 | 10080;
+
 export type Meeting = {
   id: number;
   tenant_id: number;
@@ -608,6 +613,8 @@ export type Meeting = {
   organizer_membership_id: number | null;
   organizer_name: string | null;
   audience: MeetingAudience;
+  /** Migration 0066: NULL = no reminder configured. */
+  reminder_minutes_before: ReminderMinutesBefore | null;
   created_at: string;
 };
 
@@ -1456,6 +1463,9 @@ export const api = {
     include_main_team: boolean;
     group_ids: number[];
     person_ids: number[];
+    /** Migration 0066: optional email reminder offset. Pass null
+     * (or omit) to disable. */
+    reminder_minutes_before?: ReminderMinutesBefore | null;
   }) =>
     request<Meeting>("/api/meetings/regular", {
       method: "POST",
@@ -1473,6 +1483,7 @@ export const api = {
       include_main_team: boolean;
       group_ids: number[];
       person_ids: number[];
+      reminder_minutes_before?: ReminderMinutesBefore | null;
     },
   ) =>
     request<Meeting>(`/api/meetings/${id}/regular`, {
@@ -1489,6 +1500,7 @@ export const api = {
     include_main_team: boolean;
     group_ids: number[];
     person_ids: number[];
+    reminder_minutes_before?: ReminderMinutesBefore | null;
   }) =>
     request<Meeting>("/api/meetings/ad-hoc", {
       method: "POST",
@@ -1506,6 +1518,7 @@ export const api = {
       include_main_team: boolean;
       group_ids: number[];
       person_ids: number[];
+      reminder_minutes_before?: ReminderMinutesBefore | null;
     },
   ) =>
     request<Meeting>(`/api/meetings/${id}/ad-hoc`, {

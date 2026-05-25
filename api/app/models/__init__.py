@@ -26,7 +26,12 @@ from app.models.holiday import Holiday
 from app.models.availability_block import AvailabilityBlock
 from app.models.schedule import Schedule, Assignment, ScheduleGroupPublication
 from app.models.shift_swap import ShiftSwapOffer, ShiftSwapResponse
-from app.models.meeting import Meeting, MeetingAudienceGroup, MeetingAudiencePerson
+from app.models.meeting import (
+    Meeting,
+    MeetingAudienceGroup,
+    MeetingAudiencePerson,
+    MeetingReminderSent,
+)
 from app.models.transplant import TransplantCase, TransplantProcedure
 from app.models.conversation import (
     Conversation,
@@ -67,6 +72,7 @@ __all__ = [
     "Meeting",
     "MeetingAudienceGroup",
     "MeetingAudiencePerson",
+    "MeetingReminderSent",
     "TransplantCase",
     "TransplantProcedure",
     "Conversation",

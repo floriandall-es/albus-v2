@@ -21,6 +21,12 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 
+# Migration 0066: allowed reminder offsets, in minutes before the
+# meeting starts. NULL = no reminder. Mirrors the CHECK constraint
+# on meetings.reminder_minutes_before AND the frontend dropdown.
+ReminderMinutesBefore = Literal[15, 60, 180, 1440, 10080]
+
+
 class MeetingAudienceIn(BaseModel):
     """Shared audience block on create/update payloads. At least
     one of include_main_team, group_ids, person_ids must be
@@ -30,6 +36,10 @@ class MeetingAudienceIn(BaseModel):
     include_main_team: bool = False
     group_ids: list[int] = Field(default_factory=list)
     person_ids: list[int] = Field(default_factory=list)
+    # Migration 0066: optional email reminder. Pass None or omit
+    # to disable. The Literal typing means FastAPI returns 422
+    # for any non-preset minute count.
+    reminder_minutes_before: ReminderMinutesBefore | None = None
 
 
 class RegularMeetingCreate(MeetingAudienceIn):
@@ -119,6 +129,9 @@ class MeetingOut(BaseModel):
     organizer_membership_id: int | None
     organizer_name: str | None
     audience: MeetingAudienceOut
+    # Migration 0066: configured reminder offset, in minutes
+    # before the meeting starts. NULL = no reminder set.
+    reminder_minutes_before: ReminderMinutesBefore | None = None
     created_at: datetime
 
 
