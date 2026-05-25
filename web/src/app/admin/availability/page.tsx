@@ -329,6 +329,19 @@ function PendingApprovals() {
     queryKey: ["availability", "pending"],
     queryFn: () => api.listAvailabilityBlocks({ status: "pending" }),
   });
+  // Same lookup the parent table uses to render the sub-equipo
+  // pill — React Query dedupes against the parent's ["team"]
+  // fetch so this doesn't trigger an extra request.
+  const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
+  const groupByPerson = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const t of team.data ?? []) {
+      if (t.group_id !== null && t.group_name) {
+        m.set(t.person_id, t.group_name);
+      }
+    }
+    return m;
+  }, [team.data]);
   const approve = useMutation({
     mutationFn: (id: number) => api.approveAvailabilityBlock(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["availability"] }),
@@ -358,9 +371,23 @@ function PendingApprovals() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((b: AvailabilityBlock) => (
+            {rows.map((b: AvailabilityBlock) => {
+              const groupName = groupByPerson.get(b.person_id);
+              return (
               <tr key={b.id} className="border-b last:border-b-0">
-                <td className="px-4 py-2">{b.person_name}</td>
+                <td className="px-4 py-2">
+                  <div className="flex items-center gap-2">
+                    <span>{b.person_name}</span>
+                    {groupName && (
+                      <span
+                        className="inline-flex items-center rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700"
+                        title={`Sub-equipo: ${groupName}`}
+                      >
+                        {groupName}
+                      </span>
+                    )}
+                  </div>
+                </td>
                 <td className="px-4 py-2">{b.start_date}</td>
                 <td className="px-4 py-2">{b.end_date}</td>
                 <td className="px-4 py-2">
@@ -390,7 +417,8 @@ function PendingApprovals() {
                   </Button>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </Card>
