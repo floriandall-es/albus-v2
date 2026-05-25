@@ -1182,6 +1182,26 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ last_message_id }),
     }),
+  /** Phase 2C: per-user "delete conversation". Hides the chat
+   * from the caller's list (sets hidden_at on their member row).
+   * The peer is unaffected and their copy of the history is
+   * intact. If the peer sends a new message later, the
+   * conversation re-appears for the caller — WhatsApp behaviour.
+   * 204. */
+  deleteConversation: (conversationId: number) =>
+    request<void>(`/api/conversations/${conversationId}`, {
+      method: "DELETE",
+    }),
+  /** Phase 2C: soft-delete a single message. Author-only — the
+   * server returns 404 if the caller isn't the author (we don't
+   * differentiate from "message doesn't exist" to avoid leaking
+   * existence). Sets deleted_at AND empties body in the DB; the
+   * peer sees "(mensaje borrado)" in the bubble. 204. */
+  deleteMessage: (conversationId: number, messageId: number) =>
+    request<void>(
+      `/api/conversations/${conversationId}/messages/${messageId}`,
+      { method: "DELETE" },
+    ),
   updateProfile: (body: {
     /** Legacy single-field name. Sprint 18+ clients should send
      * first_name + last_name instead; the server composes `name`

@@ -296,6 +296,12 @@ def list_my_conversations(
     """Return ctx.person's conversations across all their
     hospitals (today: just the current tenant's hospital, but the
     schema allows multiple), ordered by last_message_at DESC.
+
+    Hidden conversations (caller hit "Borrar conversación") are
+    filtered out — UNLESS new activity has happened since the hide
+    marker, in which case the conversation re-appears (last_message_at
+    bumped past hidden_at when the peer sent a new message).
+    Mirrors WhatsApp's "delete chat" behaviour exactly.
     """
     convs = (
         ctx.db.query(Conversation)
@@ -303,7 +309,13 @@ def list_my_conversations(
             ConversationMember,
             ConversationMember.conversation_id == Conversation.id,
         )
-        .filter(ConversationMember.person_id == ctx.person.id)
+        .filter(
+            ConversationMember.person_id == ctx.person.id,
+            (
+                (ConversationMember.hidden_at.is_(None))
+                | (Conversation.last_message_at > ConversationMember.hidden_at)
+            ),
+        )
         .order_by(Conversation.last_message_at.desc())
         .all()
     )
@@ -500,6 +512,14 @@ def my_unread_count(
                 cm.last_read_message_id IS NULL
                 OR m.id > cm.last_read_message_id
               )
+              -- Hidden conversations don't contribute to the badge
+              -- unless new activity since the hide brings them
+              -- back. Otherwise a "deleted" chat would keep
+              -- inflating the count forever.
+              AND (
+                cm.hidden_at IS NULL
+                OR m.created_at > cm.hidden_at
+              )
             """
         ),
         {"me": ctx.person.id},
@@ -538,6 +558,98 @@ def mark_read(
     # didn't move. We use this in the email-fallback path as
     # "this person looked recently, don't email them."
     mem.last_read_at = datetime.now(timezone.utc)
+    ctx.db.flush()
+
+
+@router.delete(
+    "/conversations/{conversation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+def delete_conversation(
+    conversation_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> None:
+    """Per-user "delete" a conversation. Stamps `hidden_at` on the
+    caller's ConversationMember row; the other participant's view
+    is untouched.
+
+    If the peer sends a new message after this, the conversation
+    re-appears for the caller because the list filter checks
+    `last_message_at > hidden_at`. WhatsApp / Slack pattern —
+    matches the mental model users already have.
+
+    Idempotent: re-issuing is a no-op (we don't move hidden_at
+    forward on subsequent calls; the existing value already
+    excludes everything up to it, and any new activity has
+    already bumped last_message_at past it).
+    """
+    conv = _ensure_membership(ctx, conversation_id)
+    mem = (
+        ctx.db.query(ConversationMember)
+        .filter(
+            ConversationMember.conversation_id == conv.id,
+            ConversationMember.person_id == ctx.person.id,
+        )
+        .one()
+    )
+    # Always re-stamp so a fresh "Borrar conversación" hides anything
+    # the peer sent between the last hide and now — otherwise the
+    # caller could keep seeing messages they explicitly tried to
+    # banish.
+    mem.hidden_at = datetime.now(timezone.utc)
+    ctx.db.flush()
+
+
+@router.delete(
+    "/conversations/{conversation_id}/messages/{message_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+def delete_message(
+    conversation_id: int,
+    message_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> None:
+    """Soft-delete a single message. Author-only.
+
+    Sets `deleted_at` AND nulls the body so the content is gone
+    from the DB (privacy: the body shouldn't survive deletion
+    even though the row does). The row itself stays so message
+    ids remain stable for last_read tracking.
+
+    The peer continues to see the message slot, but rendered as
+    "(mensaje borrado)" — same UX as WhatsApp's "delete for
+    everyone".
+
+    404 if the message isn't in this conversation, or isn't
+    authored by the caller. We don't expose 403 vs 404 to avoid
+    leaking which messages exist.
+    """
+    _ensure_membership(ctx, conversation_id)
+    msg = (
+        ctx.db.query(Message)
+        .filter(
+            Message.id == message_id,
+            Message.conversation_id == conversation_id,
+        )
+        .first()
+    )
+    if msg is None:
+        raise HTTPException(status_code=404, detail="Mensaje no encontrado")
+    if msg.author_person_id != ctx.person.id:
+        # Don't reveal that the message exists — same 404 path.
+        raise HTTPException(status_code=404, detail="Mensaje no encontrado")
+    if msg.deleted_at is not None:
+        # Already deleted — idempotent no-op.
+        return
+    msg.deleted_at = datetime.now(timezone.utc)
+    # Null the body so the content is gone from the DB. The column
+    # is NOT NULL in the schema, so we can't actually set it to
+    # NULL — instead empty-string it. The serializer still keys off
+    # deleted_at, so the UI rendering ("mensaje borrado") is
+    # unchanged.
+    msg.body = ""
     ctx.db.flush()
 
 

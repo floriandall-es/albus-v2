@@ -96,6 +96,16 @@ class ConversationMember(Base):
     last_email_sent_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Sprint 28 / Phase 2C / migration 0067: per-user "delete
+    # conversation". When the caller hits DELETE on a conversation
+    # we stamp this for *their* membership only — the other
+    # person's view is untouched. The list query filters out
+    # conversations where last_message_at <= hidden_at, so a new
+    # incoming message (which bumps last_message_at) brings the
+    # conversation back. Matches WhatsApp / Slack semantics.
+    hidden_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     joined_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

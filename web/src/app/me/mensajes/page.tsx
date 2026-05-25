@@ -12,7 +12,13 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { ArrowLeft, MessageCircle, Send } from "lucide-react";
+import {
+  ArrowLeft,
+  MessageCircle,
+  MoreVertical,
+  Send,
+  Trash2,
+} from "lucide-react";
 import {
   api,
   personFullName,
@@ -118,6 +124,16 @@ export default function MensajesPage() {
               onMessageSent={() => {
                 qc.invalidateQueries({ queryKey: ["conversations"] });
               }}
+              onConversationDeleted={() => {
+                // Drop the ?c=... so the right pane returns to the
+                // empty state and the list re-fetches without the
+                // hidden row. We refresh conversations + unread
+                // count immediately so the deleted chat disappears
+                // before the next poll tick.
+                router.replace("/me/mensajes");
+                qc.invalidateQueries({ queryKey: ["conversations"] });
+                qc.invalidateQueries({ queryKey: ["my-unread-count"] });
+              }}
             />
           )}
         </div>
@@ -211,6 +227,7 @@ function ConversationPane({
   conversation,
   onBackToList,
   onMessageSent,
+  onConversationDeleted,
 }: {
   conversationId: number;
   conversation: DMConversation | undefined;
@@ -219,11 +236,27 @@ function ConversationPane({
    * this. */
   onBackToList: () => void;
   onMessageSent: () => void;
+  /** Caller hit "Borrar conversación" in the header menu and
+   * the server confirmed (204). Parent should drop the active id
+   * + invalidate the conversation list. */
+  onConversationDeleted: () => void;
 }) {
   const qc = useQueryClient();
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  // Click-outside handler for the kebab menu. Attached only when
+  // the menu is open so we don't pay for global mousedown
+  // listeners on every render.
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onDocClick() {
+      setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [menuOpen]);
 
   const messages = useQuery({
     queryKey: ["messages", conversationId],
@@ -271,11 +304,76 @@ function ConversationPane({
     },
   });
 
+  const deleteConv = useMutation({
+    mutationFn: () => api.deleteConversation(conversationId),
+    onSuccess: () => {
+      onConversationDeleted();
+    },
+  });
+
+  const deleteMsg = useMutation({
+    mutationFn: (messageId: number) =>
+      api.deleteMessage(conversationId, messageId),
+    onSuccess: (_void, messageId) => {
+      // Optimistic local update so the bubble flips to the
+      // "(mensaje borrado)" rendering immediately, without
+      // waiting for the next 5s poll. The next refetch will
+      // confirm the server-side state.
+      qc.setQueryData<DMMessage[]>(
+        ["messages", conversationId],
+        (prev) =>
+          prev
+            ? prev.map((m) =>
+                m.id === messageId
+                  ? {
+                      ...m,
+                      body: null,
+                      deleted_at: new Date().toISOString(),
+                    }
+                  : m,
+              )
+            : prev,
+      );
+      // The conversation list shows the latest preview — if we
+      // just deleted the latest message that preview needs to
+      // flip to "(mensaje borrado)" too.
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     const body = draft.trim();
     if (!body || send.isPending) return;
     send.mutate(body);
+  }
+
+  function onDeleteConversation() {
+    setMenuOpen(false);
+    if (!conversation) return;
+    const peerName = personFullName({
+      name: conversation.peer.name,
+      first_name: conversation.peer.first_name,
+      last_name: conversation.peer.last_name,
+    });
+    const ok = window.confirm(
+      `¿Borrar esta conversación con ${peerName}?\n\n`
+        + "Desaparecerá de tu lista. Si te escribe de nuevo, "
+        + "volverá a aparecer. La otra persona conserva su copia "
+        + "de los mensajes.",
+    );
+    if (!ok) return;
+    deleteConv.mutate();
+  }
+
+  function onDeleteMessage(messageId: number) {
+    const ok = window.confirm(
+      "¿Borrar este mensaje?\n\n"
+        + "La otra persona verá «(mensaje borrado)» en su lugar. "
+        + "No se puede deshacer.",
+    );
+    if (!ok) return;
+    deleteMsg.mutate(messageId);
   }
 
   return (
@@ -300,7 +398,7 @@ function ConversationPane({
             imageUrl={conversation.peer.avatar_url}
             size="md"
           />
-          <div className="min-w-0 leading-tight">
+          <div className="min-w-0 flex-1 leading-tight">
             <div className="truncate text-sm font-semibold text-gray-900">
               {personFullName({
                 name: conversation.peer.name,
@@ -317,6 +415,43 @@ function ConversationPane({
                 .join(" · ")}
             </div>
           </div>
+          {/* Kebab menu — currently a single action ("Borrar
+              conversación") but a real menu so the future
+              "Silenciar", "Bloquear", etc. land here without
+              re-plumbing the header. stopPropagation on the
+              trigger so the document-level click-outside doesn't
+              immediately close what we just opened. */}
+          <div className="relative">
+            <button
+              type="button"
+              aria-label="Más opciones"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen((v) => !v);
+              }}
+              className="flex h-11 w-11 -mr-2 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 active:bg-gray-200"
+            >
+              <MoreVertical className="h-5 w-5" />
+            </button>
+            {menuOpen && (
+              <div
+                className="absolute right-0 top-full z-10 mt-1 w-56 rounded-md border border-gray-200 bg-white py-1 shadow-lg"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  onClick={onDeleteConversation}
+                  disabled={deleteConv.isPending}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {deleteConv.isPending
+                    ? "Borrando…"
+                    : "Borrar conversación"}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
       <div
@@ -331,15 +466,28 @@ function ConversationPane({
             Aún no hay mensajes. Escribe el primero.
           </p>
         )}
-        {messages.data?.map((m) => (
-          <MessageBubble
-            key={m.id}
-            message={m}
-            mine={m.author_person_id !== null
-              && conversation
-              && conversation.peer.person_id !== m.author_person_id}
-          />
-        ))}
+        {messages.data?.map((m) => {
+          const isMine =
+            m.author_person_id !== null
+            && !!conversation
+            && conversation.peer.person_id !== m.author_person_id;
+          return (
+            <MessageBubble
+              key={m.id}
+              message={m}
+              mine={isMine}
+              // Only the author can delete, and only while the
+              // message hasn't already been soft-deleted. The
+              // server enforces both — the UI guard is just to
+              // avoid surfacing a button that would 404.
+              onDelete={
+                isMine && !m.deleted_at
+                  ? () => onDeleteMessage(m.id)
+                  : undefined
+              }
+            />
+          );
+        })}
       </div>
       <form
         onSubmit={onSubmit}
@@ -377,17 +525,41 @@ function ConversationPane({
 function MessageBubble({
   message,
   mine,
+  onDelete,
 }: {
   message: DMMessage;
   mine: boolean | undefined;
+  /** When set (own, non-deleted message) renders a small trash
+   * icon that appears on hover (and is always visible on touch
+   * devices that don't fire hover). Calling it triggers the
+   * confirm dialog + DELETE request. */
+  onDelete?: () => void;
 }) {
   const text = message.body ?? "(mensaje borrado)";
   return (
     <div
       className={
-        "flex " + (mine ? "justify-end" : "justify-start")
+        "group flex items-center gap-1 "
+        + (mine ? "justify-end" : "justify-start")
       }
     >
+      {/* Trash icon sits OUTSIDE the bubble, on the inside edge
+          (left side for own messages aligned right). Always
+          rendered for layout stability — opacity flip on
+          group-hover means the message stays in the same spot
+          and the icon doesn't jump in. Sized to a 32px touch
+          target which is enough for thumb-precise taps on
+          mobile without being awkwardly large on desktop. */}
+      {mine && onDelete && (
+        <button
+          type="button"
+          aria-label="Borrar mensaje"
+          onClick={onDelete}
+          className="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-red-600 focus:opacity-100 group-hover:opacity-100"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      )}
       <div
         className={
           "max-w-[75%] rounded-2xl px-3 py-2 text-sm leading-snug "
