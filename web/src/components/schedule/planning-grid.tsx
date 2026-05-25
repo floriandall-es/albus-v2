@@ -174,7 +174,7 @@ export function PlanningGrid({
                       : isHoliday
                         ? "bg-amber-50 border-amber-200 "
                         : isWeekend
-                          ? "bg-gray-100/60 border-gray-200 "
+                          ? "bg-slate-100 border-gray-200 "
                           : "border-gray-200 ")
                   }
                 >
@@ -299,9 +299,9 @@ export function PlanningGrid({
                             : isToday
                               ? "bg-brand-50/30"
                               : isHoliday
-                                ? "bg-amber-50/50"
+                                ? "bg-amber-50"
                                 : isWeekend
-                                  ? "bg-gray-100/50"
+                                  ? "bg-slate-100"
                                   : "")
                     }
                   >
@@ -472,9 +472,9 @@ export function PlanningGrid({
                         + (isToday
                           ? "bg-brand-50/20 "
                           : isHoliday
-                            ? "bg-amber-50/50 "
+                            ? "bg-amber-50 "
                             : isWeekend
-                              ? "bg-gray-100/50 "
+                              ? "bg-slate-100 "
                               : "")
                       }
                     >
@@ -572,9 +572,9 @@ export function PlanningGrid({
                     + (isToday
                       ? "bg-brand-50/20 "
                       : isHoliday
-                        ? "bg-amber-50/50 "
+                        ? "bg-amber-50 "
                         : isWeekend
-                          ? "bg-gray-100/50 "
+                          ? "bg-slate-100 "
                           : "");
                   if (onAbsenceCellClick) {
                     return (
