@@ -27,7 +27,10 @@ from app.models import (
     ShiftSwapOffer,
     ShiftSwapResponse,
     Slot,
+    SlotAllowedPerson,
+    SlotCategory,
     SlotTeamRole,
+    SlotTeamRoleCategory,
 )
 from app.routes.deps import RequestContext, get_current_context
 from app.schemas.shift_swap import (
@@ -421,6 +424,81 @@ def _check_eligibility_for_slot(
     return None
 
 
+def _eligible_membership_ids_for_assignment(
+    ctx: RequestContext, a: Assignment
+) -> set[int]:
+    """Membership ids that are configured to cover this assignment's
+    slot — used to narrow the swap-offer audience.
+
+    Honours the *static* slot configuration only:
+      - SlotAllowedPerson (per-slot allow-list)
+      - SlotCategory (per-slot categoría restriction)
+      - SlotTeamRoleCategory (per-role categoría restriction, only
+        when the assignment has a team_role_id)
+
+    Deliberately *does not* check availability blocks, schedule
+    conflicts, or quotas: those are about "can take it on this
+    specific date" and are re-checked at accept time (see
+    `_check_eligibility_for_slot`). The audience picker only wants
+    to hide people the admin never authorised to touch this turno —
+    a residente shouldn't see an adjunto's guardia request, an
+    "Equipo autorizado" allow-list should be respected, etc.
+
+    Scope: active main-team memberships of the tenant (group_id
+    is NULL, disabled_at is NULL). Sub-team and disabled members
+    are filtered out the same way the modal does — and the create
+    endpoint already blocks sub-team requesters outright.
+    """
+    # Per-slot allow-list. NULL/empty set = no restriction.
+    allowed_persons: set[int] = {
+        row[0]
+        for row in ctx.db.query(SlotAllowedPerson.person_id)
+        .filter(SlotAllowedPerson.slot_id == a.slot_id)
+        .all()
+    }
+    # Per-slot categoría restriction.
+    slot_cats: set[int] = {
+        row[0]
+        for row in ctx.db.query(SlotCategory.category_id)
+        .filter(SlotCategory.slot_id == a.slot_id)
+        .all()
+    }
+    # Per-role categoría restriction (only when the assignment is a
+    # team_composition role).
+    role_cats: set[int] = set()
+    if a.team_role_id is not None:
+        role_cats = {
+            row[0]
+            for row in ctx.db.query(SlotTeamRoleCategory.category_id)
+            .filter(
+                SlotTeamRoleCategory.slot_team_role_id == a.team_role_id
+            )
+            .all()
+        }
+
+    rows = (
+        ctx.db.query(
+            Membership.id, Membership.person_id, Membership.category_id
+        )
+        .filter(
+            Membership.tenant_id == ctx.tenant.id,
+            Membership.disabled_at.is_(None),
+            Membership.group_id.is_(None),
+        )
+        .all()
+    )
+    out: set[int] = set()
+    for mid, pid, cid in rows:
+        if allowed_persons and pid not in allowed_persons:
+            continue
+        if slot_cats and cid not in slot_cats:
+            continue
+        if role_cats and cid not in role_cats:
+            continue
+        out.add(mid)
+    return out
+
+
 def _published_or_400(ctx: RequestContext, a: Assignment) -> None:
     s = ctx.db.get(Schedule, a.schedule_id)
     if s is None or s.status != "published":
@@ -521,6 +599,22 @@ def create_offer(
                 status_code=422,
                 detail="Algún miembro de la audiencia no es válido.",
             )
+        # Restrict to people configured to cover this slot in the
+        # actividad settings. The modal already filters its picker
+        # to the same set, so a normal client never trips this — the
+        # check exists for API clients and for safety if the slot's
+        # allow-list / categoría restriction tightens between modal
+        # open and submit.
+        eligible = _eligible_membership_ids_for_assignment(ctx, a)
+        not_eligible = valid - eligible
+        if not_eligible:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Algún miembro elegido no está autorizado a cubrir "
+                    "este turno."
+                ),
+            )
         audience_ids = sorted(valid)
 
     obj = ShiftSwapOffer(
@@ -587,6 +681,35 @@ def list_offers(
         )
     rows = q.order_by(ShiftSwapOffer.created_at.desc()).all()
     return [_serialize_offer(ctx, o) for o in rows]
+
+
+@router.get(
+    "/swap-offers/eligible-coverers/{assignment_id}",
+    response_model=list[int],
+)
+def list_eligible_coverers(
+    assignment_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> list[int]:
+    """Membership ids configured to cover this assignment's slot.
+
+    Used by the "Pedir cobertura" modal to narrow the audience
+    picker — the requester can only send their offer to people the
+    actividad's settings actually authorise (allow-list + slot
+    categoría + role categoría). The requester's own membership is
+    included if eligible; the frontend drops it from the candidate
+    list before rendering.
+    """
+    a = _assignment_or_404(ctx, assignment_id)
+    # Only the assignment's own person can ask — same scope as
+    # create_offer. Avoids a fishing endpoint for "who could cover
+    # X's shifts".
+    if a.person_id != ctx.person.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Solo puedes consultar la audiencia de tus turnos",
+        )
+    return sorted(_eligible_membership_ids_for_assignment(ctx, a))
 
 
 @router.post(

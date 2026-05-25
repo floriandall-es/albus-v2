@@ -38,6 +38,19 @@ export function RequestCoverageModal({
 
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
+  // Memberships configured to cover this slot, per the actividad's
+  // settings (allow-list + slot categoría + role categoría). The
+  // modal hides anyone NOT in this set — a residente shouldn't see
+  // an adjunto's guardia request, and an "Equipo autorizado"
+  // allow-list must be honoured.
+  const eligible = useQuery({
+    queryKey: ["swap-eligible-coverers", assignment.id],
+    queryFn: () => api.listEligibleCoverers(assignment.id),
+  });
+  const eligibleSet = useMemo(
+    () => new Set(eligible.data ?? []),
+    [eligible.data],
+  );
 
   // The requester themselves should never be in the audience —
   // they can't respond to their own offer anyway, and including
@@ -59,13 +72,15 @@ export function RequestCoverageModal({
   // can't accept a main-team swap.
   const audienceCandidates = useMemo(() => {
     if (!team.data) return [] as TeamMember[];
+    if (!eligible.data) return [] as TeamMember[];
     return team.data.filter(
       (m) =>
         m.id !== myMembershipId
         && m.disabled_at === null
-        && m.group_id === null,
+        && m.group_id === null
+        && eligibleSet.has(m.id),
     );
-  }, [team.data, myMembershipId]);
+  }, [team.data, myMembershipId, eligible.data, eligibleSet]);
 
   // Group candidates by categoría (with a "Sin categoría" bucket
   // for memberships whose admin hasn't assigned one yet).
@@ -128,7 +143,7 @@ export function RequestCoverageModal({
   // open (the null guard).
   useEffect(() => {
     if (selected !== null) return;
-    if (!me.data || !team.data) return;
+    if (!me.data || !team.data || !eligible.data) return;
     const myCatId = me.data.memberships.find(
       (mm) => mm.tenant_id === me.data!.current_tenant.id,
     )?.category_id ?? null;
@@ -137,7 +152,7 @@ export function RequestCoverageModal({
       if (m.category_id === myCatId) seed.add(m.id);
     }
     setSelected(seed);
-  }, [me.data, team.data, audienceCandidates, selected]);
+  }, [me.data, team.data, eligible.data, audienceCandidates, selected]);
 
   const selectedCount = selected?.size ?? 0;
 
@@ -181,7 +196,11 @@ export function RequestCoverageModal({
   const dateLabel = `${dayLabel} ${assignment.date.slice(8, 10)}/${assignment.date.slice(5, 7)}/${assignment.date.slice(0, 4)}`;
 
   const canSubmit =
-    selectedCount > 0 && !submit.isPending && !me.isLoading && !team.isLoading;
+    selectedCount > 0
+    && !submit.isPending
+    && !me.isLoading
+    && !team.isLoading
+    && !eligible.isLoading;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
@@ -290,19 +309,19 @@ export function RequestCoverageModal({
               </span>
             </div>
             <p className="mb-2 text-xs text-gray-500">
-              Sólo las personas seleccionadas recibirán el email y
-              podrán responder. Por defecto se avisa a quienes
-              comparten tu categoría.
+              Sólo se muestran las personas autorizadas a cubrir
+              este turno (según los ajustes de la actividad). Por
+              defecto se avisa a quienes comparten tu categoría.
             </p>
 
-            {(me.isLoading || team.isLoading) && (
+            {(me.isLoading || team.isLoading || eligible.isLoading) && (
               <p className="text-xs text-gray-500">Cargando equipo…</p>
             )}
 
             {selected !== null && grouped.length === 0 && (
               <p className="text-xs text-gray-500">
-                No hay compañeros del equipo principal a los que enviar
-                la solicitud.
+                No hay compañeros autorizados a cubrir este turno
+                en los ajustes de la actividad.
               </p>
             )}
 

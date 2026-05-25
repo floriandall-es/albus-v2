@@ -1712,6 +1712,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  /** Membership ids configured (in the actividad's settings) to
+   * cover the given assignment's slot. Honours per-slot allow-list,
+   * slot categoría, and per-role categoría. Used by the
+   * Pedir cobertura modal to narrow the audience picker. Only the
+   * assignment's own person may call this. */
+  listEligibleCoverers: (assignmentId: number) =>
+    request<number[]>(
+      `/api/swap-offers/eligible-coverers/${assignmentId}`,
+    ),
   cancelSwapOffer: (id: number) =>
     request<SwapOffer>(`/api/swap-offers/${id}/cancel`, { method: "POST" }),
   respondToSwapOffer: (
