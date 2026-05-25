@@ -9,6 +9,7 @@ from sqlalchemy import (
     Text,
     func,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -42,6 +43,14 @@ class ShiftSwapOffer(Base):
     )
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Migration 0063: optional audience for the request. NULL = the
+    # whole tenant (legacy behaviour; existing open offers). A
+    # non-empty array narrows visibility + email notification to
+    # only those memberships. The frontend resolves "categoría
+    # X + person Y" into an explicit id list before POSTing.
+    audience_membership_ids: Mapped[list[int] | None] = mapped_column(
+        ARRAY(Integer()), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

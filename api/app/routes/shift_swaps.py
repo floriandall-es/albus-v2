@@ -265,6 +265,11 @@ def _serialize_offer(
         notes=o.notes,
         created_at=o.created_at,
         closed_at=o.closed_at,
+        audience_membership_ids=(
+            list(o.audience_membership_ids)
+            if o.audience_membership_ids is not None
+            else None
+        ),
         responses=[_serialize_response(ctx, r) for r in responses],
     )
 
@@ -473,12 +478,57 @@ def create_offer(
         ctx, ctx.person.id, a.date, ctx.person.last_name or ctx.person.name or "Tú"
     )
 
+    # Resolve the optional audience. We validate that every id
+    # belongs to the same tenant (no cross-tenant smuggling) and
+    # de-dupe. We also drop the requester's own membership id if
+    # they accidentally included themselves — they can't respond
+    # to their own offer anyway, so including them just sends a
+    # confusing "you have a new request" email to themselves.
+    audience_ids: list[int] | None = None
+    if payload.audience_membership_ids is not None:
+        if not payload.audience_membership_ids:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Selecciona al menos una persona a la que enviar la "
+                    "solicitud."
+                ),
+            )
+        requested = {
+            int(i) for i in payload.audience_membership_ids
+            if int(i) != ctx.membership.id
+        }
+        if not requested:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "La audiencia no puede ser sólo tú — incluye al menos "
+                    "una persona del equipo."
+                ),
+            )
+        valid = {
+            row[0]
+            for row in ctx.db.query(Membership.id)
+            .filter(
+                Membership.id.in_(requested),
+                Membership.tenant_id == ctx.tenant.id,
+            )
+            .all()
+        }
+        if valid != requested:
+            raise HTTPException(
+                status_code=422,
+                detail="Algún miembro de la audiencia no es válido.",
+            )
+        audience_ids = sorted(valid)
+
     obj = ShiftSwapOffer(
         tenant_id=ctx.tenant.id,
         assignment_id=a.id,
         requested_by_membership_id=ctx.membership.id,
         status="open",
         notes=payload.notes,
+        audience_membership_ids=audience_ids,
     )
     ctx.db.add(obj)
     try:
@@ -490,7 +540,9 @@ def create_offer(
             detail="Ya hay una solicitud abierta para este turno",
         )
 
-    # Email every active member of the tenant EXCEPT the requester.
+    # Email the audience (or every active tenant member if the
+    # audience is unset — back-compat for API clients that didn't
+    # send the field).
     _notify_offer_created(ctx, obj, a)
     return _serialize_offer(ctx, obj)
 
@@ -501,16 +553,35 @@ def list_offers(
     mine: bool = False,
     ctx: RequestContext = Depends(get_current_context),
 ) -> list[SwapOfferOut]:
-    """List swap offers. By default returns open offers (anywhere in
-    tenant) plus any of the user's own offers regardless of status.
-    `status` query param filters by status; `mine=true` limits to user's
-    own offers."""
+    """List swap offers. By default returns open offers visible to
+    the caller plus any of the user's own offers regardless of
+    status. `status` query param filters by status; `mine=true`
+    limits to user's own offers.
+
+    Audience filter (migration 0063): when an offer carries a
+    non-null audience, callers outside that audience can't see it
+    UNLESS they're the requester (the requester always sees their
+    own offers).
+    """
+    from sqlalchemy import or_
+
     q = ctx.db.query(ShiftSwapOffer)
     if status_:
         q = q.filter(ShiftSwapOffer.status == status_)
     if mine:
         q = q.filter(
             ShiftSwapOffer.requested_by_membership_id == ctx.membership.id
+        )
+    else:
+        # Visibility: requester sees their own; anyone else only sees
+        # the offer if (audience IS NULL) OR (their membership id is
+        # in the audience array).
+        q = q.filter(
+            or_(
+                ShiftSwapOffer.requested_by_membership_id == ctx.membership.id,
+                ShiftSwapOffer.audience_membership_ids.is_(None),
+                ShiftSwapOffer.audience_membership_ids.any(ctx.membership.id),
+            )
         )
     rows = q.order_by(ShiftSwapOffer.created_at.desc()).all()
     return [_serialize_offer(ctx, o) for o in rows]
@@ -557,6 +628,18 @@ def respond_to_offer(
     if o.requested_by_membership_id == ctx.membership.id:
         raise HTTPException(
             status_code=400, detail="No puedes responder a tu propia solicitud"
+        )
+    # Audience gate (migration 0063). When the offer was sent to a
+    # narrower group, callers outside that group get 404 — same
+    # shape as "offer doesn't exist for you", which is what they
+    # see in their listing too. 403 would leak the offer's
+    # existence.
+    if (
+        o.audience_membership_ids is not None
+        and ctx.membership.id not in o.audience_membership_ids
+    ):
+        raise HTTPException(
+            status_code=404, detail="Solicitud no encontrada"
         )
 
     if payload.kind == "swap" and payload.swap_assignment_id is None:
@@ -802,13 +885,25 @@ def _notify_offer_created(
     requester = ctx.db.get(Person, ctx.person.id)
     slot_name, shift_date = _shift_label(original, slot)
     requester_name = requester.name if requester else "Un compañero"
-    # Email every membership in this tenant except the requester.
-    recipients = (
-        ctx.db.query(Person)
-        .join(Membership, Membership.person_id == Person.id)
-        .filter(Membership.id != ctx.membership.id)
-        .all()
+    # Recipient set:
+    #   - Audience present: only those memberships' persons.
+    #   - Audience NULL (legacy): every membership in the tenant
+    #     except the requester.
+    # The requester is never in `audience_membership_ids` (route
+    # strips them out at create time), so the "except requester"
+    # filter only matters for the legacy path.
+    recipients_q = ctx.db.query(Person).join(
+        Membership, Membership.person_id == Person.id
     )
+    if offer.audience_membership_ids is not None:
+        recipients_q = recipients_q.filter(
+            Membership.id.in_(offer.audience_membership_ids)
+        )
+    else:
+        recipients_q = recipients_q.filter(
+            Membership.id != ctx.membership.id
+        )
+    recipients = recipients_q.all()
     for p in recipients:
         # Pendientes (not yet activated) only get the invitation
         # email; skip routine notifications until they sign in.

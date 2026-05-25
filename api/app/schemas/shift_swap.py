@@ -17,6 +17,14 @@ ResponseStatus = Literal["pending", "accepted", "declined", "withdrawn"]
 class CreateOfferRequest(BaseModel):
     assignment_id: int
     notes: str | None = Field(default=None, max_length=500)
+    # Migration 0063: optional audience. Pass a non-empty list of
+    # membership ids to narrow who can see + respond + receive the
+    # email. Omit (None) to send to the whole tenant — back-compat
+    # for API clients that don't care yet. Max 500 ids is a sanity
+    # cap (real services have ~20-50 members).
+    audience_membership_ids: list[int] | None = Field(
+        default=None, max_length=500
+    )
 
 
 class CreateResponseRequest(BaseModel):
@@ -68,4 +76,8 @@ class SwapOfferOut(BaseModel):
     notes: str | None
     created_at: datetime
     closed_at: datetime | None
+    # Migration 0063: who the request went to. NULL means "everyone
+    # in the tenant" (legacy or wide-cast offers); a list means
+    # only those memberships were notified and may respond.
+    audience_membership_ids: list[int] | None = None
     responses: list[SwapResponseOut] = Field(default_factory=list)

@@ -404,6 +404,10 @@ export type SwapOffer = {
   notes: string | null;
   created_at: string;
   closed_at: string | null;
+  /** Migration 0063: who the request went to. NULL means "everyone
+   * in the tenant" (legacy or wide-cast); a list means only those
+   * memberships are notified / can respond. */
+  audience_membership_ids: number[] | null;
   responses: SwapResponse[];
 };
 
@@ -1687,7 +1691,15 @@ export const api = {
     const q = qs.toString();
     return request<SwapOffer[]>(`/api/swap-offers${q ? `?${q}` : ""}`);
   },
-  createSwapOffer: (body: { assignment_id: number; notes?: string | null }) =>
+  createSwapOffer: (body: {
+    assignment_id: number;
+    notes?: string | null;
+    /** Migration 0063: explicit list of membership ids who should
+     * see + receive + respond to this offer. Frontend resolves
+     * "by categoría" into a flat id list before submitting. Omit
+     * (or pass null) for "the whole team" — back-compat. */
+    audience_membership_ids?: number[] | null;
+  }) =>
     request<SwapOffer>("/api/swap-offers", {
       method: "POST",
       body: JSON.stringify(body),
