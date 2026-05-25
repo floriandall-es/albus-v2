@@ -40,18 +40,32 @@ import { useAccentHex, useAccentPalette } from "@/lib/use-accent";
  * change.
  */
 
+// Tableau-10-derived categorical palette. The original Tailwind
+// 500-shade set we shipped had pink + rose + violet + indigo all
+// fighting each other on a single stacked bar; this is a
+// designer-vetted sequence that stays harmonious when many slot
+// types stack next to each other. Teal sits first so the user's
+// accent (substituted at render time via useAccentPalette) lands
+// on what's usually the highest-volume row.
 const FALLBACK_PALETTE = [
-  "#0d9488", // teal — swapped for the user's accent at render time
-  "#3b82f6", // blue
-  "#6366f1", // indigo
-  "#8b5cf6", // violet
-  "#ec4899", // pink
-  "#f43f5e", // rose
-  "#f59e0b", // amber
-  "#10b981", // emerald
-  "#06b6d4", // cyan
-  "#64748b", // slate
+  "#0d9488", // teal — replaced with user's accent at render time
+  "#4e79a7", // muted blue
+  "#f28e2b", // warm orange
+  "#76b7b2", // soft teal
+  "#59a14f", // muted green
+  "#edc948", // mustard
+  "#b07aa1", // dusty purple
+  "#9c755f", // brown
+  "#ff9da7", // soft pink
+  "#bab0ab", // warm gray
 ];
+
+// Libre / "absent" series — kept off the categorical palette and
+// in its own emerald tone so it reads as the off-duty counterpart
+// to working shifts (matches the "Libre" green used on the
+// planning grid, /me/turnos and the PDF).
+const LIBRE_COLOR = "#10b981";
+const LIBRE_LABEL = "Libre";
 
 function monthsBetween(fromIso: string, toIso: string): string[] {
   const out: string[] = [];
@@ -105,6 +119,42 @@ export default function MyStatsPage() {
     queryFn: () =>
       api.myStatsAssignments({ from: fromDate, to: toDate }),
   });
+
+  // Own approved absences for the same range. We count by *day*
+  // (expand each range) so a 14-day vacation block contributes
+  // 14 to "Libre", consistent with how clinicians think about
+  // time off ("two weeks of vacation" = 14 days).
+  const myAbsences = useQuery({
+    queryKey: ["my-availability-requests"],
+    queryFn: () => api.listMyAvailabilityRequests(),
+  });
+  const libreDaysByMonth = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!myAbsences.data) return map;
+    const rangeStart = new Date(`${fromDate}T00:00:00`);
+    const rangeEnd = new Date(`${toDate}T00:00:00`);
+    for (const b of myAbsences.data) {
+      if (b.status !== "approved") continue;
+      const [sy, sm, sd] = b.start_date.split("-").map(Number);
+      const [ey, em, ed] = b.end_date.split("-").map(Number);
+      const start = new Date(sy, sm - 1, sd);
+      const end = new Date(ey, em - 1, ed);
+      // Clip to the selected date range.
+      const cur = new Date(Math.max(start.getTime(), rangeStart.getTime()));
+      const stop = new Date(Math.min(end.getTime(), rangeEnd.getTime()));
+      while (cur <= stop) {
+        const ym = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}`;
+        map.set(ym, (map.get(ym) ?? 0) + 1);
+        cur.setDate(cur.getDate() + 1);
+      }
+    }
+    return map;
+  }, [myAbsences.data, fromDate, toDate]);
+  const totalLibre = useMemo(() => {
+    let acc = 0;
+    for (const n of libreDaysByMonth.values()) acc += n;
+    return acc;
+  }, [libreDaysByMonth]);
 
   const palette = useAccentPalette(FALLBACK_PALETTE);
   const accentHex = useAccentHex(600);
@@ -183,9 +233,14 @@ export default function MyStatsPage() {
       for (const s of slotMeta) {
         row[s.label] = perSlot.get(s.key) ?? 0;
       }
+      // Libre stacks on top of the working-shift bars so the
+      // total bar height = "days touched by Trivu" (worked or
+      // off). Different unit (days vs shifts) so we surface
+      // that ambiguity in the chart subtitle below.
+      row[LIBRE_LABEL] = libreDaysByMonth.get(m) ?? 0;
       return row;
     });
-  }, [q.data, slotMeta, months]);
+  }, [q.data, slotMeta, months, libreDaysByMonth]);
 
   const totalTurnos = useMemo(
     () => (q.data?.rows ?? []).reduce((acc, r) => acc + r.count, 0),
@@ -304,18 +359,18 @@ export default function MyStatsPage() {
         <p className="text-sm text-gray-500">Cargando…</p>
       )}
 
-      {q.data && totalTurnos === 0 && (
+      {q.data && totalTurnos === 0 && totalLibre === 0 && (
         <EmptyState
           icon={<BarChart3 className="h-5 w-5" />}
-          title="Sin turnos en este rango"
-          description="No has cubierto turnos publicados en las fechas seleccionadas. Cambia el rango o vuelve cuando se publique una planificación."
+          title="Sin actividad en este rango"
+          description="No has cubierto turnos publicados ni tienes ausencias aprobadas en las fechas seleccionadas. Cambia el rango o vuelve cuando se publique una planificación."
         />
       )}
 
-      {q.data && totalTurnos > 0 && (
+      {q.data && (totalTurnos > 0 || totalLibre > 0) && (
         <div className="space-y-6">
           {/* KPI row */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <KpiCard
               label="Turnos cubiertos"
               value={totalTurnos}
@@ -331,6 +386,12 @@ export default function MyStatsPage() {
                   ? `${Math.round((totalWeekendOrHoliday / totalTurnos) * 100)}% del total`
                   : undefined
               }
+            />
+            <KpiCard
+              label="Días libres"
+              value={totalLibre}
+              accent={LIBRE_COLOR}
+              sublabel="Vacaciones, bajas, formación y personales aprobadas"
             />
           </div>
 
@@ -395,7 +456,9 @@ export default function MyStatsPage() {
                 Por mes
               </h3>
               <p className="mb-3 text-xs text-gray-500">
-                Turnos por mes, apilados por actividad.
+                Turnos por mes, apilados por actividad. La barra
+                Libre cuenta días naturales (no turnos) de
+                ausencias aprobadas.
               </p>
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart
@@ -427,6 +490,14 @@ export default function MyStatsPage() {
                       radius={[2, 2, 0, 0]}
                     />
                   ))}
+                  {/* Libre stacked last so it caps the bar — reads
+                      as "and on top of all that, X days off". */}
+                  <Bar
+                    dataKey={LIBRE_LABEL}
+                    stackId="mes"
+                    fill={LIBRE_COLOR}
+                    radius={[2, 2, 0, 0]}
+                  />
                 </BarChart>
               </ResponsiveContainer>
               {/* Inline legend below the chart — Recharts' built-in
@@ -442,6 +513,13 @@ export default function MyStatsPage() {
                     {s.label}
                   </li>
                 ))}
+                <li className="inline-flex items-center gap-1.5">
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-sm"
+                    style={{ backgroundColor: LIBRE_COLOR }}
+                  />
+                  {LIBRE_LABEL}
+                </li>
               </ul>
             </div>
           </Card>
