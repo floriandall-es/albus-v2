@@ -1143,6 +1143,17 @@ export const api = {
    * stays flat. */
   getMyUnreadCount: () =>
     request<{ total: number }>("/api/me/unread-count"),
+  /** Three roll-ups feeding the admin Pendientes inbox:
+   * bloqueos pending approval, invitations still live, and open
+   * swap offers in the tenant. Polled every 60 s by the admin
+   * sidebar — mirror of the DM unread badge. Admin-only; non-
+   * admin callers get a 403. */
+  getAdminPendientes: () =>
+    request<{
+      bloqueos_pending: number;
+      invitations_open: number;
+      swap_offers_open: number;
+    }>("/api/admin/pendientes"),
   /** Paginated messages of a conversation. `before` is the
    * cursor — pass the smallest id you have to load older. */
   listMessages: (conversationId: number, before?: number, limit = 50) => {

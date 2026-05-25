@@ -129,6 +129,23 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     enabled: authChecked,
   });
 
+  // Pendientes roll-up: bloqueos awaiting approval, invitations
+  // not yet activated, open swap offers. Drives the badge on
+  // the Inicio link (same shape as the DM unread badge in the
+  // member layout). Polls every 60 s — flat-cost SQL on the
+  // backend, three .count() queries.
+  const pendientes = useQuery({
+    queryKey: ["admin-pendientes"],
+    queryFn: api.getAdminPendientes,
+    enabled: authChecked,
+    refetchInterval: 60_000,
+  });
+  const pendientesTotal = pendientes.data
+    ? pendientes.data.bloqueos_pending
+      + pendientes.data.invitations_open
+      + pendientes.data.swap_offers_open
+    : 0;
+
   useEffect(() => {
     if (!me.data) return;
     const isAdmin = me.data.memberships.some((m) => m.roles.includes("admin"));
@@ -264,6 +281,17 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                         }
                       />
                       <span className="truncate">{item.label}</span>
+                      {/* Pendientes roll-up badge on the Inicio
+                          link. Mirrors the DM unread badge on
+                          the member layout — single number,
+                          capped at 99+, hidden when zero. */}
+                      {item.href === "/admin" && pendientesTotal > 0 && (
+                        <span className="ml-auto shrink-0 rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                          {pendientesTotal >= 99
+                            ? "99+"
+                            : pendientesTotal}
+                        </span>
+                      )}
                     </Link>
                   );
                 })}

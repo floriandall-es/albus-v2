@@ -7,9 +7,11 @@ import {
   ArrowRight,
   BarChart3,
   CalendarDays,
+  CalendarOff,
   CheckCircle2,
   Clock,
   Layers,
+  MailWarning,
   Sparkles,
   Stethoscope,
   Users,
@@ -236,6 +238,13 @@ export default function AdminDashboard() {
     queryKey: ["schedules"],
     queryFn: api.listSchedules,
   });
+  // Pendientes counts — same React Query key the sidebar layout
+  // uses, so the two stay in lockstep with one network fetch.
+  const pendientes = useQuery({
+    queryKey: ["admin-pendientes"],
+    queryFn: api.getAdminPendientes,
+    refetchInterval: 60_000,
+  });
 
   // Product-tour gate. Hydration-safe: start as null (= "don't
   // know yet"), then on mount read localStorage and either show or
@@ -373,6 +382,54 @@ export default function AdminDashboard() {
         </section>
       )}
 
+      {/* Pendientes — admin work queue. Only renders when at
+          least one of the three categories has rows. Each card
+          deeplinks to the page that actions it. The sidebar
+          Inicio badge mirrors the total. */}
+      {pendientes.data
+        && pendientes.data.bloqueos_pending
+          + pendientes.data.invitations_open
+          + pendientes.data.swap_offers_open
+          > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+            Pendientes
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {pendientes.data.bloqueos_pending > 0 && (
+              <PendientesCard
+                icon={<CalendarOff className="h-5 w-5" />}
+                count={pendientes.data.bloqueos_pending}
+                label="Bloqueos por revisar"
+                sublabel="Vacaciones, bajas, formación"
+                href="/admin/availability"
+                tone="amber"
+              />
+            )}
+            {pendientes.data.invitations_open > 0 && (
+              <PendientesCard
+                icon={<MailWarning className="h-5 w-5" />}
+                count={pendientes.data.invitations_open}
+                label="Invitaciones sin activar"
+                sublabel="Miembros que aún no han entrado"
+                href="/admin/team"
+                tone="violet"
+              />
+            )}
+            {pendientes.data.swap_offers_open > 0 && (
+              <PendientesCard
+                icon={<ArrowLeftRight className="h-5 w-5" />}
+                count={pendientes.data.swap_offers_open}
+                label="Cambios abiertos"
+                sublabel="Solicitudes de cobertura sin cerrar"
+                href="/admin/swaps"
+                tone="sky"
+              />
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Quick-action shortcuts. Always visible. */}
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
@@ -475,6 +532,75 @@ function StepCard({
         </Link>
       </div>
     </Card>
+  );
+}
+
+function PendientesCard({
+  icon,
+  count,
+  label,
+  sublabel,
+  href,
+  tone,
+}: {
+  icon: React.ReactNode;
+  count: number;
+  label: string;
+  sublabel: string;
+  href: string;
+  /** Colour family for the icon chip + count pill. Each
+   * category uses a distinct tone so the eye can sort them at
+   * a glance without reading. */
+  tone: "amber" | "violet" | "sky";
+}) {
+  const toneClasses = {
+    amber: {
+      chip: "bg-amber-100 text-amber-700 group-hover:bg-amber-200",
+      pill: "bg-amber-600",
+    },
+    violet: {
+      chip: "bg-violet-100 text-violet-700 group-hover:bg-violet-200",
+      pill: "bg-violet-600",
+    },
+    sky: {
+      chip: "bg-sky-100 text-sky-700 group-hover:bg-sky-200",
+      pill: "bg-sky-600",
+    },
+  }[tone];
+  return (
+    <Link href={href} className="block group">
+      <Card>
+        <div className="p-4 flex items-center gap-3 hover:bg-gray-50 transition-colors rounded-xl">
+          <span
+            className={
+              "inline-flex h-9 w-9 items-center justify-center rounded-lg shrink-0 transition-colors "
+              + toneClasses.chip
+            }
+          >
+            {icon}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-2">
+              <span
+                className={
+                  "inline-flex min-w-[1.5rem] justify-center rounded-full px-2 py-0.5 text-xs font-semibold leading-tight text-white "
+                  + toneClasses.pill
+                }
+              >
+                {count}
+              </span>
+              <span className="truncate text-sm font-semibold text-gray-900">
+                {label}
+              </span>
+            </div>
+            <div className="mt-0.5 text-xs text-gray-500 truncate">
+              {sublabel}
+            </div>
+          </div>
+          <ArrowRight className="h-3.5 w-3.5 text-gray-400 shrink-0 group-hover:text-gray-600" />
+        </div>
+      </Card>
+    </Link>
   );
 }
 

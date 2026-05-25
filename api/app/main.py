@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.services.meeting_reminders import tick as meeting_reminders_tick
 from app.routes import (
+    admin_dashboard,
     auth,
     availability,
     categories,
@@ -64,6 +65,7 @@ app.include_router(meetings.router, prefix="/api")
 app.include_router(transplants.router, prefix="/api")
 app.include_router(hospital_directory.router, prefix="/api")
 app.include_router(dms.router, prefix="/api")
+app.include_router(admin_dashboard.router, prefix="/api")
 
 # Serve user-uploaded profile photos. The directory is mounted from a
 # host volume in prod (/srv/albus/avatars). We create it on startup so
