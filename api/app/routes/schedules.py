@@ -1049,6 +1049,39 @@ def _get_draft_schedule_or_400(ctx: RequestContext, schedule_id: int) -> Schedul
     return s
 
 
+def _reject_if_group_published(
+    ctx: RequestContext, schedule_id: int, group_id: int
+) -> None:
+    """Mirror of `_get_draft_schedule_or_400` for sub-equipo edits.
+
+    Group leads can only edit their group's assignments while the
+    plan is still in "borrador" for THEIR group — i.e. there is
+    no row in schedule_group_publications. After they publish,
+    they must despublicar before tweaking cells; otherwise we'd
+    silently flip cells under their residentes' feet (their
+    /me/turnos pulls the live, post-publish state).
+
+    Symmetric to how tenant admins must call /reopen on the main
+    schedule before editing main-team cells.
+    """
+    pub = (
+        ctx.db.query(ScheduleGroupPublication)
+        .filter(
+            ScheduleGroupPublication.schedule_id == schedule_id,
+            ScheduleGroupPublication.group_id == group_id,
+        )
+        .first()
+    )
+    if pub is not None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Esta planificación está publicada para tu sub-equipo. "
+                "Despublica antes de hacer cambios."
+            ),
+        )
+
+
 def _get_assignment(
     ctx: RequestContext, schedule: Schedule, assignment_id: int
 ) -> Assignment:
@@ -1108,10 +1141,11 @@ def patch_assignment(
         )
     # Tenant admins still hit the draft-only gate (their bulk
     # edits are scoped to "I'm editing a draft before publishing").
-    # Group leads bypass it for cells on THEIR group's slots:
-    # group slots are manual-only and aren't part of the main team's
-    # publish lifecycle, so the lead can adjust assignments at any
-    # status without affecting the tenant admin's plan.
+    # Group leads have a parallel gate: they can edit at any
+    # parent-schedule status, but only while their group's plan
+    # is still in borrador (no ScheduleGroupPublication row).
+    # After they publish, they have to despublicar before
+    # tweaking cells — symmetric to the admin /reopen flow.
     if scope.is_tenant_admin:
         schedule = _get_draft_schedule_or_400(ctx, schedule_id)
     else:
@@ -1126,6 +1160,7 @@ def patch_assignment(
                 status_code=403,
                 detail="Esta asignación no pertenece a tu sub-equipo.",
             )
+        _reject_if_group_published(ctx, schedule_id, scope.group_id)
     data = payload.model_dump(exclude_unset=True)
     clear = data.pop("clear_person", False)
 
@@ -1210,6 +1245,8 @@ def create_assignment(
             status_code=403,
             detail="Esta actividad no pertenece a tu sub-equipo.",
         )
+    if scope.is_group_lead:
+        _reject_if_group_published(ctx, schedule_id, scope.group_id)
 
     # Date must fall within the schedule's month.
     period_start = date(schedule.period.year, schedule.period.month, 1)
@@ -1292,6 +1329,7 @@ def delete_assignment(
                 status_code=403,
                 detail="Esta asignación no pertenece a tu sub-equipo.",
             )
+        _reject_if_group_published(ctx, schedule_id, scope.group_id)
     ctx.db.delete(a)
     ctx.db.flush()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

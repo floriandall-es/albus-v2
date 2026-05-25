@@ -173,7 +173,7 @@ export default function LeadPlanificacionPage() {
         {schedule && myGroupId && (
           <div className="px-4 pb-3 text-xs text-gray-500">
             {isPublishedForGroup
-              ? "Tu sub-equipo ya puede ver esta planificación en \"Mis turnos\". Puedes seguir editando — los cambios se ven al momento."
+              ? "Tu sub-equipo ya puede ver esta planificación en \"Mis turnos\". Para hacer cambios, despublica primero — así no cambian los turnos bajo los pies de tus residentes."
               : "Solo tú la ves. Cuando publiques, tus residentes la verán en \"Mis turnos\"."}
           </div>
         )}
@@ -195,6 +195,7 @@ export default function LeadPlanificacionPage() {
             team={team.data}
             assignments={detail.data.assignments}
             absences={groupAbsences}
+            readOnly={isPublishedForGroup}
           />
         )}
       </div>
@@ -245,6 +246,7 @@ function PlanningGrid({
   team,
   assignments,
   absences,
+  readOnly,
 }: {
   scheduleId: number;
   period: string;
@@ -252,6 +254,11 @@ function PlanningGrid({
   team: TeamMember[];
   assignments: Assignment[];
   absences: TeamAbsence[];
+  /** When true (= the schedule is already published for the
+   * lead's group) cells become non-clickable. Edits should
+   * go through "Despublicar → editar → Publicar" rather than
+   * silently mutating what residentes already see. */
+  readOnly: boolean;
 }) {
   // Days in the month.
   const [yy, mm] = period.split("-").map(Number);
@@ -347,27 +354,49 @@ function PlanningGrid({
                         last_name: existing.person_last_name,
                       })
                     : "";
+                  // Once the plan is published-for-group the lead
+                  // has to despublicar before editing — backend
+                  // returns 400 otherwise. Render the cell as a
+                  // non-interactive div so the lead doesn't see
+                  // a hover state implying it's clickable.
+                  const cellContent =
+                    existing && existing.person_id
+                      ? personLabel || existing.person_name
+                      : "—";
+                  const cellTone =
+                    existing && existing.person_id
+                      ? "bg-brand-50 text-brand-900"
+                      : "text-gray-400";
                   return (
                     <td
                       key={d}
                       className="border-r border-gray-100 last:border-r-0 p-0"
                     >
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setEditing({ slot: s, date: dateStr, existing })
-                        }
-                        className={
-                          "w-full h-10 px-1 text-center text-[11px] transition-colors "
-                          + (existing && existing.person_id
-                            ? "bg-brand-50 text-brand-900 hover:bg-brand-100"
-                            : "text-gray-400 hover:bg-gray-50")
-                        }
-                      >
-                        {existing && existing.person_id
-                          ? personLabel || existing.person_name
-                          : "—"}
-                      </button>
+                      {readOnly ? (
+                        <div
+                          className={
+                            "flex h-10 w-full items-center justify-center px-1 text-center text-[11px] "
+                            + cellTone
+                          }
+                        >
+                          {cellContent}
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditing({ slot: s, date: dateStr, existing })
+                          }
+                          className={
+                            "w-full h-10 px-1 text-center text-[11px] transition-colors "
+                            + (existing && existing.person_id
+                              ? "bg-brand-50 text-brand-900 hover:bg-brand-100"
+                              : "text-gray-400 hover:bg-gray-50")
+                          }
+                        >
+                          {cellContent}
+                        </button>
+                      )}
                     </td>
                   );
                 })}
@@ -383,7 +412,9 @@ function PlanningGrid({
         </table>
       </div>
       <p className="mt-2 text-xs text-gray-500">
-        Haz click en una celda para asignar o cambiar a la persona del turno.
+        {readOnly
+          ? "Vista de solo lectura — la planificación está publicada. Pulsa Despublicar arriba para volver a editar."
+          : "Haz click en una celda para asignar o cambiar a la persona del turno."}
       </p>
 
       {editing && (
