@@ -215,12 +215,8 @@ export function RequestCoverageModal({
             <span className="text-sm font-medium text-gray-700">
               ¿Qué buscas?
             </span>
-            <p className="mt-1 mb-2 text-xs text-gray-500">
-              Sólo se ofrecen al respondedor las opciones que aquí
-              marques. Por defecto admitimos las dos.
-            </p>
             <div
-              className="inline-flex rounded-md border border-gray-300 bg-white p-0.5 shadow-sm"
+              className="mt-2 inline-flex rounded-md border border-gray-300 bg-white p-0.5 shadow-sm"
               role="radiogroup"
               aria-label="Tipo de respuesta aceptada"
             >
