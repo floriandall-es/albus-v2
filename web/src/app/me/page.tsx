@@ -9,7 +9,12 @@ import {
   CalendarOff,
   Settings,
 } from "lucide-react";
-import { api, personFirstName, type Assignment } from "@/lib/api";
+import {
+  api,
+  personFirstName,
+  type Assignment,
+  type MeetingInstance,
+} from "@/lib/api";
 import { Card } from "@/components/admin/ui";
 import { ShiftSection } from "@/components/me/shift-list";
 import { RequestCoverageModal } from "@/components/me/request-coverage-modal";
@@ -21,9 +26,9 @@ import { todayIso, tomorrowIso } from "@/lib/dates";
  * arrive:
  *
  * - Greeting with their first name.
- * - Today's shifts (if any), then tomorrow's shifts (if any), each
- *   rendered with the same ShiftSection rows as on /me/turnos so
- *   the design is consistent across the two pages.
+ * - Today's + tomorrow's agenda: shifts plus meetings they're
+ *   invited to, rendered with the same ShiftSection rows as on
+ *   /me/turnos so the design is consistent across the two pages.
  * - Four quick-access cards mirroring the sidebar (Mis turnos,
  *   Cambios, Mis bloqueos, Mi cuenta).
  *
@@ -114,6 +119,28 @@ export default function MeHome() {
     return map;
   }, [me.data, detailA.data, detailB.data]);
 
+  // Meetings the user is invited to in the today..tomorrow window.
+  // The list endpoint is already audience-scoped server-side so we
+  // just take what comes back and bucket by date.
+  const meetings = useQuery({
+    queryKey: ["meeting-instances-inicio", todayIsoStr, tomorrowIsoStr],
+    queryFn: () =>
+      api.listMeetingInstances(todayIsoStr, tomorrowIsoStr),
+  });
+  const meetingsByDate = useMemo(() => {
+    const map = new Map<string, MeetingInstance[]>();
+    for (const m of meetings.data ?? []) {
+      const list = map.get(m.date) ?? [];
+      list.push(m);
+      map.set(m.date, list);
+    }
+    // Earlier meetings first.
+    for (const list of map.values()) {
+      list.sort((a, b) => a.start_time.localeCompare(b.start_time));
+    }
+    return map;
+  }, [meetings.data]);
+
   if (me.isLoading) {
     return <p className="text-sm text-gray-500">Cargando…</p>;
   }
@@ -122,7 +149,12 @@ export default function MeHome() {
   const firstName = personFirstName(me.data.person);
   const todayShifts = myShiftsByDate.get(todayIsoStr) ?? [];
   const tomorrowShifts = myShiftsByDate.get(tomorrowIsoStr) ?? [];
-  const anyShifts = todayShifts.length > 0 || tomorrowShifts.length > 0;
+  const todayMeetings = meetingsByDate.get(todayIsoStr) ?? [];
+  const tomorrowMeetings = meetingsByDate.get(tomorrowIsoStr) ?? [];
+  const anyToday = todayShifts.length > 0 || todayMeetings.length > 0;
+  const anyTomorrow =
+    tomorrowShifts.length > 0 || tomorrowMeetings.length > 0;
+  const anyContent = anyToday || anyTomorrow;
 
   return (
     <>
@@ -131,20 +163,21 @@ export default function MeHome() {
           {firstName ? `Hola, ${firstName}` : "Hola"}
         </h1>
         <p className="mt-1 text-sm text-gray-600">
-          {anyShifts
-            ? "Tus turnos para hoy y mañana."
-            : "No tienes turnos hoy ni mañana."}
+          {anyContent
+            ? "Tu agenda para hoy y mañana."
+            : "No tienes turnos ni reuniones hoy ni mañana."}
         </p>
       </header>
 
-      {/* Today / tomorrow shifts — same row design as /me/turnos so
-          the look is consistent. Click a row to pedir cobertura. */}
-      {anyShifts && (
+      {/* Today / tomorrow agenda — shifts (clickable for coverage)
+          plus meeting instances mixed into the same per-day card. */}
+      {anyContent && (
         <section className="mb-8 space-y-4">
-          {todayShifts.length > 0 && (
+          {anyToday && (
             <ShiftSection
               title="Hoy"
               items={todayShifts}
+              meetings={todayMeetings}
               todayIso={todayIsoStr}
               onClickShift={(a) => {
                 if (a.locked_at) return;
@@ -154,10 +187,11 @@ export default function MeHome() {
               canRequestCoverage={myGroupId === null}
             />
           )}
-          {tomorrowShifts.length > 0 && (
+          {anyTomorrow && (
             <ShiftSection
               title="Mañana"
               items={tomorrowShifts}
+              meetings={tomorrowMeetings}
               todayIso={todayIsoStr}
               onClickShift={(a) => {
                 if (a.locked_at) return;
@@ -170,9 +204,9 @@ export default function MeHome() {
         </section>
       )}
 
-      {/* If neither today nor tomorrow has shifts, suggest looking at
-          the upcoming list. */}
-      {!anyShifts && (
+      {/* If neither today nor tomorrow has shifts or meetings,
+          suggest looking at the upcoming list. */}
+      {!anyContent && (
         <section className="mb-8">
           <Card>
             <div className="p-4 text-sm text-gray-600">
@@ -182,6 +216,13 @@ export default function MeHome() {
                 className="font-medium text-brand-700 hover:underline"
               >
                 Mis turnos
+              </Link>
+              {" "}o tus{" "}
+              <Link
+                href="/me/reuniones"
+                className="font-medium text-brand-700 hover:underline"
+              >
+                reuniones
               </Link>
               .
             </div>

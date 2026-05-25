@@ -1,8 +1,10 @@
 "use client";
+import { Users } from "lucide-react";
 import {
   personLastName,
   type Assignment,
   type AvailabilityBlockType,
+  type MeetingInstance,
   type TeamAbsence,
 } from "@/lib/api";
 import { Avatar } from "@/components/schedule/planning-grid";
@@ -25,6 +27,7 @@ import {
 export function ShiftSection({
   title,
   items,
+  meetings,
   emptyText,
   todayIso,
   dimmed = false,
@@ -35,6 +38,12 @@ export function ShiftSection({
 }: {
   title: string;
   items: Assignment[];
+  /** Meeting instances to render *after* the shifts inside the same
+   * card. The /me Inicio page passes today's + tomorrow's meetings
+   * here so the user sees their whole agenda at a glance, not just
+   * the clinical shifts. Non-interactive rows — for full meeting
+   * detail / edit / delete the user goes to /me/reuniones. */
+  meetings?: MeetingInstance[];
   /** Show this gray-text card when `items` is empty. Omit to
    * collapse empty sections silently. */
   emptyText?: string;
@@ -57,7 +66,8 @@ export function ShiftSection({
    * list at a glance. */
   myPersonId?: number | null;
 }) {
-  if (items.length === 0) {
+  const meetingsList = meetings ?? [];
+  if (items.length === 0 && meetingsList.length === 0) {
     if (!emptyText) return null;
     return (
       <div>
@@ -88,8 +98,68 @@ export function ShiftSection({
             isMine={myPersonId != null && a.person_id === myPersonId}
           />
         ))}
+        {meetingsList.map((m) => (
+          <MeetingRow
+            key={`meeting_${m.meeting_id}_${m.date}`}
+            inst={m}
+            todayIso={todayIso}
+            dimmed={dimmed}
+          />
+        ))}
       </ul>
     </div>
+  );
+}
+
+/** Read-only "reunión" row to mix into ShiftSection cards. Uses the
+ * same DateBlock + row layout as ShiftRow so the agenda reads as one
+ * thing, with a distinct left icon and a "Reunión" label so a member
+ * can't confuse a meeting with a clinical shift. Clicking does
+ * nothing — full detail lives on /me/reuniones. */
+function MeetingRow({
+  inst,
+  todayIso,
+  dimmed,
+}: {
+  inst: MeetingInstance;
+  todayIso: string;
+  dimmed: boolean;
+}) {
+  const isToday = inst.date === todayIso;
+  const timeRange = `${inst.start_time.slice(0, 5)}–${inst.end_time.slice(0, 5)}`;
+  return (
+    <li className="bg-white">
+      <div className="flex items-center gap-4 px-4 py-3">
+        <DateBlock dateIso={inst.date} highlight={isToday} dimmed={dimmed} />
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
+          <Users className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div
+            className={
+              "truncate text-base font-semibold "
+              + (dimmed ? "text-gray-500" : "text-gray-900")
+            }
+          >
+            {inst.title}
+          </div>
+          <div
+            className={
+              "mt-0.5 flex items-baseline gap-2 flex-wrap text-sm "
+              + (dimmed ? "text-gray-400" : "text-gray-600")
+            }
+          >
+            <span className="inline-flex items-center rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium uppercase tracking-wide text-amber-700">
+              Reunión
+            </span>
+            <span>{timeRange}</span>
+            {inst.location && (
+              <span className="text-gray-400 truncate">· {inst.location}</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </li>
   );
 }
 
