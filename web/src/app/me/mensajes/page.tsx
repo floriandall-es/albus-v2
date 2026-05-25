@@ -306,8 +306,29 @@ function ConversationPane({
 
   const deleteConv = useMutation({
     mutationFn: () => api.deleteConversation(conversationId),
-    onSuccess: () => {
+    onSuccess: async () => {
+      // Belt + suspenders: optimistically remove the conversation
+      // from the cached list so the UI updates the instant the
+      // 204 returns, even if the refetch is slow. Then force a
+      // refetch (not just invalidate) so the server's filtered
+      // list replaces our optimistic view.
+      qc.setQueryData<DMConversation[] | undefined>(
+        ["conversations"],
+        (prev) =>
+          prev ? prev.filter((c) => c.id !== conversationId) : prev,
+      );
       onConversationDeleted();
+      await qc.refetchQueries({ queryKey: ["conversations"] });
+    },
+    onError: (err) => {
+      // Surface the failure so we don't silently swallow a 4xx/5xx.
+      // Without this the conversation just stays put and the admin
+      // thinks the button is broken (which is exactly what
+      // "borrar conversation does not delete the conversation"
+      // looked like). The native alert is intentionally annoying —
+      // we'd rather the admin know.
+      const msg = err instanceof Error ? err.message : String(err);
+      window.alert(`No se pudo borrar la conversación: ${msg}`);
     },
   });
 
@@ -338,6 +359,12 @@ function ConversationPane({
       // just deleted the latest message that preview needs to
       // flip to "(mensaje borrado)" too.
       qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+    onError: (err) => {
+      // Same reasoning as deleteConv: surface the failure rather
+      // than silently leaving the message in place.
+      const msg = err instanceof Error ? err.message : String(err);
+      window.alert(`No se pudo borrar el mensaje: ${msg}`);
     },
   });
 
