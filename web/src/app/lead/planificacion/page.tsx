@@ -1,7 +1,13 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type Assignment, type Slot, type TeamMember } from "@/lib/api";
+import {
+  api,
+  type Assignment,
+  type Slot,
+  type TeamAbsence,
+  type TeamMember,
+} from "@/lib/api";
 import {
   Button,
   Card,
@@ -11,6 +17,7 @@ import {
   PageHeader,
   Select,
 } from "@/components/admin/ui";
+import { GroupLibreRow } from "@/components/schedule/group-libre-row";
 import { MONTH_LONG_ES, WEEKDAY_LONG_ES } from "@/lib/dates";
 
 /**
@@ -59,6 +66,30 @@ export default function LeadPlanificacionPage() {
     enabled: !!schedule,
   });
   const myGroupId = me.data?.lead_group_id ?? null;
+
+  // Group-scoped Libre row. team-absences returns every approved
+  // absence in the tenant; we filter to this group's members on
+  // the client by intersecting with the team list's group_id.
+  const monthStart = period.slice(0, 8) + "01";
+  const monthEnd = useMemo(() => {
+    const [yy, mm] = period.split("-").map(Number);
+    const last = new Date(yy, mm, 0).getDate();
+    return `${yy}-${String(mm).padStart(2, "0")}-${String(last).padStart(2, "0")}`;
+  }, [period]);
+  const absences = useQuery({
+    queryKey: ["team-absences", monthStart, monthEnd],
+    queryFn: () =>
+      api.listTeamAbsences({ from: monthStart, to: monthEnd }),
+  });
+  const groupAbsences = useMemo<TeamAbsence[]>(() => {
+    if (!absences.data || !team.data || myGroupId === null) return [];
+    const groupPersonIds = new Set(
+      team.data
+        .filter((m) => m.group_id === myGroupId)
+        .map((m) => m.person_id),
+    );
+    return absences.data.filter((a) => groupPersonIds.has(a.person_id));
+  }, [absences.data, team.data, myGroupId]);
   const isPublishedForGroup =
     schedule && myGroupId
       ? schedule.published_group_ids.includes(myGroupId)
@@ -162,6 +193,7 @@ export default function LeadPlanificacionPage() {
             slots={slots.data}
             team={team.data}
             assignments={detail.data.assignments}
+            absences={groupAbsences}
           />
         )}
       </div>
@@ -211,12 +243,14 @@ function PlanningGrid({
   slots,
   team,
   assignments,
+  absences,
 }: {
   scheduleId: number;
   period: string;
   slots: Slot[];
   team: TeamMember[];
   assignments: Assignment[];
+  absences: TeamAbsence[];
 }) {
   // Days in the month.
   const [yy, mm] = period.split("-").map(Number);
@@ -334,6 +368,12 @@ function PlanningGrid({
                 })}
               </tr>
             ))}
+            <GroupLibreRow
+              yy={yy}
+              mm={mm}
+              days={days}
+              absences={absences}
+            />
           </tbody>
         </table>
       </div>

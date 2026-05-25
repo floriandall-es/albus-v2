@@ -2,7 +2,12 @@
 import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { api, type Assignment, type Slot } from "@/lib/api";
+import {
+  api,
+  type Assignment,
+  type Slot,
+  type TeamAbsence,
+} from "@/lib/api";
 import {
   Button,
   Card,
@@ -10,6 +15,7 @@ import {
   PageHeader,
   Select,
 } from "@/components/admin/ui";
+import { GroupLibreRow } from "@/components/schedule/group-libre-row";
 import { MONTH_LONG_ES, WEEKDAY_LONG_ES } from "@/lib/dates";
 
 /**
@@ -70,6 +76,32 @@ export default function AdminGroupPlanificacionPage() {
     enabled: !!schedule,
   });
 
+  // Same group-scoped absences join as the lead view and the
+  // /me/sub-equipos page — team-absences ∩ team list filtered by
+  // group_id. Surfaces vacation / baja for this group's members
+  // as a Libre row at the bottom of the read-only grid.
+  const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
+  const monthStart = period.slice(0, 8) + "01";
+  const monthEnd = useMemo(() => {
+    const [yy, mm] = period.split("-").map(Number);
+    const last = new Date(yy, mm, 0).getDate();
+    return `${yy}-${String(mm).padStart(2, "0")}-${String(last).padStart(2, "0")}`;
+  }, [period]);
+  const absences = useQuery({
+    queryKey: ["team-absences", monthStart, monthEnd],
+    queryFn: () =>
+      api.listTeamAbsences({ from: monthStart, to: monthEnd }),
+  });
+  const groupAbsences = useMemo<TeamAbsence[]>(() => {
+    if (!absences.data || !team.data) return [];
+    const groupPersonIds = new Set(
+      team.data
+        .filter((m) => m.group_id === groupId)
+        .map((m) => m.person_id),
+    );
+    return absences.data.filter((a) => groupPersonIds.has(a.person_id));
+  }, [absences.data, team.data, groupId]);
+
   const isPublishedForGroup =
     schedule?.published_group_ids?.includes(groupId) ?? false;
 
@@ -127,6 +159,7 @@ export default function AdminGroupPlanificacionPage() {
             period={schedule.period}
             slots={groupSlots}
             assignments={detail.data.assignments}
+            absences={groupAbsences}
           />
         )}
       </div>
@@ -172,10 +205,12 @@ function ReadOnlyGrid({
   period,
   slots,
   assignments,
+  absences,
 }: {
   period: string;
   slots: Slot[];
   assignments: Assignment[];
+  absences: TeamAbsence[];
 }) {
   const [yy, mm] = period.split("-").map(Number);
   const lastDay = new Date(yy, mm, 0).getDate();
@@ -278,6 +313,7 @@ function ReadOnlyGrid({
               })}
             </tr>
           ))}
+          <GroupLibreRow yy={yy} mm={mm} days={days} absences={absences} />
         </tbody>
       </table>
     </div>

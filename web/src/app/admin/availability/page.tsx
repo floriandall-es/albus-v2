@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
@@ -63,6 +63,20 @@ export default function AvailabilityPage() {
       }),
   });
 
+  // Person → group_name lookup so the table can show "este es del
+  // sub-equipo X" next to each row's name. AvailabilityBlockOut
+  // doesn't carry group info directly; we join with the team list
+  // (which is loaded above for the picker anyway).
+  const groupByPerson = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const t of team.data ?? []) {
+      if (t.group_id !== null && t.group_name) {
+        m.set(t.person_id, t.group_name);
+      }
+    }
+    return m;
+  }, [team.data]);
+
   const qc = useQueryClient();
   const del = useMutation({
     mutationFn: (id: number) => api.deleteAvailabilityBlock(id),
@@ -86,11 +100,11 @@ export default function AvailabilityPage() {
             onChange={(v) => setPersonId(v === "" ? "" : Number(v))}
             options={[
               { value: "", label: "— Todas —" },
-              // Mismo recorte que el modal y el endpoint: los miembros
-              // de sub-equipos no aparecen aquí — su lead gestiona sus
-              // bloqueos en /lead/bloqueos.
+              // Lista completa del tenant — el admin ve y aprueba
+              // bloqueos de cualquier persona, incluidos miembros
+              // de sub-equipos. La columna Sub-equipo en la tabla
+              // ayuda a saber de qué grupo procede cada solicitud.
               ...((team.data ?? [])
-                .filter((m: TeamMember) => m.group_id === null)
                 .map((m: TeamMember) => ({
                   value: m.person_id,
                   label: m.person_name,
@@ -135,9 +149,23 @@ export default function AvailabilityPage() {
               </tr>
             </thead>
             <tbody>
-              {list.data.map((b: AvailabilityBlock) => (
+              {list.data.map((b: AvailabilityBlock) => {
+                const groupName = groupByPerson.get(b.person_id);
+                return (
                 <tr key={b.id} className="border-b last:border-b-0">
-                  <td className="px-4 py-2">{b.person_name}</td>
+                  <td className="px-4 py-2">
+                    <div className="flex items-center gap-2">
+                      <span>{b.person_name}</span>
+                      {groupName && (
+                        <span
+                          className="inline-flex items-center rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700"
+                          title={`Sub-equipo: ${groupName}`}
+                        >
+                          {groupName}
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-2">{b.start_date}</td>
                   <td className="px-4 py-2">{b.end_date}</td>
                   <td className="px-4 py-2">
@@ -176,19 +204,17 @@ export default function AvailabilityPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </Card>
       )}
       {(adding || editing) && (
         <BlockModal
-          // Bloqueos en /admin son sólo para el equipo principal.
-          // Los sub-equipos los gestiona su lead en /lead/bloqueos.
-          // Si abrimos el modal en modo edición sobre una baja
-          // existente, dejamos pasar el person_id de cualquier modo
-          // (no podemos cambiarlo, sólo las fechas/tipo/notas).
-          team={(team.data ?? []).filter((m) => m.group_id === null)}
+          // El admin puede crear/editar bloqueos para cualquier
+          // miembro del tenant — equipo principal y sub-equipos.
+          team={team.data ?? []}
           existing={editing}
           onClose={() => {
             setAdding(false);
