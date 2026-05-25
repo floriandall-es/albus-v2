@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 OfferStatus = Literal["open", "fulfilled", "cancelled"]
 ResponseKind = Literal["cover", "swap"]
 ResponseStatus = Literal["pending", "accepted", "declined", "withdrawn"]
+# Migration 0064: which response kinds the requester will accept.
+OfferAccepts = Literal["cover_only", "swap_only", "either"]
 
 
 # ---------------------------------------------------------------------------
@@ -25,6 +27,11 @@ class CreateOfferRequest(BaseModel):
     audience_membership_ids: list[int] | None = Field(
         default=None, max_length=500
     )
+    # Migration 0064: which response kinds the requester will
+    # entertain. Default "either" preserves legacy behaviour
+    # (responder picks cover or swap). "cover_only" / "swap_only"
+    # narrow what responders can offer.
+    accepts: OfferAccepts = "either"
 
 
 class CreateResponseRequest(BaseModel):
@@ -80,4 +87,6 @@ class SwapOfferOut(BaseModel):
     # in the tenant" (legacy or wide-cast offers); a list means
     # only those memberships were notified and may respond.
     audience_membership_ids: list[int] | None = None
+    # Migration 0064: which response kinds this offer accepts.
+    accepts: OfferAccepts = "either"
     responses: list[SwapResponseOut] = Field(default_factory=list)

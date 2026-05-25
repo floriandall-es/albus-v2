@@ -495,25 +495,51 @@ function OpenOfferCard({
 
       {!readOnly && offer.status === "open" && !myResponse && (
         <div className="mt-3 border-t pt-3 space-y-2">
-          <p className="text-xs text-gray-600 leading-relaxed">
-            <span className="font-medium text-gray-800">Cubrir</span>:
-            haces el turno y la persona no te debe nada.{" "}
-            <span className="font-medium text-gray-800">Proponer cambio</span>:
-            intercambias este turno por uno tuyo.
-          </p>
+          {/* Honour the requester's accepts preference. The
+              wording + buttons reflect what they actually want;
+              backend rejects the disallowed kind too as a
+              safety net. "either" is the legacy / default. */}
+          {offer.accepts === "either" && (
+            <p className="text-xs text-gray-600 leading-relaxed">
+              <span className="font-medium text-gray-800">Cubrir</span>:
+              haces el turno y la persona no te debe nada.{" "}
+              <span className="font-medium text-gray-800">
+                Proponer cambio
+              </span>
+              : intercambias este turno por uno tuyo.
+            </p>
+          )}
+          {offer.accepts === "cover_only" && (
+            <p className="text-xs text-gray-600 leading-relaxed">
+              {offer.requested_by_person_name} sólo busca{" "}
+              <span className="font-medium text-gray-800">cobertura</span>
+              : si aceptas, haces el turno y no te debe nada.
+            </p>
+          )}
+          {offer.accepts === "swap_only" && (
+            <p className="text-xs text-gray-600 leading-relaxed">
+              {offer.requested_by_person_name} sólo busca un{" "}
+              <span className="font-medium text-gray-800">cambio</span>:
+              tendrás que ofrecer un turno tuyo a cambio.
+            </p>
+          )}
           <div className="flex gap-2">
-            <button
-              className="rounded-md bg-gray-900 px-3 py-1 text-xs text-white hover:bg-gray-700"
-              onClick={() => setRespondMode("cover")}
-            >
-              Cubrir
-            </button>
-            <button
-              className="rounded-md border border-gray-300 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50"
-              onClick={() => setRespondMode("swap")}
-            >
-              Proponer cambio
-            </button>
+            {offer.accepts !== "swap_only" && (
+              <button
+                className="rounded-md bg-gray-900 px-3 py-1 text-xs text-white hover:bg-gray-700"
+                onClick={() => setRespondMode("cover")}
+              >
+                Cubrir
+              </button>
+            )}
+            {offer.accepts !== "cover_only" && (
+              <button
+                className="rounded-md border border-gray-300 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                onClick={() => setRespondMode("swap")}
+              >
+                Proponer cambio
+              </button>
+            )}
           </div>
         </div>
       )}

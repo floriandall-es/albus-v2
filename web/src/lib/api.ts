@@ -362,6 +362,8 @@ export function personFullName(p: {
 // ---- Shift swaps ----------------------------------------------------------
 export type SwapOfferStatus = "open" | "fulfilled" | "cancelled";
 export type SwapResponseKind = "cover" | "swap";
+/** Migration 0064: which response kinds the requester will accept. */
+export type SwapOfferAccepts = "cover_only" | "swap_only" | "either";
 export type SwapResponseStatus =
   | "pending"
   | "accepted"
@@ -408,6 +410,9 @@ export type SwapOffer = {
    * in the tenant" (legacy or wide-cast); a list means only those
    * memberships are notified / can respond. */
   audience_membership_ids: number[] | null;
+  /** Migration 0064: which response kinds the requester will
+   * accept. "either" preserves legacy behaviour. */
+  accepts: SwapOfferAccepts;
   responses: SwapResponse[];
 };
 
@@ -1699,6 +1704,9 @@ export const api = {
      * "by categoría" into a flat id list before submitting. Omit
      * (or pass null) for "the whole team" — back-compat. */
     audience_membership_ids?: number[] | null;
+    /** Migration 0064: which response kinds the requester will
+     * entertain. Default "either" preserves legacy behaviour. */
+    accepts?: SwapOfferAccepts;
   }) =>
     request<SwapOffer>("/api/swap-offers", {
       method: "POST",

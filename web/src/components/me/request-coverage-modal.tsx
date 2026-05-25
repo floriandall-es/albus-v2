@@ -5,6 +5,7 @@ import {
   api,
   personLastName,
   type Assignment,
+  type SwapOfferAccepts,
   type TeamMember,
 } from "@/lib/api";
 
@@ -30,6 +31,10 @@ export function RequestCoverageModal({
 }) {
   const qc = useQueryClient();
   const [notes, setNotes] = useState("");
+  // Migration 0064: which response kinds the requester will
+  // entertain. "either" is the legacy default and the most
+  // permissive — narrow only if you actively need to.
+  const [accepts, setAccepts] = useState<SwapOfferAccepts>("either");
 
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
@@ -163,6 +168,7 @@ export function RequestCoverageModal({
         notes: notes || null,
         audience_membership_ids:
           selected && selected.size > 0 ? [...selected] : undefined,
+        accepts,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["swap-offers"] });
@@ -202,6 +208,64 @@ export function RequestCoverageModal({
                   {" "}· {assignment.team_role_label}
                 </span>
               )}
+            </div>
+          </div>
+
+          <div>
+            <span className="text-sm font-medium text-gray-700">
+              ¿Qué buscas?
+            </span>
+            <p className="mt-1 mb-2 text-xs text-gray-500">
+              Sólo se ofrecen al respondedor las opciones que aquí
+              marques. Por defecto admitimos las dos.
+            </p>
+            <div
+              className="inline-flex rounded-md border border-gray-300 bg-white p-0.5 shadow-sm"
+              role="radiogroup"
+              aria-label="Tipo de respuesta aceptada"
+            >
+              {(
+                [
+                  {
+                    value: "either",
+                    label: "Cobertura o cambio",
+                    title:
+                      "El respondedor elige entre cubrirte o proponerte un cambio",
+                  },
+                  {
+                    value: "cover_only",
+                    label: "Sólo cobertura",
+                    title:
+                      "Sólo quieres que te lo cubran (no devuelves turno)",
+                  },
+                  {
+                    value: "swap_only",
+                    label: "Sólo cambio",
+                    title:
+                      "Sólo aceptas intercambios con un turno del respondedor",
+                  },
+                ] as const
+              ).map((opt) => {
+                const active = accepts === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    title={opt.title}
+                    onClick={() => setAccepts(opt.value)}
+                    className={
+                      "inline-flex items-center rounded px-2.5 py-1 text-xs font-medium transition-colors "
+                      + (active
+                        ? "bg-brand-600 text-white"
+                        : "text-gray-700 hover:bg-gray-50")
+                    }
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -305,15 +369,35 @@ export function RequestCoverageModal({
           )}
 
           <p className="text-xs text-gray-500 leading-relaxed">
-            Quienes reciban el aviso podrán responder de dos formas:
-            <br />·{" "}
-            <span className="font-medium text-gray-700">Cubrir</span>{" "}
-            — hacen el turno y tú no les debes nada.
-            <br />·{" "}
-            <span className="font-medium text-gray-700">
-              Proponer cambio
-            </span>{" "}
-            — intercambian este turno por uno suyo.
+            {accepts === "either" && (
+              <>
+                Quienes reciban el aviso podrán responder de dos formas:
+                <br />·{" "}
+                <span className="font-medium text-gray-700">Cubrir</span>{" "}
+                — hacen el turno y tú no les debes nada.
+                <br />·{" "}
+                <span className="font-medium text-gray-700">
+                  Proponer cambio
+                </span>{" "}
+                — intercambian este turno por uno suyo.
+              </>
+            )}
+            {accepts === "cover_only" && (
+              <>
+                Quienes reciban el aviso sólo podrán{" "}
+                <span className="font-medium text-gray-700">cubrir</span>:
+                hacen el turno y tú no les debes nada.
+              </>
+            )}
+            {accepts === "swap_only" && (
+              <>
+                Quienes reciban el aviso sólo podrán{" "}
+                <span className="font-medium text-gray-700">
+                  proponer un cambio
+                </span>
+                : intercambian este turno por uno suyo.
+              </>
+            )}
           </p>
 
           <div className="flex justify-end gap-2 pt-2">

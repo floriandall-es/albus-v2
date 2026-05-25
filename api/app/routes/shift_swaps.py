@@ -270,6 +270,7 @@ def _serialize_offer(
             if o.audience_membership_ids is not None
             else None
         ),
+        accepts=o.accepts,  # type: ignore[arg-type]
         responses=[_serialize_response(ctx, r) for r in responses],
     )
 
@@ -529,6 +530,7 @@ def create_offer(
         status="open",
         notes=payload.notes,
         audience_membership_ids=audience_ids,
+        accepts=payload.accepts,
     )
     ctx.db.add(obj)
     try:
@@ -651,6 +653,26 @@ def respond_to_offer(
         raise HTTPException(
             status_code=400,
             detail="Para cubrir no se ofrece otro turno",
+        )
+    # Migration 0064: enforce the requester's response-kind
+    # preference. Hard-stops responses that wouldn't be useful so
+    # the responder doesn't waste effort proposing something the
+    # requester will inevitably decline.
+    if o.accepts == "cover_only" and payload.kind != "cover":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Esta solicitud sólo acepta cobertura, no propuestas "
+                "de cambio."
+            ),
+        )
+    if o.accepts == "swap_only" and payload.kind != "swap":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Esta solicitud sólo acepta propuestas de cambio, no "
+                "cobertura."
+            ),
         )
 
     # UX courtesy: don't let a responder at quota submit a response

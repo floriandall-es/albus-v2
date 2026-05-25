@@ -22,6 +22,10 @@ class ShiftSwapOffer(Base):
             "status IN ('open','fulfilled','cancelled')",
             name="ck_swap_offer_status",
         ),
+        CheckConstraint(
+            "accepts IN ('cover_only', 'swap_only', 'either')",
+            name="ck_swap_offer_accepts",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -50,6 +54,13 @@ class ShiftSwapOffer(Base):
     # X + person Y" into an explicit id list before POSTing.
     audience_membership_ids: Mapped[list[int] | None] = mapped_column(
         ARRAY(Integer()), nullable=True
+    )
+    # Migration 0064: which response kinds the requester will
+    # entertain. 'either' (default) preserves legacy behaviour;
+    # 'cover_only' / 'swap_only' restrict. respond_to_offer
+    # rejects responses that violate this.
+    accepts: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="either"
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
