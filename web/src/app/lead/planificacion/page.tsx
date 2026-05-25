@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
+  personLastName,
   type Assignment,
   type Slot,
   type TeamAbsence,
@@ -337,11 +338,15 @@ function PlanningGrid({
                 {days.map((d) => {
                   const dateStr = `${yy}-${String(mm).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
                   const existing = byCell.get(`${s.id}_${dateStr}`) ?? null;
-                  const personLabel =
-                    existing?.person_name
-                      ?.split(/\s+/)
-                      .slice(0, 1)
-                      .join("") ?? "";
+                  // Use last name to match the read-only grids on
+                  // /me/turnos and /me/sub-equipos — first-name-only
+                  // was an early-prototype shorthand that drifted.
+                  const personLabel = existing?.person_name
+                    ? personLastName({
+                        name: existing.person_name,
+                        last_name: existing.person_last_name,
+                      })
+                    : "";
                   return (
                     <td
                       key={d}

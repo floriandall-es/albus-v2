@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   api,
+  personLastName,
   type Assignment,
   type Slot,
   type TeamAbsence,
@@ -268,11 +269,14 @@ function ReadOnlyGrid({
               {days.map((d) => {
                 const dateStr = `${yy}-${String(mm).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
                 const existing = byCell.get(`${s.id}_${dateStr}`) ?? null;
-                const personLabel =
-                  existing?.person_name
-                    ?.split(/\s+/)
-                    .slice(0, 1)
-                    .join("") ?? "";
+                // Last name to match the sibling planning views
+                // (/me/turnos + the main team grid).
+                const personLabel = existing?.person_name
+                  ? personLastName({
+                      name: existing.person_name,
+                      last_name: existing.person_last_name,
+                    })
+                  : "";
                 return (
                   <td
                     key={d}
