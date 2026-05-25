@@ -150,7 +150,12 @@ export function PlanningGrid({
       <table className="text-xs border-separate border-spacing-0">
         <thead className="bg-gray-50">
           <tr>
-            <th className="sticky left-0 bg-gray-50 z-10 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 border-b border-r border-gray-200 min-w-[180px]">
+            {/* No min-width: the column auto-sizes to the longest
+                slot name (the th and body cells share the column
+                width in a table). The 180px floor used to eat
+                ~half the screen on mobile for short names like
+                "Guardia" or "Planta". */}
+            <th className="sticky left-0 bg-gray-50 z-10 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 border-b border-r border-gray-200 whitespace-nowrap">
               Turno
             </th>
             {grid.dates.map((d) => {
@@ -226,9 +231,11 @@ export function PlanningGrid({
                     />
                   )}
                   <span className="flex flex-col leading-tight">
-                    <span>{row.display_name}</span>
+                    <span className="whitespace-nowrap">
+                      {row.display_name}
+                    </span>
                     {row.team_role_label && (
-                      <span className="text-xs font-normal text-gray-500">
+                      <span className="whitespace-nowrap text-xs font-normal text-gray-500">
                         {row.team_role_label}
                       </span>
                     )}
