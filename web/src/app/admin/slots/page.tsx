@@ -131,7 +131,31 @@ export default function SlotsPage() {
                       <span className="text-gray-500">Todo el día</span>
                     )}
                   </td>
-                  <td className="px-4 py-2 text-gray-600">{s.days_applied}</td>
+                  <td className="px-4 py-2 text-gray-600">
+                    {(() => {
+                      // For "custom" expand the bitmap into the
+                      // selected short day letters (e.g. "L M J")
+                      // — readable at a glance and matches the
+                      // picker the admin used. For the other
+                      // presets fall back to the Spanish label
+                      // already defined in DAYS.
+                      if (
+                        s.days_applied === "custom"
+                        && typeof s.custom_days_bitmap === "number"
+                      ) {
+                        const bits = s.custom_days_bitmap;
+                        const picked = DAY_LABELS
+                          .filter((d) => (bits & (1 << d.bit)) !== 0)
+                          .map((d) => d.short)
+                          .join(" ");
+                        return picked || "—";
+                      }
+                      return (
+                        DAYS.find((d) => d.value === s.days_applied)?.label
+                        ?? s.days_applied
+                      );
+                    })()}
+                  </td>
                   <td className="px-4 py-2 text-gray-600">
                     {STAFFING.find((m) => m.value === s.staffing_mode)?.label
                       ?? s.staffing_mode}
