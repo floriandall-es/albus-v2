@@ -39,6 +39,24 @@ _env = Environment(
 _WEEKDAY_LABELS = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
 
 
+def _last_name(full_name: str | None, last_name: str | None) -> str:
+    """Mirror of the frontend `personLastName` helper. Use the
+    explicit last_name field when set (Sprint 18+); otherwise
+    fall back to the last whitespace-separated token of the
+    canonical `name` for legacy rows.
+
+    Result drives every cell + Libre chip in the PDF — the same
+    convention the on-screen grids use, so a printed plan reads
+    identically to /me/turnos and /lead/planificacion.
+    """
+    if last_name and last_name.strip():
+        return last_name.strip()
+    if not full_name:
+        return ""
+    parts = full_name.strip().split()
+    return parts[-1] if parts else full_name
+
+
 @dataclass(frozen=True)
 class PdfRow:
     """One slot/role row in the PDF grid. Mirrors PlanningGrid rows on
@@ -82,9 +100,17 @@ def build_rows_from_assignments(
             )
             bucket[key] = row
         d_iso = a.date.isoformat()
-        person_name = p.name if p else None
+        # Last name only — matches the on-screen planning grids
+        # so a printed plan reads the same way ("Tovar", not
+        # "H. Tovar"). p.last_name is populated for Sprint-18+
+        # rows; legacy rows fall back to the last token of name.
+        person_label = (
+            _last_name(p.name, getattr(p, "last_name", None))
+            if p
+            else None
+        )
         row.cells[d_iso].append(
-            (person_name or "—", tr.role_label if tr else None)
+            (person_label or "—", tr.role_label if tr else None)
         )
     # Sort: slot position (admin-controlled) → slot name → role.
     return sorted(
@@ -111,7 +137,13 @@ def build_absences_by_date(
                 seen.add(a.person_id)
                 out[d_iso].append(
                     PdfAbsence(
-                        person_name=a.person_name,
+                        # Same last-name-only rule the assignment
+                        # cells use — keeps the Libre row visually
+                        # aligned with the rest of the grid.
+                        person_name=_last_name(
+                            a.person_name,
+                            getattr(a, "person_last_name", None),
+                        ),
                         block_type=a.block_type,
                     )
                 )

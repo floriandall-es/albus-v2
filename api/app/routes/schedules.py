@@ -404,9 +404,12 @@ def get_schedule_pdf(
     class _AbsenceView:
         # Tiny shim so build_absences_by_date can use the same attr
         # names it already expects. Saves loading a Pydantic schema.
+        # Carries person_last_name so the PDF's Libre row reads
+        # "Tovar" not "H. Tovar" — same convention as the grids.
         def __init__(self, block: AvailabilityBlock, person: Person):
             self.person_id = block.person_id
             self.person_name = person.name
+            self.person_last_name = person.last_name
             self.start_date = block.start_date
             self.end_date = block.end_date
             self.block_type = block.block_type
@@ -538,6 +541,7 @@ def get_group_schedule_pdf(
         def __init__(self, block: AvailabilityBlock, person: Person):
             self.person_id = block.person_id
             self.person_name = person.name
+            self.person_last_name = person.last_name
             self.start_date = block.start_date
             self.end_date = block.end_date
             self.block_type = block.block_type
