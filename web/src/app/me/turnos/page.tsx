@@ -420,7 +420,7 @@ export default function TurnosPage() {
 
   return (
     <>
-      <div className="mb-6 flex flex-wrap items-center gap-3">
+      <div className="mb-3 flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold">Mis turnos</h1>
         {publishedSchedules.length > 0 && (
           <>
@@ -438,26 +438,34 @@ export default function TurnosPage() {
             <ScopeToggle value={scope} onChange={setScopePersisted} />
             <ViewToggle value={view} onChange={setViewPersisted} />
             <RangeToggle value={range} onChange={setRangePersisted} />
-            <Button
-              variant="secondary"
-              onClick={() => {
-                if (selectedId !== null) downloadPdf.mutate(selectedId);
-              }}
-              disabled={selectedId === null || downloadPdf.isPending}
-            >
-              {downloadPdf.isPending ? "Generando PDF…" : "Descargar PDF"}
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => setCalendarOpen(true)}
-              disabled={selectedId === null}
-            >
-              <CalendarPlus className="h-3.5 w-3.5" />
-              Añadir al calendario
-            </Button>
           </>
         )}
       </div>
+      {/* Export actions live on their own line so the toggles row
+          stays tight and predictable across viewport widths. On
+          mobile this also stops the PDF button from squeezing the
+          Tabla/Lista toggle off the edge. */}
+      {publishedSchedules.length > 0 && (
+        <div className="mb-6 flex flex-wrap items-center gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => setCalendarOpen(true)}
+            disabled={selectedId === null}
+          >
+            <CalendarPlus className="h-3.5 w-3.5" />
+            Añadir al calendario
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              if (selectedId !== null) downloadPdf.mutate(selectedId);
+            }}
+            disabled={selectedId === null || downloadPdf.isPending}
+          >
+            {downloadPdf.isPending ? "Generando PDF…" : "Descargar PDF"}
+          </Button>
+        </div>
+      )}
       {downloadPdf.isError && (
         <div className="mb-3">
           <ErrorText>{(downloadPdf.error as Error).message}</ErrorText>
