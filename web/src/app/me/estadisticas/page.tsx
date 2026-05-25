@@ -222,37 +222,76 @@ export default function MyStatsPage() {
           />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <PresetButton
-            label="Este año"
-            onClick={() => {
-              setFromPeriod(isoFromMonthYear(0, today.getFullYear()));
-              setToPeriod(
-                isoFromMonthYear(today.getMonth(), today.getFullYear()),
-              );
-            }}
-          />
-          <PresetButton
-            label="Últimos 12 meses"
-            onClick={() => {
-              const fromY = today.getFullYear() - (today.getMonth() === 0 ? 0 : 0);
-              const fromM = today.getMonth();
-              const start = new Date(fromY, fromM, 1);
-              start.setMonth(start.getMonth() - 11);
-              setFromPeriod(
-                isoFromMonthYear(start.getMonth(), start.getFullYear()),
-              );
-              setToPeriod(
-                isoFromMonthYear(today.getMonth(), today.getFullYear()),
-              );
-            }}
-          />
-          <PresetButton
-            label="Año pasado"
-            onClick={() => {
-              setFromPeriod(isoFromMonthYear(0, today.getFullYear() - 1));
-              setToPeriod(isoFromMonthYear(11, today.getFullYear() - 1));
-            }}
-          />
+          {(() => {
+            // Build the preset list inline so all the "set both
+            // bounds at once" callbacks stay close to their
+            // labels. Each preset computes [fromMonthIdx, fromYear,
+            // toMonthIdx, toYear] from `today`, then a single
+            // `apply()` helper writes both pickers.
+            const apply = (
+              fromM: number,
+              fromY: number,
+              toM: number,
+              toY: number,
+            ) => {
+              setFromPeriod(isoFromMonthYear(fromM, fromY));
+              setToPeriod(isoFromMonthYear(toM, toY));
+            };
+            const thisM = today.getMonth();
+            const thisY = today.getFullYear();
+            // Calendar-quarter start month: 0 (Jan-Mar), 3 (Apr-Jun),
+            // 6 (Jul-Sep), 9 (Oct-Dec). End of "this quarter" is
+            // the current month — same QTD convention as "Este año".
+            const qStart = Math.floor(thisM / 3) * 3;
+            // Rolling 3 months: current month minus 2 → current.
+            const last3Start = new Date(thisY, thisM, 1);
+            last3Start.setMonth(last3Start.getMonth() - 2);
+            // Rolling 12 months: current minus 11 → current.
+            const last12Start = new Date(thisY, thisM, 1);
+            last12Start.setMonth(last12Start.getMonth() - 11);
+            return (
+              <>
+                <PresetButton
+                  label="Este mes"
+                  onClick={() => apply(thisM, thisY, thisM, thisY)}
+                />
+                <PresetButton
+                  label="Últimos 3 meses"
+                  onClick={() =>
+                    apply(
+                      last3Start.getMonth(),
+                      last3Start.getFullYear(),
+                      thisM,
+                      thisY,
+                    )
+                  }
+                />
+                <PresetButton
+                  label="Este trimestre"
+                  onClick={() => apply(qStart, thisY, thisM, thisY)}
+                />
+                <PresetButton
+                  label="Este año"
+                  onClick={() => apply(0, thisY, thisM, thisY)}
+                />
+                <PresetButton
+                  label="Últimos 12 meses"
+                  onClick={() =>
+                    apply(
+                      last12Start.getMonth(),
+                      last12Start.getFullYear(),
+                      thisM,
+                      thisY,
+                    )
+                  }
+                />
+                <PresetButton
+                  label="Año pasado"
+                  onClick={() => apply(0, thisY - 1, 11, thisY - 1)}
+                />
+              </>
+            );
+          })()}
         </div>
       </div>
 
