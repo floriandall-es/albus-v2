@@ -173,7 +173,7 @@ export default function LeadPlanificacionPage() {
         {schedule && myGroupId && (
           <div className="px-4 pb-3 text-xs text-gray-500">
             {isPublishedForGroup
-              ? "Tu sub-equipo ya puede ver esta planificación en \"Mis turnos\". Para hacer cambios, despublica primero — así no cambian los turnos bajo los pies de tus residentes."
+              ? "Tu sub-equipo ya puede ver esta planificación en \"Mis turnos\". Para hacer cambios, despublica primero."
               : "Solo tú la ves. Cuando publiques, tus residentes la verán en \"Mis turnos\"."}
           </div>
         )}
@@ -507,9 +507,17 @@ function AssignDialog({
           onChange={(v) => setPersonId(v === "" ? "" : Number(v))}
           options={[
             { value: "", label: "— Sin asignar —" },
+            // Same last-name-only convention the planning grid
+            // cells use. TeamMember doesn't carry person_last_name
+            // explicitly, so personLastName falls back to splitting
+            // person_name by whitespace — fine for "Jose Doménech"
+            // / "Mara Gascón" / "H. Tovar".
             ...activeTeam.map((m) => ({
               value: m.person_id,
-              label: m.person_name,
+              label: personLastName({
+                name: m.person_name,
+                last_name: null,
+              }),
             })),
           ]}
         />
