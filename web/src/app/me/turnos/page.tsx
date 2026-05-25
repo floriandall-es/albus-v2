@@ -567,12 +567,6 @@ export default function TurnosPage() {
             )
           ) : (
             <>
-              {myGroupId === null && scope === "team" && (
-                <p className="mb-4 text-xs text-gray-500">
-                  Tus turnos están resaltados en azul. Haz clic en uno
-                  para pedir cobertura.
-                </p>
-              )}
               {visibleAssignments.length === 0 && (
                 <div className="rounded-xl bg-white p-6 ring-1 ring-gray-200 shadow-soft text-sm text-gray-600">
                   {emptyCopyFor(scope, range)}

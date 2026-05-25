@@ -23,6 +23,7 @@ import {
   ErrorText,
   PageHeader,
 } from "@/components/admin/ui";
+import { useAccentHex, useAccentPalette } from "@/lib/use-accent";
 
 /**
  * Stats dashboard for the transplant case log.
@@ -43,6 +44,10 @@ export default function TrasplantesStatsPage() {
   // either bound changes.
   const [from, setFrom] = useState<string>("");
   const [to, setTo] = useState<string>("");
+  // Per-user accent (migration 0065). The Implantes side of the
+  // page historically rode the Trivu teal; resolve to whichever
+  // colour the caller has picked so the charts respect it.
+  const brandHex600 = useAccentHex(600);
 
   const stats = useQuery({
     queryKey: ["transplants-stats", from || null, to || null],
@@ -291,7 +296,7 @@ export default function TrasplantesStatsPage() {
                 </h3>
                 <div className="flex items-center gap-3 text-[11px] text-gray-500">
                   <LegendDot color="#f59e0b" label="Explantes" />
-                  <LegendDot color="#0d9488" label="Implantes" />
+                  <LegendDot color={brandHex600} label="Implantes" />
                 </div>
               </div>
               <p className="mb-3 text-xs text-gray-500">
@@ -341,7 +346,7 @@ export default function TrasplantesStatsPage() {
                     <Bar
                       dataKey="Implantes"
                       stackId="proc"
-                      fill="#0d9488"
+                      fill={brandHex600}
                       radius={[4, 4, 0, 0]}
                     />
                   </BarChart>
@@ -520,16 +525,20 @@ function MonthPerSurgeonChart({
   data: TransplantStats;
   surgeonOrder: SurgeonTotalRow[];
 }) {
+  // Swap the legacy teal slot in SURGEON_PALETTE for the caller's
+  // accent so the top performer's bar segment matches the rest of
+  // the page's accent treatment.
+  const palette = useAccentPalette(SURGEON_PALETTE);
   // Build a deterministic palette: surgeons by descending grand
   // total → first SURGEON_PALETTE entry first. Keys keyed by
   // person_id so chart segments + legend match.
   const colorById = useMemo(() => {
     const map = new Map<number, string>();
     surgeonOrder.forEach((s, i) => {
-      map.set(s.person_id, SURGEON_PALETTE[i % SURGEON_PALETTE.length]);
+      map.set(s.person_id, palette[i % palette.length]);
     });
     return map;
-  }, [surgeonOrder]);
+  }, [surgeonOrder, palette]);
 
   const nameById = useMemo(() => {
     const map = new Map<number, string>();
@@ -671,6 +680,14 @@ function SurgeonChart({
   max: number;
   accent: "amber" | "teal";
 }) {
+  // The "teal" accent here means "the user's brand colour" — it's
+  // the implantes side which historically rode the Trivu teal. We
+  // resolve to the live accent at runtime so the chart respects
+  // the per-user preference; the Tailwind classes already follow
+  // the CSS vars, only the hex strings used by the legend dots
+  // need explicit substitution.
+  const brandPrimaryHex = useAccentHex(600);
+  const brandSecondaryHex = useAccentHex(300);
   const palette =
     accent === "amber"
       ? {
@@ -681,9 +698,9 @@ function SurgeonChart({
         }
       : {
           primary: "bg-brand-600 text-white",
-          primaryHex: "#0d9488",
+          primaryHex: brandPrimaryHex,
           secondary: "bg-brand-300 text-brand-900",
-          secondaryHex: "#5eead4",
+          secondaryHex: brandSecondaryHex,
         };
   return (
     <Card>

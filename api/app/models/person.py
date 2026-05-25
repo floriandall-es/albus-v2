@@ -83,6 +83,15 @@ class Person(Base):
     terms_accepted_version: Mapped[str | None] = mapped_column(
         String(16), nullable=True
     )
+    # Migration 0065: per-user accent colour preference. One of the
+    # 12 presets defined in web/src/lib/accent.ts (teal, azul,
+    # indigo, violeta, rosa, ambar, esmeralda, pizarra, cyan,
+    # naranja, lima, fucsia). Default 'teal' = the legacy Trivu
+    # brand. The frontend resolves the value into CSS-variable
+    # values that drive every `bg-brand-*` / `text-brand-*` class.
+    preferred_accent: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="teal"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

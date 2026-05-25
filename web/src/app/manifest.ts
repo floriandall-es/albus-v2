@@ -1,9 +1,19 @@
 import type { MetadataRoute } from "next";
+import { cookies } from "next/headers";
+import { ACCENT_COOKIE, accentHex, resolveAccent } from "@/lib/accent";
 
 /**
  * PWA manifest. Next.js 14 App Router picks up `app/manifest.ts`
  * automatically and serves it at /manifest.webmanifest with the
  * right content type — no extra wiring needed.
+ *
+ * Migration 0065: the `theme_color` follows the user's accent
+ * preference (read from the trivu_accent cookie). The browser
+ * caches the manifest aggressively, so installed PWAs only pick
+ * up a new colour when the user re-installs or the browser
+ * invalidates its cache; that's fine — for normal browser tabs
+ * the per-request <meta name="theme-color"> in layout.tsx
+ * already covers the chrome tint.
  *
  * Notes:
  *
@@ -17,11 +27,6 @@ import type { MetadataRoute } from "next";
  *     when launched from the home-screen icon; Chrome opens a
  *     "pseudo-app" window on desktop / Android.
  *
- *   - `theme_color` is brand-600 (`#0d9488`) — matches the
- *     primary button background. Drives the OS-level status
- *     bar tint on installed apps and the browser chrome on
- *     desktop.
- *
  *   - Icons: 192 + 512 px PNGs derived from the existing 1254px
  *     logo via sips. The 512 is also tagged as `maskable` — our
  *     logo already sits on a contained background so adaptive
@@ -30,6 +35,8 @@ import type { MetadataRoute } from "next";
  *     ~80% safe-zone content and add a third icon entry.
  */
 export default function manifest(): MetadataRoute.Manifest {
+  const cookieValue = cookies().get(ACCENT_COOKIE)?.value ?? null;
+  const accent = resolveAccent(cookieValue);
   return {
     name: "Trivu",
     short_name: "Trivu",
@@ -38,7 +45,7 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/",
     display: "standalone",
     background_color: "#ffffff",
-    theme_color: "#0d9488",
+    theme_color: accentHex(accent, 700),
     lang: "es",
     icons: [
       {

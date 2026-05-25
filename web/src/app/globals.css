@@ -2,5 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Per-user accent variables (migration 0065). The values below are
+   the teal default — every user starts here. When a user picks a
+   different accent in /me/settings the SSR layout overrides these
+   via inline `style` on <html>, so the right colours land before
+   first paint and there's no white-to-pink flash on refresh. */
+:root {
+  --brand-50:  240 253 250;
+  --brand-100: 204 251 241;
+  --brand-200: 153 246 228;
+  --brand-300: 94 234 212;
+  --brand-400: 45 212 191;
+  --brand-500: 20 184 166;
+  --brand-600: 13 148 136;
+  --brand-700: 15 118 110;
+  --brand-800: 17 94 89;
+  --brand-900: 19 78 74;
+}
+
 html, body { height: 100%; }
 body { @apply bg-gray-50 text-gray-900 antialiased; }

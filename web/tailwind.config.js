@@ -17,19 +17,26 @@ module.exports = {
         ],
       },
       colors: {
-        // Brand: teal-600 + tints. Used for active sidebar, primary
-        // buttons, focus rings, status accents.
+        // Brand colours resolve against CSS variables on <html>
+        // (migration 0065: per-user accent). Defaults to teal-600
+        // and tints — see globals.css for the :root fallback and
+        // src/lib/accent.ts for the full preset palette.
+        //
+        // `<alpha-value>` keeps utilities like `bg-brand-700/50`
+        // working unchanged. The variables hold an "R G B" triplet
+        // (space-separated) so `rgb()` can apply the modifier as
+        // the alpha channel.
         brand: {
-          50: "#f0fdfa",
-          100: "#ccfbf1",
-          200: "#99f6e4",
-          300: "#5eead4",
-          400: "#2dd4bf",
-          500: "#14b8a6",
-          600: "#0d9488",
-          700: "#0f766e",
-          800: "#115e59",
-          900: "#134e4a",
+          50:  "rgb(var(--brand-50)  / <alpha-value>)",
+          100: "rgb(var(--brand-100) / <alpha-value>)",
+          200: "rgb(var(--brand-200) / <alpha-value>)",
+          300: "rgb(var(--brand-300) / <alpha-value>)",
+          400: "rgb(var(--brand-400) / <alpha-value>)",
+          500: "rgb(var(--brand-500) / <alpha-value>)",
+          600: "rgb(var(--brand-600) / <alpha-value>)",
+          700: "rgb(var(--brand-700) / <alpha-value>)",
+          800: "rgb(var(--brand-800) / <alpha-value>)",
+          900: "rgb(var(--brand-900) / <alpha-value>)",
         },
       },
       boxShadow: {

@@ -22,12 +22,15 @@ import {
   MonthPicker,
   isoFromMonthYear,
 } from "@/components/admin/month-picker";
+import { useAccentPalette } from "@/lib/use-accent";
 import { BarChart3 } from "lucide-react";
 
 // Slot palette fallback — slots without an admin-picked color rotate
-// through this for chart legibility.
+// through this for chart legibility. The teal entry gets swapped at
+// render time for the caller's accent (via useAccentPalette) so the
+// fallback respects the user's preference.
 const FALLBACK_PALETTE = [
-  "#0d9488", // teal
+  "#0d9488", // teal — replaced with the user's accent at render time
   "#3b82f6", // blue
   "#6366f1", // indigo
   "#8b5cf6", // violet
@@ -88,6 +91,9 @@ export default function StatsPage() {
     queryKey: ["groups"],
     queryFn: api.listGroups,
   });
+  // Per-user accent: swap the default teal slot in the fallback
+  // palette for the caller's pick.
+  const palette = useAccentPalette(FALLBACK_PALETTE);
 
   // Filter raw rows once by the active scope. Everything
   // downstream (per-slot charts, weekend chart, detail table)
@@ -127,7 +133,7 @@ export default function StatsPage() {
         team_role_label: r.team_role_label,
         color:
           r.slot_color
-          ?? FALLBACK_PALETTE[idx % FALLBACK_PALETTE.length],
+          ?? palette[idx % palette.length],
       });
       idx += 1;
     }
@@ -138,7 +144,7 @@ export default function StatsPage() {
       if (a.team_role_label !== null && b.team_role_label === null) return 1;
       return (a.team_role_label ?? "").localeCompare(b.team_role_label ?? "");
     });
-  }, [scopedRows]);
+  }, [scopedRows, palette]);
 
   // Chart: per (person, month) weekend/holiday counts. Stacked by month
   // the same way per-slot charts are.

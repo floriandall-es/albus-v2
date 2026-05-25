@@ -1,9 +1,17 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { cookies } from "next/headers";
 import { Inter } from "next/font/google";
+import { AccentSync } from "@/components/accent-sync";
 import { QueryProvider } from "@/components/QueryProvider";
 import { ServiceWorkerRegistrar } from "@/components/pwa/service-worker-registrar";
+import {
+  ACCENT_COOKIE,
+  accentHex,
+  accentInlineStyle,
+  resolveAccent,
+} from "@/lib/accent";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -40,18 +48,40 @@ export const metadata: Metadata = {
   },
 };
 
-export const viewport: Viewport = {
-  // Drives the browser chrome / iOS status-bar tint on installed
-  // apps. Brand-600 (`#0d9488`) matches the manifest theme_color.
-  themeColor: "#0d9488",
-};
+/** Per-request browser-chrome tint. Reads the same cookie the
+ * layout uses to set CSS vars; that way the iOS / Chrome top bar
+ * matches the user's accent in normal browser sessions. The PWA
+ * splash screen still uses the static manifest theme_color (the
+ * OS reads the manifest at install time, so it can't follow a
+ * cookie set later anyway). */
+export function generateViewport(): Viewport {
+  const cookieValue = cookies().get(ACCENT_COOKIE)?.value ?? null;
+  const accent = resolveAccent(cookieValue);
+  return { themeColor: accentHex(accent, 700) };
+}
 
 export default function RootLayout({ children }: { children: ReactNode }) {
+  // Per-user accent (migration 0065). Read the cookie set on
+  // login + every settings save, resolve to a known preset
+  // (fallback teal), and inject the CSS-variable triplets inline
+  // on <html>. Doing this server-side means the right colours
+  // are present on the very first paint — no flash even on a
+  // hard refresh. The /me/settings picker also writes the
+  // variables on `documentElement.style` immediately so the
+  // change is visible without a navigation.
+  const cookieValue = cookies().get(ACCENT_COOKIE)?.value ?? null;
+  const accent = resolveAccent(cookieValue);
+
   return (
-    <html lang="es" className={inter.variable}>
+    <html
+      lang="es"
+      className={inter.variable}
+      style={accentInlineStyle(accent) as React.CSSProperties}
+    >
       <body className="font-sans antialiased text-gray-900">
         <QueryProvider>
           <ServiceWorkerRegistrar />
+          <AccentSync />
           <div className="min-h-screen bg-gray-50">{children}</div>
         </QueryProvider>
       </body>

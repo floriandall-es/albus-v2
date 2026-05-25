@@ -304,6 +304,9 @@ export type Person = {
    * Null = not yet verified; UI shows the "verifica tu correo"
    * banner with a resend button until cleared. */
   email_verified_at: string | null;
+  /** Migration 0065: per-user accent colour key (one of
+   * AccentName in @/lib/accent). Default 'teal'. */
+  preferred_accent: string;
   created_at: string;
 };
 
@@ -1181,6 +1184,16 @@ export const api = {
   }) =>
     request<Person>("/api/me/profile", {
       method: "PUT",
+      body: JSON.stringify(body),
+    }),
+  /** Migration 0065: persist the caller's accent colour preference.
+   * Returns the updated Person so the /me query cache can be primed
+   * without a round-trip. The frontend also writes the new value to
+   * the trivu_accent cookie + sets CSS variables on documentElement
+   * so the change is immediately visible. */
+  updateAppearance: (body: { preferred_accent: string }) =>
+    request<Person>("/api/me/appearance", {
+      method: "PATCH",
       body: JSON.stringify(body),
     }),
   changePassword: (body: { current_password: string; new_password: string }) =>

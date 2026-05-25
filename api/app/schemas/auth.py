@@ -153,6 +153,10 @@ class PersonOut(BaseModel):
     # correo" banner with a resend button. Existing accounts
     # were backfilled to NOW() by migration 0038.
     email_verified_at: datetime | None = None
+    # Migration 0065: per-user accent colour preference. One of the
+    # 12 presets defined in web/src/lib/accent.ts. Default 'teal'
+    # for everyone who hasn't touched the picker.
+    preferred_accent: str = "teal"
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -289,3 +293,27 @@ class SetPresetRequest(BaseModel):
     """Body for POST /onboarding/preset. Literal-typed so FastAPI
     rejects unknown kinds with a 422 before our code runs."""
     kind: Literal["quirurgico", "medico", "otro"]
+
+
+# Migration 0065. Valid accent values mirror web/src/lib/accent.ts
+# ACCENT_PRESETS keys — keep in lockstep.
+AccentName = Literal[
+    "teal",
+    "azul",
+    "indigo",
+    "violeta",
+    "rosa",
+    "ambar",
+    "esmeralda",
+    "pizarra",
+    "cyan",
+    "naranja",
+    "lima",
+    "fucsia",
+]
+
+
+class AppearanceUpdateRequest(BaseModel):
+    """Body for PATCH /me/appearance. One field today, room to grow
+    later (dark mode would land here too)."""
+    preferred_accent: AccentName

@@ -8,6 +8,14 @@ import {
   ErrorText,
   TextField,
 } from "@/components/admin/ui";
+import {
+  ACCENT_COOKIE,
+  ACCENT_PRESETS,
+  type AccentName,
+  accentCssEntries,
+  accentHex,
+  resolveAccent,
+} from "@/lib/accent";
 
 // Three independent settings cards — profile / email / password — that
 // both /admin/settings and /me/settings render. Both routes call the same
@@ -66,8 +74,147 @@ export function ProfileCards() {
           />
         </>
       )}
+      <AppearanceSection
+        currentAccent={me.data.person.preferred_accent}
+        onSaved={invalidate}
+      />
       <PasswordSection />
     </div>
+  );
+}
+
+/** Per-user accent picker (migration 0065). Renders a swatch grid;
+ * clicking one writes the cookie + sets CSS variables on
+ * documentElement immediately (instant feedback) and fires the
+ * API call in the background. We don't gate the visual change on
+ * the API success — if the network hiccups we still optimistically
+ * apply locally and let the next /me reconcile. */
+function AppearanceSection({
+  currentAccent,
+  onSaved,
+}: {
+  currentAccent: string;
+  onSaved: () => void;
+}) {
+  const initial = resolveAccent(currentAccent);
+  const [selected, setSelected] = useState<AccentName>(initial);
+  // Re-sync if the parent /me query refreshes with a different value
+  // (e.g. user changed it on another device).
+  useEffect(() => {
+    setSelected(resolveAccent(currentAccent));
+  }, [currentAccent]);
+
+  const save = useMutation({
+    mutationFn: (next: AccentName) =>
+      api.updateAppearance({ preferred_accent: next }),
+    onSuccess: () => {
+      onSaved();
+    },
+  });
+
+  const pick = (next: AccentName) => {
+    if (next === selected) return;
+    setSelected(next);
+    // Cookie: max-age = 1 year. SameSite=Lax so it travels on
+    // top-level navigations (the SSR layout reads it). Not HttpOnly
+    // — the client also reads it as a fallback. Path=/ so every
+    // route gets the value.
+    if (typeof document !== "undefined") {
+      document.cookie =
+        `${ACCENT_COOKIE}=${next}; Path=/; Max-Age=31536000; SameSite=Lax`;
+      // Apply locally NOW so the rest of the page repaints without
+      // waiting for a navigation.
+      for (const [prop, value] of accentCssEntries(next)) {
+        document.documentElement.style.setProperty(prop, value);
+      }
+    }
+    save.mutate(next);
+  };
+
+  return (
+    <Card>
+      <div className="p-4 space-y-3">
+        <div>
+          <h3 className="text-base font-semibold text-gray-900">
+            Apariencia
+          </h3>
+          <p className="mt-0.5 text-xs text-gray-500">
+            Personaliza el color de acento. Afecta a botones,
+            iconos y al resaltado de tus turnos.
+          </p>
+        </div>
+        <div role="radiogroup" aria-label="Color de acento">
+          <ul className="grid grid-cols-4 gap-3 sm:grid-cols-6">
+            {(Object.keys(ACCENT_PRESETS) as AccentName[]).map((key) => {
+              const preset = ACCENT_PRESETS[key];
+              const isSelected = key === selected;
+              const swatchColor = accentHex(key, 600);
+              const ringColor = accentHex(key, 700);
+              return (
+                <li key={key}>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={isSelected}
+                    aria-label={preset.label}
+                    title={preset.label}
+                    onClick={() => pick(key)}
+                    className={
+                      "group relative flex h-12 w-full items-center justify-center rounded-lg "
+                      + "ring-1 ring-inset ring-black/5 transition "
+                      + "hover:scale-[1.03] focus:outline-none focus-visible:ring-2"
+                    }
+                    style={{
+                      backgroundColor: swatchColor,
+                      boxShadow: isSelected
+                        ? `0 0 0 2px white inset, 0 0 0 4px ${ringColor}`
+                        : undefined,
+                    }}
+                  >
+                    {isSelected && (
+                      <CheckIcon className="h-5 w-5 text-white drop-shadow-sm" />
+                    )}
+                  </button>
+                  <div
+                    className={
+                      "mt-1 text-center text-[11px] "
+                      + (isSelected
+                        ? "font-semibold text-gray-900"
+                        : "text-gray-500")
+                    }
+                  >
+                    {preset.label}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+        {save.isError && (
+          <ErrorText>
+            No se ha podido guardar la preferencia. Cambia de color
+            otra vez para reintentar.
+          </ErrorText>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function CheckIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="currentColor"
+      className={className}
+      aria-hidden
+    >
+      <path
+        fillRule="evenodd"
+        d="M16.704 5.29a1 1 0 010 1.42l-7.997 7.997a1 1 0 01-1.42 0L3.296 10.71a1 1 0 011.42-1.42L8 12.578l7.286-7.286a1 1 0 011.418 0z"
+        clipRule="evenodd"
+      />
+    </svg>
   );
 }
 

@@ -38,6 +38,7 @@ from app.models import (
 )
 from app.routes.deps import RequestContext, get_current_context
 from app.schemas.auth import (
+    AppearanceUpdateRequest,
     EmailChangeRequest,
     EmailChangeRequested,
     MeResponse,
@@ -163,6 +164,20 @@ def update_profile(
         ctx.person.cargos = [
             c.strip()[:120] for c in payload.cargos if c and c.strip()
         ]
+    ctx.db.flush()
+    return ctx.person
+
+
+@router.patch("/me/appearance", response_model=PersonOut)
+def update_appearance(
+    payload: AppearanceUpdateRequest,
+    ctx: RequestContext = Depends(get_current_context),
+) -> Person:
+    """Update the caller's UI accent colour preference. The Literal
+    typing on the schema rejects unknown values with a 422 before
+    we ever hit the DB. Returns the updated PersonOut so the
+    frontend can refresh /me cache without an extra GET."""
+    ctx.person.preferred_accent = payload.preferred_accent
     ctx.db.flush()
     return ctx.person
 
