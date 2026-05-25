@@ -35,7 +35,7 @@ export default function HospitalDirectoryPage() {
   const [q, setQ] = useState("");
   const [tenantId, setTenantId] = useState<number | "">("");
   const [categoryId, setCategoryId] = useState<number | "">("");
-  // "Sólo de guardia" toggle — purely client-side. The directory
+  // "Personal de guardia" toggle — purely client-side. The directory
   // response already carries on_guardia_today per entry (migration
   // 0062), so toggling this doesn't refetch — we just narrow the
   // visible rows. Lives outside the React-Query key for the same
@@ -56,7 +56,7 @@ export default function HospitalDirectoryPage() {
   const hospitalName = me.data?.current_tenant.hospital_name ?? null;
   const hospitalId = me.data?.current_tenant.hospital_id ?? null;
 
-  // Apply the "Sólo de guardia" toggle locally; the API filters
+  // Apply the "Personal de guardia" toggle locally; the API filters
   // by name/tenant/category but this one is presentational.
   const visibleRows = useMemo(() => {
     if (!directory.data) return [];
@@ -182,7 +182,7 @@ export default function HospitalDirectoryPage() {
                 : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50")
             }
           >
-            Sólo de guardia
+            Personal de guardia
           </button>
         )}
         <span className="ml-auto text-xs text-gray-500">
