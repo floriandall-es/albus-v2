@@ -149,31 +149,26 @@ export default function MeLayout({ children }: { children: ReactNode }) {
           + (drawerOpen ? "translate-x-0" : "-translate-x-full")
         }
       >
-        <div className="px-4 py-4 border-b border-gray-100 space-y-3">
-          <div className="flex items-start gap-3">
+        <div className="px-4 py-4 border-b border-gray-100">
+          {/* Same shape as the admin header (sidebar parity): logo
+              + tenant name in the top row, hospital name as a
+              full-width muted subtitle underneath so a long
+              official name like "Hospital Universitari i
+              Politècnic La Fe de València" can wrap freely. */}
+          <div className="flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/logo.jpeg"
               alt="Trivu"
-              className="h-12 w-12 rounded-lg object-cover shadow-soft shrink-0"
+              className="h-14 w-14 shrink-0 rounded-lg object-cover shadow-soft"
             />
-            <div className="min-w-0 flex-1 leading-tight">
-              {/* Hospital name on top, tenant (service) name below.
-                  For standalone tenants (no parent hospital) we just
-                  show the tenant name with no hospital label — keeps
-                  the header from rendering an awkward empty line. */}
-              {me.data?.current_tenant.hospital_name && (
-                <div className="truncate text-[11px] uppercase tracking-wide text-gray-500">
-                  {me.data.current_tenant.hospital_name}
-                </div>
-              )}
-              <div className="truncate text-sm font-semibold text-gray-800">
-                {me.data?.current_tenant.name}
-              </div>
+            <div
+              className="min-w-0 flex-1 text-sm font-medium text-gray-700 leading-tight line-clamp-2"
+              title={me.data?.current_tenant.name}
+            >
+              {me.data?.current_tenant.name}
             </div>
-            {/* Mobile-only close button — gives a fast dismiss
-                without reaching for the backdrop. 44×44 touch target
-                so it's reliably tappable. */}
+            {/* Mobile-only close button. 44×44 touch target. */}
             <button
               type="button"
               aria-label="Cerrar menú"
@@ -183,27 +178,43 @@ export default function MeLayout({ children }: { children: ReactNode }) {
               <X className="h-5 w-5" />
             </button>
           </div>
-          {/* Logged-in user identity. Photo (or initials chip) +
-              first+last name. Reads as the "you are signed in as
-              X" anchor that nurses and adjuntos asked for —
-              previously the header only said which hospital they
-              were in, not who they were. */}
-          {me.data && (
-            <div className="flex items-center gap-2.5">
-              <Avatar
-                name={me.data.person.name}
-                mine={true}
-                imageUrl={me.data.person.avatar_url}
-                size="md"
-              />
-              <div className="min-w-0 text-xs leading-tight text-gray-700">
-                <div className="truncate font-medium">
-                  {personFullName(me.data.person)}
-                </div>
-              </div>
+          {me.data?.current_tenant.hospital_name && (
+            <div
+              className="mt-2 text-[11px] text-gray-500 leading-snug"
+              title={me.data.current_tenant.hospital_name}
+            >
+              {me.data.current_tenant.hospital_name}
             </div>
           )}
         </div>
+
+        {/* "You are signed in as X" card. Lives below the
+            tenant/hospital header but above the InstallButton
+            + ViewSwitcher block. Card chrome (light bg + ring)
+            sets it apart so the user identity reads as a
+            self-contained element rather than another header
+            row. Doubles as a quick anchor to the profile page. */}
+        {me.data && (
+          <Link
+            href="/me/settings"
+            className="mx-3 mt-3 flex items-center gap-2.5 rounded-lg bg-gray-50 px-3 py-2.5 ring-1 ring-inset ring-gray-200 hover:bg-gray-100 transition-colors"
+          >
+            <Avatar
+              name={me.data.person.name}
+              mine={true}
+              imageUrl={me.data.person.avatar_url}
+              size="md"
+            />
+            <div className="min-w-0 leading-tight">
+              <div className="truncate text-sm font-medium text-gray-900">
+                {personFullName(me.data.person)}
+              </div>
+              <div className="truncate text-[11px] text-gray-500">
+                {me.data.person.email}
+              </div>
+            </div>
+          </Link>
+        )}
 
         <InstallButton />
         {me.data && <ViewSwitcher me={me.data} current="me" />}
@@ -342,9 +353,10 @@ export default function MeLayout({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="border-t border-gray-100 px-3 py-3">
-          <div className="px-1 pb-2 text-[11px] text-gray-500 truncate">
-            {me.data?.person.email}
-          </div>
+          {/* Email used to live here as the "signed in as"
+              anchor. Moved into the identity card up top so the
+              user's face and name lead the chrome; the email is
+              still visible there, just not duplicated. */}
           <button
             className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-100"
             onClick={logout}
