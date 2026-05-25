@@ -1,9 +1,10 @@
-"""Aggregated assignment counts for the admin stats page.
+"""Aggregated assignment counts for the admin stats + /me stats pages.
 
 Aggregates over PUBLISHED + ARCHIVED schedules — draft assignments
 shouldn't influence "how much has X actually worked" since they may
-still change. Single GET endpoint; the frontend pivots into whatever
-chart shape it wants.
+still change. Two endpoints share a single aggregator: the admin one
+returns team-wide rows; the /me one pre-filters by the caller's
+person_id so each clinician sees only their own breakdown.
 """
 
 from __future__ import annotations
@@ -12,7 +13,6 @@ from collections import defaultdict
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import and_, or_
 
 from app.models import (
     Assignment,
@@ -35,17 +35,17 @@ def _require_admin(ctx: RequestContext) -> None:
         )
 
 
-@router.get("/stats/assignments", response_model=StatsResponse)
-def stats_assignments(
-    from_: date = Query(..., alias="from"),
-    to: date = Query(...),
-    ctx: RequestContext = Depends(get_current_context),
+def _aggregate_assignments(
+    ctx: RequestContext,
+    from_: date,
+    to: date,
+    *,
+    person_id_filter: int | None = None,
 ) -> StatsResponse:
-    """Per (person, slot, year-month) count of assignments in the date
-    range. PUBLISHED + ARCHIVED schedules only. Also surfaces a
-    weekend/holiday count per row for separate weekend-balance charts.
-    """
-    _require_admin(ctx)
+    """Shared aggregator. PUBLISHED + ARCHIVED schedules only. When
+    `person_id_filter` is set, the query is pre-filtered to that
+    person — used by the /me/stats endpoint so each clinician can
+    see their own breakdown without leaking team-wide rows."""
     if to < from_:
         raise HTTPException(
             status_code=400, detail="'to' debe ser >= 'from'"
@@ -59,7 +59,7 @@ def stats_assignments(
         .all()
     }
 
-    rows = (
+    q = (
         ctx.db.query(Assignment, Person, Slot, SlotTeamRole)
         .join(Schedule, Schedule.id == Assignment.schedule_id)
         .join(Person, Person.id == Assignment.person_id)
@@ -70,20 +70,18 @@ def stats_assignments(
             Assignment.date.between(from_, to),
             Assignment.person_id.isnot(None),
         )
-        .all()
     )
+    if person_id_filter is not None:
+        q = q.filter(Assignment.person_id == person_id_filter)
+    rows = q.all()
 
     # Sprint 17: aggregation bucket now includes team_role_id (nullable)
     # so team_composition slots break down per sub-role. Volume is small
     # enough that pivoting in Python is still fine.
     Bucket = tuple[int, int, int | None, str]
-    # (person_id, slot_id, team_role_id, year_month)
     counts: dict[Bucket, int] = defaultdict(int)
     weekend_counts: dict[Bucket, int] = defaultdict(int)
     person_info: dict[int, tuple[str, str | None]] = {}
-    # (name, color, group_id). group_id drives the scope toggle on
-    # the frontend — admins flip between "Equipo principal" and
-    # each sub-equipo without a fresh round-trip.
     slot_info: dict[int, tuple[str, str | None, int | None]] = {}
     role_label_by_id: dict[int, str] = {}
 
@@ -128,5 +126,32 @@ def stats_assignments(
             r.person_name,
         )
     )
-
     return StatsResponse(from_date=from_, to_date=to, rows=out)
+
+
+@router.get("/stats/assignments", response_model=StatsResponse)
+def stats_assignments(
+    from_: date = Query(..., alias="from"),
+    to: date = Query(...),
+    ctx: RequestContext = Depends(get_current_context),
+) -> StatsResponse:
+    """Per (person, slot, year-month) count of assignments in the date
+    range. PUBLISHED + ARCHIVED schedules only. Also surfaces a
+    weekend/holiday count per row for separate weekend-balance charts.
+    """
+    _require_admin(ctx)
+    return _aggregate_assignments(ctx, from_, to)
+
+
+@router.get("/me/stats/assignments", response_model=StatsResponse)
+def my_stats_assignments(
+    from_: date = Query(..., alias="from"),
+    to: date = Query(...),
+    ctx: RequestContext = Depends(get_current_context),
+) -> StatsResponse:
+    """Same shape as /stats/assignments but scoped to the caller —
+    every row belongs to ctx.person.id. No admin gate: any member
+    can see their own performed shifts. Drives /me/estadisticas."""
+    return _aggregate_assignments(ctx, from_, to, person_id_filter=ctx.person.id)
+
+

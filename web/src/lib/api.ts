@@ -1582,6 +1582,17 @@ export const api = {
       `/api/stats/assignments?${qs.toString()}`,
     );
   },
+  /** Same shape as statsAssignments but scoped to the caller. No
+   * admin gate — every member can see their own breakdown. Drives
+   * /me/estadisticas. */
+  myStatsAssignments: (params: { from: string; to: string }) => {
+    const qs = new URLSearchParams();
+    qs.set("from", params.from);
+    qs.set("to", params.to);
+    return request<StatsResponse>(
+      `/api/me/stats/assignments?${qs.toString()}`,
+    );
+  },
 
   // Team absences (public, read-only). Used by the Libre row in
   // the planning grid; visible to any authenticated user. Pass

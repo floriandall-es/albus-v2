@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeftRight,
+  BarChart3,
   Building2,
   CalendarDays,
   CalendarOff,
@@ -19,7 +20,8 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { api, getToken } from "@/lib/api";
+import { api, getToken, personFullName } from "@/lib/api";
+import { Avatar } from "@/components/schedule/planning-grid";
 import { useLogout } from "@/lib/use-logout";
 import { EmailVerifyBanner } from "@/components/email-verify-banner";
 import { ViewSwitcher } from "@/components/view-switcher";
@@ -31,6 +33,7 @@ const NAV: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/me/reuniones", label: "Reuniones", icon: MessageSquare },
   { href: "/me/swaps", label: "Cambios", icon: ArrowLeftRight },
   { href: "/me/bloqueos", label: "Mis bloqueos", icon: CalendarOff },
+  { href: "/me/estadisticas", label: "Mis estadísticas", icon: BarChart3 },
   // Sprint 28: cross-tenant hospital directory. Only renders when
   // the current tenant has a parent hospital — handled in the
   // filter below.
@@ -146,27 +149,60 @@ export default function MeLayout({ children }: { children: ReactNode }) {
           + (drawerOpen ? "translate-x-0" : "-translate-x-full")
         }
       >
-        <div className="flex items-center gap-3 px-4 py-4 border-b border-gray-100">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/logo.jpeg"
-            alt="Trivu"
-            className="h-14 w-14 rounded-lg object-cover shadow-soft"
-          />
-          <div className="text-sm font-medium text-gray-700 leading-tight">
-            {me.data?.current_tenant.name}
+        <div className="px-4 py-4 border-b border-gray-100 space-y-3">
+          <div className="flex items-start gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo.jpeg"
+              alt="Trivu"
+              className="h-12 w-12 rounded-lg object-cover shadow-soft shrink-0"
+            />
+            <div className="min-w-0 flex-1 leading-tight">
+              {/* Hospital name on top, tenant (service) name below.
+                  For standalone tenants (no parent hospital) we just
+                  show the tenant name with no hospital label — keeps
+                  the header from rendering an awkward empty line. */}
+              {me.data?.current_tenant.hospital_name && (
+                <div className="truncate text-[11px] uppercase tracking-wide text-gray-500">
+                  {me.data.current_tenant.hospital_name}
+                </div>
+              )}
+              <div className="truncate text-sm font-semibold text-gray-800">
+                {me.data?.current_tenant.name}
+              </div>
+            </div>
+            {/* Mobile-only close button — gives a fast dismiss
+                without reaching for the backdrop. 44×44 touch target
+                so it's reliably tappable. */}
+            <button
+              type="button"
+              aria-label="Cerrar menú"
+              onClick={() => setDrawerOpen(false)}
+              className="-mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 active:bg-gray-200 md:hidden"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
-          {/* Mobile-only close button — gives a fast dismiss
-              without reaching for the backdrop. 44×44 touch target
-              so it's reliably tappable. */}
-          <button
-            type="button"
-            aria-label="Cerrar menú"
-            onClick={() => setDrawerOpen(false)}
-            className="ml-auto -mr-2 flex h-11 w-11 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 active:bg-gray-200 md:hidden"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          {/* Logged-in user identity. Photo (or initials chip) +
+              first+last name. Reads as the "you are signed in as
+              X" anchor that nurses and adjuntos asked for —
+              previously the header only said which hospital they
+              were in, not who they were. */}
+          {me.data && (
+            <div className="flex items-center gap-2.5">
+              <Avatar
+                name={me.data.person.name}
+                mine={true}
+                imageUrl={me.data.person.avatar_url}
+                size="md"
+              />
+              <div className="min-w-0 text-xs leading-tight text-gray-700">
+                <div className="truncate font-medium">
+                  {personFullName(me.data.person)}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <InstallButton />
