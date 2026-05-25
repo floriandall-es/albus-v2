@@ -167,11 +167,12 @@ function ConversationList({
                     : "hover:bg-gray-50")
                 }
               >
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   <Avatar
                     name={c.peer.name}
                     mine={false}
                     imageUrl={c.peer.avatar_url}
+                    size="lg"
                   />
                   <div className="min-w-0 flex-1 leading-tight">
                     <div className="flex items-center gap-2">
@@ -297,6 +298,7 @@ function ConversationPane({
             name={conversation.peer.name}
             mine={false}
             imageUrl={conversation.peer.avatar_url}
+            size="md"
           />
           <div className="min-w-0 leading-tight">
             <div className="truncate text-sm font-semibold text-gray-900">
