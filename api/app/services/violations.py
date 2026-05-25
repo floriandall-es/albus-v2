@@ -41,6 +41,8 @@ sees on the page.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -90,6 +92,46 @@ class ViolationCell:
     date: date
     slot_id: int
     person_id: int
+
+
+# ---------------------------------------------------------------------------
+# Stable identity for "hide / overrule" suppressions
+# ---------------------------------------------------------------------------
+
+
+def violation_signature(v: Violation) -> str:
+    """Stable sha256 hex identifying this violation across reloads
+    and (when possible) across schedule regenerations.
+
+    We deliberately exclude `assignment_id` from the signature —
+    assignment ids churn on regeneration but the conflict itself is
+    really about WHO is doing WHAT on WHICH DAY. Including only
+    (date, slot_id, person_id) keeps a hidden conflict hidden if it
+    re-appears with new ids; if the regeneration eliminates the
+    conflict the suppression simply doesn't match anything and goes
+    dormant.
+
+    Canonical JSON: cells sorted by (date, slot_id, person_id) so
+    "Pastor + Hernández" and "Hernández + Pastor" hash to the same
+    value. `sort_keys=True` covers field ordering. The output is
+    64 chars matching the `String(64)` column.
+    """
+    cells = sorted(
+        (
+            (c.date.isoformat(), int(c.slot_id), int(c.person_id))
+            for c in v.cells
+        ),
+    )
+    canonical = json.dumps(
+        {
+            "kind": v.kind,
+            "cells": cells,
+            "rule_id": v.rule_id,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 # ---------------------------------------------------------------------------

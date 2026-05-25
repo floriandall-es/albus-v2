@@ -179,7 +179,12 @@ export default function ScheduleDetailPage() {
   });
   const flaggedAssignmentIds = useMemo(() => {
     const s = new Set<number>();
+    // Suppressed ("Ocultar"-ed by admin) violations don't paint the
+    // cell ring — once overruled the grid should look clean. The
+    // banner still surfaces them under its "Mostrar N ocultos"
+    // toggle if the admin needs to revisit.
     for (const v of violations.data ?? []) {
+      if (v.suppressed_at !== null) continue;
       for (const c of v.cells) s.add(c.assignment_id);
     }
     return s;
@@ -327,7 +332,10 @@ export default function ScheduleDetailPage() {
         )}
       </p>
 
-      <ViolationsBanner violations={violations.data ?? []} />
+      <ViolationsBanner
+        scheduleId={id}
+        violations={violations.data ?? []}
+      />
 
       <PlanningGrid
         assignments={s.assignments}

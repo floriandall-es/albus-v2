@@ -22,6 +22,7 @@ from app.models import (
     ScheduleGroupPublication,
     Slot,
     SlotTeamRole,
+    ViolationSuppression,
 )
 from app.routes.deps import RequestContext, get_current_context
 from app.routes.scope import caller_scope
@@ -37,10 +38,14 @@ from app.schemas.schedule import (
     ScheduleOut,
     ViolationCellOut,
     ViolationOut,
+    ViolationSuppressRequest,
 )
 from app.services import scheduler
 from app.services.scheduler import _Context, is_eligible
-from app.services.violations import find_violations as _find_violations
+from app.services.violations import (
+    find_violations as _find_violations,
+    violation_signature as _violation_signature,
+)
 from app.services.pdf import (
     PdfAbsence,
     build_absences_by_date,
@@ -278,26 +283,48 @@ def list_schedules(
 def _serialize_violations(schedule: Schedule, db: Session) -> list[ViolationOut]:
     """Run the violations engine and convert its dataclasses into the
     Pydantic wire shape. Used by GET /schedules/{id}/violations and
-    inside the PATCH/POST assignment responses."""
+    inside the PATCH/POST assignment responses.
+
+    Joins ViolationSuppression so the response carries each
+    conflict's `signature` (stable hash, used as the suppress key)
+    and `suppressed_at` (null when still actively flagged). The
+    frontend hides suppressed entries behind a "Mostrar N ocultos"
+    toggle but still receives them so it can offer an un-hide.
+    """
     raw = _find_violations(db, schedule)
-    return [
-        ViolationOut(
-            kind=v.kind,  # type: ignore[arg-type]
-            message=v.message,
-            cells=[
-                ViolationCellOut(
-                    assignment_id=c.assignment_id,
-                    date=c.date,
-                    slot_id=c.slot_id,
-                    person_id=c.person_id,
-                )
-                for c in v.cells
-            ],
-            rule_id=v.rule_id,
-            severity=v.severity,  # type: ignore[arg-type]
+    # One round-trip for all suppressions on this schedule. Map by
+    # signature for O(1) lookup as we serialize.
+    suppressions = (
+        db.query(ViolationSuppression)
+        .filter(ViolationSuppression.schedule_id == schedule.id)
+        .all()
+    )
+    sup_by_sig: dict[str, datetime] = {
+        s.signature: s.suppressed_at for s in suppressions
+    }
+    out: list[ViolationOut] = []
+    for v in raw:
+        sig = _violation_signature(v)
+        out.append(
+            ViolationOut(
+                kind=v.kind,  # type: ignore[arg-type]
+                message=v.message,
+                cells=[
+                    ViolationCellOut(
+                        assignment_id=c.assignment_id,
+                        date=c.date,
+                        slot_id=c.slot_id,
+                        person_id=c.person_id,
+                    )
+                    for c in v.cells
+                ],
+                rule_id=v.rule_id,
+                severity=v.severity,  # type: ignore[arg-type]
+                signature=sig,
+                suppressed_at=sup_by_sig.get(sig),
+            )
         )
-        for v in raw
-    ]
+    return out
 
 
 @router.get(
@@ -321,6 +348,86 @@ def get_schedule_violations(
     if not s or s.tenant_id != ctx.tenant.id:
         raise HTTPException(status_code=404, detail="Schedule not found")
     return _serialize_violations(s, ctx.db)
+
+
+@router.post(
+    "/schedules/{schedule_id}/violations/suppress",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+def suppress_violation(
+    schedule_id: int,
+    payload: ViolationSuppressRequest,
+    ctx: RequestContext = Depends(get_current_context),
+) -> None:
+    """Hide ("overrule") a specific rule violation on this schedule.
+
+    Admin-only. The frontend echoes back the `signature` it
+    received from GET /violations — we don't recompute or validate
+    against the live violation set. A bogus signature simply
+    inserts a dormant row that matches nothing; harmless.
+
+    Idempotent: re-submitting the same signature is a no-op
+    (UNIQUE (schedule_id, signature) collision is swallowed).
+    """
+    _require_admin(ctx)
+    s = ctx.db.get(Schedule, schedule_id)
+    if not s or s.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    # Check first so the idempotent path doesn't burn an integrity
+    # error — keeps the audit log clean and avoids a transaction
+    # rollback if more work follows the call.
+    existing = (
+        ctx.db.query(ViolationSuppression)
+        .filter(
+            ViolationSuppression.schedule_id == s.id,
+            ViolationSuppression.signature == payload.signature,
+        )
+        .first()
+    )
+    if existing is not None:
+        return
+    ctx.db.add(
+        ViolationSuppression(
+            tenant_id=ctx.tenant.id,
+            schedule_id=s.id,
+            signature=payload.signature,
+            kind=payload.kind,
+            suppressed_by_membership_id=ctx.membership.id,
+        )
+    )
+    ctx.db.flush()
+
+
+@router.delete(
+    "/schedules/{schedule_id}/violations/suppressions/{signature}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+def unsuppress_violation(
+    schedule_id: int,
+    signature: str,
+    ctx: RequestContext = Depends(get_current_context),
+) -> None:
+    """Un-hide a previously suppressed violation. Admin-only.
+
+    Idempotent: if no matching row exists we return 204 anyway.
+    The frontend's "Mostrar" button calls this when the admin
+    decides the conflict should be visible again.
+    """
+    _require_admin(ctx)
+    s = ctx.db.get(Schedule, schedule_id)
+    if not s or s.tenant_id != ctx.tenant.id:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    (
+        ctx.db.query(ViolationSuppression)
+        .filter(
+            ViolationSuppression.schedule_id == s.id,
+            ViolationSuppression.signature == signature,
+        )
+        .delete(synchronize_session=False)
+    )
+    ctx.db.flush()
 
 
 @router.get("/schedules/{schedule_id}", response_model=ScheduleDetail)

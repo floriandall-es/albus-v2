@@ -31,6 +31,33 @@ class ViolationOut(BaseModel):
     # Hard / soft from the rule definition, when available. Implicit
     # checks (time_overlap, post_rest) have no rule row → null.
     severity: Literal["hard", "soft"] | None = None
+    # Stable identity hash. Echo back when calling
+    # POST /schedules/{id}/violations/suppress to "hide" this
+    # violation, or DELETE .../suppressions/{signature} to un-hide.
+    # Computed by services/violations.py::violation_signature over
+    # (kind, sorted cells, rule_id); excludes assignment_id so
+    # suppressions survive schedule regeneration when the same
+    # conflict reappears.
+    signature: str
+    # When the admin has overruled this conflict via the "Ocultar"
+    # button, the suppression timestamp. The frontend hides
+    # suppressed entries by default behind a "Mostrar N ocultos"
+    # toggle but still receives them so the banner can offer a way
+    # to revert. NULL = currently flagged.
+    suppressed_at: datetime | None = None
+
+
+class ViolationSuppressRequest(BaseModel):
+    """Request body for POST /schedules/{id}/violations/suppress.
+
+    Only the signature is required — it's the stable identity the
+    GET response already returned. We accept `kind` as an audit
+    breadcrumb so the row written to violation_suppressions is
+    self-describing without re-fetching the violations engine.
+    """
+
+    signature: str = Field(min_length=64, max_length=64)
+    kind: ViolationKind
 
 
 class AssignmentSaveResponse(BaseModel):

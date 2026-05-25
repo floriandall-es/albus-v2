@@ -264,6 +264,15 @@ export type Violation = {
   /** Hard / soft from the rule definition. Null for implicit
    * checks. UI uses this for banner colour, not for blocking. */
   severity: "hard" | "soft" | null;
+  /** Stable identity hash (sha256 hex over kind + sorted cells +
+   * rule_id). Echo back when calling suppress/unsuppress — the
+   * backend uses this as the key in violation_suppressions. */
+  signature: string;
+  /** Timestamp when an admin overruled this conflict via the
+   * "Ocultar" button. Null when still actively flagged. The
+   * frontend hides suppressed entries behind a "Mostrar N ocultos"
+   * toggle but receives them so it can offer an un-hide affordance. */
+  suppressed_at: string | null;
 };
 
 /** Wrapper returned by PATCH and POST /assignments. Same as the
@@ -1873,9 +1882,32 @@ export const api = {
     ),
   /** Full list of rule breaches in the schedule's current
    * assignments. Used by /admin/schedule/[id] for the banner +
-   * per-cell markers. Warnings only — never blocks. */
+   * per-cell markers. Warnings only — never blocks. Each entry
+   * carries `signature` (stable hash) + `suppressed_at` so the
+   * banner can hide entries the admin has overruled. */
   listScheduleViolations: (scheduleId: number) =>
     request<Violation[]>(`/api/schedules/${scheduleId}/violations`),
+  /** Hide ("overrule") a specific rule violation on this schedule.
+   * Admin-only on the server. Pass the `signature` from the GET
+   * response verbatim. Idempotent (re-submitting is a no-op). 204. */
+  suppressScheduleViolation: (
+    scheduleId: number,
+    body: { signature: string; kind: ViolationKind },
+  ) =>
+    request<void>(
+      `/api/schedules/${scheduleId}/violations/suppress`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  /** Un-hide a previously suppressed violation. Idempotent — 204
+   * even if no matching row exists. */
+  unsuppressScheduleViolation: (
+    scheduleId: number,
+    signature: string,
+  ) =>
+    request<void>(
+      `/api/schedules/${scheduleId}/violations/suppressions/${signature}`,
+      { method: "DELETE" },
+    ),
   deleteAssignment: (scheduleId: number, assignmentId: number) =>
     request<void>(
       `/api/schedules/${scheduleId}/assignments/${assignmentId}`,

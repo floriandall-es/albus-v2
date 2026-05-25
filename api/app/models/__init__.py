@@ -39,6 +39,7 @@ from app.models.conversation import (
     Message,
 )
 from app.models.directory_favorite import DirectoryFavorite
+from app.models.violation_suppression import ViolationSuppression
 
 __all__ = [
     "Hospital",
@@ -79,4 +80,5 @@ __all__ = [
     "ConversationMember",
     "Message",
     "DirectoryFavorite",
+    "ViolationSuppression",
 ]
