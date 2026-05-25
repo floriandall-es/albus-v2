@@ -107,17 +107,6 @@ export default function TeamPage() {
       qc.invalidateQueries({ queryKey: ["invitations"] });
     },
   });
-  // Admin tool: flip an activated row back to Pendiente so we
-  // can re-aim the email + re-invite. Used when the admin
-  // tested the member experience with their own email and now
-  // needs to hand the account to the real clinician.
-  const resetToPendiente = useMutation({
-    mutationFn: (membershipId: number) =>
-      api.resetMembershipToPendiente(membershipId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["team"] });
-    },
-  });
 
   return (
     <>
@@ -249,35 +238,6 @@ export default function TeamPage() {
                           && issueInvite.variables === m.id
                             ? "Enviando…"
                             : "Enviar invitación"}
-                        </Button>
-                      )}
-                      {/* Reset-to-pendiente: only on already-activated
-                          rows (the inverse of is_pending), and hidden
-                          when the row is disabled. After it runs the
-                          row flips to Pendiente, the email becomes
-                          editable, and "Enviar invitación" appears in
-                          its place. */}
-                      {!m.is_pending && !isDisabled && (
-                        <Button
-                          variant="secondary"
-                          onClick={() => {
-                            if (
-                              confirm(
-                                `¿Reiniciar la cuenta de ${m.person_name} a Pendiente? Se borrará su contraseña para que puedas reenviar la invitación a otro email. Sus turnos, bloqueos y demás datos no se tocan.`,
-                              )
-                            ) {
-                              resetToPendiente.mutate(m.id);
-                            }
-                          }}
-                          disabled={
-                            resetToPendiente.isPending
-                            && resetToPendiente.variables === m.id
-                          }
-                        >
-                          {resetToPendiente.isPending
-                          && resetToPendiente.variables === m.id
-                            ? "Reiniciando…"
-                            : "Reiniciar a pendiente"}
                         </Button>
                       )}
                       <Button variant="secondary" onClick={() => setEditing(m)}>
@@ -461,6 +421,18 @@ function TeamEditDialog({
       return m;
     });
   };
+
+  // Admin escape hatch: clear the user's password so we can
+  // re-invite the account to a different email. Buried inside
+  // the Editar modal (instead of the row's actions) so an admin
+  // can't trigger it with a single misclick from the list view.
+  const resetToPendiente = useMutation({
+    mutationFn: () => api.resetMembershipToPendiente(member.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["team"] });
+      onClose();
+    },
+  });
 
   const save = useMutation({
     mutationFn: () => {
@@ -649,6 +621,56 @@ function TeamEditDialog({
           isAllowed={isAllowed}
           toggleActivity={toggleActivity}
         />
+
+        {/* Danger zone — only for activated rows. Buried at the
+            bottom inside its own bordered card so an admin can't
+            trigger it by accident from the list view. Common
+            use case during onboarding: admin tested with their
+            own email and now wants to hand the account to the
+            real clinician — Reiniciar flips the member back to
+            Pendiente, frees the email field, and lets you
+            re-send the invitation. */}
+        {!member.is_pending && (
+          <div className="mt-2 rounded-md border border-rose-200 bg-rose-50/50 p-3">
+            <div className="text-sm font-semibold text-rose-800">
+              Zona delicada
+            </div>
+            <p className="mt-1 text-xs text-rose-700">
+              Reinicia esta cuenta a <strong>Pendiente</strong> si la
+              activaste con un email provisional y quieres volver a
+              enviar la invitación a otra dirección. La contraseña se
+              borrará para que puedas editar el email. Sus turnos,
+              bloqueos y demás datos no se tocan.
+            </p>
+            {resetToPendiente.isError && (
+              <div className="mt-2">
+                <ErrorText>
+                  {(resetToPendiente.error as Error).message}
+                </ErrorText>
+              </div>
+            )}
+            <div className="mt-2">
+              <Button
+                variant="danger"
+                type="button"
+                onClick={() => {
+                  if (
+                    confirm(
+                      `¿Reiniciar la cuenta de ${member.person_name} a Pendiente? La contraseña se borrará para que puedas reenviar la invitación a otro email.`,
+                    )
+                  ) {
+                    resetToPendiente.mutate();
+                  }
+                }}
+                disabled={resetToPendiente.isPending}
+              >
+                {resetToPendiente.isPending
+                  ? "Reiniciando…"
+                  : "Reiniciar a pendiente"}
+              </Button>
+            </div>
+          </div>
+        )}
 
         {save.isError && <ErrorText>{(save.error as Error).message}</ErrorText>}
         <div className="flex justify-end gap-2 pt-2">
