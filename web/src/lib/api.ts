@@ -1328,6 +1328,17 @@ export const api = {
       `/api/team/${membershipId}/invitation`,
       { method: "POST" },
     ),
+  /** Admin tool: flip an activated member back to "pendiente"
+   * by clearing their password. Used during onboarding when the
+   * admin signed up the test account with their own email and
+   * needs to hand it over to the real clinician — after this
+   * the email field becomes editable again and "Enviar
+   * invitación" works as for a fresh row. */
+  resetMembershipToPendiente: (membershipId: number) =>
+    request<TeamMember>(
+      `/api/team/${membershipId}/reset-to-pendiente`,
+      { method: "POST" },
+    ),
   inviteTeamMember: (body: {
     email: string;
     person_name: string;

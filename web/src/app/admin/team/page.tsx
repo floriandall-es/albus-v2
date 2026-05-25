@@ -107,6 +107,17 @@ export default function TeamPage() {
       qc.invalidateQueries({ queryKey: ["invitations"] });
     },
   });
+  // Admin tool: flip an activated row back to Pendiente so we
+  // can re-aim the email + re-invite. Used when the admin
+  // tested the member experience with their own email and now
+  // needs to hand the account to the real clinician.
+  const resetToPendiente = useMutation({
+    mutationFn: (membershipId: number) =>
+      api.resetMembershipToPendiente(membershipId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["team"] });
+    },
+  });
 
   return (
     <>
@@ -238,6 +249,35 @@ export default function TeamPage() {
                           && issueInvite.variables === m.id
                             ? "Enviando…"
                             : "Enviar invitación"}
+                        </Button>
+                      )}
+                      {/* Reset-to-pendiente: only on already-activated
+                          rows (the inverse of is_pending), and hidden
+                          when the row is disabled. After it runs the
+                          row flips to Pendiente, the email becomes
+                          editable, and "Enviar invitación" appears in
+                          its place. */}
+                      {!m.is_pending && !isDisabled && (
+                        <Button
+                          variant="secondary"
+                          onClick={() => {
+                            if (
+                              confirm(
+                                `¿Reiniciar la cuenta de ${m.person_name} a Pendiente? Se borrará su contraseña para que puedas reenviar la invitación a otro email. Sus turnos, bloqueos y demás datos no se tocan.`,
+                              )
+                            ) {
+                              resetToPendiente.mutate(m.id);
+                            }
+                          }}
+                          disabled={
+                            resetToPendiente.isPending
+                            && resetToPendiente.variables === m.id
+                          }
+                        >
+                          {resetToPendiente.isPending
+                          && resetToPendiente.variables === m.id
+                            ? "Reiniciando…"
+                            : "Reiniciar a pendiente"}
                         </Button>
                       )}
                       <Button variant="secondary" onClick={() => setEditing(m)}>

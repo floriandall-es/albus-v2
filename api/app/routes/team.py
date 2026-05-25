@@ -241,6 +241,72 @@ def issue_membership_invitation(
     )
 
 
+@router.post(
+    "/team/{membership_id}/reset-to-pendiente",
+    response_model=TeamMemberOut,
+)
+def reset_member_to_pendiente(
+    membership_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> TeamMemberOut:
+    """Clear the underlying Person's password so the membership
+    flips back to "pendiente" state. Lets an admin re-issue a
+    fresh invitation to a different email — common during
+    customer onboarding when the admin first signs up the test
+    account with their own email to walk through the member
+    experience, then needs to hand the real account to the
+    actual clinician.
+
+    After the reset:
+      - is_pending becomes true on the next /admin/team fetch
+      - the email field becomes editable again
+      - "Enviar invitación" is available
+      - any active session for the user stays valid until its
+        JWT expires (we deliberately don't invalidate tokens
+        here — for the documented use case the previous user
+        is the admin themselves and they're done with that
+        session)
+
+    Caveat: Person.hashed_password is global across tenants —
+    if this person belongs to other tenants too, this also
+    logs them out everywhere on their next password use. We
+    don't guard against that yet (alpha customers are
+    single-tenant); add a cross-tenant check before we onboard
+    a hospital where staff hop between Trivu tenants.
+    """
+    scope = caller_scope(ctx)
+    if not scope.is_tenant_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Solo el administrador puede reiniciar cuentas.",
+        )
+    m = _get_member_or_404(ctx, membership_id)
+    person = ctx.db.get(Person, m.person_id)
+    if person is None:
+        raise HTTPException(
+            status_code=404, detail="Person record missing for membership."
+        )
+    if person.hashed_password is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Esta cuenta ya está pendiente — no hace falta "
+                "reiniciarla. Edita el email si quieres y pulsa "
+                "'Enviar invitación'."
+            ),
+        )
+    person.hashed_password = None
+    ctx.db.flush()
+    # Reuse the list serializer so the response shape matches
+    # what the team page already renders — saves the frontend
+    # one extra fetch after the mutation.
+    category = (
+        ctx.db.get(Category, m.category_id) if m.category_id else None
+    )
+    group = ctx.db.get(Group, m.group_id) if m.group_id else None
+    return _serialize(m, person, category, group.name if group else None)
+
+
 def _sync_allowed_activities(
     ctx: RequestContext,
     member: Membership,
