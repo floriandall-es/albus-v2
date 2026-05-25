@@ -658,13 +658,20 @@ def generate(
 def publish_group_schedule(
     schedule_id: int,
     group_id: int,
+    notify_members: bool = True,
     ctx: RequestContext = Depends(get_current_context),
 ) -> ScheduleOut:
     """Publish a group's plan for this schedule. Idempotent — if
-    the row already exists, just refresh the timestamp + actor.
+    the row already exists, refresh the timestamp + actor and treat
+    the publish as a "republish" in the notification copy.
 
     Authorized callers: tenant admin (full power) or the group's
     designated lead. Members get 403.
+
+    Notifications: every person assigned to this group's slots in
+    this schedule gets an email when the publish succeeds. Mirror
+    of the main-team publish flow; pass notify_members=false to
+    skip (e.g. for a silent test publish).
     """
     from app.routes.scope import caller_scope
 
@@ -693,6 +700,31 @@ def publish_group_schedule(
         )
         .first()
     )
+    # is_republish snapshot taken before the row mutation — if
+    # `existing` is truthy this is the lead publishing again after
+    # a despublicar + edit cycle. Drives slightly different email
+    # copy ("publicada de nuevo" vs "publicada").
+    is_republish = existing is not None
+
+    # Snapshot the persons whose name is in a cell of this group's
+    # slots for this schedule. We capture BEFORE flushing for
+    # symmetry with the main-team publish flow — and because we
+    # want the audience the publication is *announcing*, not any
+    # post-publish drift.
+    assigned_persons: list[Person] = []
+    if notify_members:
+        assigned_persons = (
+            ctx.db.query(Person)
+            .join(Assignment, Assignment.person_id == Person.id)
+            .join(Slot, Slot.id == Assignment.slot_id)
+            .filter(
+                Assignment.schedule_id == s.id,
+                Slot.group_id == g.id,
+            )
+            .distinct()
+            .all()
+        )
+
     if existing:
         existing.published_at = datetime.now(timezone.utc)
         existing.published_by_membership_id = ctx.membership.id
@@ -707,6 +739,33 @@ def publish_group_schedule(
             )
         )
     ctx.db.flush()
+
+    if notify_members and assigned_persons:
+        # Lazy imports — keep send_email + templates out of the
+        # module load path. Same pattern as the main publish flow.
+        from app.core.config import settings
+        from app.services.email import send_email, should_email_person
+        from app.services.email_templates import (
+            schedule_published_group_member_email,
+        )
+
+        period_label = s.period.strftime("%B %Y")
+        app_url = settings.public_base_url
+        for person in assigned_persons:
+            if not person.email:
+                continue
+            # Skip pendientes — same routine-notification rule the
+            # main publish flow uses.
+            if not should_email_person(person.hashed_password):
+                continue
+            subject, body = schedule_published_group_member_email(
+                recipient_name=person.name,
+                period_label=period_label,
+                group_name=g.name,
+                app_url=app_url,
+                is_republish=is_republish,
+            )
+            send_email(to=person.email, subject=subject, body_text=body)
 
     return ScheduleOut(
         id=s.id,
