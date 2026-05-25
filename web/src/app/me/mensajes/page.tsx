@@ -246,16 +246,34 @@ function ConversationPane({
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  // Click-outside handler for the kebab menu. Attached only when
-  // the menu is open so we don't pay for global mousedown
-  // listeners on every render.
+  // Ref wrapping BOTH the kebab trigger and the popover panel so
+  // the document-level click-outside check can ignore taps that
+  // belong to either. Critical: React's onMouseDown stopPropagation
+  // does NOT stop the *native* mousedown from bubbling to a
+  // native document listener — that's the gotcha the previous
+  // implementation tripped on. Without this ref check, clicking
+  // "Borrar conversación" closed the menu before the button's
+  // click handler could fire, so the confirm dialog never
+  // appeared and the button looked dead.
+  const menuRootRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!menuOpen) return;
-    function onDocClick() {
+    function onDocPointer(e: MouseEvent | TouchEvent) {
+      const root = menuRootRef.current;
+      const target = e.target as Node | null;
+      if (root && target && root.contains(target)) return;
       setMenuOpen(false);
     }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
+    // mousedown for desktop, touchstart for iPad / phone — without
+    // touchstart, tapping outside the menu on iOS Safari doesn't
+    // close it because mousedown fires synthetically and timing
+    // is unreliable.
+    document.addEventListener("mousedown", onDocPointer);
+    document.addEventListener("touchstart", onDocPointer);
+    return () => {
+      document.removeEventListener("mousedown", onDocPointer);
+      document.removeEventListener("touchstart", onDocPointer);
+    };
   }, [menuOpen]);
 
   const messages = useQuery({
@@ -445,25 +463,24 @@ function ConversationPane({
           {/* Kebab menu — currently a single action ("Borrar
               conversación") but a real menu so the future
               "Silenciar", "Bloquear", etc. land here without
-              re-plumbing the header. stopPropagation on the
-              trigger so the document-level click-outside doesn't
-              immediately close what we just opened. */}
-          <div className="relative">
+              re-plumbing the header. The wrapper div carries the
+              ref the document-level click-outside check uses; any
+              tap inside that subtree (kebab trigger OR popover
+              items) is treated as "still inside the menu" so it
+              doesn't auto-close. */}
+          <div ref={menuRootRef} className="relative">
             <button
               type="button"
               aria-label="Más opciones"
-              onClick={(e) => {
-                e.stopPropagation();
-                setMenuOpen((v) => !v);
-              }}
+              onClick={() => setMenuOpen((v) => !v)}
               className="flex h-11 w-11 -mr-2 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 active:bg-gray-200"
             >
               <MoreVertical className="h-5 w-5" />
             </button>
             {menuOpen && (
               <div
+                role="menu"
                 className="absolute right-0 top-full z-10 mt-1 w-56 rounded-md border border-gray-200 bg-white py-1 shadow-lg"
-                onMouseDown={(e) => e.stopPropagation()}
               >
                 <button
                   type="button"
