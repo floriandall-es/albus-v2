@@ -181,10 +181,9 @@ export default function MeHome() {
               todayIso={todayIsoStr}
               onClickShift={(a) => {
                 if (a.locked_at) return;
-                if (myGroupId !== null) return;
                 setSwapTarget(a);
               }}
-              canRequestCoverage={myGroupId === null}
+              canRequestCoverage={true}
             />
           )}
           {anyTomorrow && (
@@ -195,10 +194,9 @@ export default function MeHome() {
               todayIso={todayIsoStr}
               onClickShift={(a) => {
                 if (a.locked_at) return;
-                if (myGroupId !== null) return;
                 setSwapTarget(a);
               }}
-              canRequestCoverage={myGroupId === null}
+              canRequestCoverage={true}
             />
           )}
         </section>
@@ -241,25 +239,18 @@ export default function MeHome() {
             sublabel="Lista o planificación del equipo"
             href="/me/turnos"
           />
-          {/* Sub-equipo members can't request coverage or bloqueos
-              through the system yet — their lead manages absences and
-              swaps offline. Hide the shortcuts so they don't dead-end. */}
-          {myGroupId === null && (
-            <ShortcutCard
-              icon={<ArrowLeftRight className="h-5 w-5" />}
-              label="Cambios"
-              sublabel="Pide cobertura o responde a otros"
-              href="/me/swaps"
-            />
-          )}
-          {myGroupId === null && (
-            <ShortcutCard
-              icon={<CalendarOff className="h-5 w-5" />}
-              label="Mis bloqueos"
-              sublabel="Vacaciones, bajas, formación"
+          <ShortcutCard
+            icon={<ArrowLeftRight className="h-5 w-5" />}
+            label="Cambios"
+            sublabel="Pide cobertura o responde a otros"
+            href="/me/swaps"
+          />
+          <ShortcutCard
+            icon={<CalendarOff className="h-5 w-5" />}
+            label="Mis bloqueos"
+            sublabel="Vacaciones, bajas, formación"
               href="/me/bloqueos"
-            />
-          )}
+          />
           <ShortcutCard
             icon={<Settings className="h-5 w-5" />}
             label="Mi cuenta"

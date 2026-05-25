@@ -222,17 +222,6 @@ export default function MeLayout({ children }: { children: ReactNode }) {
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
           <div className="space-y-0.5">
             {NAV.filter((item) => {
-              // Sub-equipo members can't request coverage or
-              // bloqueos through the system yet — their lead
-              // manages absences and swaps internally. Hide the
-              // entry points so they don't even see the option.
-              const currentMembership = me.data?.memberships.find(
-                (m) => m.tenant_id === me.data?.current_tenant.id,
-              );
-              const inSubEquipo =
-                currentMembership?.group_id != null;
-              if (inSubEquipo && item.href === "/me/swaps") return false;
-              if (inSubEquipo && item.href === "/me/bloqueos") return false;
               // Directory entry only when this tenant has a
               // parent hospital. Standalone tenants get nothing
               // to click — the page would render an empty state

@@ -243,12 +243,12 @@ export default function TurnosPage() {
     enabled: selectedId !== null,
   });
 
-  // Sub-equipo members can't request swaps yet (their lead handles
-  // it offline), so only fetch quota for main-team members.
+  // Per-tenant monthly swap quota — fetched for everyone, since
+  // both main team and sub-equipo members can now request swaps.
   const swapQuota = useQuery({
     queryKey: ["my-swap-quota", detail.data?.period],
     queryFn: () => api.getMySwapQuota(detail.data!.period.slice(0, 7)),
-    enabled: !!detail.data && myGroupId === null,
+    enabled: !!detail.data,
   });
 
   const holidays = useQuery({
@@ -547,10 +547,9 @@ export default function TurnosPage() {
                 todayIso={todayIsoStr}
                 onClickShift={(a) => {
                   if (a.locked_at) return;
-                  if (myGroupId !== null) return;
                   setSwapTarget(a);
                 }}
-                canRequestCoverage={myGroupId === null}
+                canRequestCoverage={true}
               />
             ) : (
               <ShiftListView
@@ -560,9 +559,6 @@ export default function TurnosPage() {
                 range={range}
                 onClickShift={(a) => {
                   if (a.locked_at) return;
-                  // Sub-equipo members can't request coverage through
-                  // the system yet — their lead handles it offline.
-                  if (myGroupId !== null) return;
                   // Coverage requests are only valid for your own
                   // shifts. In team-scope the list shows everyone's
                   // rows; the ShiftRow itself already gates clicks to
@@ -570,7 +566,7 @@ export default function TurnosPage() {
                   if (a.person_id !== myPersonId) return;
                   setSwapTarget(a);
                 }}
-                canRequestCoverage={myGroupId === null}
+                canRequestCoverage={true}
               />
             )
           ) : (
@@ -585,12 +581,9 @@ export default function TurnosPage() {
                   assignments={visibleAssignments}
                   holidayDates={holidayDates}
                   highlightPersonId={myPersonId}
-                  onCellClick={
-                    myGroupId === null ? (a) => setSwapTarget(a) : undefined
-                  }
+                  onCellClick={(a) => setSwapTarget(a)}
                   cellIsClickable={(a) =>
-                    myGroupId === null
-                    && a.person_id === myPersonId
+                    a.person_id === myPersonId
                     && !a.locked_at
                   }
                   // Libre + Reuniones rows are derived from team-wide

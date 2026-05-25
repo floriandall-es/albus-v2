@@ -444,11 +444,19 @@ def _eligible_membership_ids_for_assignment(
     a residente shouldn't see an adjunto's guardia request, an
     "Equipo autorizado" allow-list should be respected, etc.
 
-    Scope: active main-team memberships of the tenant (group_id
-    is NULL, disabled_at is NULL). Sub-team and disabled members
-    are filtered out the same way the modal does — and the create
-    endpoint already blocks sub-team requesters outright.
+    Scope: the membership pool mirrors the slot's group:
+      - Slot.group_id IS NULL (main-team slot) → main-team
+        memberships (Membership.group_id IS NULL)
+      - Slot.group_id = X (sub-equipo slot) → memberships of
+        group X
+    Cross-group covers are deliberately excluded: a residente
+    shouldn't be in the audience for an adjunto's guardia, and
+    vice versa. The slot's allow-list / categoría restrictions
+    layer on top of this group filter.
     """
+    slot = ctx.db.get(Slot, a.slot_id)
+    slot_group_id = slot.group_id if slot else None
+
     # Per-slot allow-list. NULL/empty set = no restriction.
     allowed_persons: set[int] = {
         row[0]
@@ -476,17 +484,17 @@ def _eligible_membership_ids_for_assignment(
             .all()
         }
 
-    rows = (
-        ctx.db.query(
-            Membership.id, Membership.person_id, Membership.category_id
-        )
-        .filter(
-            Membership.tenant_id == ctx.tenant.id,
-            Membership.disabled_at.is_(None),
-            Membership.group_id.is_(None),
-        )
-        .all()
+    q = ctx.db.query(
+        Membership.id, Membership.person_id, Membership.category_id
+    ).filter(
+        Membership.tenant_id == ctx.tenant.id,
+        Membership.disabled_at.is_(None),
     )
+    if slot_group_id is None:
+        q = q.filter(Membership.group_id.is_(None))
+    else:
+        q = q.filter(Membership.group_id == slot_group_id)
+    rows = q.all()
     out: set[int] = set()
     for mid, pid, cid in rows:
         if allowed_persons and pid not in allowed_persons:
@@ -528,20 +536,11 @@ def create_offer(
             status_code=403,
             detail="Solo puedes ofrecer tus propios turnos",
         )
-    # Sub-team members cannot use the swap system yet — the
-    # existing flow would email every active tenant member and
-    # let anyone respond, which would let a main-team adjunto
-    # accept a residente's guardia. Mixing across sub-teams is
-    # out of scope until we build a scoped swap flow. For now:
-    # block at the source; the lead resolves coverage manually.
-    if ctx.membership.group_id is not None:
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                "Las solicitudes de cobertura no están disponibles "
-                "para sub-equipos. Habla con tu responsable."
-            ),
-        )
+    # Sub-equipo members can request swaps too — the audience
+    # pool is automatically scoped to their own group by
+    # `_eligible_membership_ids_for_assignment`, so a residente
+    # asking for cover only reaches other residentes (same slot
+    # allow-list / categoría restrictions still apply).
     _published_or_400(ctx, a)
     if a.locked_at is not None:
         raise HTTPException(

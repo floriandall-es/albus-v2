@@ -64,12 +64,13 @@ export function RequestCoverageModal({
     return m?.id ?? null;
   }, [me.data]);
 
-  // Audience candidates: active main-team memberships of the tenant,
-  // minus the requester. Sub-team swaps aren't supported yet (the
-  // create_offer endpoint blocks group_id != NULL outright), so a
-  // sub-team requester wouldn't even see this modal; but the
-  // audience selection always excludes sub-team members too — they
-  // can't accept a main-team swap.
+  // Audience candidates = active memberships in the slot's
+  // group, minus the requester. We don't filter on group_id
+  // ourselves anymore — `eligibleSet` (from /api/swap-offers/
+  // eligible-coverers) already restricts to the right group
+  // (main team for main slots, the slot's group for sub-equipo
+  // slots). So this filter just trims the requester and any
+  // disabled rows.
   const audienceCandidates = useMemo(() => {
     if (!team.data) return [] as TeamMember[];
     if (!eligible.data) return [] as TeamMember[];
@@ -77,7 +78,6 @@ export function RequestCoverageModal({
       (m) =>
         m.id !== myMembershipId
         && m.disabled_at === null
-        && m.group_id === null
         && eligibleSet.has(m.id),
     );
   }, [team.data, myMembershipId, eligible.data, eligibleSet]);

@@ -50,34 +50,12 @@ def _ensure_member(ctx: RequestContext, person_id: int) -> None:
         )
 
 
-def _ensure_main_team_member(ctx: RequestContext, person_id: int) -> None:
-    """Reject person_ids whose Membership is in a sub-equipo.
-
-    Sub-equipo members' bloqueos are managed by their group lead via
-    /lead/bloqueos; the tenant admin shouldn't be creating, editing
-    or approving them from /admin/availability. We accept person_ids
-    that have at least one main-team Membership (group_id IS NULL)
-    and reject when every Membership for this person in this tenant
-    points at a sub-equipo.
-    """
-    _ensure_member(ctx, person_id)
-    has_main = (
-        ctx.db.query(Membership.id)
-        .filter(
-            Membership.tenant_id == ctx.tenant.id,
-            Membership.person_id == person_id,
-            Membership.group_id.is_(None),
-        )
-        .first()
-    )
-    if not has_main:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "Esta persona pertenece a un sub-equipo. Sus bloqueos "
-                "los gestiona el lead del sub-equipo en /lead/bloqueos."
-            ),
-        )
+# `_ensure_main_team_member` used to reject sub-equipo persons here
+# so the tenant admin couldn't create/edit/approve their bloqueos.
+# Dropped — sub-equipo members can now request bloqueos themselves,
+# and the tenant admin approves them along with main-team requests.
+# Callers now use `_ensure_member` directly. Kept the function name
+# as a thin alias for diff hygiene; will be removed in a follow-up.
 
 
 def _serialize(block: AvailabilityBlock, person: Person) -> AvailabilityBlockOut:
@@ -124,20 +102,10 @@ def list_blocks(
         q = q.filter(AvailabilityBlock.start_date <= to)
     if status_ is not None:
         q = q.filter(AvailabilityBlock.status == status_)
-    # Sub-equipo members' bloqueos belong to the lead's /lead/bloqueos
-    # view, not the tenant admin's /admin/availability page. Filter
-    # to persons with at least one main-team Membership in this
-    # tenant — symmetric with _ensure_main_team_member on the
-    # create/update/approve paths.
-    q = q.filter(
-        ctx.db.query(Membership.id)
-        .filter(
-            Membership.person_id == AvailabilityBlock.person_id,
-            Membership.tenant_id == ctx.tenant.id,
-            Membership.group_id.is_(None),
-        )
-        .exists()
-    )
+    # No group filter — tenant admin sees bloqueos for everyone in
+    # the tenant, including sub-equipo members. The frontend
+    # /admin/availability page surfaces the person's group on each
+    # row so admins can spot "este es del sub-equipo X".
     rows = q.order_by(AvailabilityBlock.start_date.desc()).all()
     return [_serialize(b, p) for b, p in rows]
 
@@ -230,7 +198,7 @@ def create_block(
     ctx: RequestContext = Depends(get_current_context),
 ) -> AvailabilityBlockOut:
     _require_admin(ctx)
-    _ensure_main_team_member(ctx, payload.person_id)
+    _ensure_member(ctx, payload.person_id)
     block = AvailabilityBlock(
         tenant_id=ctx.tenant.id,
         person_id=payload.person_id,
@@ -263,8 +231,8 @@ def update_block(
     if not block or block.tenant_id != ctx.tenant.id:
         raise HTTPException(status_code=404, detail="Block not found")
     # Both the existing target and the new target must be main team.
-    _ensure_main_team_member(ctx, block.person_id)
-    _ensure_main_team_member(ctx, payload.person_id)
+    _ensure_member(ctx, block.person_id)
+    _ensure_member(ctx, payload.person_id)
     block.person_id = payload.person_id
     block.start_date = payload.start_date
     block.end_date = payload.end_date
@@ -289,7 +257,7 @@ def delete_block(
     block = ctx.db.get(AvailabilityBlock, block_id)
     if not block or block.tenant_id != ctx.tenant.id:
         raise HTTPException(status_code=404, detail="Block not found")
-    _ensure_main_team_member(ctx, block.person_id)
+    _ensure_member(ctx, block.person_id)
     ctx.db.delete(block)
     ctx.db.flush()
 
@@ -306,7 +274,7 @@ def approve_block(
     block = ctx.db.get(AvailabilityBlock, block_id)
     if not block or block.tenant_id != ctx.tenant.id:
         raise HTTPException(status_code=404, detail="Block not found")
-    _ensure_main_team_member(ctx, block.person_id)
+    _ensure_member(ctx, block.person_id)
     block.status = "approved"
     block.reviewed_by_membership_id = ctx.membership.id
     block.reviewed_at = datetime.now(timezone.utc)
@@ -329,7 +297,7 @@ def deny_block(
     block = ctx.db.get(AvailabilityBlock, block_id)
     if not block or block.tenant_id != ctx.tenant.id:
         raise HTTPException(status_code=404, detail="Block not found")
-    _ensure_main_team_member(ctx, block.person_id)
+    _ensure_member(ctx, block.person_id)
     block.status = "denied"
     block.reviewed_by_membership_id = ctx.membership.id
     block.reviewed_at = datetime.now(timezone.utc)
@@ -354,19 +322,9 @@ def create_my_request(
     payload: AvailabilityRequestCreate,
     ctx: RequestContext = Depends(get_current_context),
 ) -> AvailabilityBlockOut:
-    # Sub-team members can't request bloqueos through the system
-    # yet — their lead manages absences internally for now. Same
-    # reason as the swap restriction: the existing approval flow
-    # routes to tenant admin, and the sub-team's lead has their
-    # own arrangement.
-    if ctx.membership.group_id is not None:
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                "Los bloqueos no están disponibles para sub-equipos. "
-                "Habla con tu responsable."
-            ),
-        )
+    # Sub-equipo members can request bloqueos too — the request
+    # goes through tenant-admin approval the same way main-team
+    # ones do. Lead-side approval is a separate scope.
     block = AvailabilityBlock(
         tenant_id=ctx.tenant.id,
         person_id=ctx.person.id,
