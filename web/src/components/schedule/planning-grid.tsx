@@ -269,6 +269,15 @@ export function PlanningGrid({
                   highlightPersonId !== null
                   && cell.some((a) => a.person_id === highlightPersonId);
                 const isToday = d === today;
+                // Weekend + holiday column tint. Applies only when no
+                // stronger state owns the background — sin cubrir
+                // (rose), my shift (brand-50), today (brand-50/30)
+                // and dismissed (gray-100) stay as the dominant
+                // signal. The weekend / holiday colours match the
+                // header pills so the column reads as one band.
+                const wd = new Date(d).getDay();
+                const isWeekend = wd === 0 || wd === 6;
+                const isHoliday = holidayDates.has(d);
                 // True when any assignment in this cell shows up in a
                 // rule violation — drives a rose ring around the cell
                 // so the admin can spot conflicts at a glance.
@@ -289,7 +298,11 @@ export function PlanningGrid({
                             ? "bg-brand-50/70"
                             : isToday
                               ? "bg-brand-50/30"
-                              : "")
+                              : isHoliday
+                                ? "bg-amber-50/50"
+                                : isWeekend
+                                  ? "bg-gray-100/50"
+                                  : "")
                     }
                   >
                     {isDismissedAdminPill ? (
@@ -448,12 +461,21 @@ export function PlanningGrid({
                 {grid.dates.map((d) => {
                   const items = meetingsByDate.get(d) ?? [];
                   const isToday = d === today;
+                  const wd = new Date(d).getDay();
+                  const isWeekend = wd === 0 || wd === 6;
+                  const isHoliday = holidayDates.has(d);
                   return (
                     <td
                       key={d}
                       className={
                         "align-top px-1.5 py-2 border-b border-t-2 border-b-gray-100 border-t-gray-200 "
-                        + (isToday ? "bg-brand-50/20 " : "")
+                        + (isToday
+                          ? "bg-brand-50/20 "
+                          : isHoliday
+                            ? "bg-amber-50/50 "
+                            : isWeekend
+                              ? "bg-gray-100/50 "
+                              : "")
                       }
                     >
                       {items.length === 0 ? (
@@ -503,6 +525,9 @@ export function PlanningGrid({
                 {grid.dates.map((d) => {
                   const absent = absencesByDate.get(d) ?? [];
                   const isToday = d === today;
+                  const wd = new Date(d).getDay();
+                  const isWeekend = wd === 0 || wd === 6;
+                  const isHoliday = holidayDates.has(d);
                   const cellContent =
                     absent.length === 0 ? (
                       <span className="text-[11px] text-gray-300">—</span>
@@ -544,7 +569,13 @@ export function PlanningGrid({
                     );
                   const baseCellClass =
                     "align-top px-1.5 py-2 border-b border-t-2 border-b-gray-100 border-t-gray-200 "
-                    + (isToday ? "bg-brand-50/20 " : "");
+                    + (isToday
+                      ? "bg-brand-50/20 "
+                      : isHoliday
+                        ? "bg-amber-50/50 "
+                        : isWeekend
+                          ? "bg-gray-100/50 "
+                          : "");
                   if (onAbsenceCellClick) {
                     return (
                       <td key={d} className={baseCellClass + "p-0"}>
