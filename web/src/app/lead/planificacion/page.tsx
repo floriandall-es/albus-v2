@@ -142,7 +142,7 @@ export default function LeadPlanificacionPage() {
                   onClick={() => {
                     if (
                       confirm(
-                        "Al despublicar, los residentes dejarán de ver esta planificación hasta que la vuelvas a publicar. ¿Continuar?",
+                        "Al despublicar, tu sub-equipo dejará de ver esta planificación hasta que la vuelvas a publicar. ¿Continuar?",
                       )
                     ) {
                       unpublish.mutate();
@@ -174,7 +174,7 @@ export default function LeadPlanificacionPage() {
           <div className="px-4 pb-3 text-xs text-gray-500">
             {isPublishedForGroup
               ? "Tu sub-equipo ya puede ver esta planificación en \"Mis turnos\". Para hacer cambios, despublica primero."
-              : "Solo tú la ves. Cuando publiques, tus residentes la verán en \"Mis turnos\"."}
+              : "Solo tú la ves. Cuando publiques, tu sub-equipo la verá en \"Mis turnos\"."}
           </div>
         )}
       </Card>
