@@ -156,9 +156,13 @@ export default function AcceptInvitePage() {
                   onClick={() => toggleCargo(opt)}
                   aria-pressed={checked}
                   className={
+                    // Filled pill when active so the selection
+                    // reads as obvious — the previous brand-50
+                    // tint was nearly invisible against a white
+                    // form, especially on pale accents.
                     "rounded-full border px-3 py-1 text-xs font-medium transition-colors "
                     + (checked
-                      ? "border-brand-300 bg-brand-50 text-brand-800 hover:bg-brand-100"
+                      ? "border-brand-600 bg-brand-600 text-white hover:bg-brand-700"
                       : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50")
                   }
                 >
