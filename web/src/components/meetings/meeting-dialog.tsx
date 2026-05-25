@@ -18,8 +18,10 @@ import {
 
 /**
  * Create / edit dialog for both regular (weekly) and ad-hoc (one-off)
- * meetings. Used by /admin/reuniones (full power: regular + ad-hoc)
- * and by /me/reuniones (ad-hoc only — see `lockedKind`).
+ * meetings. Used by /admin/reuniones and /me/reuniones — both
+ * surfaces let any member create either flavour. `lockedKind`
+ * pins the toggle when EDITING an existing row (you can't morph
+ * weekly ↔ puntual on the same row).
  *
  * Audience is the union of three sources, all editable from the
  * same form:

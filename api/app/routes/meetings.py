@@ -297,9 +297,9 @@ def list_meeting_instances(
     out: list[MeetingInstanceOut] = []
     for m in meetings:
         # Editable by tenant admin always, or by the organizer on
-        # their own row. We let admins edit regular templates and
-        # all ad-hoc meetings; members edit only their own ad-hoc
-        # ones (the route layer enforces this on writes).
+        # their own row — regular or ad-hoc, same rule. The route
+        # layer enforces this on writes; here we just surface the
+        # flag so the UI can hide Edit/Eliminar for non-organizers.
         can_edit = is_admin or (
             m.organizer_membership_id == ctx.membership.id
         )
@@ -367,7 +367,12 @@ def create_regular_meeting(
     payload: RegularMeetingCreate,
     ctx: RequestContext = Depends(get_current_context),
 ) -> MeetingOut:
-    _require_admin(ctx)
+    # Any authenticated member can create a recurring meeting,
+    # same as ad-hoc. We used to gate this to admins, but in
+    # practice the people who run weekly clinical sessions are
+    # often residents or fellows, not the tenant admin. The
+    # organizer-only edit/delete rules below keep accidental
+    # cross-team meddling out.
     _validate_audience(
         ctx, payload.include_main_team, payload.group_ids, payload.person_ids
     )
@@ -441,12 +446,19 @@ def update_regular_meeting(
     payload: RegularMeetingUpdate,
     ctx: RequestContext = Depends(get_current_context),
 ) -> MeetingOut:
-    _require_admin(ctx)
     m = _get_or_404(ctx, meeting_id)
     if m.kind != "regular":
         raise HTTPException(
             status_code=422,
             detail="Esta reunión no es semanal; usa el endpoint de ad-hoc.",
+        )
+    # Same rule as ad-hoc: admin or organizer can edit. We let any
+    # member create regular meetings, so they need to be able to
+    # tweak their own without an admin round-trip.
+    if not _is_admin(ctx) and m.organizer_membership_id != ctx.membership.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Solo el organizador o el administrador pueden editar esta reunión.",
         )
     _validate_audience(
         ctx, payload.include_main_team, payload.group_ids, payload.person_ids
@@ -508,13 +520,14 @@ def delete_meeting(
     ctx: RequestContext = Depends(get_current_context),
 ) -> None:
     m = _get_or_404(ctx, meeting_id)
-    # Admin deletes anything. Organizer deletes their own ad-hoc
-    # meeting. Regular templates are admin-only (a member shouldn't
-    # be able to wipe the weekly sesión clínica just because they
-    # happen to be in its audience).
+    # Admin deletes anything. Otherwise the organizer can delete
+    # their own meeting, regular or ad-hoc — same rule we use for
+    # editing. Random invitees (anyone in the audience but not the
+    # organizer) still get a 403 here so they can't wipe the weekly
+    # sesión clínica out from under everyone.
     if _is_admin(ctx):
         pass
-    elif m.kind == "ad_hoc" and m.organizer_membership_id == ctx.membership.id:
+    elif m.organizer_membership_id == ctx.membership.id:
         pass
     else:
         raise HTTPException(

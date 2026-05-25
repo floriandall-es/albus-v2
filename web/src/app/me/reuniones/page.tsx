@@ -21,11 +21,11 @@ import { formatLongDate, todayIso } from "@/lib/dates";
  * invited to as a flat chronological list, grouped into
  * "Próximas" (today + future) and "Pasadas" (last 30 days).
  *
- * "Nueva reunión" button creates an ad-hoc meeting — any tenant
- * member (including sub-equipo residentes) can call one, with
- * whatever audience they pick. The dialog hides the
- * "Semanal" toggle (regular meetings are admin-only via
- * /admin/reuniones).
+ * "Nueva reunión" button opens the dialog with the Semanal /
+ * Puntual toggle unlocked — any member (including sub-equipo
+ * residentes) can create either flavour. Editing an existing
+ * meeting locks the toggle to its current kind (no
+ * weekly ↔ puntual morphing on the same row).
  */
 export default function MyMeetingsPage() {
   const qc = useQueryClient();
@@ -87,8 +87,9 @@ export default function MyMeetingsPage() {
         }
       />
       <p className="-mt-4 mb-6 text-sm text-gray-600">
-        Reuniones a las que estás invitado. Puedes crear una reunión
-        puntual definiendo el tema y la audiencia.
+        Reuniones a las que estás invitado. Puedes crear una
+        reunión puntual o semanal definiendo el tema y la
+        audiencia.
       </p>
 
       {instances.isLoading && (
@@ -156,11 +157,13 @@ export default function MyMeetingsPage() {
         <MeetingDialog
           initial={editing === "new" ? null : editing}
           defaultKind="ad_hoc"
-          lockedKind={
-            editing === "new" || editing.kind === "ad_hoc"
-              ? "ad_hoc"
-              : undefined
-          }
+          // When editing an existing meeting we lock the kind to
+          // whatever it is (you can't morph weekly ↔ puntual on
+          // the same row; that'd be a separate workflow). For a
+          // new meeting we leave the toggle unlocked so any
+          // member can pick semanal — the backend used to gate
+          // that to admins, but doesn't anymore.
+          lockedKind={editing === "new" ? undefined : editing.kind}
           onClose={() => setEditing(null)}
         />
       )}
