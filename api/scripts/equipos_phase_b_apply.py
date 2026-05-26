@@ -281,7 +281,12 @@ def print_plan(plan: GroupPlan) -> None:
     info(f"schedules to split:     {len(plan.schedules_to_split)}")
     for sid, row in plan.schedules_to_split.items():
         pub_at = plan.group_pub_for_schedule.get(sid)
-        status_after = "published" if pub_at else row["status"]
+        # The residentes' visibility comes ONLY from
+        # ScheduleGroupPublication, not from Schedule.status. A
+        # parent Schedule with status='published' just means adjuntos
+        # see it — the residentes only saw their plan when a group
+        # publication row existed. Mirror that exactly.
+        status_after = "published" if pub_at else "draft"
         info(
             f"  - schedule_id={sid}  period={row['period']}  "
             f"new_status={status_after}",
@@ -496,7 +501,17 @@ def apply_plan(db, plan: GroupPlan) -> dict:
     moved_assignments = 0
     for old_sid, row in plan.schedules_to_split.items():
         pub_at = plan.group_pub_for_schedule.get(old_sid)
-        status_after = "published" if pub_at else row["status"]
+        # See note in print_plan above — residentes' status mirrors
+        # the existence of a ScheduleGroupPublication row, NOT the
+        # parent's Schedule.status (which only describes adjuntos
+        # visibility). published_at follows the same rule: only
+        # carry over when the group really had it published.
+        if pub_at:
+            status_after = "published"
+            published_at_after = pub_at
+        else:
+            status_after = "draft"
+            published_at_after = None
         new_sched = Schedule(
             tenant_id=new_tenant_id,
             period=row["period"],
@@ -504,7 +519,7 @@ def apply_plan(db, plan: GroupPlan) -> dict:
             generated_at=row["generated_at"],
             generated_by_membership_id=row["generated_by_membership_id"],
             solver_used=row["solver_used"],
-            published_at=pub_at if pub_at else row["published_at"],
+            published_at=published_at_after,
             reopened_at=row["reopened_at"],
             reopened_by_membership_id=row["reopened_by_membership_id"],
         )
