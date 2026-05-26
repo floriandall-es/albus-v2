@@ -2185,6 +2185,63 @@ export const api = {
       "/api/transplants/stats" + (suffix ? `?${suffix}` : ""),
     );
   },
+
+  // -------------------------------------------------------------
+  // Vacation V.1: periodos especiales + per-slot overrides + generate.
+  // Admin-only on every endpoint. Non-overlap of periodos per tenant
+  // is enforced server-side; createPeriodo / updatePeriodo surface
+  // the conflict as a 422 the caller can render verbatim.
+  // -------------------------------------------------------------
+  listPeriodos: () => request<Periodo[]>("/api/periodos"),
+  createPeriodo: (body: { name: string; start_date: string; end_date: string }) =>
+    request<Periodo>("/api/periodos", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  getPeriodo: (periodId: number) =>
+    request<Periodo>(`/api/periodos/${periodId}`),
+  updatePeriodo: (
+    periodId: number,
+    body: { name?: string; start_date?: string; end_date?: string },
+  ) =>
+    request<Periodo>(`/api/periodos/${periodId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deletePeriodo: (periodId: number) =>
+    request<void>(`/api/periodos/${periodId}`, { method: "DELETE" }),
+  listSlotPeriodOverrides: (periodId: number) =>
+    request<SlotPeriodOverride[]>(
+      `/api/periodos/${periodId}/slot-overrides`,
+    ),
+  /** Create or replace the override for one (period, slot) pair.
+   * Idempotent. DELETE on the same URL removes it. */
+  upsertSlotPeriodOverride: (
+    periodId: number,
+    slotId: number,
+    body: SlotPeriodOverrideUpsert,
+  ) =>
+    request<SlotPeriodOverride>(
+      `/api/periodos/${periodId}/slot-overrides/${slotId}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(body),
+      },
+    ),
+  deleteSlotPeriodOverride: (periodId: number, slotId: number) =>
+    request<void>(
+      `/api/periodos/${periodId}/slot-overrides/${slotId}`,
+      { method: "DELETE" },
+    ),
+  /** One-button multi-month solve. Returns one row per Schedule
+   * created (one per touched month). 409 if any touched month
+   * already has a published or archived schedule — caller has to
+   * archive/delete it first. */
+  generatePeriodo: (periodId: number) =>
+    request<GeneratePeriodResult[]>(
+      `/api/periodos/${periodId}/generate`,
+      { method: "POST" },
+    ),
 };
 
 // ---------------------------------------------------------------------------
@@ -2441,4 +2498,62 @@ export type TransplantStats = {
   cross_hospital_cases: number;
   months: TransplantStatsMonth[];
   surgeons: TransplantStatsSurgeon[];
+};
+
+// ---------------------------------------------------------------------------
+// Vacation V.1: periodos especiales + slot overrides.
+//
+// A Periodo defines a date range (inclusive on both ends) during which
+// the scheduler applies modified slot/rule config. V.1 ships slot
+// overrides (headcount, dismiss, allow-lists). Rule/succession/cap
+// overrides land in V.2.
+// ---------------------------------------------------------------------------
+
+export type Periodo = {
+  id: number;
+  tenant_id: number;
+  name: string;
+  /** YYYY-MM-DD, inclusive. */
+  start_date: string;
+  /** YYYY-MM-DD, inclusive. */
+  end_date: string;
+  created_at: string;
+};
+
+export type SlotPeriodOverride = {
+  id: number;
+  period_id: number;
+  slot_id: number;
+  headcount_override: number | null;
+  staffing_mode_override: StaffingMode | null;
+  /** When true the slot doesn't run at all for any date in the
+   * period — no demand, no assignments. */
+  dismissed: boolean;
+  /** NULL = use the slot's default categoría restriction. [] =
+   * drop the restriction entirely during the period. Non-empty =
+   * replace the default with this set during the period. */
+  allowed_category_ids_override: number[] | null;
+  allowed_person_ids_override: number[] | null;
+};
+
+/** Payload shape for PUT /api/periodos/{id}/slot-overrides/{slot_id}.
+ * Every field is optional / nullable; omit fields the caller doesn't
+ * want to override (the server treats missing fields as null too). */
+export type SlotPeriodOverrideUpsert = {
+  headcount_override?: number | null;
+  staffing_mode_override?: StaffingMode | null;
+  dismissed?: boolean;
+  allowed_category_ids_override?: number[] | null;
+  allowed_person_ids_override?: number[] | null;
+};
+
+/** One element of the array returned by POST /api/periodos/{id}/generate.
+ * One row per Schedule the generate produced (one per touched month). */
+export type GeneratePeriodResult = {
+  schedule_id: number;
+  /** YYYY-MM-01 — the Schedule.period column on the server. */
+  period: string;
+  /** Which solver produced the result. Same shape as Schedule. */
+  solver_used: string;
+  assignments_created: number;
 };
