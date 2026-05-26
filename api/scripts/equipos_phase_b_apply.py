@@ -391,11 +391,11 @@ def apply_plan(db, plan: GroupPlan) -> dict:
             ),
             {"nt": new_tenant_id, "ids": plan.slot_ids},
         )
+        # These three reference the slot directly.
         for tbl in (
             "slot_team_roles",
             "slot_allowed_persons",
             "slot_categories",
-            "slot_team_role_categories",
         ):
             db.execute(
                 text(
@@ -404,6 +404,19 @@ def apply_plan(db, plan: GroupPlan) -> dict:
                 ),
                 {"nt": new_tenant_id, "ids": plan.slot_ids},
             )
+        # slot_team_role_categories joins via slot_team_role_id —
+        # there is no slot_id column on it. Find the role ids that
+        # belong to the moving slots first, then re-key.
+        db.execute(
+            text(
+                "UPDATE slot_team_role_categories SET tenant_id = :nt "
+                "WHERE slot_team_role_id IN ("
+                "  SELECT id FROM slot_team_roles "
+                "  WHERE slot_id = ANY(:ids)"
+                ")"
+            ),
+            {"nt": new_tenant_id, "ids": plan.slot_ids},
+        )
         # Slot rules + children. The child tables use `rule_id` as
         # the FK (NOT `slot_rule_id`) — checked against the models.
         rule_ids = [
