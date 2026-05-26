@@ -1,14 +1,14 @@
 # Vacation periods — design
 
-Status: design, not yet implemented.
-Target: ~2 weeks of focused work (less if we drop dual equity buckets).
+Status: V.1 + V.2 shipped (delta-based), being replaced by a snapshot
+model after live feedback. This doc reflects the snapshot model.
 
 ## Problem
 
 The current scheduler is calibrated for "normal weeks" — a full team, all
-categorías represented, every slot at its standard headcount and
-strategy. Rules (succession, frequency caps, categoría restrictions, slot
-allow-lists) are loaded once per solve and apply unconditionally to
+categorías represented, every slot at its standard headcount, strategy,
+and rules. Rules (succession, frequency caps, categoría restrictions,
+slot allow-lists) are loaded once per solve and apply unconditionally to
 every date in the month.
 
 That model breaks during periods when the workforce is thinner —
@@ -44,80 +44,113 @@ The user's mental summary of what they want:
 > that intersect with the period, doing fixed and rotation first, then
 > balancing the rest over the entire period.
 
+## History — what we built and why we're changing it
+
+**V.1 + V.2 shipped** with a **delta override model**: per-period
+override rows that diff against the slot/rule defaults. Five tables:
+
+- `slot_period_overrides` (headcount, dismissed, staffing_mode,
+  allowed_categories, allowed_persons)
+- `slot_rule_period_overrides` (strategy, disabled)
+- `slot_succession_rule_period_overrides`
+- `slot_frequency_cap_period_overrides`
+- `periodos_especiales` itself
+
+Mara reviewed the V.2 editor UI and called out two problems:
+
+1. **The UI doesn't match the rest of the app.** Editing an actividad
+   normally happens via the `/admin/slots` SlotDialog with the full
+   form (nombre, horario, días aplicados, plazas, color, RuleCards
+   with strategy + day picker + rotation/fixed_weekly editors). The
+   delta-based period UI invented a different visual language —
+   checkboxes for "Modificar para el periodo," compressed forms,
+   tiny "Modificar" buttons. Inconsistent.
+2. **The delta model is too narrow.** Mara needs to be able to add
+   new rules during a period (a new summer-only weekday coverage,
+   for example) and remove existing ones — not just disable them.
+   She also needs to change rotation members per period. The delta
+   model only exposes a small subset.
+
+**Decision:** swap the delta model for a **snapshot model**. The
+period stores a full duplicate of the slot+rules config that's
+freely editable. Mara opens the same SlotDialog she already knows.
+
+Succession rules and frequency caps stay on the delta model — they're
+tenant-scoped (cross-slot), not per-slot, so the snapshot framing
+doesn't apply. The "Reglas" tab (sucesión + límites) keeps the V.2
+shape.
+
 ## Goals
 
 - A single tenant-scoped `periodo_especial` concept (one row = one
-  defined date range with a name, e.g. "Verano 2026").
-- Top-down editing UX: pick the period first, then edit how
-  actividades and reglas look during it. Overrides are deltas from
-  default — Mara only writes what changes.
+  defined date range with a name, e.g. "Verano 2026"). Unchanged from
+  V.1.
+- **Snapshot-based slot editing**: when the admin opens the per-period
+  modal for a slot, they see the exact same SlotDialog as `/admin/slots`
+  — pre-filled with either the existing snapshot (if any) or the
+  slot's current default. They can edit anything: name, plazas,
+  staffing_mode, allowed categorías/persons, add/remove rules, change
+  rotation members per period. On save, the full config is stored as
+  a snapshot.
+- **Delta-based reglas editing**: succession + frequency cap overrides
+  keep the per-rule "disable / change value" pattern from V.2.
 - Multi-month solving: generate the period as one CP-SAT problem
-  spanning every full month it touches. Fixed and rotation pins go in
-  first across the whole span; solver fills the rest.
-- Period-scoped equity: variance of person-counts is minimized over the
-  *period dates* (not per month). Non-period dates in the same solve
-  form a separate equity bucket so they don't blur the math.
-- Graceful rotation degradation inside the period: when a rotation
-  member is on vacation, walk forward through the rotation order to
-  the next available person. If every rotation member is blocked, the
-  cell becomes Sin cubrir (admin fixes manually).
-- Plays cleanly with everything that already exists: bloqueos, "No
-  aplica hoy", locks, manual overrides, the violations engine.
+  spanning every full month it touches. Unchanged from V.1.
+- Period-scoped equity (dual buckets): variance balanced per period
+  not per month. (Phase V.3.)
+- Graceful rotation degradation inside the period: skip-to-next-in-
+  position when a member is bloqueo'd. (Phase V.3.)
+- Plays cleanly with everything else: bloqueos, "No aplica hoy," locks,
+  violations engine.
 
-## Non-goals (out of scope for v1)
+## Non-goals (out of scope)
 
 - Multiple overlapping periods. Tenant has many periodos over time,
   but no two cover the same date (enforced by exclusion constraint).
-  We may revisit if Mara wants e.g. a "personal vacation window" layer
-  on top of "summer regime."
-- Auto-generated periodos based on bloqueo density. Mara defines the
-  range manually.
+- Auto-generated periodos based on bloqueo density.
 - Year-over-year copy. A "Verano 2026" doesn't auto-clone into
-  "Verano 2027" — though that's a tiny follow-up if requested.
-- Per-person rules during a period. People-side variation is already
-  expressed through bloqueos.
-- Equity across multiple periods (e.g. "balance Christmas + Verano
-  together"). Each periodo is its own equity scope.
-- Touching the violations engine. Post-hoc checks continue to use the
-  default rule set; surfacing "the rule was relaxed for this period"
-  is a UX nicety we can add later.
+  "Verano 2027" — tiny follow-up if requested.
+- Per-person rules during a period. People-side variation lives in
+  bloqueos.
+- Equity across multiple periods.
+- Violations engine awareness of overrides. (Falls under same caveat
+  as V.1.)
 
 ## Mental model
 
 The unit of configuration is a **periodo**. A periodo carries:
 
 1. A date range (`start_date`, `end_date`, non-overlapping per tenant).
-2. **Slot overrides**: for each slot Mara wants to change during the
-   period — alternate headcount, alternate staffing_mode, dismissed
-   (slot doesn't run), broader allowed_category_ids, broader
-   allowed_person_ids.
-3. **Rule overrides**: for each SlotRule Mara wants to change — switch
-   `strategy` (e.g. rotation → solver), or disable the rule entirely.
-4. **Succession overrides**: for each SlotSuccessionRule — alter
-   `days_after`, change `severity` (hard → soft), or disable.
-5. **Frequency cap overrides**: for each SlotFrequencyCap — alter
-   `max_count`, change `severity`, or disable.
+2. **Slot snapshots**: for each slot Mara wants to look different
+   during the period, a full duplicate of the slot config + its rules
+   + the rules' weekly_pins/rotation_blocks/rotation_members. Slots
+   without a snapshot inherit the default.
+3. **Succession rule overrides** (per-period delta): for each
+   SlotSuccessionRule — alter `days_after`, change `severity`, or
+   disable.
+4. **Frequency cap overrides** (per-period delta): for each
+   SlotFrequencyCap — alter `max_count`, change `severity`, or
+   disable.
 
-If a slot or rule isn't overridden, it inherits the default behavior
-during the period. This keeps the UI focused: Mara sees a clean
-"what's different" view, not a full duplicate config.
+**Two different override models** because the things being overridden
+have different shapes. Slots are heavy structured objects with
+several child tables; snapshots are the natural fit. Succession
+rules and frequency caps are flat per-row records; per-row deltas are
+the natural fit.
 
 When the admin clicks **Generar período**, the backend identifies
 every full month touching the date range, builds one CP-SAT model
 covering all those dates, slots in deterministic pins (fixed_weekly +
-rotation) across the entire span first, then solves the remaining
-variables. Equity terms get bucketed: period dates form one bucket,
-non-period dates in the same solve form another.
+rotation) from the snapshot config across the entire span first, then
+solves the remaining variables.
 
 Result: one Schedule row per month (same as today). Admin reviews and
 publishes each month independently.
 
 ## Schema
 
-One new migration. All tables tenant-scoped via existing RLS pattern.
-
 ```sql
--- The periodo itself.
+-- Periodo itself (unchanged from V.1).
 CREATE TABLE periodos_especiales (
   id           SERIAL PRIMARY KEY,
   tenant_id    INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -126,313 +159,357 @@ CREATE TABLE periodos_especiales (
   end_date     DATE NOT NULL,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   CHECK (end_date >= start_date),
-  -- Non-overlapping per tenant. Postgres exclusion constraint with btree_gist.
   EXCLUDE USING gist (
     tenant_id WITH =,
     daterange(start_date, end_date, '[]') WITH &&
   )
 );
 
--- Per-slot overrides during the period. Each field nullable;
--- non-null replaces the slot's default for dates inside the period.
-CREATE TABLE slot_period_overrides (
-  id                              SERIAL PRIMARY KEY,
-  tenant_id                       INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  period_id                       INT NOT NULL REFERENCES periodos_especiales(id) ON DELETE CASCADE,
-  slot_id                         INT NOT NULL REFERENCES slots(id) ON DELETE CASCADE,
-  headcount_override              INT NULL,
-  staffing_mode_override          VARCHAR(32) NULL,    -- 'single' | 'multiple_same' | 'team_composition'
-  dismissed                       BOOLEAN NOT NULL DEFAULT FALSE,
-  allowed_category_ids_override   INT[] NULL,
-  allowed_person_ids_override     INT[] NULL,
-  created_at                      TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (period_id, slot_id)
+-- Snapshot of a slot's full config during a period. UNIQUE on
+-- (period, slot) so there's at most one per (period, slot) pair —
+-- the absence of a row means "use the slot's default config."
+-- Mirrors the columns on slots but with a few extras:
+--   * dismissed: true means the slot doesn't run during the period
+--     at all (no demand, no assignments). Other fields ignored.
+--   * a denormalised copy of every slot config field so the snapshot
+--     is self-contained — no joins back to the original slot.
+CREATE TABLE slot_period_snapshots (
+  id                   SERIAL PRIMARY KEY,
+  tenant_id            INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  period_id            INT NOT NULL REFERENCES periodos_especiales(id) ON DELETE CASCADE,
+  slot_id              INT NOT NULL REFERENCES slots(id) ON DELETE CASCADE,
+  dismissed            BOOLEAN NOT NULL DEFAULT FALSE,
+  -- Slot config snapshot (mirrors columns on slots; nullable where slot is).
+  start_time           TIME NULL,
+  end_time             TIME NULL,
+  days_applied         VARCHAR(32) NOT NULL,
+  custom_days_bitmap   INT NULL,
+  staffing_mode        VARCHAR(32) NOT NULL,
+  headcount            INT NOT NULL,
+  post_slot_rest       BOOLEAN NOT NULL DEFAULT FALSE,
+  counts_for_equity    BOOLEAN NOT NULL DEFAULT TRUE,
+  guardia_type         TEXT NULL,
+  color                VARCHAR(7) NULL,
+  -- N.B. NO name column: the slot keeps its name; the snapshot
+  -- describes "Guardia during Verano 2026" not "rename Guardia".
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (period_id, slot_id),
+  CHECK (
+    staffing_mode IN ('single','multiple_same','team_composition')
+  ),
+  CHECK (headcount >= 1)
 );
 
--- Per-rule (SlotRule) overrides. Lets Mara say "this rotation rule
--- becomes a solver rule during summer" without touching the default.
-CREATE TABLE slot_rule_period_overrides (
-  id                  SERIAL PRIMARY KEY,
-  tenant_id           INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  period_id           INT NOT NULL REFERENCES periodos_especiales(id) ON DELETE CASCADE,
-  rule_id             INT NOT NULL REFERENCES slot_rules(id) ON DELETE CASCADE,
-  strategy_override   VARCHAR(16) NULL,   -- 'solver' | 'fixed_weekly' | 'rotation' | 'manual'
-  disabled            BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (period_id, rule_id)
+-- Rules attached to a snapshot, mirroring slot_rules.
+CREATE TABLE slot_period_snapshot_rules (
+  id                   SERIAL PRIMARY KEY,
+  tenant_id            INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  snapshot_id          INT NOT NULL REFERENCES slot_period_snapshots(id) ON DELETE CASCADE,
+  position             INT NOT NULL,
+  days_bitmap          INT NOT NULL,
+  strategy             VARCHAR(16) NOT NULL,
+  anchor_date          DATE NULL,
+  weeks_per_position   INT NOT NULL DEFAULT 1,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (snapshot_id, position)
 );
 
-CREATE TABLE slot_succession_rule_period_overrides (
-  id                    SERIAL PRIMARY KEY,
-  tenant_id             INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  period_id             INT NOT NULL REFERENCES periodos_especiales(id) ON DELETE CASCADE,
-  succession_rule_id    INT NOT NULL REFERENCES slot_succession_rules(id) ON DELETE CASCADE,
-  days_after_override   INT NULL,
-  severity_override     VARCHAR(8) NULL,  -- 'hard' | 'soft'
-  disabled              BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (period_id, succession_rule_id)
-);
-
-CREATE TABLE slot_frequency_cap_period_overrides (
+-- Mirror tables for the rule's child rows.
+CREATE TABLE slot_period_snapshot_rule_weekly_pins (
   id                 SERIAL PRIMARY KEY,
   tenant_id          INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  period_id          INT NOT NULL REFERENCES periodos_especiales(id) ON DELETE CASCADE,
-  cap_id             INT NOT NULL REFERENCES slot_frequency_caps(id) ON DELETE CASCADE,
-  max_count_override INT NULL,
-  severity_override  VARCHAR(8) NULL,
-  disabled           BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (period_id, cap_id)
+  snapshot_rule_id   INT NOT NULL REFERENCES slot_period_snapshot_rules(id) ON DELETE CASCADE,
+  weekday            SMALLINT NOT NULL,
+  person_id          INT NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE slot_period_snapshot_rule_rotation_blocks (
+  id                 SERIAL PRIMARY KEY,
+  tenant_id          INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  snapshot_rule_id   INT NOT NULL REFERENCES slot_period_snapshot_rules(id) ON DELETE CASCADE,
+  position           INT NOT NULL,
+  days_bitmap        INT NOT NULL,
+  UNIQUE (snapshot_rule_id, position)
+);
+
+CREATE TABLE slot_period_snapshot_rule_rotation_members (
+  id                 SERIAL PRIMARY KEY,
+  tenant_id          INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  snapshot_rule_id   INT NOT NULL REFERENCES slot_period_snapshot_rules(id) ON DELETE CASCADE,
+  position           INT NOT NULL,
+  person_id          INT NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+  UNIQUE (snapshot_rule_id, person_id)
+);
+
+-- Team-role mirror.
+CREATE TABLE slot_period_snapshot_team_roles (
+  id                 SERIAL PRIMARY KEY,
+  tenant_id          INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  snapshot_id        INT NOT NULL REFERENCES slot_period_snapshots(id) ON DELETE CASCADE,
+  role_label         VARCHAR(255) NOT NULL,
+  headcount          INT NOT NULL DEFAULT 1,
+  UNIQUE (snapshot_id, role_label),
+  CHECK (headcount >= 1)
+);
+
+CREATE TABLE slot_period_snapshot_team_role_categories (
+  id                          SERIAL PRIMARY KEY,
+  tenant_id                   INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  snapshot_team_role_id       INT NOT NULL REFERENCES slot_period_snapshot_team_roles(id) ON DELETE CASCADE,
+  category_id                 INT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+  UNIQUE (snapshot_team_role_id, category_id)
+);
+
+-- Allow-list snapshots (mirror slot_categories + slot_allowed_persons).
+CREATE TABLE slot_period_snapshot_categories (
+  id                 SERIAL PRIMARY KEY,
+  tenant_id          INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  snapshot_id        INT NOT NULL REFERENCES slot_period_snapshots(id) ON DELETE CASCADE,
+  category_id        INT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+  UNIQUE (snapshot_id, category_id)
+);
+
+CREATE TABLE slot_period_snapshot_allowed_persons (
+  id                 SERIAL PRIMARY KEY,
+  tenant_id          INT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  snapshot_id        INT NOT NULL REFERENCES slot_period_snapshots(id) ON DELETE CASCADE,
+  person_id          INT NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+  UNIQUE (snapshot_id, person_id)
+);
+
+-- KEPT FROM V.2 (unchanged) — these don't fit the snapshot model
+-- because they're tenant-scoped, not per-slot.
+-- slot_succession_rule_period_overrides
+-- slot_frequency_cap_period_overrides
+
+-- DROPPED (in the same migration as the snapshot tables are added):
+-- slot_period_overrides       (replaced by slot_period_snapshots)
+-- slot_rule_period_overrides  (replaced by slot_period_snapshot_rules)
 ```
 
-All five tables follow the standard RLS pattern (`tenant_id` column +
-FORCE ROW LEVEL SECURITY + policy using `app.tenant_id` GUC).
+All snapshot tables follow the standard RLS pattern (`tenant_id` +
+FORCE ROW LEVEL SECURITY + tenant policy + albus_app grants).
 
 ## Solver changes
 
-Three meaningful changes in `api/app/services/scheduler.py`. All other
-parts of the solver (eligibility, locks, time-overlap, post_slot_rest,
-Latin-square role balance, guardia 4-day spread) carry through
-unchanged.
+The V.1 + V.2 solver work had `_Context` load V.1 + V.2 override
+tables and consult them through helper methods (`is_period_dismissed`,
+`effective_headcount`, `effective_allowed_persons`, etc.). That
+plumbing is mostly preserved — only the underlying data source
+changes for the slot+rules dimension.
 
-### 1. Date-aware rule loading
+### Effective accessors per (slot, date)
 
-Today, rules/successions/caps/categorías/allow-lists are loaded once
-at the start of `_Context.__init__` (line 158). They apply
-unconditionally to every date in the solve.
-
-Refactor: each rule type gets resolved per date through a helper:
+Today, `_Context` loads slot + rule data once into in-memory dicts
+keyed by `slot.id`. With snapshots, the lookup becomes per-date:
 
 ```python
-def effective_rule_at(self, rule_id: int, d: date) -> SlotRule | None:
-    """Return the rule as it applies on date d, accounting for any
-    period override active that day. Returns None if the rule is
-    disabled by an override."""
+def effective_slot_for(self, slot_id: int, d: date) -> EffectiveSlot:
+    """Returns a frozen view of the slot's config for date d.
+    Walks: if d is in a periodo AND a snapshot exists for that
+    (period, slot), return the snapshot. Otherwise return the
+    default slot config."""
+
+def effective_rules_for(self, slot_id: int, d: date) -> list[EffectiveRule]:
+    """Same pattern for rules."""
 ```
 
-Same helper pattern for succession, frequency cap, categoría, and
-allow-list. The override tables get indexed for fast (rule_id,
-period_id) lookup; periods are loaded once per solve and the date →
-period mapping built upfront.
+`EffectiveSlot` and `EffectiveRule` are dataclasses that match the
+shape the solver already expects from `Slot` / `SlotRule`. The solver
+keeps using its existing code paths — only the source of truth shifts.
 
-Touches:
-- `_Context.__init__` (rule loading, line 158)
-- Succession constraint emit (line 2006)
-- Frequency cap constraint emit (line 2069)
-- Categoría check in `eligibility_reason` (line 511)
-- Allow-list check in `eligibility_reason` (line 504)
+This needs care because the solver currently iterates `for slot in
+self.slots` (which has one entry per slot id). With snapshots, the
+*config* varies per date. Either:
+- **Hot path stays slot-id-keyed** but every callsite that reads
+  `slot.X` is updated to `effective_X(slot_id, d)`. More accessors,
+  but the loop structure is unchanged.
+- **Restructure to iterate per (slot, date)**. Cleaner but a bigger
+  refactor.
 
-### 2. Multi-month solve
+V.1 went with the first approach. We continue that. Each accessor
+(`effective_headcount`, `effective_staffing_mode`, `effective_allowed_persons`,
+`effective_allowed_categories`, `effective_team_roles`, etc.) consults
+the snapshot for in-period dates and falls back to the default
+otherwise.
 
-New entry point in `services/scheduler.py`:
+For rules, `rule_for(slot_id, d)` needs to know whether to look in
+`self.snapshot_rules_by_period_slot` or `self.rules_by_slot`:
 
 ```python
-def generate_period(db: Session, tenant: Tenant, period_id: int) -> list[Schedule]:
-    """Solve every full month touching the period's date range as one
-    CP-SAT problem. Returns the Schedule rows (one per touched month).
-    Carries locks from any existing drafts in those months.
-    """
+def rule_for(self, slot_id: int, d: date) -> EffectiveRule | None:
+    pid = self.period_id_by_date.get(d)
+    if pid is not None:
+        snap_rules = self.snapshot_rules_by_period_slot.get((pid, slot_id))
+        if snap_rules is not None:  # snapshot exists for this (period, slot)
+            for r in snap_rules:
+                if r.days_bitmap & (1 << d.weekday()):
+                    return r
+            return None  # snapshot exists but no rule covers this weekday
+    # No snapshot → default rule lookup, unchanged.
+    for r in self.rules_by_slot.get(slot_id, ()):
+        if r.days_bitmap & (1 << d.weekday()):
+            return r
+    return None
 ```
 
-The existing `generate_draft(db, tenant, period: date)` stays for
-non-period months.
+Same routing pattern for `rotation_persons_for`, `fixed_weekly_persons`,
+team_role lookups, etc.
 
-Logic:
-1. Load the periodo and compute touched months: e.g. period Jul 15 –
-   Aug 31 → `{Jul 2026, Aug 2026}`.
-2. For each touched month, find/create a Schedule row (draft). Carry
-   locked Assignment rows from any existing drafts.
-3. Compute the union of dates across all touched months (full
-   calendar months — Jul 1 through Aug 31 in the example).
-4. Build a single CP-SAT model. Variable space is the cross product
-   of (date, slot, role, eligible_person). Constraints are the
-   existing set, with rule loading consulting period overrides per
-   date.
-5. Pre-compute deterministic pins (fixed_weekly + rotation) across the
-   whole span. Inside the period, rotation uses the skip-to-next
-   behavior described below.
-6. Solve. CP-SAT with the same time budget as today (scaled by the
-   variable count growth — 2× dates ≈ 4×–10× harder problem in the
-   worst case; in practice the team size limits it).
-7. Greedy fallback if CP-SAT is INFEASIBLE.
-8. Slice the solved assignments back into the per-month Schedule rows.
+### Succession + caps (unchanged from V.2)
 
-### 3. Dual equity buckets
+The two override tables we keep behave identically to V.2:
+`effective_succession_rule(rule, d)` and `effective_frequency_cap(cap, d)`
+return `(value, disabled)` tuples. Solver consults them at constraint
+emission time.
 
-Today `_balance_term` (line 2209) takes one `buckets: dict[int,
-list]` mapping person_id → variables and minimizes max-min.
+### Multi-month solve (unchanged from V.1)
 
-Change: when the solve spans a period, call `_balance_term` *twice
-per slot*:
-- **Period bucket**: vars filtered to dates ∈ period
-- **Non-period bucket**: vars filtered to dates ∈ solve range but ∉ period
+`generate_period(db, *, tenant_id, period_id, membership_id)` already
+works. It computes touched months, builds a single CP-SAT model
+spanning all dates, threads `schedule_id_by_date` through
+`_solve_cpsat` and `_greedy_fallback`. No change.
 
-Same treatment for the weekend balance objective (line 2295) — split
-into period-weekends and non-period-weekends, each minimized
-independently.
+### Dual equity buckets (still V.3)
 
-Frequency cap prior-published-counts lookback (line 254) needs to
-grow from a fixed 28 days to "the period length" when solving a
-period. Cheap change.
+Period vs non-period bucket split in `_balance_term`. Weekend balance
+same treatment. Frequency-cap prior-counts lookback grown to period
+length. Not in V.2.5; lands in V.3.
 
-### Rotation in vacation mode
+### Rotation skip-to-next (still V.3)
 
-When the solve is for a periodo and the current date is inside the
-period, `rotation_persons_for(rule, d)` (line 323) gains a "skip
-forward" behavior:
-
-1. Compute the target position N via the existing rotation math.
-2. For each member of position N (sorted by id): check eligibility
-   (membership active, not bloqueo'd, slot allow-list, categoría).
-   If eligible, that's the answer.
-3. If position N has no eligible members, advance to position N+1 (mod
-   total position count), repeat the eligibility check.
-4. If we walk through every position and find no one, return `[]` →
-   the cell becomes Sin cubrir. Admin handles manually.
-
-Per Mara's input (the rotation pool IS typically the eligible pool),
-we don't fall through to "any eligible person." If the rotation
-members are all out, there's nobody to fall through to anyway.
-
-Outside the period, rotation behaves exactly as today (blocked
-member → NULL cell with reason).
+When the snapshot rotation member is on vacation, walk forward
+through positions. Already designed; lands in V.3.
 
 ## UX
 
-### `/admin/periodos` — periodo list
-
-- Table: name, date range, created_at.
-- Each row links to the period editor.
-- "Nuevo periodo" button → form with name + date range. Server
-  enforces non-overlap via exclusion constraint.
-- Delete button with confirm.
+### `/admin/periodos` — periodo list (unchanged from V.1)
 
 ### `/admin/periodos/[id]` — periodo editor
 
-Tabs across the top:
+**Two tabs:** Actividades + Reglas.
 
-- **Actividades** — list of slots. Each row shows the default config
-  (headcount, staffing_mode) with inline "Modificar para este
-  periodo" toggle. Modified rows get a green "modificado" pill.
-  Inputs for headcount override, staffing_mode override, dismissed
-  checkbox, categoría override (multi-select), allow-list override
-  (multi-select).
-- **Reglas** — list of SlotRules (one per slot × per-position). Same
-  pattern: show default strategy, allow strategy override or full
-  disable.
-- **Sucesión** — list of succession rules. Allow days_after override,
-  severity override, full disable.
-- **Caps** — list of frequency caps. Allow max_count override,
-  severity override, full disable.
+**Actividades tab** — list of slots. Each row:
+- Slot name + plazas summary + status pills ("No aplica en el periodo"
+  or "Modificada" when a snapshot exists)
+- **Editar** button → opens the existing `SlotDialog` component
+  (from `/admin/slots`) in `mode="period-snapshot"`. The dialog
+  pre-fills from the snapshot if one exists, otherwise from the
+  slot's defaults. Mara edits anything she wants: name (read-only
+  in this mode — the slot keeps its name across periods), horario,
+  días aplicados, plazas, color, allowed categorías/personas, rules
+  with full RuleCard editing (strategy radios, day picker, rotation
+  editor, fixed_weekly editor). On save, the dialog POSTs to
+  `/api/periodos/{id}/slot-snapshots/{slot_id}`.
 
-Top of every tab: a sticky "Generar período" button. Clicking opens a
-preview: "Esto generará 2 planificaciones: Julio 2026, Agosto 2026.
-Si ya existen borradores, se sobrescribirán (las celdas bloqueadas se
-conservan)." Confirm → POST to generate, redirect to a status page
-that shows each month's generation result with links.
+A separate **"No aplica durante el periodo"** toggle lives above the
+dialog body (or as the first field) — checking it stores
+`dismissed=true` on the snapshot and grays out the rest.
 
-### Planning grid (`/admin/schedule/[id]`)
+A small **"Quitar modificación"** button reverts the snapshot
+(`DELETE /api/periodos/{id}/slot-snapshots/{slot_id}`).
 
-When the month overlaps an active periodo, add a slim banner above
-the grid: "Verano 2026 activa del 15 de julio al 31 de agosto.
-[Editar reglas del periodo →]" linking to the periodo editor. The
-banner makes the regime visible so Mara isn't surprised by different
-behavior on different days.
+**Reglas tab** — three sections (Incompatibilidades, Sucesión,
+Límites de frecuencia). Each row uses the V.2 delta UI: shows
+defaults, Modificar opens an inline form. Unchanged from V.2.
 
-Column headers for dates inside the periodo get a subtle visual
-treatment (background tint, similar to weekend columns) so the
-period boundary is obvious in the grid.
+### Planning grid banner
 
-### Routes
+Unchanged from V.1. When a schedule month overlaps an active periodo,
+show an amber banner above the grid pointing at the editor.
+
+## Routes
 
 ```
-GET    /api/periodos                          list periodos
-POST   /api/periodos                          create
-GET    /api/periodos/{id}                     fetch + all overrides
-PATCH  /api/periodos/{id}                     edit name/dates
-DELETE /api/periodos/{id}                     delete (cascades to overrides)
+GET    /api/periodos                                    list
+POST   /api/periodos                                    create
+GET    /api/periodos/{id}                               fetch
+PATCH  /api/periodos/{id}                               edit
+DELETE /api/periodos/{id}                               delete
 
-GET    /api/periodos/{id}/slot-overrides      list
-PUT    /api/periodos/{id}/slot-overrides/{slot_id}     upsert override
-DELETE /api/periodos/{id}/slot-overrides/{slot_id}     remove override (revert to default)
+GET    /api/periodos/{id}/slot-snapshots                list snapshots
+PUT    /api/periodos/{id}/slot-snapshots/{slot_id}      upsert snapshot
+DELETE /api/periodos/{id}/slot-snapshots/{slot_id}      revert to default
 
-# Same shape for slot-rule-overrides, succession-overrides, cap-overrides.
+# Succession + cap overrides — kept from V.2 unchanged.
+GET    /api/periodos/{id}/succession-overrides
+PUT    /api/periodos/{id}/succession-overrides/{rule_id}
+DELETE /api/periodos/{id}/succession-overrides/{rule_id}
+GET    /api/periodos/{id}/cap-overrides
+PUT    /api/periodos/{id}/cap-overrides/{cap_id}
+DELETE /api/periodos/{id}/cap-overrides/{cap_id}
 
-POST   /api/periodos/{id}/generate            multi-month solve, returns Schedule list
+POST   /api/periodos/{id}/generate                      multi-month solve
+
+# Dropped (V.1/V.2):
+# GET/PUT/DELETE /api/periodos/{id}/slot-overrides
+# GET/PUT/DELETE /api/periodos/{id}/rule-overrides
 ```
 
-Existing `/api/schedules/generate` is unchanged. It's the entry point
-for ordinary single-month generation; it just doesn't know about
-periodos. Future cleanup could route through `generate_period` when
-the month overlaps a periodo, but that's a v2 niceness.
+The snapshot PUT payload mirrors the existing `/api/slots/{id}` PUT
+schema (full slot + nested rules + nested allow-lists), with an extra
+`dismissed: bool` field at the top level. Same shape, same validator.
 
-## Phasing
+## Phasing (revised)
 
-If we want to ship something usable before doing all of it:
+V.1 + V.2 are shipped but the slot/rule UI half of them gets
+swapped for the snapshot model in **V.2.5**.
 
-**Phase V.1 — Foundation (~1 week)**
-- Migration + models + Pydantic schemas for periodos and slot_period_overrides
-- `effective_rule_at` plumbing for slot config (headcount, staffing_mode, dismissed)
-- Multi-month solve (`generate_period`) without dual equity buckets
-- `/admin/periodos` + `/admin/periodos/[id]/actividades` tab
-- Generate button + per-month review
+**V.2.5 — Snapshot pivot (~5–7 days)**
+- Migration 0077: add snapshot tables + drop V.1 `slot_period_overrides`
+  + V.2 `slot_rule_period_overrides`.
+- Models + Pydantic schemas for the snapshot family.
+- Solver refactor: `effective_*` accessors consult snapshots for
+  in-period dates instead of the V.1/V.2 deltas.
+- Routes: drop V.1/V.2 slot+rule override endpoints; add snapshot
+  endpoints.
+- Frontend: refactor `SlotDialog` to accept `mode` prop. Drop the
+  Actividades-tab custom modal I built in V.2; replace with the
+  existing SlotDialog opened in `period-snapshot` mode.
 
-What you get: Mara can define a periodo, mark slots as dismissed or
-halve headcount, generate Jul + Aug as one solve. Solver respects the
-period config but equity is still per-month (the "one person gets
-crushed" case isn't fully fixed yet).
-
-**Phase V.2 — Rule overrides (~3 days)**
-- Override tables for slot_rule, succession_rule, frequency_cap
-- `effective_rule_at` extended to consult them
-- `/admin/periodos/[id]/reglas`, `/sucesion`, `/caps` tabs
-
-What you get: Mara can switch rotation to solver mode for some slots
-during summer, relax succession (guardia → quirófano next day allowed),
-loosen caps. Compatibility-rule failure mode goes away.
-
-**Phase V.3 — Dual equity buckets + rotation skip (~3 days)**
-- Period vs non-period bucket split in `_balance_term`
-- Weekend balance objective same treatment
-- Prior-counts lookback grown to period length
-- Rotation skip-to-next in `rotation_persons_for`
-
-What you get: the "one person gets crushed" case is fully fixed.
-Rotations gracefully degrade when members are out.
+**V.3 — Solver smartness (~3 days)**
+- Period vs non-period dual equity buckets.
+- Weekend balance same treatment.
+- Prior-counts lookback grown to period length.
+- Rotation skip-to-next-in-position when a member is bloqueo'd.
 
 ## Open questions / future work
 
+- **Slot name in the snapshot**: a snapshot can't rename a slot (the
+  default's name is the source of truth). If Mara wants to call the
+  same slot something different during a period, we'd add a `name`
+  column to the snapshot. Skipping for now.
+- **Categoría / allowed-person changes propagate down to team_roles?**
+  When the admin edits a snapshot with team_composition staffing,
+  the per-role category lists live on a separate snapshot table.
+  Cleanly mirrors the defaults; just lots of mirror tables.
 - **Period preview before generate.** Before committing the solve,
-  show a dry-run summary: "expected per-person load over the
-  period, X cells will be Sin cubrir." Useful but not essential v1.
+  show a dry-run summary. Nice-to-have, not v1.
 - **Stats per period.** /admin/stats currently filters by month;
-  could add a "by period" view. Skip for v1.
-- **Year-over-year copy.** "Crear nuevo periodo basado en Verano
-  2026" — clone with new dates, all overrides preserved. Tiny
-  follow-up if requested.
+  could add a "by period" view.
+- **Year-over-year copy.** Tiny follow-up if requested.
 - **Violations engine awareness.** When a date is inside a periodo
-  and a rule has an override, the violations engine should consult
-  the override (today it uses the default rule). Otherwise the
-  /admin/schedule planning grid will show false "violation" pills on
-  intentionally-relaxed cells. We can either accept this in v1 (with
-  a UX note: "violaciones se calculan con las reglas por defecto")
-  or extend violations.py to be date-aware too. Probably v2.
+  and a snapshot exists, violations should consult the snapshot's
+  rules. Today they use the default. Same caveat as V.1.
 - **Auto-detect period boundaries.** If many bloqueos cluster in a
   date range, suggest creating a periodo. Nice-to-have.
-- **Multiple regimes / per-person regimes.** Out of scope for v1
-  (see Non-goals).
 
 ## Risks
 
-- **CP-SAT solve time.** Doubling the date count grows the problem
-  superlinearly. For typical surgical service team sizes (10–15
-  people, 6–8 slots) it should still complete in seconds, but worth
-  measuring early. Mitigation: per-phase time budget, fall back to
-  greedy if CP-SAT times out instead of just failing.
-- **Schema migration on prod.** The new tables are additive; no
-  existing data touched. Low risk. Standard backup before deploy.
-- **Override UI complexity creep.** Easy to over-engineer the period
-  editor. Stick to the minimal forms in Phase V.1; resist adding
-  bulk-edit helpers until Mara hits a real wall.
+- **Solver refactor blast radius**: every callsite that reads
+  `slot.X` or iterates `self.rules_by_slot[slot.id]` becomes a
+  potential bug if it forgets to use the effective accessor. Tests
+  with snapshots and without snapshots help here. The V.1 + V.2
+  helpers already gated most of this — the V.2.5 work mostly swaps
+  the data source the helpers read from.
+- **Snapshot drift**: if the admin edits the default slot AFTER
+  creating a snapshot, the snapshot doesn't auto-update. That's
+  arguably correct (Mara's summer Guardia might intentionally
+  differ from the new default), but worth surfacing in the UI with
+  a small "snapshot may be out of date" hint when the snapshot's
+  `created_at` is older than the slot's `updated_at`. Defer to V.3.
+- **CP-SAT solve time** (unchanged from V.1).
+- **Schema migration on prod**: V.1 and V.2 tables are empty in
+  prod (no Mara data has hit them yet), so dropping them is safe.
+  Snapshot tables are additive. Standard backup before deploy.
