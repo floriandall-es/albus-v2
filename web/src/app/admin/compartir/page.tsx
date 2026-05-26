@@ -3,7 +3,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, Eye, EyeOff } from "lucide-react";
-import { api, type SharePolicy } from "@/lib/api";
+import { api, type SharePolicy, type Slot } from "@/lib/api";
 import { Card, EmptyState, PageHeader } from "@/components/admin/ui";
 
 /**
@@ -14,16 +14,18 @@ import { Card, EmptyState, PageHeader } from "@/components/admin/ui";
  * tenant admin can decide what THIS equipo shares with the rest
  * of the Servicio, and that decision lives here.
  *
- * Three options, mutually exclusive:
- *   - Nada              → other equipos see nothing of ours.
- *   - Algunas actividades → only slots flagged shared_with_servicio
- *                          appear (toggle on each slot in /admin/slots).
- *   - Todo el equipo     → every published assignment appears.
+ * Three policies:
+ *   - Nada              → invisible.
+ *   - Algunas actividades → only the slots ticked in the inline
+ *                          picker (below the radios). The picker
+ *                          edits each slot's shared_with_servicio
+ *                          flag via PATCH /api/slots/{id}.
+ *   - Todo el equipo     → every published assignment.
  *
- * Server-side: PATCH /api/equipos/me/share-policy. The backend
- * gates on admin role; we render the page entirely for admins and
- * route non-admins back to /me/servicio (where they can read but
- * not edit).
+ * Server-side: PATCH /api/equipos/me/share-policy + PATCH
+ * /api/slots/{id}. Both gated on admin role; non-admins reach
+ * /me/servicio via the useEffect bounce below (and the /admin
+ * layout already redirects them away on load).
  */
 
 const POLICY_LABEL: Record<SharePolicy, string> = {
@@ -37,8 +39,7 @@ const POLICY_HELP: Record<SharePolicy, string> = {
     "Tu equipo no aparece en la vista conjunta del servicio. Es el "
     + "valor por defecto para equipos nuevos.",
   selected:
-    "Tu equipo aparece solo en las actividades que marques como "
-    + "compartidas en Actividades.",
+    "Tu equipo aparece solo en las actividades que marques debajo.",
   full:
     "Tu equipo aparece con toda su planificación publicada en la "
     + "vista conjunta del servicio. Los borradores no se incluyen.",
@@ -53,11 +54,6 @@ export default function CompartirPage() {
   const currentPolicy: SharePolicy =
     me.data?.current_tenant.share_policy ?? "none";
 
-  // Non-admins shouldn't even land here — the page itself is
-  // admin-only. The admin sidebar only renders the link for admins
-  // (the /admin layout already redirects non-admins to /me on
-  // load), but direct-URL visitors still need a guard. Bounce
-  // them to /me/servicio where they CAN read the joint view.
   const isAdmin =
     me.data?.memberships.some(
       (m) =>
@@ -75,9 +71,6 @@ export default function CompartirPage() {
       api.updateMySharePolicy({ share_policy: next }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["me"] });
-      // Both the equipos badge list AND the timeline filter depend
-      // on this policy — invalidate so the changes show up if the
-      // admin pops back to /me/servicio in another tab.
       qc.invalidateQueries({ queryKey: ["servicio", servicioId] });
       qc.invalidateQueries({ queryKey: ["servicio-timeline", servicioId] });
     },
@@ -148,24 +141,131 @@ export default function CompartirPage() {
                 <div className="mt-0.5 text-xs text-gray-600">
                   {POLICY_HELP[p]}
                 </div>
-                {p === "selected" && currentPolicy === "selected" && (
-                  <div className="mt-1 text-[11px] text-gray-500">
-                    Marca las actividades a compartir en{" "}
-                    <a
-                      href="/admin/slots"
-                      className="text-brand-700 underline-offset-2 hover:underline"
-                    >
-                      Actividades
-                    </a>
-                    .
-                  </div>
-                )}
               </div>
             </label>
           ))}
         </div>
       </Card>
+
+      {/* ------------------------------------------------------------ */}
+      {/* Per-slot picker — only meaningful when policy is 'selected'.   */}
+      {/* Rendered as a separate Card so the policy + picker read as     */}
+      {/* a primary section + drill-down rather than nested controls.    */}
+      {/* ------------------------------------------------------------ */}
+      {currentPolicy === "selected" && (
+        <section className="mt-6">
+          <h2 className="mb-2 text-sm font-semibold text-gray-700">
+            Actividades a compartir
+          </h2>
+          <SlotPicker />
+        </section>
+      )}
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Per-slot picker
+// ---------------------------------------------------------------------------
+
+function SlotPicker() {
+  const qc = useQueryClient();
+
+  const slots = useQuery({
+    queryKey: ["slots"],
+    queryFn: () => api.listSlots(),
+  });
+
+  const toggleSlot = useMutation({
+    mutationFn: (vars: { id: number; next: boolean }) =>
+      api.updateSlot(vars.id, { shared_with_servicio: vars.next }),
+    onMutate: async (vars) => {
+      // Optimistic toggle so the row flips instantly. Roll back on
+      // error via onError; refetch via onSettled to reconcile with
+      // server state (which also picks up any side-effects like
+      // updated_at).
+      await qc.cancelQueries({ queryKey: ["slots"] });
+      const prev = qc.getQueryData<Slot[]>(["slots"]);
+      qc.setQueryData<Slot[]>(["slots"], (old) =>
+        old
+          ? old.map((s) =>
+              s.id === vars.id
+                ? { ...s, shared_with_servicio: vars.next }
+                : s,
+            )
+          : old,
+      );
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(["slots"], ctx.prev);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["slots"] });
+      // The servicio timeline + the servicio overview both reflect
+      // these flags when share_policy='selected' — invalidate so
+      // they re-render with the new visibility on next visit.
+      qc.invalidateQueries({ queryKey: ["servicio"] });
+      qc.invalidateQueries({ queryKey: ["servicio-timeline"] });
+    },
+  });
+
+  if (slots.isLoading) {
+    return <p className="text-sm text-gray-500">Cargando…</p>;
+  }
+  const list = (slots.data ?? []).slice().sort((a, b) => a.position - b.position);
+  if (list.length === 0) {
+    return (
+      <Card>
+        <p className="px-4 py-3 text-sm text-gray-500">
+          Este equipo aún no tiene actividades configuradas.
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <ul className="divide-y divide-gray-100">
+        {list.map((s) => {
+          const checked = s.shared_with_servicio;
+          return (
+            <li key={s.id} className="flex items-center gap-3 px-4 py-2.5">
+              <input
+                id={`slot-share-${s.id}`}
+                type="checkbox"
+                checked={checked}
+                disabled={toggleSlot.isPending}
+                onChange={(e) =>
+                  toggleSlot.mutate({ id: s.id, next: e.target.checked })
+                }
+              />
+              <label
+                htmlFor={`slot-share-${s.id}`}
+                className="min-w-0 flex-1 cursor-pointer text-sm"
+              >
+                <span
+                  className="mr-2 inline-block h-2 w-2 rounded-sm align-middle"
+                  style={{ backgroundColor: s.color ?? "#9ca3af" }}
+                />
+                <span className="font-medium text-gray-900">{s.name}</span>
+              </label>
+              {checked ? (
+                <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700">
+                  <Eye className="h-3 w-3" />
+                  Visible
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[11px] text-gray-400">
+                  <EyeOff className="h-3 w-3" />
+                  Oculta
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
   );
 }
 
