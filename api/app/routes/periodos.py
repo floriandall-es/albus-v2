@@ -166,7 +166,9 @@ def update_periodo(
 
 
 @router.delete(
-    "/periodos/{period_id}", status_code=status.HTTP_204_NO_CONTENT
+    "/periodos/{period_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
 )
 def delete_periodo(
     period_id: int,
@@ -265,6 +267,7 @@ def upsert_slot_override(
 @router.delete(
     "/periodos/{period_id}/slot-overrides/{slot_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
 )
 def delete_slot_override(
     period_id: int,
