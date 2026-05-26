@@ -45,11 +45,13 @@ from app.models import (
     AvailabilityBlock,
     Holiday,
     Membership,
+    PeriodoEspecial,
     Schedule,
     Slot,
     SlotAllowedPerson,
     SlotCategory,
     SlotFrequencyCap,
+    SlotPeriodOverride,
     SlotRule,
     SlotRuleRotationBlock,
     SlotRuleRotationMember,
@@ -155,7 +157,14 @@ class _Context:
     """Pre-loaded schedule context. Single DB hit per kind, then everything
     is in-memory dicts/sets so the inner loop stays cheap."""
 
-    def __init__(self, db: Session, tenant_id: int, period: date):
+    def __init__(
+        self,
+        db: Session,
+        tenant_id: int,
+        period: date,
+        *,
+        dates: list[date] | None = None,
+    ):
         self.tenant_id = tenant_id
         self.period = period
 
@@ -230,7 +239,13 @@ class _Context:
             db.query(SlotFrequencyCap).all()
         )
 
-        days = _dates_in_month(period)
+        # V.1 vacation feature: callers solving a multi-month period pass
+        # the explicit `dates` list (full calendar months concatenated, e.g.
+        # Jul 1 – Aug 31 for a Jul 15 – Aug 31 period). Legacy single-month
+        # callers omit it and we default to the anchor month. `period_start`
+        # and `period_end` below work the same way either way — they're
+        # just the bounds of the `days` list.
+        days = list(dates) if dates is not None else _dates_in_month(period)
         self.holiday_dates: set[date] = {
             h.date for h in db.query(Holiday).all() if h.date in set(days)
         }
@@ -250,6 +265,45 @@ class _Context:
             self.blocks_by_person[b.person_id].append((b.start_date, b.end_date))
 
         self.dates = days
+
+        # ----------------------------------------------------------------
+        # Periodos especiales + slot overrides (V.1 vacation feature).
+        # We load every periodo whose [start_date, end_date] intersects
+        # the solve range, plus their slot overrides. The helper methods
+        # below (effective_*) then resolve slot config per (slot, date)
+        # consulting any active override; callers that don't care about
+        # periods get the default config unchanged.
+        # ----------------------------------------------------------------
+        self.periodos: list[PeriodoEspecial] = (
+            db.query(PeriodoEspecial)
+            .filter(
+                PeriodoEspecial.end_date >= period_start,
+                PeriodoEspecial.start_date <= period_end,
+            )
+            .all()
+        )
+        # date → period_id (or absent when no period covers d). Built
+        # once for O(1) lookup. Periods are non-overlapping per tenant
+        # (DB exclusion constraint), so at most one period per date.
+        self.period_id_by_date: dict[date, int] = {}
+        for p in self.periodos:
+            for d in days:
+                if p.start_date <= d <= p.end_date:
+                    self.period_id_by_date[d] = p.id
+        # (slot_id, period_id) → SlotPeriodOverride row. Only the
+        # overrides whose period intersects the solve range are
+        # loaded; a missing key means "no override, use slot default."
+        self.overrides_by_slot_period: dict[
+            tuple[int, int], SlotPeriodOverride
+        ] = {}
+        if self.periodos:
+            period_ids = [p.id for p in self.periodos]
+            for o in (
+                db.query(SlotPeriodOverride)
+                .filter(SlotPeriodOverride.period_id.in_(period_ids))
+                .all()
+            ):
+                self.overrides_by_slot_period[(o.slot_id, o.period_id)] = o
 
         # Pre-existing published assignments BEFORE the period are needed
         # to evaluate rolling-window frequency caps at the start of the
@@ -275,6 +329,68 @@ class _Context:
         for a in prior:
             key = (a.person_id, a.slot_id, a.team_role_id, a.date)
             self.prior_published_counts[key] += 1
+
+    # ---------------------------------------------------------------
+    # Period-aware effective config getters (V.1 vacation feature).
+    # Every callsite that needs slot.headcount / slot.staffing_mode /
+    # the allow-list / the categoría restriction should go through
+    # these helpers instead of reading the Slot column directly. For
+    # dates not inside any periodo, the helpers return the slot's
+    # default — same semantics as before the feature shipped.
+    # ---------------------------------------------------------------
+    def _slot_override(
+        self, slot_id: int, d: date
+    ) -> SlotPeriodOverride | None:
+        pid = self.period_id_by_date.get(d)
+        if pid is None:
+            return None
+        return self.overrides_by_slot_period.get((slot_id, pid))
+
+    def is_period_dismissed(self, slot_id: int, d: date) -> bool:
+        """True when an active periodo override marks this slot as
+        not running on date d. Callers should skip demand generation
+        for the (slot, date) pair entirely."""
+        ovr = self._slot_override(slot_id, d)
+        return bool(ovr and ovr.dismissed)
+
+    def effective_headcount(self, slot: Slot, d: date) -> int:
+        ovr = self._slot_override(slot.id, d)
+        if ovr and ovr.headcount_override is not None:
+            return ovr.headcount_override
+        return slot.headcount
+
+    def effective_staffing_mode(self, slot: Slot, d: date) -> str:
+        """Returns the staffing_mode that should apply for this
+        (slot, date). V.1 stores the override but the demand
+        generator doesn't switch shape mid-period yet — flipping
+        between single and team_composition requires more solver
+        plumbing (V.2). For now the helper is here so callers that
+        DO care (the future per-rule strategy override) can use it."""
+        ovr = self._slot_override(slot.id, d)
+        if ovr and ovr.staffing_mode_override is not None:
+            return ovr.staffing_mode_override
+        return slot.staffing_mode
+
+    def effective_allowed_persons(self, slot_id: int, d: date) -> set[int]:
+        """Returns the eligible-person set for (slot, date). An empty
+        set means "no restriction" — matches the existing semantics
+        for slots with no SlotAllowedPerson rows. Override semantics:
+          - NULL → use the slot's default list
+          - [] → drop the restriction entirely during the period
+          - [a, b, ...] → restrict to exactly that set during the period
+        """
+        ovr = self._slot_override(slot_id, d)
+        if ovr and ovr.allowed_person_ids_override is not None:
+            return set(ovr.allowed_person_ids_override)
+        return set(self.slot_allowed_persons.get(slot_id, set()))
+
+    def effective_allowed_categories(self, slot_id: int, d: date) -> set[int]:
+        """Same semantics as effective_allowed_persons but for the
+        slot-level categoría restriction (SlotCategory rows)."""
+        ovr = self._slot_override(slot_id, d)
+        if ovr and ovr.allowed_category_ids_override is not None:
+            return set(ovr.allowed_category_ids_override)
+        return set(self.slot_categories.get(slot_id, set()))
 
     def prior_published_count(
         self,
@@ -502,13 +618,19 @@ class _Context:
         if m.disabled_at is not None:
             return "La persona está desactivada en el equipo"
         # Slot allow-list (post-0030 replacement for pool + skill filters).
-        allowed = self.slot_allowed_persons.get(slot.id)
+        # Period overrides can swap the set or drop the restriction entirely
+        # for dates inside an active periodo; effective_allowed_persons
+        # returns the empty set when there's no restriction, matching the
+        # default's "missing rows" semantics.
+        allowed = self.effective_allowed_persons(slot.id, d)
         if allowed and person_id not in allowed:
             return "La persona no está en el equipo autorizado para este turno"
         # Slot-level categoría restriction (migration 0048). Applies to
         # every assignment of the slot regardless of staffing mode. For
         # team_composition slots it intersects with the per-role list.
-        slot_cats = self.slot_categories.get(slot.id)
+        # Period overrides may broaden or drop this restriction inside a
+        # periodo (e.g. summer regime lets residents cover adjunto slots).
+        slot_cats = self.effective_allowed_categories(slot.id, d)
         if slot_cats and m.category_id not in slot_cats:
             return "Su categoría no cubre este turno"
         # Team-role categories.
@@ -559,13 +681,23 @@ def _greedy_fallback(
     ctx: _Context,
     schedule: Schedule,
     locked: list[Assignment] | None = None,
+    *,
+    schedule_id_by_date: dict[date, int] | None = None,
 ) -> None:
     """Round-robin generator. Used when the CP-SAT solver can't run.
 
     Loses fairness/spread quality but always produces SOMETHING. Locked
     assignments are emitted first so the caller's constraint that they
     survive is honoured.
+
+    V.1 vacation feature: when a multi-month solve is in flight the caller
+    passes `schedule_id_by_date` mapping every date in `ctx.dates` to the
+    Schedule id for that date's month. Legacy single-month callers omit
+    it and we default to `{d: schedule.id for d in ctx.dates}` so each
+    emitted Assignment still lands on the single passed-in schedule.
     """
+    if schedule_id_by_date is None:
+        schedule_id_by_date = {d: schedule.id for d in ctx.dates}
     counts: Counter[int] = Counter()
     # Per-person assignments so far: list of (date, slot) used to detect
     # time-overlap conflicts when considering a new (slot, date). This
@@ -593,7 +725,7 @@ def _greedy_fallback(
         db.add(
             Assignment(
                 tenant_id=ctx.tenant_id,
-                schedule_id=schedule.id,
+                schedule_id=schedule_id_by_date[la.date],
                 slot_id=la.slot_id,
                 date=la.date,
                 person_id=la.person_id,
@@ -683,6 +815,11 @@ def _greedy_fallback(
             # at the top of _greedy_fallback.
             if (slot.id, d) in dismissed_slot_day_g:
                 continue
+            # V.1 vacation feature: same skip for slots dismissed by
+            # an active periodo override on this date. No demand, no
+            # assignment row — the slot simply doesn't run.
+            if ctx.is_period_dismissed(slot.id, d):
+                continue
             rule = ctx.rule_for(slot.id, d)
             if rule is None:
                 continue
@@ -703,7 +840,11 @@ def _greedy_fallback(
             if mode in ("single", "multiple_same"):
                 if (d, slot.id, None) in locked_keys:
                     continue
-                head = 1 if mode == "single" else max(1, slot.headcount)
+                head = (
+                    1
+                    if mode == "single"
+                    else max(1, ctx.effective_headcount(slot, d))
+                )
                 # Within a single (slot, date), the same person can't
                 # take two roles — guard with a local set on top of the
                 # cross-slot time-overlap logic.
@@ -725,7 +866,7 @@ def _greedy_fallback(
                             db.add(
                                 Assignment(
                                     tenant_id=ctx.tenant_id,
-                                    schedule_id=schedule.id,
+                                    schedule_id=schedule_id_by_date[d],
                                     slot_id=slot.id,
                                     date=d,
                                     person_id=None,
@@ -740,7 +881,7 @@ def _greedy_fallback(
                             db.add(
                                 Assignment(
                                     tenant_id=ctx.tenant_id,
-                                    schedule_id=schedule.id,
+                                    schedule_id=schedule_id_by_date[d],
                                     slot_id=slot.id,
                                     date=d,
                                     person_id=None,
@@ -759,7 +900,7 @@ def _greedy_fallback(
                         db.add(
                             Assignment(
                                 tenant_id=ctx.tenant_id,
-                                schedule_id=schedule.id,
+                                schedule_id=schedule_id_by_date[d],
                                 slot_id=slot.id,
                                 date=d,
                                 person_id=cand,
@@ -771,7 +912,7 @@ def _greedy_fallback(
                         db.add(
                             Assignment(
                                 tenant_id=ctx.tenant_id,
-                                schedule_id=schedule.id,
+                                schedule_id=schedule_id_by_date[d],
                                 slot_id=slot.id,
                                 date=d,
                                 person_id=None,
@@ -786,7 +927,7 @@ def _greedy_fallback(
                         db.add(
                             Assignment(
                                 tenant_id=ctx.tenant_id,
-                                schedule_id=schedule.id,
+                                schedule_id=schedule_id_by_date[d],
                                 slot_id=slot.id,
                                 date=d,
                                 person_id=None,
@@ -807,7 +948,7 @@ def _greedy_fallback(
                         db.add(
                             Assignment(
                                 tenant_id=ctx.tenant_id,
-                                schedule_id=schedule.id,
+                                schedule_id=schedule_id_by_date[d],
                                 slot_id=slot.id,
                                 date=d,
                                 person_id=None,
@@ -823,7 +964,7 @@ def _greedy_fallback(
                     db.add(
                         Assignment(
                             tenant_id=ctx.tenant_id,
-                            schedule_id=schedule.id,
+                            schedule_id=schedule_id_by_date[d],
                             slot_id=slot.id,
                             date=d,
                             person_id=pid,
@@ -836,7 +977,7 @@ def _greedy_fallback(
                     db.add(
                         Assignment(
                             tenant_id=ctx.tenant_id,
-                            schedule_id=schedule.id,
+                            schedule_id=schedule_id_by_date[d],
                             slot_id=slot.id,
                             date=d,
                             person_id=None,
@@ -897,7 +1038,7 @@ def _greedy_fallback(
                             db.add(
                                 Assignment(
                                     tenant_id=ctx.tenant_id,
-                                    schedule_id=schedule.id,
+                                    schedule_id=schedule_id_by_date[d],
                                     slot_id=slot.id,
                                     date=d,
                                     person_id=None,
@@ -930,7 +1071,7 @@ def _greedy_fallback(
                         db.add(
                             Assignment(
                                 tenant_id=ctx.tenant_id,
-                                schedule_id=schedule.id,
+                                schedule_id=schedule_id_by_date[d],
                                 slot_id=slot.id,
                                 date=d,
                                 person_id=pid,
@@ -1237,11 +1378,21 @@ def _solve_cpsat(
     ctx: _Context,
     schedule: Schedule,
     locked: list[Assignment] | None = None,
+    *,
+    schedule_id_by_date: dict[date, int] | None = None,
 ) -> bool:
     """Build + solve the CP-SAT model. Persist assignments to `schedule`.
 
     Returns True on success, False if the solver couldn't run at all
     (caller should then invoke the greedy fallback).
+
+    V.1 vacation feature: when a multi-month solve is in flight the caller
+    passes `schedule_id_by_date` mapping every date in `ctx.dates` to the
+    Schedule id for that date's month, so emitted Assignment rows route
+    to the right monthly Schedule. Legacy single-month callers omit it
+    and we default to `{d: schedule.id for d in ctx.dates}`; queries that
+    reference `schedule.id` outside Assignment constructors continue to
+    point at the single passed-in Schedule.
     """
     try:
         from ortools.sat.python import cp_model
@@ -1250,6 +1401,8 @@ def _solve_cpsat(
         return False
 
     locked = locked or []
+    if schedule_id_by_date is None:
+        schedule_id_by_date = {d: schedule.id for d in ctx.dates}
 
     # ---- Build the list of (date, slot, role, headcount) "demand" rows. ---
     # Each demand row will become a sum-equals-headcount constraint over its
@@ -1316,7 +1469,7 @@ def _solve_cpsat(
                 db.add(
                     Assignment(
                         tenant_id=ctx.tenant_id,
-                        schedule_id=schedule.id,
+                        schedule_id=schedule_id_by_date[d],
                         slot_id=slot.id,
                         date=d,
                         person_id=None,
@@ -1340,7 +1493,7 @@ def _solve_cpsat(
                 db.add(
                     Assignment(
                         tenant_id=ctx.tenant_id,
-                        schedule_id=schedule.id,
+                        schedule_id=schedule_id_by_date[d],
                         slot_id=slot.id,
                         date=d,
                         person_id=None,
@@ -1387,7 +1540,7 @@ def _solve_cpsat(
             db.add(
                 Assignment(
                     tenant_id=ctx.tenant_id,
-                    schedule_id=schedule.id,
+                    schedule_id=schedule_id_by_date[d],
                     slot_id=slot.id,
                     date=d,
                     person_id=person_id,
@@ -1410,7 +1563,7 @@ def _solve_cpsat(
                 db.add(
                     Assignment(
                         tenant_id=ctx.tenant_id,
-                        schedule_id=schedule.id,
+                        schedule_id=schedule_id_by_date[d],
                         slot_id=slot.id,
                         date=d,
                         person_id=None,
@@ -1423,7 +1576,7 @@ def _solve_cpsat(
             db.add(
                 Assignment(
                     tenant_id=ctx.tenant_id,
-                    schedule_id=schedule.id,
+                    schedule_id=schedule_id_by_date[d],
                     slot_id=slot.id,
                     date=d,
                     person_id=None,
@@ -1451,7 +1604,7 @@ def _solve_cpsat(
         db.add(
             Assignment(
                 tenant_id=ctx.tenant_id,
-                schedule_id=schedule.id,
+                schedule_id=schedule_id_by_date[la.date],
                 slot_id=la.slot_id,
                 date=la.date,
                 person_id=None,
@@ -1497,6 +1650,15 @@ def _solve_cpsat(
             # above; no demands, no rules, no pre-pins for this cell.
             if (slot.id, d) in dismissed_slot_day:
                 continue
+            # V.1 vacation feature: same skip for slots dismissed by
+            # an active periodo override on this date. No demand, no
+            # assignment row — the slot simply doesn't run during the
+            # period. (Unlike "No aplica hoy" we don't emit a NULL
+            # placeholder row: the cell just isn't there. That matches
+            # how the grid renders periods — non-running days show
+            # "—" with no Sin-cubrir styling.)
+            if ctx.is_period_dismissed(slot.id, d):
+                continue
             rule = ctx.rule_for(slot.id, d)
             if rule is None:
                 # Admin chose not to cover this weekday on this slot.
@@ -1515,7 +1677,7 @@ def _solve_cpsat(
                     db.add(
                         Assignment(
                             tenant_id=ctx.tenant_id,
-                            schedule_id=schedule.id,
+                            schedule_id=schedule_id_by_date[d],
                             slot_id=slot.id,
                             date=d,
                             person_id=None,
@@ -1541,7 +1703,7 @@ def _solve_cpsat(
                             db.add(
                                 Assignment(
                                     tenant_id=ctx.tenant_id,
-                                    schedule_id=schedule.id,
+                                    schedule_id=schedule_id_by_date[d],
                                     slot_id=slot.id,
                                     date=d,
                                     person_id=pid,
@@ -1568,7 +1730,7 @@ def _solve_cpsat(
                             db.add(
                                 Assignment(
                                     tenant_id=ctx.tenant_id,
-                                    schedule_id=schedule.id,
+                                    schedule_id=schedule_id_by_date[d],
                                     slot_id=slot.id,
                                     date=d,
                                     person_id=None,
@@ -1591,7 +1753,7 @@ def _solve_cpsat(
                             db.add(
                                 Assignment(
                                     tenant_id=ctx.tenant_id,
-                                    schedule_id=schedule.id,
+                                    schedule_id=schedule_id_by_date[d],
                                     slot_id=slot.id,
                                     date=d,
                                     person_id=None,
@@ -1639,7 +1801,11 @@ def _solve_cpsat(
 
             # Non-team_composition: rule.strategy dictates behaviour.
             if rule.strategy == "solver":
-                head = 1 if mode == "single" else max(1, slot.headcount)
+                head = (
+                    1
+                    if mode == "single"
+                    else max(1, ctx.effective_headcount(slot, d))
+                )
                 demands.append((d, slot.id, None, head))
                 is_guardia_demand[(d, slot.id, None)] = bool(slot.guardia_type)
             else:
@@ -1650,11 +1816,19 @@ def _solve_cpsat(
                 # let _solve_cpsat's lock branch handle emission (by
                 # adding a degenerate solver demand below).
                 if (d, slot.id, None) in locked_keys_set:
-                    head = 1 if mode == "single" else max(1, slot.headcount)
+                    head = (
+                    1
+                    if mode == "single"
+                    else max(1, ctx.effective_headcount(slot, d))
+                )
                     demands.append((d, slot.id, None, head))
                     is_guardia_demand[(d, slot.id, None)] = bool(slot.guardia_type)
                     continue
-                head = 1 if mode == "single" else max(1, slot.headcount)
+                head = (
+                    1
+                    if mode == "single"
+                    else max(1, ctx.effective_headcount(slot, d))
+                )
                 # Multi-person aware emission. Both rotation and
                 # fixed_weekly can configure 1..head people for
                 # (rule, date); manual always emits head NULLs.
@@ -1713,7 +1887,7 @@ def _solve_cpsat(
                 db.add(
                     Assignment(
                         tenant_id=ctx.tenant_id,
-                        schedule_id=schedule.id,
+                        schedule_id=schedule_id_by_date[d],
                         slot_id=slot_id,
                         date=d,
                         person_id=None,
@@ -2368,7 +2542,7 @@ def _solve_cpsat(
             db.add(
                 Assignment(
                     tenant_id=ctx.tenant_id,
-                    schedule_id=schedule.id,
+                    schedule_id=schedule_id_by_date[la.date],
                     slot_id=slot_id,
                     date=d,
                     person_id=la.person_id,
@@ -2395,7 +2569,7 @@ def _solve_cpsat(
             db.add(
                 Assignment(
                     tenant_id=ctx.tenant_id,
-                    schedule_id=schedule.id,
+                    schedule_id=schedule_id_by_date[d],
                     slot_id=slot_id,
                     date=d,
                     person_id=pid,
@@ -2415,7 +2589,7 @@ def _solve_cpsat(
             db.add(
                 Assignment(
                     tenant_id=ctx.tenant_id,
-                    schedule_id=schedule.id,
+                    schedule_id=schedule_id_by_date[d],
                     slot_id=slot_id,
                     date=d,
                     person_id=None,
@@ -2481,6 +2655,211 @@ def generate_draft(
 
     db.flush()
     return schedule
+
+
+def generate_period(
+    db: Session,
+    *,
+    tenant_id: int,
+    period_id: int,
+    membership_id: int | None,
+) -> list[Schedule]:
+    """Generate draft Schedules for every full month touching a
+    PeriodoEspecial's date range, in a single CP-SAT solve.
+
+    Example: a periodo spanning Jul 15 – Aug 31 creates / regenerates
+    Schedule rows for Jul 2026 AND Aug 2026 from one solve over Jul 1
+    – Aug 31. Period-aware slot overrides are consulted per date by
+    `_Context.is_period_dismissed` / `effective_*` helpers; this
+    function's job is the orchestration:
+
+      1. Resolve the touched months from the periodo's date range.
+      2. For each touched month: capture any existing draft's locks,
+         delete the draft, create a fresh draft Schedule. Published
+         or archived schedules abort with ValueError — caller must
+         archive/delete them first.
+      3. Build the concatenated date list (every day of every touched
+         month) and a `schedule_id_by_date` map routing each date to
+         its month's Schedule id.
+      4. One _solve_cpsat call with all the dates + concatenated
+         locks; assignments are sliced back to the right Schedule via
+         the schedule_id_by_date map.
+      5. On INFEASIBLE: wipe assignments from ALL the new Schedules
+         (same flush pattern as generate_draft) and re-run greedy.
+
+    Returns the list of Schedule rows in chronological order.
+
+    V.1 scope note: equity buckets stay single (per-slot, across the
+    whole solve). The dual-bucket "period vs non-period" split is V.3
+    and intentionally out of scope here — this function just produces
+    a coherent multi-month result.
+    """
+    periodo = (
+        db.query(PeriodoEspecial)
+        .filter(
+            PeriodoEspecial.tenant_id == tenant_id,
+            PeriodoEspecial.id == period_id,
+        )
+        .one_or_none()
+    )
+    if periodo is None:
+        raise ValueError(f"PeriodoEspecial id={period_id} not found")
+
+    # Touched months: every (year, month) covered by [start_date, end_date]
+    # inclusive. e.g. Jul 15 – Aug 31 → [(2026, 7), (2026, 8)].
+    months: list[tuple[int, int]] = []
+    y, m = periodo.start_date.year, periodo.start_date.month
+    end_y, end_m = periodo.end_date.year, periodo.end_date.month
+    while (y, m) <= (end_y, end_m):
+        months.append((y, m))
+        if m == 12:
+            y, m = y + 1, 1
+        else:
+            m += 1
+
+    # Per-month: handle the existing Schedule (if any), then create a
+    # fresh draft. Published/archived → caller must archive/delete first;
+    # we don't silently clobber a publication.
+    schedules_by_month: dict[tuple[int, int], Schedule] = {}
+    locks_by_month: dict[tuple[int, int], list[Assignment]] = {}
+    for (yy, mm) in months:
+        month_first = date(yy, mm, 1)
+        existing = (
+            db.query(Schedule)
+            .filter(
+                Schedule.tenant_id == tenant_id,
+                Schedule.period == month_first,
+            )
+            .one_or_none()
+        )
+        carried_locks: list[Assignment] = []
+        if existing is not None:
+            if existing.status != "draft":
+                raise ValueError(
+                    f"Schedule for {month_first.isoformat()} is "
+                    f"{existing.status}; archive or delete it before "
+                    f"regenerating the period"
+                )
+            # Capture locked (or dismissed) rows verbatim before we
+            # delete the draft — they survive regeneration just like in
+            # generate_draft's lock-carry path. Copy each row's fields
+            # into a fresh transient Assignment (no db.add) so the
+            # cascade-delete on the old Schedule doesn't take the
+            # carried_locks list down with it.
+            existing_locks = (
+                db.query(Assignment)
+                .filter(
+                    Assignment.schedule_id == existing.id,
+                    (
+                        (Assignment.locked_at.isnot(None))
+                        | (Assignment.dismissed_at.isnot(None))
+                    ),
+                )
+                .all()
+            )
+            for la in existing_locks:
+                carried_locks.append(
+                    Assignment(
+                        tenant_id=la.tenant_id,
+                        slot_id=la.slot_id,
+                        date=la.date,
+                        person_id=la.person_id,
+                        team_role_id=la.team_role_id,
+                        notes=la.notes,
+                        locked_at=la.locked_at,
+                        locked_by_membership_id=la.locked_by_membership_id,
+                        dismissed_at=la.dismissed_at,
+                    )
+                )
+            # Expunge the original loaded rows so the cascade-delete
+            # doesn't trigger SQLAlchemy "deleted instance still in
+            # session" warnings. The transient copies above are
+            # independent objects and stay intact.
+            for la in existing_locks:
+                db.expunge(la)
+            db.delete(existing)
+            db.flush()
+        locks_by_month[(yy, mm)] = carried_locks
+
+        new_sched = Schedule(
+            tenant_id=tenant_id,
+            period=month_first,
+            status="draft",
+            generated_at=datetime.now(timezone.utc),
+            generated_by_membership_id=membership_id,
+        )
+        db.add(new_sched)
+        db.flush()
+        schedules_by_month[(yy, mm)] = new_sched
+
+    # Concatenated date list (full calendar months in chronological
+    # order) and the schedule_id_by_date map that routes each date to
+    # its month's Schedule. The first month doubles as the _Context
+    # "anchor" period for legacy fields (e.g. prior-published lookback
+    # anchors on period_start = days[0]).
+    all_dates: list[date] = []
+    schedule_id_by_date: dict[date, int] = {}
+    for (yy, mm) in months:
+        month_days = _dates_in_month(date(yy, mm, 1))
+        sched_id = schedules_by_month[(yy, mm)].id
+        for d in month_days:
+            all_dates.append(d)
+            schedule_id_by_date[d] = sched_id
+
+    # Anchor month + primary schedule: used for the _Context "period"
+    # parameter and the `schedule` argument passed to _solve_cpsat /
+    # _greedy_fallback. Anything that still reads `schedule.id`
+    # outside an Assignment constructor (queries, schedule.solver_used
+    # assignments below) operates against this primary Schedule.
+    first_month = months[0]
+    primary_schedule = schedules_by_month[first_month]
+    ctx = _Context(
+        db,
+        tenant_id,
+        date(first_month[0], first_month[1], 1),
+        dates=all_dates,
+    )
+
+    # Concatenate every month's carried locks into one list. The
+    # locked-carry logic inside _solve_cpsat / _greedy_fallback already
+    # uses la.date to route each row through schedule_id_by_date, so
+    # locks from August naturally land on August's new Schedule.
+    all_locks: list[Assignment] = []
+    for m_key in months:
+        all_locks.extend(locks_by_month[m_key])
+
+    ok = _solve_cpsat(
+        db,
+        ctx,
+        primary_schedule,
+        locked=all_locks,
+        schedule_id_by_date=schedule_id_by_date,
+    )
+    if ok:
+        for sched in schedules_by_month.values():
+            sched.solver_used = "cpsat"
+    else:
+        # Same wipe + greedy pattern as generate_draft, but the wipe
+        # must clear assignments from EVERY Schedule we just created
+        # — CP-SAT writes pre-pins across all months before solving.
+        db.flush()
+        new_schedule_ids = [s.id for s in schedules_by_month.values()]
+        db.query(Assignment).filter(
+            Assignment.schedule_id.in_(new_schedule_ids)
+        ).delete(synchronize_session=False)
+        db.flush()
+        _greedy_fallback(
+            db,
+            ctx,
+            primary_schedule,
+            locked=all_locks,
+            schedule_id_by_date=schedule_id_by_date,
+        )
+        for sched in schedules_by_month.values():
+            sched.solver_used = "greedy"
+
+    db.flush()
+    return [schedules_by_month[m_key] for m_key in months]
 
 
 def delete_draft(db: Session, schedule: Schedule) -> None:
