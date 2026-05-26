@@ -312,24 +312,34 @@ def inspect_group(db, group: Group) -> dict:
                  "membership cases may need duplication.")
 
     # ------------------------------------------------------------
-    # Shift swap offers involving group members' assignments
+    # Shift swap offers attached to assignments that will move
     # ------------------------------------------------------------
-    if member_person_ids:
-        swap_count = (
-            db.query(func.count(ShiftSwapOffer.id))
-            .filter(
-                ShiftSwapOffer.tenant_id == group.tenant_id,
-                ShiftSwapOffer.requester_person_id.in_(member_person_ids),
-            )
-            .scalar()
-            or 0
+    # The model keys swap offers off (tenant_id, assignment_id,
+    # requested_by_membership_id) — there is no requester_person_id
+    # column. We care about offers tied to assignments on slots
+    # owned by this group; those follow the assignments when the
+    # migration moves them.
+    swap_rows = (
+        db.query(
+            ShiftSwapOffer.status,
+            func.count(ShiftSwapOffer.id),
         )
-        if swap_count:
-            print()
-            info(f"Shift swap offers by group members ({swap_count}):")
-            warn("Decision: open swap offers should probably stay attached to "
-                 "the assignment when the assignment moves. Close any open "
-                 "offers before running Phase B to keep the migration simple.")
+        .join(Assignment, Assignment.id == ShiftSwapOffer.assignment_id)
+        .join(Slot, Slot.id == Assignment.slot_id)
+        .filter(Slot.group_id == group.id)
+        .group_by(ShiftSwapOffer.status)
+        .all()
+    )
+    total_swaps = sum(c for _, c in swap_rows)
+    if total_swaps:
+        print()
+        info(f"Shift swap offers on group assignments ({total_swaps}):")
+        for status, count in swap_rows:
+            info(f"  - {status}: {count}", indent=2)
+        warn("Open swap offers follow their assignment when it moves to the "
+             "new tenant. Closed/cancelled rows are history only. Consider "
+             "cancelling any 'open' offers before running Phase B to keep "
+             "the audience semantics clean.")
 
     # ------------------------------------------------------------
     # Meetings that include this group as audience
