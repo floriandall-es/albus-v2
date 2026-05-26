@@ -121,6 +121,29 @@ export default function ScheduleDetailPage() {
     mutationFn: () => api.downloadSchedulePdf(id),
   });
 
+  // Backfill mutation for legacy "—" cells. Creates an Assignment
+  // row with person_id=null so the cell renders as Sin cubrir and
+  // becomes editable through the regular Reasignar modal. Same query
+  // invalidation shape as the regular cell edit so the grid +
+  // violations banner refresh together.
+  const createSinCubrir = useMutation({
+    mutationFn: (vars: {
+      slot_id: number;
+      team_role_id: number | null;
+      date: string;
+    }) =>
+      api.createAssignment(id, {
+        slot_id: vars.slot_id,
+        team_role_id: vars.team_role_id,
+        date: vars.date,
+        person_id: null,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["schedule", id] });
+      qc.invalidateQueries({ queryKey: ["schedule-violations", id] });
+    },
+  });
+
   const absences = useQuery({
     queryKey: ["team-absences", detail.data?.period],
     queryFn: () => {
@@ -346,6 +369,31 @@ export default function ScheduleDetailPage() {
         // schedule).
         onAbsenceCellClick={
           isEditable ? (d) => setAddingAbsenceDate(d) : undefined
+        }
+        // Legacy data sometimes has cells missing their Assignment row
+        // entirely (the row disappeared in the previous tool and came
+        // over that way in the migrate). Such cells render as "—" with
+        // no way to reassign. Admin clicking one creates a Sin-cubrir
+        // row in place; the cell then becomes interactive via the
+        // normal Reasignar flow. Confirm prompt avoids accidental
+        // creates on the many legitimate "—" cells (e.g. weekend
+        // columns for weekday-only slots).
+        onEmptyCellClick={
+          isEditable
+            ? ({ slot_id, team_role_id, slot_name, team_role_label, date }) => {
+                const label = team_role_label
+                  ? `${slot_name} — ${team_role_label}`
+                  : slot_name;
+                if (
+                  !confirm(
+                    `Crear celda "Sin cubrir" para ${label} el ${date}? Podrás asignar a alguien después.`,
+                  )
+                ) {
+                  return;
+                }
+                createSinCubrir.mutate({ slot_id, team_role_id, date });
+              }
+            : undefined
         }
       />
 

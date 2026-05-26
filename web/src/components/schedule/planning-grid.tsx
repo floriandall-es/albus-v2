@@ -35,6 +35,19 @@ export type PlanningGridProps = {
    * read-only views and the published/archived schedule view leave
    * this undefined and the Libre row stays non-interactive. */
   onAbsenceCellClick?: (date: string) => void;
+  /** Admin-only. When provided, "—" cells (cells with no Assignment
+   * row at all — typically legacy migrated data where the cell
+   * disappeared) become clickable. The caller decides what to do
+   * with the (slot_id, team_role_id, date) tuple; current usage POSTs
+   * a Sin-cubrir Assignment so the cell becomes editable through the
+   * normal flow. Leave undefined to keep "—" cells inert. */
+  onEmptyCellClick?: (args: {
+    slot_id: number;
+    team_role_id: number | null;
+    slot_name: string;
+    team_role_label: string | null;
+    date: string;
+  }) => void;
   /** Meeting occurrences (ad-hoc + expanded regular templates) the
    * caller is allowed to see. When provided, a "Reuniones" row appears
    * above Libre with one chip per meeting per date. Meetings outside
@@ -64,6 +77,7 @@ export function PlanningGrid({
   highlightPersonId = null,
   absences,
   onAbsenceCellClick,
+  onEmptyCellClick,
   meetings,
   flaggedAssignmentIds,
   forceDates,
@@ -329,7 +343,35 @@ export function PlanningGrid({
                         );
                       })()
                     ) : isDismissedAsEmpty || cell.length === 0 ? (
-                      <span className="text-[11px] text-gray-300">—</span>
+                      // Empty cells: a "—" placeholder normally. If
+                      // the admin view is editable AND the caller
+                      // wired onEmptyCellClick, the placeholder
+                      // becomes a clickable button so the admin can
+                      // backfill the missing Assignment row (legacy
+                      // import bug: some cells came over without
+                      // assignment rows at all and end up here).
+                      // isDismissedAsEmpty cells stay inert — that's
+                      // the member-view collapse, not real emptiness.
+                      cell.length === 0 && onEmptyCellClick ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onEmptyCellClick({
+                              slot_id: row.slot_id,
+                              team_role_id: row.team_role_id,
+                              slot_name: row.slot_name,
+                              team_role_label: row.team_role_label,
+                              date: d,
+                            })
+                          }
+                          className="block w-full text-left text-[11px] text-gray-300 hover:text-rose-700 hover:bg-rose-100/60 rounded px-0.5"
+                          title="Crear celda Sin cubrir"
+                        >
+                          —
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-gray-300">—</span>
+                      )
                     ) : (
                       cell.map((a) => {
                         const isMe =
@@ -635,6 +677,11 @@ function buildGrid(assignments: Assignment[], forceDates?: string[]) {
      * all of that slot's role rows. */
     slot_position: number;
     team_role_label: string | null;
+    /** Team-role id paired with team_role_label. Carried so the
+     * "create assignment for empty cell" flow can POST with the
+     * right role on team_composition slots. Same value across
+     * every cell in this row (rows are keyed by role). */
+    team_role_id: number | null;
     display_name: string;
     color: string | null;
     cells: Record<string, Assignment[]>;
@@ -652,6 +699,7 @@ function buildGrid(assignments: Assignment[], forceDates?: string[]) {
         slot_name: a.slot_name,
         slot_position: a.slot_position ?? 0,
         team_role_label: role,
+        team_role_id: a.team_role_id ?? null,
         display_name: a.slot_name,
         color: a.slot_color ?? null,
         cells: {},
