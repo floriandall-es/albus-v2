@@ -15,6 +15,7 @@ import {
   Home,
   LogOut,
   MessageSquare,
+  Network,
   PartyPopper,
   Settings,
   Sparkles,
@@ -78,7 +79,7 @@ const NAV: NavSection[] = [
       // tenant has no servicio_id — legacy pre-Phase-A tenants and
       // any future standalone equipo. Same filter pattern as the
       // Directorio entry below.
-      { href: "/admin/servicio", label: "Servicio", icon: Building2 },
+      { href: "/admin/servicio", label: "Servicio", icon: Network },
       // Sprint 28: cross-tenant hospital directory. Hidden when
       // the current tenant has no parent hospital (standalone).
       // Links to the member-side route — same page either way.
