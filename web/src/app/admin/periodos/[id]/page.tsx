@@ -31,6 +31,7 @@ import {
   Button,
   Card,
   ErrorText,
+  Modal,
   PageHeader,
   StatusPill,
 } from "@/components/admin/ui";
@@ -66,7 +67,7 @@ function bitmapLabel(bitmap: number): string {
   return days.join(" · ");
 }
 
-type EditorTab = "actividades" | "reglas" | "sucesion" | "caps";
+type EditorTab = "actividades" | "reglas";
 
 /**
  * /admin/periodos/[id] — periodo editor.
@@ -301,8 +302,6 @@ function EditorTabs({
           [
             { key: "actividades", label: "Actividades" },
             { key: "reglas", label: "Reglas" },
-            { key: "sucesion", label: "Sucesión" },
-            { key: "caps", label: "Límites" },
           ] as { key: EditorTab; label: string }[]
         ).map(({ key, label }) => (
           <button
@@ -325,8 +324,6 @@ function EditorTabs({
         <ActividadesTab periodo={periodo} slots={slots} />
       )}
       {tab === "reglas" && <ReglasTab periodo={periodo} slots={slots} />}
-      {tab === "sucesion" && <SucesionTab periodo={periodo} slots={slots} />}
-      {tab === "caps" && <CapsTab periodo={periodo} slots={slots} />}
     </>
   );
 }
@@ -366,9 +363,11 @@ function ActividadesTab({
 }
 
 // ---------------------------------------------------------------------------
-// Reglas tab — per-SlotRule override. The base SlotRules live nested on
-// Slot.rules. We flatten to a single list, sorted by slot position then
-// rule position so the layout mirrors /admin/slots.
+// Reglas tab — succession rules + frequency caps. Mirrors the structure
+// of /admin/rules, where these two live together under the same label
+// ("Reglas"). Per-SlotRule overrides (which-day-what-strategy) belong
+// to the actividad — they're inside the Actividad modal in the
+// Actividades tab.
 // ---------------------------------------------------------------------------
 function ReglasTab({
   periodo,
@@ -377,46 +376,123 @@ function ReglasTab({
   periodo: Periodo;
   slots: Slot[];
 }) {
-  const overrides = useQuery({
-    queryKey: ["periodo-rule-overrides", periodo.id],
-    queryFn: () => api.listRulePeriodOverrides(periodo.id),
+  const successionRules = useQuery({
+    queryKey: ["succession-rules"],
+    queryFn: api.listSuccessionRules,
   });
-  const overrideByRule = useMemo(() => {
-    const m = new Map<number, RulePeriodOverride>();
-    for (const o of overrides.data ?? []) m.set(o.rule_id, o);
+  const successionOverrides = useQuery({
+    queryKey: ["periodo-succession-overrides", periodo.id],
+    queryFn: () => api.listSuccessionPeriodOverrides(periodo.id),
+  });
+  const succOverrideByRule = useMemo(() => {
+    const m = new Map<number, SuccessionPeriodOverride>();
+    for (const o of successionOverrides.data ?? [])
+      m.set(o.succession_rule_id, o);
     return m;
-  }, [overrides.data]);
+  }, [successionOverrides.data]);
 
-  const flatRules = useMemo(() => {
-    const rows: { slot: Slot; rule: SlotRule }[] = [];
-    for (const s of slots.slice().sort((a, b) => a.position - b.position)) {
-      for (const r of s.rules.slice().sort((a, b) => a.position - b.position)) {
-        rows.push({ slot: s, rule: r });
-      }
-    }
-    return rows;
+  const caps = useQuery({
+    queryKey: ["frequency-caps"],
+    queryFn: api.listFrequencyCaps,
+  });
+  const capOverrides = useQuery({
+    queryKey: ["periodo-cap-overrides", periodo.id],
+    queryFn: () => api.listCapPeriodOverrides(periodo.id),
+  });
+  const capOverrideByCap = useMemo(() => {
+    const m = new Map<number, CapPeriodOverride>();
+    for (const o of capOverrides.data ?? []) m.set(o.cap_id, o);
+    return m;
+  }, [capOverrides.data]);
+
+  const slotById = useMemo(() => {
+    const m = new Map<number, Slot>();
+    for (const s of slots) m.set(s.id, s);
+    return m;
   }, [slots]);
 
-  if (flatRules.length === 0) {
-    return (
-      <p className="text-sm text-gray-500">
-        No hay reglas de asignación definidas.
-      </p>
-    );
-  }
+  // Same split /admin/rules uses: same-day incompatibility (days_after=0)
+  // sits separately from "X then no Y for N days" succession (days_after>=1).
+  const incompat = (successionRules.data ?? []).filter(
+    (r) => r.days_after === 0,
+  );
+  const succession = (successionRules.data ?? []).filter(
+    (r) => r.days_after >= 1,
+  );
 
   return (
-    <ul className="space-y-2">
-      {flatRules.map(({ slot, rule }) => (
-        <RuleOverrideRow
-          key={rule.id}
-          slot={slot}
-          rule={rule}
-          override={overrideByRule.get(rule.id) ?? null}
-          periodId={periodo.id}
-        />
-      ))}
-    </ul>
+    <div className="space-y-6">
+      <section>
+        <h2 className="mb-2 text-sm font-semibold text-gray-700">
+          Incompatibilidades (mismo día)
+        </h2>
+        {incompat.length === 0 ? (
+          <p className="text-xs text-gray-500">
+            No hay incompatibilidades de mismo día definidas.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {incompat.map((rule) => (
+              <SuccessionOverrideRow
+                key={rule.id}
+                rule={rule}
+                afterSlot={slotById.get(rule.after_slot_id) ?? null}
+                forbidSlot={slotById.get(rule.forbid_slot_id) ?? null}
+                override={succOverrideByRule.get(rule.id) ?? null}
+                periodId={periodo.id}
+              />
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-sm font-semibold text-gray-700">
+          Sucesión (días siguientes)
+        </h2>
+        {succession.length === 0 ? (
+          <p className="text-xs text-gray-500">
+            No hay reglas de sucesión definidas.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {succession.map((rule) => (
+              <SuccessionOverrideRow
+                key={rule.id}
+                rule={rule}
+                afterSlot={slotById.get(rule.after_slot_id) ?? null}
+                forbidSlot={slotById.get(rule.forbid_slot_id) ?? null}
+                override={succOverrideByRule.get(rule.id) ?? null}
+                periodId={periodo.id}
+              />
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-sm font-semibold text-gray-700">
+          Límites de frecuencia
+        </h2>
+        {!caps.data || caps.data.length === 0 ? (
+          <p className="text-xs text-gray-500">
+            No hay límites de frecuencia definidos.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {caps.data.map((cap) => (
+              <CapOverrideRow
+                key={cap.id}
+                cap={cap}
+                slot={slotById.get(cap.slot_id) ?? null}
+                override={capOverrideByCap.get(cap.id) ?? null}
+                periodId={periodo.id}
+              />
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -611,61 +687,6 @@ function RuleOverrideForm({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Sucesión tab — relax / disable a SlotSuccessionRule during the periodo.
-// ---------------------------------------------------------------------------
-function SucesionTab({
-  periodo,
-  slots,
-}: {
-  periodo: Periodo;
-  slots: Slot[];
-}) {
-  const rules = useQuery({
-    queryKey: ["succession-rules"],
-    queryFn: api.listSuccessionRules,
-  });
-  const overrides = useQuery({
-    queryKey: ["periodo-succession-overrides", periodo.id],
-    queryFn: () => api.listSuccessionPeriodOverrides(periodo.id),
-  });
-  const overrideByRule = useMemo(() => {
-    const m = new Map<number, SuccessionPeriodOverride>();
-    for (const o of overrides.data ?? []) m.set(o.succession_rule_id, o);
-    return m;
-  }, [overrides.data]);
-  const slotById = useMemo(() => {
-    const m = new Map<number, Slot>();
-    for (const s of slots) m.set(s.id, s);
-    return m;
-  }, [slots]);
-
-  if (rules.isLoading) {
-    return <p className="text-sm text-gray-500">Cargando…</p>;
-  }
-  if (!rules.data || rules.data.length === 0) {
-    return (
-      <p className="text-sm text-gray-500">
-        No hay reglas de sucesión / incompatibilidad definidas.
-      </p>
-    );
-  }
-
-  return (
-    <ul className="space-y-2">
-      {rules.data.map((rule) => (
-        <SuccessionOverrideRow
-          key={rule.id}
-          rule={rule}
-          afterSlot={slotById.get(rule.after_slot_id) ?? null}
-          forbidSlot={slotById.get(rule.forbid_slot_id) ?? null}
-          override={overrideByRule.get(rule.id) ?? null}
-          periodId={periodo.id}
-        />
-      ))}
-    </ul>
-  );
-}
 
 function SuccessionOverrideRow({
   rule,
@@ -877,61 +898,6 @@ function SuccessionOverrideForm({
         </Button>
       </div>
     </form>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Caps tab — frequency cap overrides.
-// ---------------------------------------------------------------------------
-function CapsTab({
-  periodo,
-  slots,
-}: {
-  periodo: Periodo;
-  slots: Slot[];
-}) {
-  const caps = useQuery({
-    queryKey: ["frequency-caps"],
-    queryFn: api.listFrequencyCaps,
-  });
-  const overrides = useQuery({
-    queryKey: ["periodo-cap-overrides", periodo.id],
-    queryFn: () => api.listCapPeriodOverrides(periodo.id),
-  });
-  const overrideByCap = useMemo(() => {
-    const m = new Map<number, CapPeriodOverride>();
-    for (const o of overrides.data ?? []) m.set(o.cap_id, o);
-    return m;
-  }, [overrides.data]);
-  const slotById = useMemo(() => {
-    const m = new Map<number, Slot>();
-    for (const s of slots) m.set(s.id, s);
-    return m;
-  }, [slots]);
-
-  if (caps.isLoading) {
-    return <p className="text-sm text-gray-500">Cargando…</p>;
-  }
-  if (!caps.data || caps.data.length === 0) {
-    return (
-      <p className="text-sm text-gray-500">
-        No hay límites de frecuencia definidos.
-      </p>
-    );
-  }
-
-  return (
-    <ul className="space-y-2">
-      {caps.data.map((cap) => (
-        <CapOverrideRow
-          key={cap.id}
-          cap={cap}
-          slot={slotById.get(cap.slot_id) ?? null}
-          override={overrideByCap.get(cap.id) ?? null}
-          periodId={periodo.id}
-        />
-      ))}
-    </ul>
   );
 }
 
@@ -1149,95 +1115,171 @@ function SlotOverrideRow({
   override: SlotPeriodOverride | null;
   periodId: number;
 }) {
-  const qc = useQueryClient();
-  // Editing mode toggles between "show summary + Modificar button"
-  // and the inline form. State is local so each row is independent.
-  const [editing, setEditing] = useState(false);
-
-  const upsert = useMutation({
-    mutationFn: (body: Parameters<typeof api.upsertSlotPeriodOverride>[2]) =>
-      api.upsertSlotPeriodOverride(periodId, slot.id, body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["periodo-overrides", periodId] });
-      setEditing(false);
-    },
-  });
-
-  const remove = useMutation({
-    mutationFn: () => api.deleteSlotPeriodOverride(periodId, slot.id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["periodo-overrides", periodId] });
-      setEditing(false);
-    },
-  });
+  // Row is a compact summary + "Editar" button that opens a modal.
+  // The modal holds the slot-level overrides (dismissed, plazas)
+  // AND the per-rule overrides for each SlotRule on this slot —
+  // mirroring how /admin/slots edits an actividad with its rules
+  // together inside one dialog.
+  const [modalOpen, setModalOpen] = useState(false);
 
   const isOverridden = override !== null;
 
   return (
     <li>
       <Card>
-        <div className="p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className="inline-block h-2.5 w-2.5 rounded-sm"
-              style={{ backgroundColor: slot.color ?? "#9ca3af" }}
-            />
-            <span className="text-sm font-semibold text-gray-900">
-              {slot.name}
-            </span>
-            <span className="text-xs text-gray-500">
-              {slot.staffing_mode === "team_composition"
-                ? `${slot.team_roles.length} roles`
-                : `${slot.headcount} plaza${slot.headcount === 1 ? "" : "s"}`}
-            </span>
-            {isOverridden && (
-              <StatusPill tone="warning">Modificado</StatusPill>
-            )}
-            {override?.dismissed && (
-              <StatusPill tone="danger">No aplica en el periodo</StatusPill>
-            )}
-            <div className="ml-auto flex gap-2">
-              {!editing && (
-                <Button
-                  variant="secondary"
-                  onClick={() => setEditing(true)}
-                >
-                  {isOverridden ? "Editar" : "Modificar para el periodo"}
-                </Button>
-              )}
-              {isOverridden && !editing && (
-                <Button
-                  variant="danger"
-                  onClick={() => {
-                    if (
-                      confirm(
-                        `Quitar la modificación de "${slot.name}" durante este periodo?`,
-                      )
-                    ) {
-                      remove.mutate();
-                    }
-                  }}
-                  disabled={remove.isPending}
-                >
-                  Quitar
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {editing && (
-            <SlotOverrideForm
-              slot={slot}
-              initial={override}
-              onCancel={() => setEditing(false)}
-              onSubmit={(body) => upsert.mutate(body)}
-              submitting={upsert.isPending}
-              error={upsert.error ? (upsert.error as Error).message : null}
-            />
+        <div className="flex flex-wrap items-center gap-2 p-4">
+          <span
+            className="inline-block h-2.5 w-2.5 rounded-sm"
+            style={{ backgroundColor: slot.color ?? "#9ca3af" }}
+          />
+          <span className="text-sm font-semibold text-gray-900">
+            {slot.name}
+          </span>
+          <span className="text-xs text-gray-500">
+            {slot.staffing_mode === "team_composition"
+              ? `${slot.team_roles.length} roles`
+              : `${slot.headcount} plaza${slot.headcount === 1 ? "" : "s"}`}
+          </span>
+          {isOverridden && !override?.dismissed && (
+            <StatusPill tone="warning">Modificado</StatusPill>
           )}
+          {override?.dismissed && (
+            <StatusPill tone="danger">No aplica en el periodo</StatusPill>
+          )}
+          <div className="ml-auto">
+            <Button variant="secondary" onClick={() => setModalOpen(true)}>
+              Editar
+            </Button>
+          </div>
         </div>
       </Card>
+      {modalOpen && (
+        <SlotOverrideModal
+          slot={slot}
+          override={override}
+          periodId={periodId}
+          onClose={() => setModalOpen(false)}
+        />
+      )}
     </li>
+  );
+}
+
+// One-slot modal: per-period overrides for the slot itself plus each
+// of its SlotRules. Matches the mental model from /admin/slots — an
+// actividad is the slot AND the rules that say which days it runs
+// and how those days get filled. Lets the admin make all the
+// changes for one slot in one place.
+function SlotOverrideModal({
+  slot,
+  override,
+  periodId,
+  onClose,
+}: {
+  slot: Slot;
+  override: SlotPeriodOverride | null;
+  periodId: number;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const ruleOverrides = useQuery({
+    queryKey: ["periodo-rule-overrides", periodId],
+    queryFn: () => api.listRulePeriodOverrides(periodId),
+  });
+  const ruleOverrideByRule = useMemo(() => {
+    const m = new Map<number, RulePeriodOverride>();
+    for (const o of ruleOverrides.data ?? []) m.set(o.rule_id, o);
+    return m;
+  }, [ruleOverrides.data]);
+
+  const upsertSlot = useMutation({
+    mutationFn: (body: Parameters<typeof api.upsertSlotPeriodOverride>[2]) =>
+      api.upsertSlotPeriodOverride(periodId, slot.id, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["periodo-overrides", periodId] });
+      onClose();
+    },
+  });
+  const removeSlot = useMutation({
+    mutationFn: () => api.deleteSlotPeriodOverride(periodId, slot.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["periodo-overrides", periodId] });
+      onClose();
+    },
+  });
+
+  const slotRules = slot.rules.slice().sort((a, b) => a.position - b.position);
+
+  return (
+    <Modal
+      open={true}
+      onClose={onClose}
+      title={`Actividad durante el periodo · ${slot.name}`}
+    >
+      <div className="space-y-5">
+        <section>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Esta actividad
+          </h3>
+          <SlotOverrideForm
+            slot={slot}
+            initial={override}
+            onCancel={onClose}
+            onSubmit={(body) => upsertSlot.mutate(body)}
+            submitting={upsertSlot.isPending}
+            error={
+              upsertSlot.error ? (upsertSlot.error as Error).message : null
+            }
+          />
+          {override !== null && (
+            <div className="mt-2">
+              <Button
+                variant="danger"
+                onClick={() => {
+                  if (
+                    confirm(
+                      `Quitar la modificación de "${slot.name}" durante este periodo?`,
+                    )
+                  ) {
+                    removeSlot.mutate();
+                  }
+                }}
+                disabled={removeSlot.isPending}
+              >
+                Quitar modificación de actividad
+              </Button>
+            </div>
+          )}
+        </section>
+
+        <section>
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Reglas por día
+          </h3>
+          {slotRules.length === 0 ? (
+            <p className="text-xs text-gray-500">
+              Esta actividad no tiene reglas de asignación configuradas.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {slotRules.map((rule) => (
+                <RuleOverrideRow
+                  key={rule.id}
+                  slot={slot}
+                  rule={rule}
+                  override={ruleOverrideByRule.get(rule.id) ?? null}
+                  periodId={periodId}
+                />
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <div className="flex justify-end pt-2">
+          <Button onClick={onClose}>Cerrar</Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
