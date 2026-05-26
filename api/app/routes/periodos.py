@@ -21,15 +21,32 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
-from app.models import PeriodoEspecial, Schedule, Slot, SlotPeriodOverride
+from app.models import (
+    PeriodoEspecial,
+    Schedule,
+    Slot,
+    SlotFrequencyCap,
+    SlotFrequencyCapPeriodOverride,
+    SlotPeriodOverride,
+    SlotRule,
+    SlotRulePeriodOverride,
+    SlotSuccessionRule,
+    SlotSuccessionRulePeriodOverride,
+)
 from app.routes.deps import RequestContext, get_current_context
 from app.schemas.periodo_especial import (
     GeneratePeriodResult,
     PeriodoEspecialCreate,
     PeriodoEspecialOut,
     PeriodoEspecialUpdate,
+    SlotFrequencyCapPeriodOverrideOut,
+    SlotFrequencyCapPeriodOverrideUpsert,
     SlotPeriodOverrideOut,
     SlotPeriodOverrideUpsert,
+    SlotRulePeriodOverrideOut,
+    SlotRulePeriodOverrideUpsert,
+    SlotSuccessionRulePeriodOverrideOut,
+    SlotSuccessionRulePeriodOverrideUpsert,
 )
 from app.services import scheduler
 
@@ -337,3 +354,283 @@ def generate_periodo(
             )
         )
     return out
+
+
+# ---------------------------------------------------------------------------
+# V.2 — rule / succession / cap overrides
+#
+# Three parallel CRUD surfaces, one per target type. Same shape as the
+# slot-override endpoints above: GET list under the periodo, PUT upsert
+# by target id, DELETE to revert to default. All admin-only and scoped
+# to the caller's tenant via the existing _get_periodo_or_404 +
+# Slot*/SlotSuccessionRule*/SlotFrequencyCap* tenant_id checks.
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/periodos/{period_id}/rule-overrides",
+    response_model=list[SlotRulePeriodOverrideOut],
+)
+def list_rule_overrides(
+    period_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> list[SlotRulePeriodOverrideOut]:
+    _require_admin(ctx)
+    _get_periodo_or_404(ctx, period_id)
+    rows = (
+        ctx.db.query(SlotRulePeriodOverride)
+        .filter(SlotRulePeriodOverride.period_id == period_id)
+        .all()
+    )
+    return [
+        SlotRulePeriodOverrideOut.model_validate(r, from_attributes=True)
+        for r in rows
+    ]
+
+
+@router.put(
+    "/periodos/{period_id}/rule-overrides/{rule_id}",
+    response_model=SlotRulePeriodOverrideOut,
+)
+def upsert_rule_override(
+    period_id: int,
+    rule_id: int,
+    payload: SlotRulePeriodOverrideUpsert,
+    ctx: RequestContext = Depends(get_current_context),
+) -> SlotRulePeriodOverrideOut:
+    _require_admin(ctx)
+    _get_periodo_or_404(ctx, period_id)
+    rule = (
+        ctx.db.query(SlotRule)
+        .filter(SlotRule.id == rule_id, SlotRule.tenant_id == ctx.tenant.id)
+        .one_or_none()
+    )
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Regla no encontrada")
+
+    existing = (
+        ctx.db.query(SlotRulePeriodOverride)
+        .filter(
+            SlotRulePeriodOverride.period_id == period_id,
+            SlotRulePeriodOverride.rule_id == rule_id,
+        )
+        .one_or_none()
+    )
+    if existing is None:
+        row = SlotRulePeriodOverride(
+            tenant_id=ctx.tenant.id,
+            period_id=period_id,
+            rule_id=rule_id,
+        )
+        ctx.db.add(row)
+    else:
+        row = existing
+    row.strategy_override = payload.strategy_override
+    row.disabled = payload.disabled
+    ctx.db.flush()
+    return SlotRulePeriodOverrideOut.model_validate(row, from_attributes=True)
+
+
+@router.delete(
+    "/periodos/{period_id}/rule-overrides/{rule_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+def delete_rule_override(
+    period_id: int,
+    rule_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> None:
+    _require_admin(ctx)
+    _get_periodo_or_404(ctx, period_id)
+    ctx.db.query(SlotRulePeriodOverride).filter(
+        SlotRulePeriodOverride.period_id == period_id,
+        SlotRulePeriodOverride.rule_id == rule_id,
+    ).delete(synchronize_session=False)
+    ctx.db.flush()
+
+
+@router.get(
+    "/periodos/{period_id}/succession-overrides",
+    response_model=list[SlotSuccessionRulePeriodOverrideOut],
+)
+def list_succession_overrides(
+    period_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> list[SlotSuccessionRulePeriodOverrideOut]:
+    _require_admin(ctx)
+    _get_periodo_or_404(ctx, period_id)
+    rows = (
+        ctx.db.query(SlotSuccessionRulePeriodOverride)
+        .filter(SlotSuccessionRulePeriodOverride.period_id == period_id)
+        .all()
+    )
+    return [
+        SlotSuccessionRulePeriodOverrideOut.model_validate(
+            r, from_attributes=True
+        )
+        for r in rows
+    ]
+
+
+@router.put(
+    "/periodos/{period_id}/succession-overrides/{succession_rule_id}",
+    response_model=SlotSuccessionRulePeriodOverrideOut,
+)
+def upsert_succession_override(
+    period_id: int,
+    succession_rule_id: int,
+    payload: SlotSuccessionRulePeriodOverrideUpsert,
+    ctx: RequestContext = Depends(get_current_context),
+) -> SlotSuccessionRulePeriodOverrideOut:
+    _require_admin(ctx)
+    _get_periodo_or_404(ctx, period_id)
+    rule = (
+        ctx.db.query(SlotSuccessionRule)
+        .filter(
+            SlotSuccessionRule.id == succession_rule_id,
+            SlotSuccessionRule.tenant_id == ctx.tenant.id,
+        )
+        .one_or_none()
+    )
+    if rule is None:
+        raise HTTPException(
+            status_code=404, detail="Regla de sucesión no encontrada"
+        )
+
+    existing = (
+        ctx.db.query(SlotSuccessionRulePeriodOverride)
+        .filter(
+            SlotSuccessionRulePeriodOverride.period_id == period_id,
+            SlotSuccessionRulePeriodOverride.succession_rule_id
+            == succession_rule_id,
+        )
+        .one_or_none()
+    )
+    if existing is None:
+        row = SlotSuccessionRulePeriodOverride(
+            tenant_id=ctx.tenant.id,
+            period_id=period_id,
+            succession_rule_id=succession_rule_id,
+        )
+        ctx.db.add(row)
+    else:
+        row = existing
+    row.days_after_override = payload.days_after_override
+    row.severity_override = payload.severity_override
+    row.disabled = payload.disabled
+    ctx.db.flush()
+    return SlotSuccessionRulePeriodOverrideOut.model_validate(
+        row, from_attributes=True
+    )
+
+
+@router.delete(
+    "/periodos/{period_id}/succession-overrides/{succession_rule_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+def delete_succession_override(
+    period_id: int,
+    succession_rule_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> None:
+    _require_admin(ctx)
+    _get_periodo_or_404(ctx, period_id)
+    ctx.db.query(SlotSuccessionRulePeriodOverride).filter(
+        SlotSuccessionRulePeriodOverride.period_id == period_id,
+        SlotSuccessionRulePeriodOverride.succession_rule_id
+        == succession_rule_id,
+    ).delete(synchronize_session=False)
+    ctx.db.flush()
+
+
+@router.get(
+    "/periodos/{period_id}/cap-overrides",
+    response_model=list[SlotFrequencyCapPeriodOverrideOut],
+)
+def list_cap_overrides(
+    period_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> list[SlotFrequencyCapPeriodOverrideOut]:
+    _require_admin(ctx)
+    _get_periodo_or_404(ctx, period_id)
+    rows = (
+        ctx.db.query(SlotFrequencyCapPeriodOverride)
+        .filter(SlotFrequencyCapPeriodOverride.period_id == period_id)
+        .all()
+    )
+    return [
+        SlotFrequencyCapPeriodOverrideOut.model_validate(
+            r, from_attributes=True
+        )
+        for r in rows
+    ]
+
+
+@router.put(
+    "/periodos/{period_id}/cap-overrides/{cap_id}",
+    response_model=SlotFrequencyCapPeriodOverrideOut,
+)
+def upsert_cap_override(
+    period_id: int,
+    cap_id: int,
+    payload: SlotFrequencyCapPeriodOverrideUpsert,
+    ctx: RequestContext = Depends(get_current_context),
+) -> SlotFrequencyCapPeriodOverrideOut:
+    _require_admin(ctx)
+    _get_periodo_or_404(ctx, period_id)
+    cap = (
+        ctx.db.query(SlotFrequencyCap)
+        .filter(
+            SlotFrequencyCap.id == cap_id,
+            SlotFrequencyCap.tenant_id == ctx.tenant.id,
+        )
+        .one_or_none()
+    )
+    if cap is None:
+        raise HTTPException(status_code=404, detail="Límite no encontrado")
+
+    existing = (
+        ctx.db.query(SlotFrequencyCapPeriodOverride)
+        .filter(
+            SlotFrequencyCapPeriodOverride.period_id == period_id,
+            SlotFrequencyCapPeriodOverride.cap_id == cap_id,
+        )
+        .one_or_none()
+    )
+    if existing is None:
+        row = SlotFrequencyCapPeriodOverride(
+            tenant_id=ctx.tenant.id,
+            period_id=period_id,
+            cap_id=cap_id,
+        )
+        ctx.db.add(row)
+    else:
+        row = existing
+    row.max_count_override = payload.max_count_override
+    row.severity_override = payload.severity_override
+    row.disabled = payload.disabled
+    ctx.db.flush()
+    return SlotFrequencyCapPeriodOverrideOut.model_validate(
+        row, from_attributes=True
+    )
+
+
+@router.delete(
+    "/periodos/{period_id}/cap-overrides/{cap_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+def delete_cap_override(
+    period_id: int,
+    cap_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> None:
+    _require_admin(ctx)
+    _get_periodo_or_404(ctx, period_id)
+    ctx.db.query(SlotFrequencyCapPeriodOverride).filter(
+        SlotFrequencyCapPeriodOverride.period_id == period_id,
+        SlotFrequencyCapPeriodOverride.cap_id == cap_id,
+    ).delete(synchronize_session=False)
+    ctx.db.flush()

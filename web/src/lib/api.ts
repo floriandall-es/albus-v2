@@ -2242,6 +2242,66 @@ export const api = {
       `/api/periodos/${periodId}/generate`,
       { method: "POST" },
     ),
+
+  // V.2 — rule / succession / cap overrides. Same upsert+delete
+  // shape as the slot overrides above.
+  listRulePeriodOverrides: (periodId: number) =>
+    request<RulePeriodOverride[]>(
+      `/api/periodos/${periodId}/rule-overrides`,
+    ),
+  upsertRulePeriodOverride: (
+    periodId: number,
+    ruleId: number,
+    body: RulePeriodOverrideUpsert,
+  ) =>
+    request<RulePeriodOverride>(
+      `/api/periodos/${periodId}/rule-overrides/${ruleId}`,
+      { method: "PUT", body: JSON.stringify(body) },
+    ),
+  deleteRulePeriodOverride: (periodId: number, ruleId: number) =>
+    request<void>(
+      `/api/periodos/${periodId}/rule-overrides/${ruleId}`,
+      { method: "DELETE" },
+    ),
+  listSuccessionPeriodOverrides: (periodId: number) =>
+    request<SuccessionPeriodOverride[]>(
+      `/api/periodos/${periodId}/succession-overrides`,
+    ),
+  upsertSuccessionPeriodOverride: (
+    periodId: number,
+    successionRuleId: number,
+    body: SuccessionPeriodOverrideUpsert,
+  ) =>
+    request<SuccessionPeriodOverride>(
+      `/api/periodos/${periodId}/succession-overrides/${successionRuleId}`,
+      { method: "PUT", body: JSON.stringify(body) },
+    ),
+  deleteSuccessionPeriodOverride: (
+    periodId: number,
+    successionRuleId: number,
+  ) =>
+    request<void>(
+      `/api/periodos/${periodId}/succession-overrides/${successionRuleId}`,
+      { method: "DELETE" },
+    ),
+  listCapPeriodOverrides: (periodId: number) =>
+    request<CapPeriodOverride[]>(
+      `/api/periodos/${periodId}/cap-overrides`,
+    ),
+  upsertCapPeriodOverride: (
+    periodId: number,
+    capId: number,
+    body: CapPeriodOverrideUpsert,
+  ) =>
+    request<CapPeriodOverride>(
+      `/api/periodos/${periodId}/cap-overrides/${capId}`,
+      { method: "PUT", body: JSON.stringify(body) },
+    ),
+  deleteCapPeriodOverride: (periodId: number, capId: number) =>
+    request<void>(
+      `/api/periodos/${periodId}/cap-overrides/${capId}`,
+      { method: "DELETE" },
+    ),
 };
 
 // ---------------------------------------------------------------------------
@@ -2556,4 +2616,63 @@ export type GeneratePeriodResult = {
   /** Which solver produced the result. Same shape as Schedule. */
   solver_used: string;
   assignments_created: number;
+};
+
+// V.2 — per-rule / per-succession / per-cap overrides on a periodo.
+
+export type RulePeriodOverride = {
+  id: number;
+  period_id: number;
+  rule_id: number;
+  /** NULL = keep the rule's default strategy. Non-null = use this
+   * strategy for dates in the period (canonical use-case:
+   * rotation → solver during vacation). */
+  strategy_override: SlotRuleStrategy | null;
+  /** When true the rule doesn't fire on any date in the period. The
+   * slot falls through to "no rule applies" — admin chose not to
+   * cover that weekday. */
+  disabled: boolean;
+};
+
+export type RulePeriodOverrideUpsert = {
+  strategy_override?: SlotRuleStrategy | null;
+  disabled?: boolean;
+};
+
+export type SuccessionPeriodOverride = {
+  id: number;
+  period_id: number;
+  succession_rule_id: number;
+  /** NULL = keep the rule's default days_after. Non-null = use this
+   * gap (0..14) during the period — useful for shortening or
+   * widening the forbidden window. */
+  days_after_override: number | null;
+  /** NULL = keep severity. 'soft' downgrades a 'hard' rule to a
+   * penalty (the solver may break it if necessary). */
+  severity_override: "hard" | "soft" | null;
+  disabled: boolean;
+};
+
+export type SuccessionPeriodOverrideUpsert = {
+  days_after_override?: number | null;
+  severity_override?: "hard" | "soft" | null;
+  disabled?: boolean;
+};
+
+export type CapPeriodOverride = {
+  id: number;
+  period_id: number;
+  cap_id: number;
+  /** NULL = keep the cap's default max_count. Non-null = use this
+   * ceiling during the period (e.g. 2 guardias/month → 5/month
+   * during summer when 60% of the team is out). */
+  max_count_override: number | null;
+  severity_override: "hard" | "soft" | null;
+  disabled: boolean;
+};
+
+export type CapPeriodOverrideUpsert = {
+  max_count_override?: number | null;
+  severity_override?: "hard" | "soft" | null;
+  disabled?: boolean;
 };
