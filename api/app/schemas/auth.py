@@ -5,41 +5,43 @@ from pydantic import BaseModel, EmailStr, Field
 
 
 class SignupRequest(BaseModel):
-    tenant_name: str = Field(min_length=1, max_length=255)
-    # Sprint 28 / migration 0051: optional hospital this department
-    # belongs to. When provided, the signup endpoint find-or-creates
-    # a Hospital row (matched by exact name + country_code) and links
-    # the new tenant via tenants.hospital_id. Two departments at the
-    # same hospital signing up with the same hospital_name will both
-    # link to the same hospitals row — that's the whole point.
-    # Empty/missing = standalone tenant, no hospital row created.
-    hospital_name: str | None = Field(default=None, max_length=255)
-    # `person_name` is the legacy single-field name. Kept for backward
-    # compatibility with older clients; the server derives it from
-    # first_name + last_name when both are provided.
-    person_name: str | None = Field(default=None, max_length=255)
-    first_name: str | None = Field(default=None, max_length=255)
+    """Phase D.2 signup contract.
+
+    Hospital → Servicio → Equipo, all bound to the CNH catalog.
+    No more free-text hospital names; pick one from the seeded
+    list (POST refuses anything else). Servicio is either picked
+    from the chosen hospital's existing ones (join → equipo
+    starts pending) or named freshly (create → equipo is
+    auto-approved as the first one).
+    """
+
+    # Persona
+    first_name: str = Field(min_length=1, max_length=255)
     last_name: str | None = Field(default=None, max_length=255)
     email: EmailStr
     password: str = Field(min_length=8, max_length=255)
-    # ISO 3166-1 alpha-2. Defaults to ES — Trivu's v1 launch market. Used as
-    # the default for the holiday import flow; admins can change it later.
-    country_code: str | None = Field(default="ES", max_length=8)
-    # The user must affirmatively acknowledge the ToS + Privacy
-    # Policy at signup. The client sends `true` after the user
-    # ticks the checkbox; the server stores the current version
-    # string and the timestamp on the new Person row. Required —
-    # missing or false rejects with 422.
     accept_terms: bool = False
-    # "¿Vas a usar sub-equipos? (residentes, becarios, etc.)" answered
-    # at signup. Stored on the tenant; later drives the /admin Inicio
-    # checklist (a "Configura tus sub-equipos" card appears only when
-    # this is True).
-    has_subteams: bool = False
-    # Opt-in module flag for the transplant case log. Checked at
-    # signup by services that actually run a transplant program;
-    # ignored (left false) by everyone else, which hides the
-    # /admin/trasplantes UI + 404s /api/transplants.
+
+    # Hospital — must reference a CNH-coded row. Free-text creation
+    # was retired in Phase D.2; the wizard's typeahead is the only
+    # way to land a hospital_id here.
+    hospital_id: int
+
+    # Servicio — exactly one of these two. If servicio_id is set,
+    # the new equipo joins that existing servicio (and starts
+    # pending — needs a sibling admin's approval). If
+    # servicio_name is set, a fresh servicio is created and the
+    # new equipo is auto-approved as the first one in it.
+    servicio_id: int | None = None
+    servicio_name: str | None = Field(default=None, max_length=255)
+
+    # Equipo (tenant) — the user's team within the servicio.
+    equipo_name: str = Field(min_length=1, max_length=255)
+
+    # Opt-in flag for the transplant case log. Defaults false —
+    # most equipos don't run a transplant program. Kept on signup
+    # so trasplante-heavy teams don't have to flip it later from
+    # /admin.
     transplants_enabled: bool = False
 
 

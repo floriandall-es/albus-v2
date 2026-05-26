@@ -23,7 +23,7 @@ from app.core.security import (
     verify_password,
 )
 from app.db.session import get_db, set_tenant
-from app.models import Group, Hospital, Membership, Person, Tenant
+from app.models import Group, Hospital, Membership, Person, Servicio, Tenant
 from app.routes.deps import RequestContext, get_current_context
 from app.services.person_name import compose_name
 from app.schemas.auth import (
@@ -136,9 +136,15 @@ def _slug_exists(db: Session, slug: str) -> bool:
 
 @router.post("/signup", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthResponse:
-    # Affirmative ToS / Privacy acceptance is mandatory. We reject
-    # before any DB work so a sneaky client can't smuggle accounts
-    # in by leaving the field false.
+    """Phase D.2 signup. Hospital → Servicio → Equipo, all anchored
+    on the CNH catalog. Hospital MUST be a CNH-coded row;
+    servicio is either chosen from the hospital's existing
+    servicios (equipo starts pending → awaits sibling approval)
+    or named fresh (equipo is auto-approved as the first one).
+    """
+
+    # Affirmative ToS / Privacy acceptance is mandatory. Reject before
+    # any DB work.
     if not payload.accept_terms:
         raise HTTPException(
             status_code=422,
@@ -147,80 +153,126 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthRespons
                 "privacidad para crear la cuenta."
             ),
         )
-    # Email uniqueness — checked before tenant creation so we don't leave
-    # an orphan tenant if the email collides.
-    existing_person = db.query(Person).filter(Person.email == payload.email.lower()).first()
+
+    # Exactly one of (servicio_id, servicio_name) — the wizard
+    # always sends one, but a hand-rolled request might try both
+    # or neither.
+    has_id = payload.servicio_id is not None
+    has_name = bool((payload.servicio_name or "").strip())
+    if has_id and has_name:
+        raise HTTPException(
+            status_code=422,
+            detail="Indica un servicio existente O un nombre nuevo, no ambos.",
+        )
+    if not has_id and not has_name:
+        raise HTTPException(
+            status_code=422,
+            detail="Indica un servicio existente o un nombre para crear uno nuevo.",
+        )
+
+    # Email uniqueness — checked before any tenant work so we don't
+    # leave an orphan tenant if the email collides.
+    existing_person = (
+        db.query(Person).filter(Person.email == payload.email.lower()).first()
+    )
     if existing_person:
         raise HTTPException(status_code=409, detail="Email already registered")
 
-    slug = _generate_unique_slug(db, payload.tenant_name)
+    # Hospital must be CNH-coded.
+    hospital = db.get(Hospital, payload.hospital_id)
+    if hospital is None or hospital.public_code is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "El hospital indicado no es válido. Elige uno de la "
+                "lista oficial."
+            ),
+        )
 
-    # Sprint 28 / migration 0051: find-or-create the parent hospital
-    # so multiple departments at the same site link to one row.
-    # Match is exact-name + country_code; the first signup creates
-    # the row, every subsequent signup with the same hospital_name
-    # links to it. Empty/missing hospital_name = standalone tenant.
-    hospital_id: int | None = None
-    hospital_name = (payload.hospital_name or "").strip()
-    if hospital_name:
-        existing_hospital = (
-            db.query(Hospital)
+    # ----------------------------------------------------------------
+    # Servicio: find-or-create.
+    # ----------------------------------------------------------------
+    if has_id:
+        servicio = db.get(Servicio, payload.servicio_id)
+        if servicio is None or servicio.hospital_id != hospital.id:
+            raise HTTPException(
+                status_code=422,
+                detail="Ese servicio no existe en este hospital.",
+            )
+        # Joining an existing servicio. Auto-approve only if there
+        # are no approved equipos yet (otherwise the servicio is in
+        # a stuck state and a new admin has no one to approve them).
+        approved_siblings = (
+            db.query(Tenant)
             .filter(
-                Hospital.name == hospital_name,
-                Hospital.country_code == payload.country_code,
+                Tenant.servicio_id == servicio.id,
+                Tenant.approval_state == "approved",
+            )
+            .count()
+        )
+        approval_state = "approved" if approved_siblings == 0 else "pending"
+    else:
+        # Fresh servicio. The new equipo is the first → auto-approved.
+        servicio_name = (payload.servicio_name or "").strip()
+        servicio_slug = _slugify_tenant_name(servicio_name) or f"servicio-{secrets.token_hex(3)}"
+        # Slug uniqueness is scoped per hospital. If already taken
+        # within this hospital, append random suffix — we don't bother
+        # with the gradient because servicio names within a hospital
+        # are normally distinct.
+        if (
+            db.query(Servicio)
+            .filter(
+                Servicio.hospital_id == hospital.id,
+                Servicio.slug == servicio_slug,
             )
             .first()
+        ):
+            servicio_slug = f"{servicio_slug[:55]}-{secrets.token_hex(3)}"
+        servicio = Servicio(
+            hospital_id=hospital.id,
+            name=servicio_name,
+            slug=servicio_slug,
         )
-        if existing_hospital:
-            hospital_id = existing_hospital.id
-        else:
-            h_slug = _slugify_tenant_name(hospital_name) or f"hospital-{secrets.token_hex(3)}"
-            # Slug collision: append random suffix. Hospitals are
-            # niche enough that we don't bother with the n=2..n=N
-            # gradient.
-            if (
-                db.query(Hospital).filter(Hospital.slug == h_slug).first()
-                is not None
-            ):
-                h_slug = f"{h_slug[:55]}-{secrets.token_hex(3)}"
-            new_hospital = Hospital(
-                slug=h_slug,
-                name=hospital_name,
-                country_code=payload.country_code,
-            )
-            db.add(new_hospital)
-            db.flush()
-            hospital_id = new_hospital.id
+        db.add(servicio)
+        db.flush()
+        approval_state = "approved"
 
+    # ----------------------------------------------------------------
+    # Equipo (tenant). Slug is globally unique; derive from the
+    # equipo name + servicio slug to keep collisions rare.
+    # ----------------------------------------------------------------
+    tenant_slug = _generate_unique_slug(
+        db, f"{payload.equipo_name} {servicio.slug}"
+    )
     tenant = Tenant(
-        slug=slug,
-        name=payload.tenant_name,
-        country_code=payload.country_code,
-        has_subteams=payload.has_subteams,
+        slug=tenant_slug,
+        name=payload.equipo_name.strip(),
+        country_code="ES",
+        hospital_id=hospital.id,
+        servicio_id=servicio.id,
+        approval_state=approval_state,
+        share_policy="none",
+        has_subteams=False,
         transplants_enabled=payload.transplants_enabled,
-        hospital_id=hospital_id,
     )
     db.add(tenant)
     db.flush()
 
-    # Set RLS context now so we can INSERT into the tenant-scoped memberships
-    # table. tenants/persons are not under RLS so the order before flush is fine.
+    # RLS context for membership insert (tenants/persons are not
+    # under RLS so the order before flush is fine).
     set_tenant(db, tenant.id)
 
-    name, first_name, last_name = compose_name(
-        name=payload.person_name,
-        first_name=payload.first_name,
-        last_name=payload.last_name,
-    )
-    if not name:
-        raise HTTPException(
-            status_code=422,
-            detail="Indica al menos el nombre",
-        )
+    # Compose the Person. Single first_name+last_name (no legacy
+    # single-field `name` in the new schema).
+    first_name = payload.first_name.strip()
+    last_name = (payload.last_name or "").strip() or None
+    composed_name = f"{first_name} {last_name}".strip() if last_name else first_name
+    if not composed_name:
+        raise HTTPException(status_code=422, detail="Indica al menos el nombre")
     person = Person(
         email=payload.email.lower(),
         hashed_password=hash_password(payload.password),
-        name=name,
+        name=composed_name,
         first_name=first_name,
         last_name=last_name,
         terms_accepted_at=datetime.now(timezone.utc),
@@ -229,7 +281,9 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthRespons
     db.add(person)
     db.flush()
 
-    membership = Membership(tenant_id=tenant.id, person_id=person.id, roles=["admin"])
+    membership = Membership(
+        tenant_id=tenant.id, person_id=person.id, roles=["admin"]
+    )
     db.add(membership)
 
     try:

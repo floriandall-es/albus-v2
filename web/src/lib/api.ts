@@ -102,6 +102,26 @@ export type Tenant = {
 
 export type SetupArea = "activities" | "rules" | "team" | "subteams";
 
+/** Phase D.2: one row of the public hospital typeahead at signup.
+ * Returned by /api/public/hospitals/search. */
+export type PublicHospital = {
+  id: number;
+  name: string;
+  city: string | null;
+  province: string | null;
+  autonomous_community: string | null;
+};
+
+/** Phase D.2: one approved Servicio at a hospital, with the count of
+ * approved Equipos (so the user knows what they're joining).
+ * Returned by /api/public/hospitals/{id}/servicios. */
+export type PublicServicio = {
+  id: number;
+  name: string;
+  slug: string;
+  approved_equipo_count: number;
+};
+
 /** Phase C.2: one peer Equipo within a Servicio. Returned as part
  * of the Servicio response so the /admin/servicio page can list
  * every equipo + render its share_policy badge. */
@@ -1114,35 +1134,38 @@ async function _downloadPdfFromUrl(
 }
 
 export const api = {
+  /** Phase D.2 signup. Hospital → Servicio → Equipo, all anchored
+   * on the CNH catalog. hospital_id MUST reference a CNH-coded row
+   * (use api.searchHospitals to get one). Servicio is either an
+   * existing one in that hospital (servicio_id → equipo starts
+   * pending) or a fresh one (servicio_name → equipo auto-approved
+   * as the first in the new servicio). */
   signup: (body: {
-    tenant_name: string;
-    /** Legacy single-field name. Sprint 18+ clients should send
-     * first_name + last_name; server composes `person_name` from
-     * the parts. Kept here so older / scripted callers don't break. */
-    person_name?: string;
-    first_name?: string;
+    first_name: string;
     last_name?: string;
     email: string;
     password: string;
-    /** Affirmative ToS + Privacy acceptance. Server rejects with
-     * 422 if missing or false. */
     accept_terms: boolean;
-    /** Used to be a required signup question; moved to the
-     * onboarding step 1 in sprint 28. Kept here as an optional
-     * field so the backend's defaults-to-false contract is
-     * explicit. The /signup form no longer sends it. */
-    has_subteams?: boolean;
-    /** Opt-in module checkbox: "¿Tu servicio realiza
-     * trasplantes?". Moved to the onboarding step 1 in sprint 28;
-     * /signup no longer sends it. Backend defaults false. */
+    hospital_id: number;
+    servicio_id?: number;
+    servicio_name?: string;
+    equipo_name: string;
     transplants_enabled?: boolean;
-    /** Sprint 28 / migration 0051: optional parent hospital name.
-     * When set, the server find-or-creates a hospitals row (exact
-     * name + country_code match) and links the new tenant to it.
-     * Two departments at the same hospital signing up with the
-     * same string will link to the same row. */
-    hospital_name?: string;
   }) => request<AuthResponse>("/api/signup", { method: "POST", body: JSON.stringify(body) }),
+
+  /** Public typeahead over the CNH-seeded hospitals catalog.
+   * Min 2 chars, max 80; up to 20 rows back. Used during signup. */
+  searchHospitals: (q: string) => {
+    const qs = new URLSearchParams({ q });
+    return request<PublicHospital[]>(
+      `/api/public/hospitals/search?${qs.toString()}`,
+    );
+  },
+
+  /** Public: approved servicios at a hospital + the count of
+   * approved equipos in each. Step 3 of the signup wizard. */
+  listHospitalServicios: (hospitalId: number) =>
+    request<PublicServicio[]>(`/api/public/hospitals/${hospitalId}/servicios`),
 
   // Login is conditional on how many memberships the person has:
   // - 1 membership → AuthResponse with access_token (existing flow)
