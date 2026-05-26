@@ -149,13 +149,56 @@ def inspect_group(db, group: Group) -> dict:
         )
 
     # ------------------------------------------------------------
+    # Lead — stored as Group.lead_membership_id, NOT as a string in
+    # Membership.roles. The lead's own membership may sit in the
+    # main team (group_id IS NULL) — i.e. someone from the adjuntos
+    # who oversees the residentes — or it may belong to the group
+    # itself. Both are valid; the migration treats them differently.
+    # ------------------------------------------------------------
+    lead_person_id: int | None = None
+    if group.lead_membership_id is not None:
+        lead_mem = db.get(Membership, group.lead_membership_id)
+        if lead_mem is None:
+            warn(f"group.lead_membership_id={group.lead_membership_id} "
+                 "doesn't resolve to a Membership row — orphan FK")
+            stats["warnings"].append("orphan-lead-fk")
+        else:
+            lead_person = db.get(Person, lead_mem.person_id)
+            lead_person_id = lead_mem.person_id
+            scope_label = (
+                "main-team member"
+                if lead_mem.group_id is None
+                else f"group member (group_id={lead_mem.group_id})"
+            )
+            print()
+            info("Lead:")
+            info(
+                f"  - person={lead_person.name if lead_person else '???'!r}  "
+                f"membership_id={lead_mem.id}  "
+                f"tenant_id={lead_mem.tenant_id}  "
+                f"scope={scope_label}",
+                indent=2,
+            )
+            stats["lead_memberships"] = 1
+            if lead_mem.tenant_id != group.tenant_id:
+                warn(f"lead membership tenant_id={lead_mem.tenant_id} ≠ "
+                     f"group.tenant_id={group.tenant_id} — unusual, verify "
+                     "this is intentional")
+                stats["warnings"].append("lead-cross-tenant")
+    else:
+        info("Lead: (none assigned)")
+        warn("This group has no lead. The migration will copy the parent "
+             "tenant's admins into the new tenant as admins. The residentes "
+             "can promote one of their own later.")
+        stats["warnings"].append("no-lead")
+
+    # ------------------------------------------------------------
     # Memberships that would move
     # ------------------------------------------------------------
     members = db.query(Membership).filter(Membership.group_id == group.id).all()
     stats["memberships"] = len(members)
     print()
     info(f"Memberships to move ({len(members)}):")
-    lead_count = 0
     member_person_ids: set[int] = set()
     cat_ids: set[int] = set()
     for m in members:
@@ -164,25 +207,14 @@ def inspect_group(db, group: Group) -> dict:
             cat_ids.add(m.category_id)
         p = db.get(Person, m.person_id)
         roles = ",".join(m.roles or [])
-        is_lead = "lead" in (m.roles or [])
-        if is_lead:
-            lead_count += 1
-        marker = "  [LEAD]" if is_lead else ""
+        is_lead_membership = m.id == group.lead_membership_id
+        marker = "  [LEAD]" if is_lead_membership else ""
         disabled = "  [disabled]" if m.disabled_at else ""
         info(
             f"  - membership_id={m.id}  person={p.name if p else '???'!r}  "
             f"roles=[{roles}]{marker}{disabled}",
             indent=2,
         )
-    stats["lead_memberships"] = lead_count
-
-    if lead_count == 0:
-        warn("This group has no lead. After migration the new tenant will need "
-             "an admin — pick one of the existing members and grant 'admin' role.")
-        stats["warnings"].append("no-lead")
-    elif lead_count > 1:
-        warn(f"This group has {lead_count} leads. All of them will become admins "
-             "on the new tenant; verify that's what you want.")
 
     # ------------------------------------------------------------
     # Dual-membership: persons who ALSO have a main-team membership
