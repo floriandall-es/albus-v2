@@ -18,6 +18,7 @@ import {
   Network,
   PartyPopper,
   Settings,
+  Share2,
   Sparkles,
   Tag,
   Users,
@@ -99,6 +100,12 @@ const NAV: NavSection[] = [
       { href: "/admin/slots", label: "Actividades", icon: Clock },
       { href: "/admin/rules", label: "Reglas", icon: Sparkles },
       { href: "/admin/holidays", label: "Festivos", icon: PartyPopper },
+      // Phase C.2: admin-only — what THIS equipo exposes to its
+      // siblings in the servicio. The read-only "Vista conjunta"
+      // lives under Operativa → Servicio (shared with members);
+      // the toggle lives here so non-admins can't flip it.
+      // Gated below on tenant.servicio_id non-null.
+      { href: "/admin/compartir", label: "Compartir", icon: Share2 },
     ],
   },
   {
@@ -252,6 +259,15 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                     // estate when there's no servicio behind it.
                     if (
                       item.href === "/me/servicio"
+                      && me.data?.current_tenant.servicio_id == null
+                    ) {
+                      return false;
+                    }
+                    // Same servicio gate for the share-policy
+                    // setting — pointless when this equipo has no
+                    // siblings to share with.
+                    if (
+                      item.href === "/admin/compartir"
                       && me.data?.current_tenant.servicio_id == null
                     ) {
                       return false;

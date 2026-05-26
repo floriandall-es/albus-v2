@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Building2, EyeOff, Eye, ChevronDown } from "lucide-react";
 import {
   api,
@@ -15,60 +15,26 @@ import {
 } from "@/components/admin/month-picker";
 
 /**
- * /admin/servicio — Phase C.2.
+ * /me/servicio — read-only Vista conjunta del servicio (Phase C.2).
  *
- * The first cross-equipo surface. Three sections stacked on one
- * page:
+ * Two sections: a list of every peer Equipo in the servicio with
+ * its share_policy badge, and a month-pickable joint calendar
+ * grid stitching together visible assignments from every equipo
+ * (respecting each one's share policy on the server side).
  *
- *   1. Equipos del servicio — list of every peer Equipo with its
- *      share_policy + approval_state badges.
- *   2. Qué comparte tu equipo — radio picker for your equipo's
- *      share_policy (admin-only on the API; we render disabled
- *      for non-admins). Per-slot picker (when 'selected') lives
- *      on /admin/slots — a hint in the description points there.
- *   3. Timeline del servicio — month-pickable read-only grid
- *      showing visible assignments from every equipo, respecting
- *      each one's policy. Grouped by equipo → slot. Color-coded
- *      by slot.
+ * NO write controls — share-policy management lives on the
+ * admin-only /admin/compartir page (under Configuración). This
+ * page is linked from both /me and /admin sidebars so members
+ * and admins land on the same view.
  *
- * The page is gated by tenant.servicio_id: callers without one
- * see an empty-state asking the operator to attach a hospital +
- * servicio. (Pre-Phase-A tenants — should be none in production.)
+ * Gated by tenant.servicio_id: callers without one see an
+ * empty-state. Pre-Phase-A tenants — should be none in production.
  */
 
-const POLICY_LABEL: Record<SharePolicy, string> = {
-  none: "Nada",
-  selected: "Algunas actividades",
-  full: "Todo el equipo",
-};
-
-const POLICY_HELP: Record<SharePolicy, string> = {
-  none:
-    "Tu equipo no aparece en la vista conjunta del servicio. Es el "
-    + "valor por defecto para equipos nuevos.",
-  selected:
-    "Tu equipo aparece solo en las actividades que marques como "
-    + "compartidas en /admin/slots.",
-  full:
-    "Tu equipo aparece con toda su planificación publicada en la "
-    + "vista conjunta del servicio. Los borradores no se incluyen.",
-};
-
 export default function ServicioPage() {
-  const qc = useQueryClient();
-
-  // Caller's own tenant → which servicio to load
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   const servicioId = me.data?.current_tenant.servicio_id ?? null;
   const callerTenantId = me.data?.current_tenant.id ?? null;
-  const isAdmin =
-    me.data?.memberships.some(
-      (m) =>
-        m.tenant_id === me.data?.current_tenant.id
-        && m.roles.includes("admin"),
-    ) ?? false;
-  const currentPolicy: SharePolicy =
-    me.data?.current_tenant.share_policy ?? "none";
 
   const servicio = useQuery({
     queryKey: ["servicio", servicioId],
@@ -95,18 +61,6 @@ export default function ServicioPage() {
     queryFn: () =>
       api.getServicioTimeline(servicioId as number, fromIso, toIso),
     enabled: servicioId !== null,
-  });
-
-  const updatePolicy = useMutation({
-    mutationFn: (next: SharePolicy) =>
-      api.updateMySharePolicy({ share_policy: next }),
-    onSuccess: () => {
-      // Refresh /me so the radio reflects the new value + the
-      // servicio's equipos list updates the local equipo badge.
-      qc.invalidateQueries({ queryKey: ["me"] });
-      qc.invalidateQueries({ queryKey: ["servicio", servicioId] });
-      qc.invalidateQueries({ queryKey: ["servicio-timeline", servicioId] });
-    },
   });
 
   if (me.isLoading) {
@@ -184,75 +138,7 @@ export default function ServicioPage() {
       </section>
 
       {/* ------------------------------------------------------------ */}
-      {/* Share policy picker                                            */}
-      {/* ------------------------------------------------------------ */}
-      <section className="mb-8">
-        <h2 className="mb-2 text-sm font-semibold text-gray-700">
-          Qué comparte tu equipo
-        </h2>
-        <Card>
-          <div className="p-4">
-            <p className="mb-3 text-xs text-gray-500">
-              Controla qué ven los otros equipos del servicio
-              {" en la "}
-              <span className="font-medium">vista conjunta</span>
-              {". Solo lectura — los demás equipos nunca pueden editar tu planificación."}
-            </p>
-            <div className="space-y-2">
-              {(["none", "selected", "full"] as SharePolicy[]).map((p) => (
-                <label
-                  key={p}
-                  className={
-                    "flex cursor-pointer items-start gap-3 rounded-md border p-3 "
-                    + (currentPolicy === p
-                      ? "border-brand-300 bg-brand-50/40"
-                      : "border-gray-200 hover:bg-gray-50")
-                    + (isAdmin ? "" : " cursor-not-allowed opacity-60")
-                  }
-                >
-                  <input
-                    type="radio"
-                    name="share-policy"
-                    className="mt-1"
-                    checked={currentPolicy === p}
-                    disabled={!isAdmin || updatePolicy.isPending}
-                    onChange={() => updatePolicy.mutate(p)}
-                  />
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-gray-900">
-                      {POLICY_LABEL[p]}
-                    </div>
-                    <div className="mt-0.5 text-xs text-gray-600">
-                      {POLICY_HELP[p]}
-                    </div>
-                    {p === "selected" && currentPolicy === "selected" && (
-                      <div className="mt-1 text-[11px] text-gray-500">
-                        Marca las actividades a compartir en{" "}
-                        <a
-                          href="/admin/slots"
-                          className="text-brand-700 underline-offset-2 hover:underline"
-                        >
-                          /admin/slots
-                        </a>
-                        .
-                      </div>
-                    )}
-                  </div>
-                </label>
-              ))}
-            </div>
-            {!isAdmin && (
-              <p className="mt-3 text-xs text-gray-500">
-                Solo el administrador del equipo puede cambiar este
-                ajuste.
-              </p>
-            )}
-          </div>
-        </Card>
-      </section>
-
-      {/* ------------------------------------------------------------ */}
-      {/* Timeline                                                       */}
+      {/* Vista conjunta                                                 */}
       {/* ------------------------------------------------------------ */}
       <section>
         <div className="mb-2 flex flex-wrap items-end gap-3">
