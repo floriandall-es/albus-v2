@@ -2211,29 +2211,6 @@ export const api = {
     }),
   deletePeriodo: (periodId: number) =>
     request<void>(`/api/periodos/${periodId}`, { method: "DELETE" }),
-  listSlotPeriodOverrides: (periodId: number) =>
-    request<SlotPeriodOverride[]>(
-      `/api/periodos/${periodId}/slot-overrides`,
-    ),
-  /** Create or replace the override for one (period, slot) pair.
-   * Idempotent. DELETE on the same URL removes it. */
-  upsertSlotPeriodOverride: (
-    periodId: number,
-    slotId: number,
-    body: SlotPeriodOverrideUpsert,
-  ) =>
-    request<SlotPeriodOverride>(
-      `/api/periodos/${periodId}/slot-overrides/${slotId}`,
-      {
-        method: "PUT",
-        body: JSON.stringify(body),
-      },
-    ),
-  deleteSlotPeriodOverride: (periodId: number, slotId: number) =>
-    request<void>(
-      `/api/periodos/${periodId}/slot-overrides/${slotId}`,
-      { method: "DELETE" },
-    ),
   /** One-button multi-month solve. Returns one row per Schedule
    * created (one per touched month). 409 if any touched month
    * already has a published or archived schedule — caller has to
@@ -2244,26 +2221,9 @@ export const api = {
       { method: "POST" },
     ),
 
-  // V.2 — rule / succession / cap overrides. Same upsert+delete
-  // shape as the slot overrides above.
-  listRulePeriodOverrides: (periodId: number) =>
-    request<RulePeriodOverride[]>(
-      `/api/periodos/${periodId}/rule-overrides`,
-    ),
-  upsertRulePeriodOverride: (
-    periodId: number,
-    ruleId: number,
-    body: RulePeriodOverrideUpsert,
-  ) =>
-    request<RulePeriodOverride>(
-      `/api/periodos/${periodId}/rule-overrides/${ruleId}`,
-      { method: "PUT", body: JSON.stringify(body) },
-    ),
-  deleteRulePeriodOverride: (periodId: number, ruleId: number) =>
-    request<void>(
-      `/api/periodos/${periodId}/rule-overrides/${ruleId}`,
-      { method: "DELETE" },
-    ),
+  // Succession + frequency cap delta overrides. They stay as deltas
+  // (vs the slot snapshot below) because both rules are tenant-scoped
+  // cross-slot — the snapshot framing doesn't fit them.
   listSuccessionPeriodOverrides: (periodId: number) =>
     request<SuccessionPeriodOverride[]>(
       `/api/periodos/${periodId}/succession-overrides`,
@@ -2606,33 +2566,6 @@ export type Periodo = {
   created_at: string;
 };
 
-export type SlotPeriodOverride = {
-  id: number;
-  period_id: number;
-  slot_id: number;
-  headcount_override: number | null;
-  staffing_mode_override: StaffingMode | null;
-  /** When true the slot doesn't run at all for any date in the
-   * period — no demand, no assignments. */
-  dismissed: boolean;
-  /** NULL = use the slot's default categoría restriction. [] =
-   * drop the restriction entirely during the period. Non-empty =
-   * replace the default with this set during the period. */
-  allowed_category_ids_override: number[] | null;
-  allowed_person_ids_override: number[] | null;
-};
-
-/** Payload shape for PUT /api/periodos/{id}/slot-overrides/{slot_id}.
- * Every field is optional / nullable; omit fields the caller doesn't
- * want to override (the server treats missing fields as null too). */
-export type SlotPeriodOverrideUpsert = {
-  headcount_override?: number | null;
-  staffing_mode_override?: StaffingMode | null;
-  dismissed?: boolean;
-  allowed_category_ids_override?: number[] | null;
-  allowed_person_ids_override?: number[] | null;
-};
-
 /** One element of the array returned by POST /api/periodos/{id}/generate.
  * One row per Schedule the generate produced (one per touched month). */
 export type GeneratePeriodResult = {
@@ -2644,26 +2577,10 @@ export type GeneratePeriodResult = {
   assignments_created: number;
 };
 
-// V.2 — per-rule / per-succession / per-cap overrides on a periodo.
-
-export type RulePeriodOverride = {
-  id: number;
-  period_id: number;
-  rule_id: number;
-  /** NULL = keep the rule's default strategy. Non-null = use this
-   * strategy for dates in the period (canonical use-case:
-   * rotation → solver during vacation). */
-  strategy_override: SlotRuleStrategy | null;
-  /** When true the rule doesn't fire on any date in the period. The
-   * slot falls through to "no rule applies" — admin chose not to
-   * cover that weekday. */
-  disabled: boolean;
-};
-
-export type RulePeriodOverrideUpsert = {
-  strategy_override?: SlotRuleStrategy | null;
-  disabled?: boolean;
-};
+// Succession + frequency cap delta overrides. The slot+rule deltas
+// got replaced by the snapshot model below in V.2.5; these two
+// surfaces remain because both rules are tenant-scoped cross-slot
+// and don't fit the snapshot framing.
 
 export type SuccessionPeriodOverride = {
   id: number;
@@ -2703,9 +2620,10 @@ export type CapPeriodOverrideUpsert = {
   disabled?: boolean;
 };
 
-// V.2.5 — per-(period, slot) full snapshot of slot+rules config.
-// Replaces SlotPeriodOverride + RulePeriodOverride above (which will
-// be dropped when the editor moves to the shared SlotDialog).
+// Per-(period, slot) full snapshot of slot+rules config. Replaces
+// the V.1 SlotPeriodOverride + V.2 RulePeriodOverride delta tables
+// (dropped in migration 0077): admin redefines the slot for the
+// period, snapshot stores the full config + a `dismissed` flag.
 
 /** Server response shape for a snapshot row. Mirrors `Slot` but
  * scoped to (period_id, slot_id) and with `dismissed` at the top

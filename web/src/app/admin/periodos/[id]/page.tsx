@@ -16,13 +16,9 @@ import {
   type FrequencyPeriod,
   type GeneratePeriodResult,
   type Periodo,
-  type RulePeriodOverride,
-  type RulePeriodOverrideUpsert,
   type Slot,
   type SlotFrequencyCap,
-  type SlotPeriodOverride,
-  type SlotRule,
-  type SlotRuleStrategy,
+  type SlotPeriodSnapshot,
   type SlotSuccessionRule,
   type SuccessionPeriodOverride,
   type SuccessionPeriodOverrideUpsert,
@@ -31,19 +27,13 @@ import {
   Button,
   Card,
   ErrorText,
-  Modal,
   PageHeader,
   StatusPill,
 } from "@/components/admin/ui";
+import { SlotDialog } from "@/components/admin/SlotDialog";
 
 // Label maps mirroring /admin/rules — keep the wording consistent
 // across the two surfaces so the admin doesn't have to re-learn.
-const STRATEGY_LABEL: Record<SlotRuleStrategy, string> = {
-  solver: "Equilibrado",
-  fixed_weekly: "Día fijo",
-  rotation: "Rotación",
-  manual: "Manual",
-};
 const SEVERITY_LABEL: Record<DependencySeverity, string> = {
   hard: "Estricta",
   soft: "Blanda",
@@ -55,29 +45,21 @@ const PERIOD_LABEL: Record<FrequencyPeriod, string> = {
   iso_week: "Semana ISO",
   calendar_month: "Mes natural",
 };
-// Bitmap → friendly day-of-week summary. Weekdays-only and weekends-only
-// are common enough to short-circuit; otherwise enumerate Mon..Sun.
-const WD_LABELS = ["L", "M", "X", "J", "V", "S", "D"];
-function bitmapLabel(bitmap: number): string {
-  if (bitmap === 0b1111111) return "Todos los días";
-  if (bitmap === 0b0011111) return "L-V";
-  if (bitmap === 0b1100000) return "S-D";
-  const days: string[] = [];
-  for (let i = 0; i < 7; i++) if (bitmap & (1 << i)) days.push(WD_LABELS[i]);
-  return days.join(" · ");
-}
 
 type EditorTab = "actividades" | "reglas";
 
 /**
  * /admin/periodos/[id] — periodo editor.
  *
- * V.1 tab set: Actividades only. Per-slot overrides (headcount,
- * dismissed). Future V.2 adds Reglas / Sucesión / Caps tabs.
+ * Tabs:
+ *   - Actividades: per-(period, slot) snapshot of the full slot+rules
+ *     config. Same SlotDialog the admin uses on /admin/slots, opened
+ *     in mode='period-snapshot' so the visual language is identical.
+ *   - Reglas: per-(period, succession/cap) delta overrides (those
+ *     rules are tenant-scoped, so a delta model still fits).
  *
  * Generate button at the top fires the multi-month CP-SAT solve for
- * every full month touched by the periodo's date range. Result shown
- * inline + links to each Schedule.
+ * every full month touched by the periodo's date range.
  */
 export default function PeriodoEditorPage() {
   const params = useParams<{ id: string }>();
@@ -119,11 +101,6 @@ function PeriodoEditor({ periodo }: { periodo: Periodo }) {
     queryFn: () => api.listSlots(),
   });
 
-  // The slot/rule/succession/cap-override queries live INSIDE each
-  // tab now (see EditorTabs below) so switching tabs doesn't trigger
-  // unrelated refetches. We still need slots up here because the
-  // header summary copy + touched-months math don't depend on tab.
-
   // Pretty date range header.
   const start = new Date(periodo.start_date + "T00:00:00");
   const end = new Date(periodo.end_date + "T00:00:00");
@@ -141,17 +118,15 @@ function PeriodoEditor({ periodo }: { periodo: Periodo }) {
   const dateRange = `${startLabel} – ${endLabel}`;
 
   // Touched months — Mara should see what "Generar" is about to do
-  // before pressing the button. Compute client-side from the date
-  // range. Matches the server-side logic in generate_period: every
-  // (year, month) covered by [start, end] inclusive. Deps are the
-  // stable ISO strings rather than the new Date objects, so the
-  // memo doesn't recompute on every render.
+  // before pressing the button. Matches the server-side logic in
+  // generate_period: every (year, month) covered by [start, end]
+  // inclusive.
   const touchedMonths = useMemo(() => {
     const s = new Date(periodo.start_date + "T00:00:00");
     const e = new Date(periodo.end_date + "T00:00:00");
     const out: { year: number; month: number; label: string }[] = [];
     let y = s.getFullYear();
-    let m = s.getMonth(); // 0-indexed
+    let m = s.getMonth();
     const endY = e.getFullYear();
     const endM = e.getMonth();
     while (y < endY || (y === endY && m <= endM)) {
@@ -328,6 +303,14 @@ function EditorTabs({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Actividades tab — per-(period, slot) snapshot CRUD.
+//
+// One row per slot. The row shows a status pill summarising what (if
+// anything) the period changes about the slot. Clicking "Editar"
+// opens the shared SlotDialog in mode='period-snapshot' — same UI
+// the admin uses on /admin/slots, so there's nothing new to learn.
+// ---------------------------------------------------------------------------
 function ActividadesTab({
   periodo,
   slots,
@@ -335,15 +318,20 @@ function ActividadesTab({
   periodo: Periodo;
   slots: Slot[];
 }) {
-  const overrides = useQuery({
-    queryKey: ["periodo-overrides", periodo.id],
-    queryFn: () => api.listSlotPeriodOverrides(periodo.id),
+  const snapshots = useQuery({
+    queryKey: ["periodo", periodo.id, "snapshots"],
+    queryFn: () => api.listSlotPeriodSnapshots(periodo.id),
   });
-  const overrideBySlot = useMemo(() => {
-    const m = new Map<number, SlotPeriodOverride>();
-    for (const o of overrides.data ?? []) m.set(o.slot_id, o);
+  const snapshotBySlot = useMemo(() => {
+    const m = new Map<number, SlotPeriodSnapshot>();
+    for (const s of snapshots.data ?? []) m.set(s.slot_id, s);
     return m;
-  }, [overrides.data]);
+  }, [snapshots.data]);
+
+  // SlotDialog needs categories + team for the same pickers the
+  // /admin/slots editor exposes. Load them once here.
+  const cats = useQuery({ queryKey: ["categories"], queryFn: api.listCategories });
+  const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
 
   return (
     <ul className="space-y-2">
@@ -351,23 +339,82 @@ function ActividadesTab({
         .slice()
         .sort((a, b) => a.position - b.position)
         .map((slot) => (
-          <SlotOverrideRow
+          <SlotSnapshotRow
             key={slot.id}
             slot={slot}
-            override={overrideBySlot.get(slot.id) ?? null}
+            snapshot={snapshotBySlot.get(slot.id) ?? null}
             periodId={periodo.id}
+            categories={cats.data ?? []}
+            team={team.data ?? []}
           />
         ))}
     </ul>
   );
 }
 
+function SlotSnapshotRow({
+  slot,
+  snapshot,
+  periodId,
+  categories,
+  team,
+}: {
+  slot: Slot;
+  snapshot: SlotPeriodSnapshot | null;
+  periodId: number;
+  categories: import("@/lib/api").Category[];
+  team: import("@/lib/api").TeamMember[];
+}) {
+  const [modalOpen, setModalOpen] = useState(false);
+
+  return (
+    <li>
+      <Card>
+        <div className="flex flex-wrap items-center gap-2 p-4">
+          <span
+            className="inline-block h-2.5 w-2.5 rounded-sm"
+            style={{ backgroundColor: slot.color ?? "#9ca3af" }}
+          />
+          <span className="text-sm font-semibold text-gray-900">
+            {slot.name}
+          </span>
+          <span className="text-xs text-gray-500">
+            {slot.staffing_mode === "team_composition"
+              ? `${slot.team_roles.length} roles`
+              : `${slot.headcount} plaza${slot.headcount === 1 ? "" : "s"}`}
+          </span>
+          {snapshot?.dismissed ? (
+            <StatusPill tone="danger">No aplica en el periodo</StatusPill>
+          ) : snapshot ? (
+            <StatusPill tone="warning">Personalizada</StatusPill>
+          ) : null}
+          <div className="ml-auto">
+            <Button variant="secondary" onClick={() => setModalOpen(true)}>
+              Editar
+            </Button>
+          </div>
+        </div>
+      </Card>
+      {modalOpen && (
+        <SlotDialog
+          mode="period-snapshot"
+          baseSlot={slot}
+          snapshot={snapshot}
+          periodId={periodId}
+          categories={categories}
+          team={team}
+          onClose={() => setModalOpen(false)}
+        />
+      )}
+    </li>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Reglas tab — succession rules + frequency caps. Mirrors the structure
 // of /admin/rules, where these two live together under the same label
-// ("Reglas"). Per-SlotRule overrides (which-day-what-strategy) belong
-// to the actividad — they're inside the Actividad modal in the
-// Actividades tab.
+// ("Reglas"). Per-SlotRule overrides moved to the V.2.5 snapshot model
+// — they're inside SlotDialog now under the Actividades tab.
 // ---------------------------------------------------------------------------
 function ReglasTab({
   periodo,
@@ -495,198 +542,6 @@ function ReglasTab({
     </div>
   );
 }
-
-function RuleOverrideRow({
-  slot,
-  rule,
-  override,
-  periodId,
-}: {
-  slot: Slot;
-  rule: SlotRule;
-  override: RulePeriodOverride | null;
-  periodId: number;
-}) {
-  const qc = useQueryClient();
-  const [editing, setEditing] = useState(false);
-
-  const upsert = useMutation({
-    mutationFn: (body: RulePeriodOverrideUpsert) =>
-      api.upsertRulePeriodOverride(periodId, rule.id, body),
-    onSuccess: () => {
-      qc.invalidateQueries({
-        queryKey: ["periodo-rule-overrides", periodId],
-      });
-      setEditing(false);
-    },
-  });
-  const remove = useMutation({
-    mutationFn: () => api.deleteRulePeriodOverride(periodId, rule.id),
-    onSuccess: () => {
-      qc.invalidateQueries({
-        queryKey: ["periodo-rule-overrides", periodId],
-      });
-      setEditing(false);
-    },
-  });
-
-  const effectiveStrategy =
-    override?.strategy_override ?? rule.strategy;
-
-  return (
-    <li>
-      <Card>
-        <div className="p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className="inline-block h-2.5 w-2.5 rounded-sm"
-              style={{ backgroundColor: slot.color ?? "#9ca3af" }}
-            />
-            <span className="text-sm font-semibold text-gray-900">
-              {slot.name}
-            </span>
-            <span className="text-xs text-gray-500">
-              {bitmapLabel(rule.days_bitmap)} ·{" "}
-              {STRATEGY_LABEL[rule.strategy]}
-            </span>
-            {override && !override.disabled && override.strategy_override && (
-              <StatusPill tone="warning">
-                → {STRATEGY_LABEL[override.strategy_override]}
-              </StatusPill>
-            )}
-            {override?.disabled && (
-              <StatusPill tone="danger">Desactivada en el periodo</StatusPill>
-            )}
-            <div className="ml-auto flex gap-2">
-              {!editing && (
-                <Button variant="secondary" onClick={() => setEditing(true)}>
-                  {override ? "Editar" : "Modificar"}
-                </Button>
-              )}
-              {override && !editing && (
-                <Button
-                  variant="danger"
-                  onClick={() => {
-                    if (confirm("¿Quitar esta modificación?")) remove.mutate();
-                  }}
-                  disabled={remove.isPending}
-                >
-                  Quitar
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {editing && (
-            <RuleOverrideForm
-              rule={rule}
-              initial={override}
-              onCancel={() => setEditing(false)}
-              onSubmit={(body) => upsert.mutate(body)}
-              submitting={upsert.isPending}
-              error={upsert.error ? (upsert.error as Error).message : null}
-              effectivePreview={effectiveStrategy}
-            />
-          )}
-        </div>
-      </Card>
-    </li>
-  );
-}
-
-function RuleOverrideForm({
-  rule,
-  initial,
-  onCancel,
-  onSubmit,
-  submitting,
-  error,
-}: {
-  rule: SlotRule;
-  initial: RulePeriodOverride | null;
-  onCancel: () => void;
-  onSubmit: (body: RulePeriodOverrideUpsert) => void;
-  submitting: boolean;
-  error: string | null;
-  /** Kept for diff-rendering future variants; not used today but the
-   * shape is here so callers don't break when V.3's preview lands. */
-  effectivePreview: SlotRuleStrategy;
-}) {
-  const [disabled, setDisabled] = useState(initial?.disabled ?? false);
-  const [strategyOverride, setStrategyOverride] = useState<
-    SlotRuleStrategy | ""
-  >(initial?.strategy_override ?? "");
-
-  return (
-    <form
-      className="mt-3 space-y-3 border-t border-gray-100 pt-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        onSubmit({
-          disabled,
-          strategy_override:
-            strategyOverride === "" ? null : strategyOverride,
-        });
-      }}
-    >
-      <label className="flex items-start gap-2 text-sm">
-        <input
-          type="checkbox"
-          className="mt-0.5"
-          checked={disabled}
-          onChange={(e) => setDisabled(e.target.checked)}
-        />
-        <div>
-          <div className="font-medium text-gray-900">
-            Desactivar esta regla durante el periodo
-          </div>
-          <div className="text-xs text-gray-500">
-            La actividad se trata como si no tuviera regla para esos
-            días. El admin la rellena manualmente o queda sin cubrir.
-          </div>
-        </div>
-      </label>
-
-      {!disabled && (
-        <label className="block">
-          <span className="text-sm font-medium text-gray-700">
-            Cambiar estrategia (opcional)
-          </span>
-          <select
-            value={strategyOverride}
-            onChange={(e) =>
-              setStrategyOverride(e.target.value as SlotRuleStrategy | "")
-            }
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm bg-white"
-          >
-            <option value="">
-              Mantener {STRATEGY_LABEL[rule.strategy]} (por defecto)
-            </option>
-            <option value="solver">Equilibrado (solver)</option>
-            <option value="fixed_weekly">Día fijo</option>
-            <option value="rotation">Rotación</option>
-            <option value="manual">Manual</option>
-          </select>
-          <span className="mt-1 block text-xs text-gray-500">
-            Útil cuando la rotación deja de tener sentido por las
-            ausencias (cambiar a Equilibrado deja al solver elegir).
-          </span>
-        </label>
-      )}
-
-      {error && <ErrorText>{error}</ErrorText>}
-      <div className="flex justify-end gap-2">
-        <Button variant="secondary" onClick={onCancel}>
-          Cancelar
-        </Button>
-        <Button type="submit" disabled={submitting}>
-          {submitting ? "Guardando…" : "Guardar"}
-        </Button>
-      </div>
-    </form>
-  );
-}
-
 
 function SuccessionOverrideRow({
   rule,
@@ -1094,296 +949,6 @@ function CapOverrideForm({
       )}
 
       {error && <ErrorText>{error}</ErrorText>}
-      <div className="flex justify-end gap-2">
-        <Button variant="secondary" onClick={onCancel}>
-          Cancelar
-        </Button>
-        <Button type="submit" disabled={submitting}>
-          {submitting ? "Guardando…" : "Guardar"}
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-function SlotOverrideRow({
-  slot,
-  override,
-  periodId,
-}: {
-  slot: Slot;
-  override: SlotPeriodOverride | null;
-  periodId: number;
-}) {
-  // Row is a compact summary + "Editar" button that opens a modal.
-  // The modal holds the slot-level overrides (dismissed, plazas)
-  // AND the per-rule overrides for each SlotRule on this slot —
-  // mirroring how /admin/slots edits an actividad with its rules
-  // together inside one dialog.
-  const [modalOpen, setModalOpen] = useState(false);
-
-  const isOverridden = override !== null;
-
-  return (
-    <li>
-      <Card>
-        <div className="flex flex-wrap items-center gap-2 p-4">
-          <span
-            className="inline-block h-2.5 w-2.5 rounded-sm"
-            style={{ backgroundColor: slot.color ?? "#9ca3af" }}
-          />
-          <span className="text-sm font-semibold text-gray-900">
-            {slot.name}
-          </span>
-          <span className="text-xs text-gray-500">
-            {slot.staffing_mode === "team_composition"
-              ? `${slot.team_roles.length} roles`
-              : `${slot.headcount} plaza${slot.headcount === 1 ? "" : "s"}`}
-          </span>
-          {isOverridden && !override?.dismissed && (
-            <StatusPill tone="warning">Modificado</StatusPill>
-          )}
-          {override?.dismissed && (
-            <StatusPill tone="danger">No aplica en el periodo</StatusPill>
-          )}
-          <div className="ml-auto">
-            <Button variant="secondary" onClick={() => setModalOpen(true)}>
-              Editar
-            </Button>
-          </div>
-        </div>
-      </Card>
-      {modalOpen && (
-        <SlotOverrideModal
-          slot={slot}
-          override={override}
-          periodId={periodId}
-          onClose={() => setModalOpen(false)}
-        />
-      )}
-    </li>
-  );
-}
-
-// One-slot modal: per-period overrides for the slot itself plus each
-// of its SlotRules. Matches the mental model from /admin/slots — an
-// actividad is the slot AND the rules that say which days it runs
-// and how those days get filled. Lets the admin make all the
-// changes for one slot in one place.
-function SlotOverrideModal({
-  slot,
-  override,
-  periodId,
-  onClose,
-}: {
-  slot: Slot;
-  override: SlotPeriodOverride | null;
-  periodId: number;
-  onClose: () => void;
-}) {
-  const qc = useQueryClient();
-  const ruleOverrides = useQuery({
-    queryKey: ["periodo-rule-overrides", periodId],
-    queryFn: () => api.listRulePeriodOverrides(periodId),
-  });
-  const ruleOverrideByRule = useMemo(() => {
-    const m = new Map<number, RulePeriodOverride>();
-    for (const o of ruleOverrides.data ?? []) m.set(o.rule_id, o);
-    return m;
-  }, [ruleOverrides.data]);
-
-  const upsertSlot = useMutation({
-    mutationFn: (body: Parameters<typeof api.upsertSlotPeriodOverride>[2]) =>
-      api.upsertSlotPeriodOverride(periodId, slot.id, body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["periodo-overrides", periodId] });
-      onClose();
-    },
-  });
-  const removeSlot = useMutation({
-    mutationFn: () => api.deleteSlotPeriodOverride(periodId, slot.id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["periodo-overrides", periodId] });
-      onClose();
-    },
-  });
-
-  const slotRules = slot.rules.slice().sort((a, b) => a.position - b.position);
-
-  return (
-    <Modal
-      open={true}
-      onClose={onClose}
-      title={`Actividad durante el periodo · ${slot.name}`}
-    >
-      <div className="space-y-5">
-        <section>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-            Esta actividad
-          </h3>
-          <SlotOverrideForm
-            slot={slot}
-            initial={override}
-            onCancel={onClose}
-            onSubmit={(body) => upsertSlot.mutate(body)}
-            submitting={upsertSlot.isPending}
-            error={
-              upsertSlot.error ? (upsertSlot.error as Error).message : null
-            }
-          />
-          {override !== null && (
-            <div className="mt-2">
-              <Button
-                variant="danger"
-                onClick={() => {
-                  if (
-                    confirm(
-                      `Quitar la modificación de "${slot.name}" durante este periodo?`,
-                    )
-                  ) {
-                    removeSlot.mutate();
-                  }
-                }}
-                disabled={removeSlot.isPending}
-              >
-                Quitar modificación de actividad
-              </Button>
-            </div>
-          )}
-        </section>
-
-        <section>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-            Reglas por día
-          </h3>
-          {slotRules.length === 0 ? (
-            <p className="text-xs text-gray-500">
-              Esta actividad no tiene reglas de asignación configuradas.
-            </p>
-          ) : (
-            <ul className="space-y-2">
-              {slotRules.map((rule) => (
-                <RuleOverrideRow
-                  key={rule.id}
-                  slot={slot}
-                  rule={rule}
-                  override={ruleOverrideByRule.get(rule.id) ?? null}
-                  periodId={periodId}
-                />
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <div className="flex justify-end pt-2">
-          <Button onClick={onClose}>Cerrar</Button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-function SlotOverrideForm({
-  slot,
-  initial,
-  onCancel,
-  onSubmit,
-  submitting,
-  error,
-}: {
-  slot: Slot;
-  initial: SlotPeriodOverride | null;
-  onCancel: () => void;
-  onSubmit: (
-    body: Parameters<typeof api.upsertSlotPeriodOverride>[2],
-  ) => void;
-  submitting: boolean;
-  error: string | null;
-}) {
-  const [dismissed, setDismissed] = useState(initial?.dismissed ?? false);
-  const [headcountStr, setHeadcountStr] = useState<string>(
-    initial?.headcount_override !== null
-    && initial?.headcount_override !== undefined
-      ? String(initial.headcount_override)
-      : "",
-  );
-
-  // V.1 surfaces just the two simplest knobs: dismissed + headcount.
-  // staffing_mode_override + allowed_*_override exist in the schema
-  // for V.2 (per-rule strategy switching + categoría relaxation).
-  // Keeping the form lean for v1 matches Mara's most common needs:
-  // "Consulta apaga en agosto" → dismissed. "Quirófano halves" →
-  // headcount. Both are single-input gestures.
-  const isTeamComposition = slot.staffing_mode === "team_composition";
-
-  return (
-    <form
-      className="mt-3 space-y-3 border-t border-gray-100 pt-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const headcount = headcountStr.trim() === "" ? null : Number(headcountStr);
-        onSubmit({
-          dismissed,
-          headcount_override:
-            headcount !== null && !Number.isNaN(headcount) && headcount >= 1
-              ? headcount
-              : null,
-          staffing_mode_override: null,
-          allowed_category_ids_override: null,
-          allowed_person_ids_override: null,
-        });
-      }}
-    >
-      <label className="flex items-start gap-2 text-sm">
-        <input
-          type="checkbox"
-          className="mt-0.5"
-          checked={dismissed}
-          onChange={(e) => setDismissed(e.target.checked)}
-        />
-        <div>
-          <div className="font-medium text-gray-900">
-            No aplica durante el periodo
-          </div>
-          <div className="text-xs text-gray-500">
-            Marca esto si esta actividad simplemente no se realiza durante
-            el periodo (ej. Consulta en agosto). No se generarán
-            asignaciones en esos días.
-          </div>
-        </div>
-      </label>
-
-      {!dismissed && !isTeamComposition && (
-        <label className="block">
-          <span className="text-sm font-medium text-gray-700">
-            Plazas durante el periodo
-          </span>
-          <input
-            type="number"
-            min="1"
-            value={headcountStr}
-            onChange={(e) => setHeadcountStr(e.target.value)}
-            placeholder={`${slot.headcount} (por defecto)`}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-          />
-          <span className="mt-1 block text-xs text-gray-500">
-            Vacío para mantener el valor por defecto ({slot.headcount}).
-            Útil para reducir cobertura (ej. media plantilla en verano).
-          </span>
-        </label>
-      )}
-
-      {!dismissed && isTeamComposition && (
-        <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          Esta actividad se cubre con varios roles ({slot.team_roles.length}).
-          Para reducir plazas en un rol individual necesitamos override por
-          rol (próxima entrega). Si quieres desactivarla entera durante el
-          periodo, marca «No aplica» arriba.
-        </p>
-      )}
-
-      {error && <ErrorText>{error}</ErrorText>}
-
       <div className="flex justify-end gap-2">
         <Button variant="secondary" onClick={onCancel}>
           Cancelar
