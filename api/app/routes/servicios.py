@@ -31,10 +31,11 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import text
 
-from app.models import Hospital, Servicio
+from app.models import Hospital, Membership, Person, Servicio, Tenant
 from app.routes.deps import RequestContext, get_current_context
 from app.schemas.servicio import (
     EquipoOut,
+    PendingEquipoOut,
     ServicioOut,
     ServicioPersonOut,
     ServicioTimelineCellOut,
@@ -227,3 +228,220 @@ def update_my_share_policy(
     _require_admin(ctx)
     ctx.tenant.share_policy = payload.share_policy
     ctx.db.flush()
+
+
+# ---------------------------------------------------------------------------
+# Sibling approval (Phase D.3)
+# ---------------------------------------------------------------------------
+
+
+def _require_admin_of_approved_sibling(ctx: RequestContext) -> None:
+    """Approve/decline endpoints are gated to admins of an APPROVED
+    sibling equipo in the same servicio. A pending tenant's own
+    admin can't self-approve (chicken-and-egg) — that's the whole
+    point of the gate.
+
+    We re-use `_require_admin(ctx)` because the caller's
+    membership is necessarily in their own (approved) tenant; the
+    only thing left to check is that the target tenant lives in
+    the same servicio. That second check is per-endpoint below.
+    """
+    _require_admin(ctx)
+    if ctx.tenant.approval_state != "approved":
+        # The caller's OWN tenant is pending — they can't approve
+        # anyone else.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Tu equipo aún está pendiente de aprobación; no puedes "
+                "aprobar a otros."
+            ),
+        )
+    if ctx.tenant.servicio_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tu equipo no pertenece a ningún servicio.",
+        )
+
+
+@router.get(
+    "/equipos/pendientes",
+    response_model=list[PendingEquipoOut],
+)
+def list_pending_equipos(
+    ctx: RequestContext = Depends(get_current_context),
+) -> list[PendingEquipoOut]:
+    """Pending sibling equipos awaiting approval. Returns one row
+    per pending Tenant in the caller's Servicio (excluding the
+    caller's own tenant — irrelevant whether it's pending or not).
+
+    Admin-only. Drives the /admin/equipos-pendientes page and the
+    new card on /admin Inicio.
+    """
+    _require_admin_of_approved_sibling(ctx)
+    # Cross-tenant read — use SECURITY DEFINER hop. We rely on
+    # list_servicio_equipos for the basic tenants+state pull and
+    # then join in the admin Person details locally. Two queries
+    # but each is small.
+    siblings = (
+        ctx.db.execute(
+            text(
+                "SELECT tenant_id, tenant_name, tenant_slug, created_at "
+                "FROM list_servicio_equipos(:sid) "
+                "WHERE approval_state = 'pending' "
+                "  AND tenant_id <> :ct"
+            ),
+            {"sid": ctx.tenant.servicio_id, "ct": ctx.tenant.id},
+        )
+        .mappings()
+        .all()
+    )
+    if not siblings:
+        return []
+    # For each pending tenant, find the (single) admin Person —
+    # at signup time we wrote exactly one Membership with
+    # roles=['admin']. Bypass RLS via the admin engine so we can
+    # cross tenants.
+    from app.db.session import AdminSessionLocal
+
+    admin_db = AdminSessionLocal()
+    try:
+        out: list[PendingEquipoOut] = []
+        for r in siblings:
+            admin_row = admin_db.execute(
+                text(
+                    "SELECT p.name, p.first_name, p.last_name, p.email "
+                    "FROM memberships m "
+                    "JOIN persons p ON p.id = m.person_id "
+                    "WHERE m.tenant_id = :tid "
+                    "  AND 'admin' = ANY(m.roles) "
+                    "ORDER BY m.id "
+                    "LIMIT 1"
+                ),
+                {"tid": r["tenant_id"]},
+            ).mappings().first()
+            out.append(
+                PendingEquipoOut(
+                    tenant_id=r["tenant_id"],
+                    tenant_name=r["tenant_name"],
+                    tenant_slug=r["tenant_slug"],
+                    created_at=r["created_at"],
+                    admin_name=(admin_row or {}).get("name") or "(desconocido)",
+                    admin_first_name=(admin_row or {}).get("first_name"),
+                    admin_last_name=(admin_row or {}).get("last_name"),
+                    admin_email=(admin_row or {}).get("email") or "",
+                )
+            )
+        return out
+    finally:
+        admin_db.close()
+
+
+def _load_pending_sibling(
+    ctx: RequestContext, tenant_id: int
+) -> Tenant:
+    """Load the target Tenant for approve/decline. Refuses anything
+    that isn't pending + in the caller's servicio.
+
+    `tenants` has no RLS, so ctx.db.get works for cross-tenant
+    loads. Returning 404 for wrong-servicio rather than 403 to
+    avoid leaking tenant ids across servicios."""
+    target = ctx.db.get(Tenant, tenant_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Equipo no encontrado")
+    if target.servicio_id != ctx.tenant.servicio_id:
+        raise HTTPException(status_code=404, detail="Equipo no encontrado")
+    if target.approval_state != "pending":
+        raise HTTPException(
+            status_code=409,
+            detail="Este equipo ya no está pendiente de aprobación.",
+        )
+    return target
+
+
+@router.post(
+    "/equipos/{tenant_id}/approve",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+def approve_equipo(
+    tenant_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> None:
+    """Approve a pending sibling equipo. Admin-of-approved-sibling
+    only. Flips approval_state='approved'; from that point on the
+    new equipo appears in the servicio timeline + can invite /
+    be invited to cross-equipo meetings."""
+    _require_admin_of_approved_sibling(ctx)
+    target = _load_pending_sibling(ctx, tenant_id)
+    target.approval_state = "approved"
+    ctx.db.flush()
+
+
+@router.post(
+    "/equipos/{tenant_id}/decline",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+def decline_equipo(
+    tenant_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> None:
+    """Decline a pending sibling equipo. The just-signed-up admin's
+    Tenant + Membership are deleted; their Person row stays (no
+    cross-tenant references) and is emailed the decline notice
+    so they know what happened.
+
+    Hard delete (vs flagging declined) keeps the model simple —
+    declined rows accumulating would clutter every cross-equipo
+    query for no real benefit.
+    """
+    _require_admin_of_approved_sibling(ctx)
+    target = _load_pending_sibling(ctx, tenant_id)
+
+    # Capture details for the email BEFORE deletion.
+    from app.db.session import AdminSessionLocal
+
+    admin_db = AdminSessionLocal()
+    try:
+        admin_person = admin_db.execute(
+            text(
+                "SELECT p.id, p.email, p.first_name, p.name "
+                "FROM memberships m "
+                "JOIN persons p ON p.id = m.person_id "
+                "WHERE m.tenant_id = :tid "
+                "  AND 'admin' = ANY(m.roles) "
+                "ORDER BY m.id LIMIT 1"
+            ),
+            {"tid": target.id},
+        ).mappings().first()
+    finally:
+        admin_db.close()
+
+    servicio_name: str | None = None
+    if ctx.tenant.servicio_id is not None:
+        sv = ctx.db.get(Servicio, ctx.tenant.servicio_id)
+        servicio_name = sv.name if sv else None
+
+    # Drop the tenant — CASCADEs delete its memberships, slots
+    # (none yet for fresh signups), etc. Person row survives.
+    ctx.db.delete(target)
+    ctx.db.flush()
+
+    # Fire-and-forget decline email. Swallowed by send_email on
+    # SMTP failure — same pattern as the swap-notification path.
+    if admin_person and admin_person["email"]:
+        try:
+            from app.services.email import send_email
+            from app.services.email_templates import equipo_declined_email
+
+            subject, body = equipo_declined_email(
+                recipient_first_name=(
+                    admin_person.get("first_name") or admin_person.get("name") or ""
+                ),
+                equipo_name=target.name,
+                servicio_name=servicio_name or "(servicio)",
+            )
+            send_email(admin_person["email"], subject, body)
+        except Exception:  # noqa: BLE001
+            pass

@@ -13,6 +13,7 @@ import {
   MailWarning,
   Sparkles,
   Stethoscope,
+  UserPlus,
   Users,
 } from "lucide-react";
 import { api, personFirstName } from "@/lib/api";
@@ -375,6 +376,7 @@ export default function AdminDashboard() {
         && pendientes.data.bloqueos_pending
           + pendientes.data.invitations_open
           + pendientes.data.swap_offers_open
+          + pendientes.data.equipos_pending
           > 0 && (
         <section className="mb-8">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
@@ -409,6 +411,16 @@ export default function AdminDashboard() {
                 sublabel="Solicitudes de cobertura sin cerrar"
                 href="/admin/swaps"
                 tone="sky"
+              />
+            )}
+            {pendientes.data.equipos_pending > 0 && (
+              <PendientesCard
+                icon={<UserPlus className="h-5 w-5" />}
+                count={pendientes.data.equipos_pending}
+                label="Equipos por aprobar"
+                sublabel="Solicitudes para unirse a tu servicio"
+                href="/admin/equipos-pendientes"
+                tone="emerald"
               />
             )}
           </div>
@@ -536,7 +548,7 @@ function PendientesCard({
   /** Colour family for the icon chip + count pill. Each
    * category uses a distinct tone so the eye can sort them at
    * a glance without reading. */
-  tone: "amber" | "violet" | "sky";
+  tone: "amber" | "violet" | "sky" | "emerald";
 }) {
   const toneClasses = {
     amber: {
@@ -550,6 +562,10 @@ function PendientesCard({
     sky: {
       chip: "bg-sky-100 text-sky-700 group-hover:bg-sky-200",
       pill: "bg-sky-600",
+    },
+    emerald: {
+      chip: "bg-emerald-100 text-emerald-700 group-hover:bg-emerald-200",
+      pill: "bg-emerald-600",
     },
   }[tone];
   return (

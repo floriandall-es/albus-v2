@@ -108,3 +108,24 @@ class SharePolicyUpdateRequest(BaseModel):
     just the top-level enum."""
 
     share_policy: SharePolicy
+
+
+class PendingEquipoOut(BaseModel):
+    """One pending-approval Equipo in the caller's Servicio.
+
+    Drives the /admin/equipos-pendientes page + the equipos-
+    pendientes count on /admin/inicio. Carries enough metadata
+    so the approving admin can decide without a second fetch:
+    who created it, when, with what email.
+    """
+
+    tenant_id: int
+    tenant_name: str
+    tenant_slug: str
+    created_at: datetime
+    # The admin who signed it up (always exactly one — they're the
+    # only Membership at the moment of creation).
+    admin_name: str
+    admin_first_name: str | None
+    admin_last_name: str | None
+    admin_email: str

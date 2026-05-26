@@ -171,6 +171,21 @@ export type ServicioTimeline = {
   cells: ServicioTimelineCell[];
 };
 
+/** Phase D.3: one pending-approval Equipo in the caller's Servicio.
+ * Returned by GET /api/equipos/pendientes. Carries enough metadata
+ * for the admin to decide (who created it, when, with what email)
+ * without a second fetch. */
+export type PendingEquipo = {
+  tenant_id: number;
+  tenant_name: string;
+  tenant_slug: string;
+  created_at: string;
+  admin_name: string;
+  admin_first_name: string | null;
+  admin_last_name: string | null;
+  admin_email: string;
+};
+
 /** Phase C.2: one person reachable from the caller's Servicio.
  * Returned by GET /api/servicios/{id}/persons. Consumed by the
  * cross-equipo meeting invitee picker — `is_caller_tenant` tells
@@ -1272,17 +1287,30 @@ export const api = {
    * stays flat. */
   getMyUnreadCount: () =>
     request<{ total: number }>("/api/me/unread-count"),
-  /** Three roll-ups feeding the admin Pendientes inbox:
-   * bloqueos pending approval, invitations still live, and open
-   * swap offers in the tenant. Polled every 60 s by the admin
-   * sidebar — mirror of the DM unread badge. Admin-only; non-
-   * admin callers get a 403. */
+  /** Four roll-ups feeding the admin Pendientes inbox:
+   * bloqueos pending approval, invitations still live, open
+   * swap offers, and (Phase D.3) sibling equipos waiting for
+   * approval in the servicio. Polled every 60 s by the admin
+   * sidebar — mirror of the DM unread badge. */
   getAdminPendientes: () =>
     request<{
       bloqueos_pending: number;
       invitations_open: number;
       swap_offers_open: number;
+      equipos_pending: number;
     }>("/api/admin/pendientes"),
+  /** Phase D.3: pending sibling equipos awaiting approval in the
+   * caller's servicio. Admin-only. */
+  listPendingEquipos: () =>
+    request<PendingEquipo[]>("/api/equipos/pendientes"),
+  /** Phase D.3: approve a pending sibling equipo. 204. */
+  approveEquipo: (tenantId: number) =>
+    request<void>(`/api/equipos/${tenantId}/approve`, { method: "POST" }),
+  /** Phase D.3: decline (hard-delete) a pending sibling equipo.
+   * The just-signed-up admin's Person row survives + gets emailed
+   * the decline notice. 204. */
+  declineEquipo: (tenantId: number) =>
+    request<void>(`/api/equipos/${tenantId}/decline`, { method: "POST" }),
   /** Paginated messages of a conversation. `before` is the
    * cursor — pass the smallest id you have to load older. */
   listMessages: (conversationId: number, before?: number, limit = 50) => {

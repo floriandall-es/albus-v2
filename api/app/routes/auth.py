@@ -1,3 +1,4 @@
+import logging
 import re
 import secrets
 import unicodedata
@@ -72,6 +73,77 @@ def _send_welcome_and_verify_email(person: Person, tenant_name: str) -> None:
         ttl_hours=settings.email_verify_ttl_hours,
     )
     send_email(to=person.email, subject=subject, body_text=body)
+
+
+def _notify_sibling_admins_of_pending(
+    db: Session,
+    pending_tenant: Tenant,
+    servicio: Servicio,
+    new_admin: Person,
+) -> None:
+    """Email every admin of an approved sibling tenant in the
+    Servicio when a new equipo signs up as pending. The deep
+    link drops them on /admin/equipos-pendientes where they can
+    approve or decline.
+
+    Cross-tenant lookup — we read sibling tenants + their admin
+    memberships without going through RLS. AdminSessionLocal is
+    overkill since tenants has no RLS, but memberships DOES, so
+    we use it here to keep the query simple.
+    """
+    from app.db.session import AdminSessionLocal
+    from app.services.email import send_email
+    from app.services.email_templates import pending_equipo_approval_email
+
+    admin_db = AdminSessionLocal()
+    try:
+        rows = admin_db.execute(
+            text(
+                """
+                SELECT DISTINCT p.id, p.email, p.first_name, p.name
+                FROM tenants t
+                JOIN memberships m ON m.tenant_id = t.id
+                JOIN persons p ON p.id = m.person_id
+                WHERE t.servicio_id = :sid
+                  AND t.approval_state = 'approved'
+                  AND t.id <> :pid
+                  AND 'admin' = ANY(m.roles)
+                  AND m.disabled_at IS NULL
+                  AND p.hashed_password IS NOT NULL
+                """
+            ),
+            {"sid": servicio.id, "pid": pending_tenant.id},
+        ).mappings().all()
+    finally:
+        admin_db.close()
+
+    if not rows:
+        return
+
+    deep_link = (
+        f"{settings.public_base_url.rstrip('/')}/admin/equipos-pendientes"
+    )
+    new_admin_full = new_admin.name
+    new_admin_email = new_admin.email
+    for r in rows:
+        recipient_first = r.get("first_name") or r.get("name") or ""
+        recipient_email = r.get("email")
+        if not recipient_email:
+            continue
+        subject, body = pending_equipo_approval_email(
+            recipient_first_name=recipient_first,
+            new_equipo_name=pending_tenant.name,
+            new_admin_name=new_admin_full,
+            new_admin_email=new_admin_email,
+            servicio_name=servicio.name,
+            deep_link=deep_link,
+        )
+        try:
+            send_email(recipient_email, subject, body)
+        except Exception:  # noqa: BLE001
+            # Per-recipient swallow so one bad address doesn't
+            # block emails to the others.
+            pass
 
 
 # Maximum candidate-suffix attempts before falling back to a random hex tail.
@@ -306,6 +378,19 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthRespons
     # click the link in the email (which sets
     # person.email_verified_at).
     _send_welcome_and_verify_email(person, tenant.name)
+
+    # Phase D.3: if the new equipo is pending approval, email every
+    # admin of an approved sibling tenant so they know there's a
+    # request waiting on /admin/equipos-pendientes. Fire-and-forget;
+    # failures don't block the signup response.
+    if tenant.approval_state == "pending":
+        try:
+            _notify_sibling_admins_of_pending(db, tenant, servicio, person)
+        except Exception:  # noqa: BLE001
+            logging.getLogger("app.auth").exception(
+                "Failed to notify sibling admins for pending equipo %s",
+                tenant.id,
+            )
 
     # Fresh signup creates a tenant + first admin — no groups
     # exist yet, so lead_group_id is definitionally None here.

@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from sqlalchemy import text
+
 from app.models import (
     AvailabilityBlock,
     Invitation,
@@ -48,6 +50,11 @@ class AdminPendientesCounts(BaseModel):
     bloqueos_pending: int
     invitations_open: int
     swap_offers_open: int
+    # Phase D.3: pending sibling equipos awaiting approval in the
+    # caller's Servicio. Zero for legacy tenants without a
+    # servicio_id. Same shape as the other counts — one number
+    # for the badge / Inicio card.
+    equipos_pending: int
 
 
 def _require_admin(ctx: RequestContext) -> None:
@@ -94,8 +101,28 @@ def admin_pendientes(
         .count()
     )
 
+    # Pending sibling equipos in this servicio (excluding own —
+    # the caller's own tenant is by definition not in this list
+    # because their own approval_state isn't pending if they're
+    # an admin who already activated). Zero when servicio_id is
+    # null (legacy tenant).
+    equipos_pending = 0
+    if ctx.tenant.servicio_id is not None:
+        equipos_pending = int(
+            ctx.db.execute(
+                text(
+                    "SELECT COUNT(*) "
+                    "FROM list_servicio_equipos(:sid) "
+                    "WHERE approval_state = 'pending' "
+                    "  AND tenant_id <> :ct"
+                ),
+                {"sid": ctx.tenant.servicio_id, "ct": ctx.tenant.id},
+            ).scalar() or 0
+        )
+
     return AdminPendientesCounts(
         bloqueos_pending=bloqueos,
         invitations_open=invitations,
         swap_offers_open=swap_offers,
+        equipos_pending=equipos_pending,
     )

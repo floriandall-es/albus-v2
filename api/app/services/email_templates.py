@@ -243,6 +243,60 @@ def password_reset_email(
     return subject, body
 
 
+def pending_equipo_approval_email(
+    *,
+    recipient_first_name: str,
+    new_equipo_name: str,
+    new_admin_name: str,
+    new_admin_email: str,
+    servicio_name: str,
+    deep_link: str,
+) -> tuple[str, str]:
+    """Sent to every approved sibling admin when a new equipo signs
+    up against an existing Servicio. The recipient lands on
+    /admin/equipos-pendientes via the deep link and approves or
+    declines from there."""
+    subject = (
+        f"Nueva solicitud de equipo en {servicio_name}: {new_equipo_name}"
+    )
+    body = (
+        f"Hola {recipient_first_name},\n\n"
+        f"{new_admin_name} ({new_admin_email}) ha creado un nuevo "
+        f"equipo llamado «{new_equipo_name}» dentro del servicio "
+        f"«{servicio_name}». Necesita tu aprobación (o la de otro "
+        "administrador del servicio) antes de que aparezca en la "
+        "vista conjunta del servicio o pueda invitar a tu equipo a "
+        "reuniones.\n\n"
+        f"Aprobar o rechazar:\n{deep_link}\n\n"
+        "— Trivu"
+    )
+    return subject, body
+
+
+def equipo_declined_email(
+    *,
+    recipient_first_name: str,
+    equipo_name: str,
+    servicio_name: str,
+) -> tuple[str, str]:
+    """Sent to the admin of an equipo whose join request was
+    declined. We don't name the deciding admin — keeps the message
+    neutral and doesn't put a person in the firing line."""
+    subject = f"Tu solicitud para «{servicio_name}» no se ha aprobado"
+    body = (
+        f"Hola {recipient_first_name},\n\n"
+        f"Tu solicitud para añadir el equipo «{equipo_name}» al "
+        f"servicio «{servicio_name}» no ha sido aprobada por los "
+        "administradores existentes.\n\n"
+        "Tu cuenta sigue activa y puedes seguir usando Trivu, pero "
+        "tu equipo no aparecerá en la vista conjunta del servicio. "
+        "Si crees que ha sido un error, ponte en contacto con uno "
+        "de los administradores del servicio.\n\n"
+        "— Trivu"
+    )
+    return subject, body
+
+
 def welcome_and_verify_email(
     *,
     recipient_name: str,
