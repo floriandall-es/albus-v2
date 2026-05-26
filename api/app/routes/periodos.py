@@ -1,14 +1,20 @@
-"""Periodos especiales — admin CRUD + per-slot override management +
+"""Periodos especiales — admin CRUD + per-slot snapshot management +
 generate trigger.
 
 See docs/vacation-periods.md for the design. Admin-only across the
 board: a non-admin reaching any of these endpoints gets 403.
 
-Three surfaces:
+Surfaces:
 
-  /api/periodos          CRUD on the periodo itself
-  /api/periodos/{id}/slot-overrides    per-(period, slot) overrides
-  /api/periodos/{id}/generate          one-button multi-month solve
+  /api/periodos                            CRUD on the periodo itself
+  /api/periodos/{id}/slot-snapshots        per-(period, slot) full
+                                           snapshot of slot+rules
+                                           config (V.2.5)
+  /api/periodos/{id}/succession-overrides  per-(period, succession
+                                           rule) delta overrides (V.2)
+  /api/periodos/{id}/cap-overrides         per-(period, frequency
+                                           cap) delta overrides (V.2)
+  /api/periodos/{id}/generate              one-button multi-month solve
 
 Non-overlap of periodos per tenant is enforced at the DB layer (GiST
 exclusion constraint added in migration 0075). We catch the resulting
@@ -27,9 +33,15 @@ from app.models import (
     Slot,
     SlotFrequencyCap,
     SlotFrequencyCapPeriodOverride,
-    SlotPeriodOverride,
-    SlotRule,
-    SlotRulePeriodOverride,
+    SlotPeriodSnapshot,
+    SlotPeriodSnapshotAllowedPerson,
+    SlotPeriodSnapshotCategory,
+    SlotPeriodSnapshotRule,
+    SlotPeriodSnapshotRuleRotationBlock,
+    SlotPeriodSnapshotRuleRotationMember,
+    SlotPeriodSnapshotRuleWeeklyPin,
+    SlotPeriodSnapshotTeamRole,
+    SlotPeriodSnapshotTeamRoleCategory,
     SlotSuccessionRule,
     SlotSuccessionRulePeriodOverride,
 )
@@ -41,12 +53,17 @@ from app.schemas.periodo_especial import (
     PeriodoEspecialUpdate,
     SlotFrequencyCapPeriodOverrideOut,
     SlotFrequencyCapPeriodOverrideUpsert,
-    SlotPeriodOverrideOut,
-    SlotPeriodOverrideUpsert,
-    SlotRulePeriodOverrideOut,
-    SlotRulePeriodOverrideUpsert,
+    SlotPeriodSnapshotOut,
+    SlotPeriodSnapshotUpsert,
     SlotSuccessionRulePeriodOverrideOut,
     SlotSuccessionRulePeriodOverrideUpsert,
+)
+from app.schemas.slot import SlotTeamRoleOut
+from app.schemas.slot_rule import (
+    RotationBlockOut,
+    RotationMemberOut,
+    SlotRuleOut,
+    WeeklyPinOut,
 )
 from app.services import scheduler
 
@@ -193,59 +210,128 @@ def delete_periodo(
 ) -> None:
     _require_admin(ctx)
     p = _get_periodo_or_404(ctx, period_id)
-    # Slot overrides cascade via the FK ondelete=CASCADE; Schedule
-    # rows generated under this periodo are NOT cascade-deleted —
-    # they stand on their own once produced. Mara can delete them
-    # individually via the schedule UI if she wants.
+    # Slot snapshots + succession/cap overrides cascade via the FK
+    # ondelete=CASCADE; Schedule rows generated under this periodo
+    # are NOT cascade-deleted — they stand on their own once
+    # produced. Mara can delete them individually via the schedule
+    # UI if she wants.
     ctx.db.delete(p)
     ctx.db.flush()
 
 
 # ---------------------------------------------------------------------------
-# Slot overrides
+# Slot snapshots (V.2.5)
 # ---------------------------------------------------------------------------
 
 
+def _serialize_snapshot(snap: SlotPeriodSnapshot) -> SlotPeriodSnapshotOut:
+    """Serialize a snapshot + its child rows to the response shape.
+    Mirrors the /api/slots serializer so the frontend can feed both
+    payloads into the same SlotDialog."""
+    team_role_rows = sorted(snap.team_roles, key=lambda r: r.id)
+    return SlotPeriodSnapshotOut(
+        id=snap.id,
+        period_id=snap.period_id,
+        slot_id=snap.slot_id,
+        dismissed=snap.dismissed,
+        start_time=snap.start_time,
+        end_time=snap.end_time,
+        days_applied=snap.days_applied,  # type: ignore[arg-type]
+        custom_days_bitmap=snap.custom_days_bitmap,
+        staffing_mode=snap.staffing_mode,  # type: ignore[arg-type]
+        headcount=snap.headcount,
+        post_slot_rest=snap.post_slot_rest,
+        counts_for_equity=snap.counts_for_equity,
+        guardia_type=snap.guardia_type,
+        color=snap.color,
+        team_roles=[
+            SlotTeamRoleOut(
+                id=tr.id,
+                role_label=tr.role_label,
+                headcount=tr.headcount,
+                category_ids=sorted(c.category_id for c in tr.categories),
+            )
+            for tr in team_role_rows
+        ],
+        allowed_person_ids=sorted(p.person_id for p in snap.allowed_persons),
+        allowed_category_ids=sorted(c.category_id for c in snap.categories),
+        rules=[
+            SlotRuleOut(
+                id=r.id,
+                tenant_id=r.tenant_id,
+                position=r.position,
+                days_bitmap=r.days_bitmap,
+                strategy=r.strategy,  # type: ignore[arg-type]
+                anchor_date=r.anchor_date,
+                weeks_per_position=r.weeks_per_position,
+                weekly_pins=[
+                    WeeklyPinOut(
+                        id=p.id, weekday=p.weekday, person_id=p.person_id
+                    )
+                    for p in sorted(r.weekly_pins, key=lambda x: x.id)
+                ],
+                rotation_blocks=[
+                    RotationBlockOut(
+                        id=b.id, position=b.position, days_bitmap=b.days_bitmap
+                    )
+                    for b in sorted(r.rotation_blocks, key=lambda x: x.position)
+                ],
+                rotation_members=[
+                    RotationMemberOut(
+                        id=m.id, position=m.position, person_id=m.person_id
+                    )
+                    for m in sorted(r.rotation_members, key=lambda x: (x.position, x.id))
+                ],
+            )
+            for r in sorted(snap.rules, key=lambda x: x.position)
+        ],
+        created_at=snap.created_at,
+    )
+
+
 @router.get(
-    "/periodos/{period_id}/slot-overrides",
-    response_model=list[SlotPeriodOverrideOut],
+    "/periodos/{period_id}/slot-snapshots",
+    response_model=list[SlotPeriodSnapshotOut],
 )
-def list_slot_overrides(
+def list_slot_snapshots(
     period_id: int,
     ctx: RequestContext = Depends(get_current_context),
-) -> list[SlotPeriodOverrideOut]:
+) -> list[SlotPeriodSnapshotOut]:
     _require_admin(ctx)
     _get_periodo_or_404(ctx, period_id)
     rows = (
-        ctx.db.query(SlotPeriodOverride)
-        .filter(SlotPeriodOverride.period_id == period_id)
+        ctx.db.query(SlotPeriodSnapshot)
+        .filter(SlotPeriodSnapshot.period_id == period_id)
         .all()
     )
-    return [
-        SlotPeriodOverrideOut.model_validate(r, from_attributes=True)
-        for r in rows
-    ]
+    return [_serialize_snapshot(r) for r in rows]
 
 
 @router.put(
-    "/periodos/{period_id}/slot-overrides/{slot_id}",
-    response_model=SlotPeriodOverrideOut,
+    "/periodos/{period_id}/slot-snapshots/{slot_id}",
+    response_model=SlotPeriodSnapshotOut,
 )
-def upsert_slot_override(
+def upsert_slot_snapshot(
     period_id: int,
     slot_id: int,
-    payload: SlotPeriodOverrideUpsert,
+    payload: SlotPeriodSnapshotUpsert,
     ctx: RequestContext = Depends(get_current_context),
-) -> SlotPeriodOverrideOut:
-    """Create or replace the override for one (period, slot) pair.
+) -> SlotPeriodSnapshotOut:
+    """Create or replace the snapshot for one (period, slot) pair.
 
-    Idempotent: re-PUT with the same body produces the same row.
-    Use DELETE on the same URL to remove the override (revert the
-    slot to its defaults inside the period)."""
+    Replaces the snapshot row AND every child row (rules, weekly_pins,
+    rotation_blocks, rotation_members, team_roles, team_role_categories,
+    categories, allowed_persons) atomically. The frontend's SlotDialog
+    sends the full slot config in `mode='period-snapshot'` — same
+    payload shape as PUT /api/slots/{id}, with `dismissed` at the top
+    level.
+
+    Use DELETE on the same URL to revert the slot to its defaults
+    during the period (drops the snapshot and all its child rows).
+    """
     _require_admin(ctx)
     _get_periodo_or_404(ctx, period_id)
-    # Slot must belong to caller's tenant — RLS already enforces it,
-    # but a clean 404 is friendlier than a silent empty query.
+    # Slot must belong to caller's tenant.
     slot = (
         ctx.db.query(Slot)
         .filter(Slot.id == slot_id, Slot.tenant_id == ctx.tenant.id)
@@ -254,51 +340,134 @@ def upsert_slot_override(
     if slot is None:
         raise HTTPException(status_code=404, detail="Slot no encontrado")
 
-    existing = (
-        ctx.db.query(SlotPeriodOverride)
-        .filter(
-            SlotPeriodOverride.period_id == period_id,
-            SlotPeriodOverride.slot_id == slot_id,
-        )
-        .one_or_none()
-    )
-    if existing is None:
-        row = SlotPeriodOverride(
-            tenant_id=ctx.tenant.id,
-            period_id=period_id,
-            slot_id=slot_id,
-        )
-        ctx.db.add(row)
-    else:
-        row = existing
-
-    row.headcount_override = payload.headcount_override
-    row.staffing_mode_override = payload.staffing_mode_override
-    row.dismissed = payload.dismissed
-    row.allowed_category_ids_override = payload.allowed_category_ids_override
-    row.allowed_person_ids_override = payload.allowed_person_ids_override
+    # Drop any existing snapshot first (CASCADE wipes child rows).
+    # Atomic replace; we don't try to diff-patch.
+    ctx.db.query(SlotPeriodSnapshot).filter(
+        SlotPeriodSnapshot.period_id == period_id,
+        SlotPeriodSnapshot.slot_id == slot_id,
+    ).delete(synchronize_session=False)
     ctx.db.flush()
-    return SlotPeriodOverrideOut.model_validate(row, from_attributes=True)
+
+    snap = SlotPeriodSnapshot(
+        tenant_id=ctx.tenant.id,
+        period_id=period_id,
+        slot_id=slot_id,
+        dismissed=payload.dismissed,
+        start_time=payload.start_time,
+        end_time=payload.end_time,
+        days_applied=payload.days_applied,
+        custom_days_bitmap=payload.custom_days_bitmap,
+        staffing_mode=payload.staffing_mode,
+        headcount=payload.headcount,
+        post_slot_rest=payload.post_slot_rest,
+        counts_for_equity=payload.counts_for_equity,
+        guardia_type=payload.guardia_type or None,
+        color=payload.color or None,
+    )
+    ctx.db.add(snap)
+    ctx.db.flush()
+
+    # Team roles + their categoría restrictions.
+    for tr in payload.team_roles:
+        tr_row = SlotPeriodSnapshotTeamRole(
+            tenant_id=ctx.tenant.id,
+            snapshot_id=snap.id,
+            role_label=tr.role_label,
+            headcount=tr.headcount,
+        )
+        ctx.db.add(tr_row)
+        ctx.db.flush()
+        for cat_id in tr.category_ids:
+            ctx.db.add(
+                SlotPeriodSnapshotTeamRoleCategory(
+                    tenant_id=ctx.tenant.id,
+                    snapshot_team_role_id=tr_row.id,
+                    category_id=cat_id,
+                )
+            )
+
+    # Slot-level allow-lists.
+    for pid in payload.allowed_person_ids:
+        ctx.db.add(
+            SlotPeriodSnapshotAllowedPerson(
+                tenant_id=ctx.tenant.id,
+                snapshot_id=snap.id,
+                person_id=pid,
+            )
+        )
+    for cid in payload.allowed_category_ids:
+        ctx.db.add(
+            SlotPeriodSnapshotCategory(
+                tenant_id=ctx.tenant.id,
+                snapshot_id=snap.id,
+                category_id=cid,
+            )
+        )
+
+    # Rules + child rows.
+    for idx, rule in enumerate(payload.rules):
+        rule_row = SlotPeriodSnapshotRule(
+            tenant_id=ctx.tenant.id,
+            snapshot_id=snap.id,
+            position=idx,
+            days_bitmap=rule.days_bitmap,
+            strategy=rule.strategy,
+            anchor_date=rule.anchor_date,
+            weeks_per_position=rule.weeks_per_position,
+        )
+        ctx.db.add(rule_row)
+        ctx.db.flush()
+        for pin in rule.weekly_pins:
+            ctx.db.add(
+                SlotPeriodSnapshotRuleWeeklyPin(
+                    tenant_id=ctx.tenant.id,
+                    snapshot_rule_id=rule_row.id,
+                    weekday=pin.weekday,
+                    person_id=pin.person_id,
+                )
+            )
+        for block in rule.rotation_blocks:
+            ctx.db.add(
+                SlotPeriodSnapshotRuleRotationBlock(
+                    tenant_id=ctx.tenant.id,
+                    snapshot_rule_id=rule_row.id,
+                    position=block.position,
+                    days_bitmap=block.days_bitmap,
+                )
+            )
+        for member in rule.rotation_members:
+            ctx.db.add(
+                SlotPeriodSnapshotRuleRotationMember(
+                    tenant_id=ctx.tenant.id,
+                    snapshot_rule_id=rule_row.id,
+                    position=member.position,
+                    person_id=member.person_id,
+                )
+            )
+
+    ctx.db.flush()
+    ctx.db.refresh(snap)
+    return _serialize_snapshot(snap)
 
 
 @router.delete(
-    "/periodos/{period_id}/slot-overrides/{slot_id}",
+    "/periodos/{period_id}/slot-snapshots/{slot_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
 )
-def delete_slot_override(
+def delete_slot_snapshot(
     period_id: int,
     slot_id: int,
     ctx: RequestContext = Depends(get_current_context),
 ) -> None:
-    """Remove the override for (period, slot) so the slot returns
-    to its defaults inside the period. No-op (204) if no override
-    exists."""
+    """Remove the snapshot so the slot reverts to its defaults
+    during the period. No-op (204) if no snapshot exists. CASCADE
+    on the snapshot table cleans up every child row."""
     _require_admin(ctx)
     _get_periodo_or_404(ctx, period_id)
-    ctx.db.query(SlotPeriodOverride).filter(
-        SlotPeriodOverride.period_id == period_id,
-        SlotPeriodOverride.slot_id == slot_id,
+    ctx.db.query(SlotPeriodSnapshot).filter(
+        SlotPeriodSnapshot.period_id == period_id,
+        SlotPeriodSnapshot.slot_id == slot_id,
     ).delete(synchronize_session=False)
     ctx.db.flush()
 
@@ -357,97 +526,13 @@ def generate_periodo(
 
 
 # ---------------------------------------------------------------------------
-# V.2 — rule / succession / cap overrides
+# V.2 — succession + frequency cap deltas
 #
-# Three parallel CRUD surfaces, one per target type. Same shape as the
-# slot-override endpoints above: GET list under the periodo, PUT upsert
-# by target id, DELETE to revert to default. All admin-only and scoped
-# to the caller's tenant via the existing _get_periodo_or_404 +
-# Slot*/SlotSuccessionRule*/SlotFrequencyCap* tenant_id checks.
+# Per-rule SlotRule overrides moved to the V.2.5 snapshot model
+# (they're part of the slot's full config now). The two surfaces below
+# remain because succession + cap rules are tenant-scoped (cross-slot),
+# so the delta model still fits.
 # ---------------------------------------------------------------------------
-
-
-@router.get(
-    "/periodos/{period_id}/rule-overrides",
-    response_model=list[SlotRulePeriodOverrideOut],
-)
-def list_rule_overrides(
-    period_id: int,
-    ctx: RequestContext = Depends(get_current_context),
-) -> list[SlotRulePeriodOverrideOut]:
-    _require_admin(ctx)
-    _get_periodo_or_404(ctx, period_id)
-    rows = (
-        ctx.db.query(SlotRulePeriodOverride)
-        .filter(SlotRulePeriodOverride.period_id == period_id)
-        .all()
-    )
-    return [
-        SlotRulePeriodOverrideOut.model_validate(r, from_attributes=True)
-        for r in rows
-    ]
-
-
-@router.put(
-    "/periodos/{period_id}/rule-overrides/{rule_id}",
-    response_model=SlotRulePeriodOverrideOut,
-)
-def upsert_rule_override(
-    period_id: int,
-    rule_id: int,
-    payload: SlotRulePeriodOverrideUpsert,
-    ctx: RequestContext = Depends(get_current_context),
-) -> SlotRulePeriodOverrideOut:
-    _require_admin(ctx)
-    _get_periodo_or_404(ctx, period_id)
-    rule = (
-        ctx.db.query(SlotRule)
-        .filter(SlotRule.id == rule_id, SlotRule.tenant_id == ctx.tenant.id)
-        .one_or_none()
-    )
-    if rule is None:
-        raise HTTPException(status_code=404, detail="Regla no encontrada")
-
-    existing = (
-        ctx.db.query(SlotRulePeriodOverride)
-        .filter(
-            SlotRulePeriodOverride.period_id == period_id,
-            SlotRulePeriodOverride.rule_id == rule_id,
-        )
-        .one_or_none()
-    )
-    if existing is None:
-        row = SlotRulePeriodOverride(
-            tenant_id=ctx.tenant.id,
-            period_id=period_id,
-            rule_id=rule_id,
-        )
-        ctx.db.add(row)
-    else:
-        row = existing
-    row.strategy_override = payload.strategy_override
-    row.disabled = payload.disabled
-    ctx.db.flush()
-    return SlotRulePeriodOverrideOut.model_validate(row, from_attributes=True)
-
-
-@router.delete(
-    "/periodos/{period_id}/rule-overrides/{rule_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    response_model=None,
-)
-def delete_rule_override(
-    period_id: int,
-    rule_id: int,
-    ctx: RequestContext = Depends(get_current_context),
-) -> None:
-    _require_admin(ctx)
-    _get_periodo_or_404(ctx, period_id)
-    ctx.db.query(SlotRulePeriodOverride).filter(
-        SlotRulePeriodOverride.period_id == period_id,
-        SlotRulePeriodOverride.rule_id == rule_id,
-    ).delete(synchronize_session=False)
-    ctx.db.flush()
 
 
 @router.get(

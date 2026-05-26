@@ -27,6 +27,28 @@ Soft objective (minimize):
 - Guardia spread: penalize same-person guardias <4 days apart (weight 3).
 
 Weights are module constants — tune in code for now.
+
+V.2.5 vacation snapshots — known limitations:
+- Assignment.team_role_id FKs slot_team_roles. Snapshot team roles
+  (SlotPeriodSnapshotTeamRole) live in a different table, so
+  assignments emitted from a snapshot's roles store team_role_id =
+  NULL and stuff "Role: <label>" into Assignment.notes. The UI uses
+  the note to render the role pill. Fix paths: (a) make
+  Assignment.team_role_id polymorphic, or (b) materialise real
+  SlotTeamRole rows when a snapshot is created. Out of scope for the
+  V.2.5 solver pivot.
+- The Latin-rectangle role-balance block constraint inside
+  `_solve_cpsat` uses the default `team_roles_by_slot` role set. For
+  dates inside an active snapshot it silently produces zero matches
+  and the balance constraint is skipped. The solver still produces a
+  valid solution; only the fairness of (person, role) distribution
+  within a snapshot block degrades. Same for the per-(slot, role)
+  equity objective.
+- `_compute_team_composition_rotation_prepins` skips dates with a
+  snapshot — the regular per-date demand path handles them via
+  `team_pinned_by_slot_day`. Pre-pinning is a perf optimisation; not
+  pre-pinning a few dates inside a snapshot has no correctness
+  impact.
 """
 
 from __future__ import annotations
@@ -52,9 +74,16 @@ from app.models import (
     SlotCategory,
     SlotFrequencyCap,
     SlotFrequencyCapPeriodOverride,
-    SlotPeriodOverride,
+    SlotPeriodSnapshot,
+    SlotPeriodSnapshotAllowedPerson,
+    SlotPeriodSnapshotCategory,
+    SlotPeriodSnapshotRule,
+    SlotPeriodSnapshotRuleRotationBlock,
+    SlotPeriodSnapshotRuleRotationMember,
+    SlotPeriodSnapshotRuleWeeklyPin,
+    SlotPeriodSnapshotTeamRole,
+    SlotPeriodSnapshotTeamRoleCategory,
     SlotRule,
-    SlotRulePeriodOverride,
     SlotRuleRotationBlock,
     SlotRuleRotationMember,
     SlotRuleWeeklyPin,
@@ -270,12 +299,17 @@ class _Context:
         self.dates = days
 
         # ----------------------------------------------------------------
-        # Periodos especiales + slot overrides (V.1 vacation feature).
-        # We load every periodo whose [start_date, end_date] intersects
-        # the solve range, plus their slot overrides. The helper methods
-        # below (effective_*) then resolve slot config per (slot, date)
-        # consulting any active override; callers that don't care about
-        # periods get the default config unchanged.
+        # Periodos especiales + per-slot snapshots (V.2.5 vacation
+        # feature). We load every periodo whose [start_date, end_date]
+        # intersects the solve range, plus every snapshot whose period
+        # is in that set. For an in-period (slot, date) where a
+        # snapshot exists, the snapshot replaces the slot's default
+        # config wholesale (rules + child rows + team_roles +
+        # allow-lists). When no snapshot exists for (period, slot),
+        # defaults apply unchanged.
+        # Migration 0077 dropped the V.1 `slot_period_overrides` and
+        # V.2 `slot_rule_period_overrides` delta tables. Succession +
+        # frequency cap deltas (tenant-scoped, cross-slot) remain.
         # ----------------------------------------------------------------
         self.periodos: list[PeriodoEspecial] = (
             db.query(PeriodoEspecial)
@@ -293,18 +327,42 @@ class _Context:
             for d in days:
                 if p.start_date <= d <= p.end_date:
                     self.period_id_by_date[d] = p.id
-        # (slot_id, period_id) → SlotPeriodOverride row. Only the
-        # overrides whose period intersects the solve range are
-        # loaded; a missing key means "no override, use slot default."
-        self.overrides_by_slot_period: dict[
-            tuple[int, int], SlotPeriodOverride
+
+        # Snapshot dicts. All keyed by (period_id, slot_id) for the
+        # top-level snapshot lookup, and by snapshot.id (or snapshot
+        # rule id / snapshot team role id) for the child rows. A
+        # missing key always means "no snapshot, use default."
+        self.snapshots_by_period_slot: dict[
+            tuple[int, int], SlotPeriodSnapshot
         ] = {}
-        # V.2: per-(rule/succession/cap, period) overrides. Same
-        # delta-style — only rows that actually differ from the
-        # default exist. Lookup is by (target_id, period_id).
-        self.rule_overrides_by_rule_period: dict[
-            tuple[int, int], SlotRulePeriodOverride
-        ] = {}
+        self.snapshot_rules_by_snapshot: dict[
+            int, list[SlotPeriodSnapshotRule]
+        ] = defaultdict(list)
+        # snapshot_rule_id → weekday → [person_ids]
+        self.snapshot_weekly_pins_by_rule: dict[
+            int, dict[int, list[int]]
+        ] = defaultdict(lambda: defaultdict(list))
+        self.snapshot_rotation_blocks_by_rule: dict[
+            int, list[SlotPeriodSnapshotRuleRotationBlock]
+        ] = defaultdict(list)
+        self.snapshot_rotation_members_by_rule: dict[
+            int, list[SlotPeriodSnapshotRuleRotationMember]
+        ] = defaultdict(list)
+        self.snapshot_team_roles_by_snapshot: dict[
+            int, list[SlotPeriodSnapshotTeamRole]
+        ] = defaultdict(list)
+        # snapshot_team_role_id → set of category_ids
+        self.snapshot_team_role_categories: dict[int, set[int]] = defaultdict(set)
+        self.snapshot_allowed_persons_by_snapshot: dict[
+            int, set[int]
+        ] = defaultdict(set)
+        self.snapshot_categories_by_snapshot: dict[
+            int, set[int]
+        ] = defaultdict(set)
+
+        # Succession + frequency cap deltas — kept from V.2 (these
+        # don't fit the snapshot model because they're tenant-scoped,
+        # not per-slot).
         self.succession_overrides_by_rule_period: dict[
             tuple[int, int], SlotSuccessionRulePeriodOverride
         ] = {}
@@ -313,20 +371,134 @@ class _Context:
         ] = {}
         if self.periodos:
             period_ids = [p.id for p in self.periodos]
-            for o in (
-                db.query(SlotPeriodOverride)
-                .filter(SlotPeriodOverride.period_id.in_(period_ids))
+            # Top-level snapshots first; collect ids so we can scope
+            # the child-row queries to just those snapshots.
+            snapshots = (
+                db.query(SlotPeriodSnapshot)
+                .filter(SlotPeriodSnapshot.period_id.in_(period_ids))
                 .all()
-            ):
-                self.overrides_by_slot_period[(o.slot_id, o.period_id)] = o
-            for o in (
-                db.query(SlotRulePeriodOverride)
-                .filter(SlotRulePeriodOverride.period_id.in_(period_ids))
-                .all()
-            ):
-                self.rule_overrides_by_rule_period[
-                    (o.rule_id, o.period_id)
-                ] = o
+            )
+            snapshot_ids: list[int] = []
+            for snap in snapshots:
+                self.snapshots_by_period_slot[
+                    (snap.period_id, snap.slot_id)
+                ] = snap
+                snapshot_ids.append(snap.id)
+            if snapshot_ids:
+                # Rules — order by (snapshot_id, position) so the
+                # per-snapshot list is already in position order and
+                # rule_for() can walk it linearly.
+                snap_rules = (
+                    db.query(SlotPeriodSnapshotRule)
+                    .filter(
+                        SlotPeriodSnapshotRule.snapshot_id.in_(snapshot_ids)
+                    )
+                    .order_by(
+                        SlotPeriodSnapshotRule.position,
+                        SlotPeriodSnapshotRule.id,
+                    )
+                    .all()
+                )
+                snap_rule_ids: list[int] = []
+                for r in snap_rules:
+                    self.snapshot_rules_by_snapshot[r.snapshot_id].append(r)
+                    snap_rule_ids.append(r.id)
+                if snap_rule_ids:
+                    for p in (
+                        db.query(SlotPeriodSnapshotRuleWeeklyPin)
+                        .filter(
+                            SlotPeriodSnapshotRuleWeeklyPin
+                            .snapshot_rule_id.in_(snap_rule_ids)
+                        )
+                        .all()
+                    ):
+                        self.snapshot_weekly_pins_by_rule[
+                            p.snapshot_rule_id
+                        ][p.weekday].append(p.person_id)
+                    for b in (
+                        db.query(SlotPeriodSnapshotRuleRotationBlock)
+                        .filter(
+                            SlotPeriodSnapshotRuleRotationBlock
+                            .snapshot_rule_id.in_(snap_rule_ids)
+                        )
+                        .order_by(
+                            SlotPeriodSnapshotRuleRotationBlock.position,
+                            SlotPeriodSnapshotRuleRotationBlock.id,
+                        )
+                        .all()
+                    ):
+                        self.snapshot_rotation_blocks_by_rule[
+                            b.snapshot_rule_id
+                        ].append(b)
+                    for m in (
+                        db.query(SlotPeriodSnapshotRuleRotationMember)
+                        .filter(
+                            SlotPeriodSnapshotRuleRotationMember
+                            .snapshot_rule_id.in_(snap_rule_ids)
+                        )
+                        .order_by(
+                            SlotPeriodSnapshotRuleRotationMember.position,
+                            SlotPeriodSnapshotRuleRotationMember.id,
+                        )
+                        .all()
+                    ):
+                        self.snapshot_rotation_members_by_rule[
+                            m.snapshot_rule_id
+                        ].append(m)
+                # Team roles + their category restrictions.
+                snap_team_roles = (
+                    db.query(SlotPeriodSnapshotTeamRole)
+                    .filter(
+                        SlotPeriodSnapshotTeamRole.snapshot_id.in_(
+                            snapshot_ids
+                        )
+                    )
+                    .all()
+                )
+                snap_team_role_ids: list[int] = []
+                for tr in snap_team_roles:
+                    self.snapshot_team_roles_by_snapshot[
+                        tr.snapshot_id
+                    ].append(tr)
+                    snap_team_role_ids.append(tr.id)
+                if snap_team_role_ids:
+                    for trc in (
+                        db.query(SlotPeriodSnapshotTeamRoleCategory)
+                        .filter(
+                            SlotPeriodSnapshotTeamRoleCategory
+                            .snapshot_team_role_id.in_(snap_team_role_ids)
+                        )
+                        .all()
+                    ):
+                        self.snapshot_team_role_categories[
+                            trc.snapshot_team_role_id
+                        ].add(trc.category_id)
+                # Allow-list + categoría restriction snapshots.
+                for sap in (
+                    db.query(SlotPeriodSnapshotAllowedPerson)
+                    .filter(
+                        SlotPeriodSnapshotAllowedPerson.snapshot_id.in_(
+                            snapshot_ids
+                        )
+                    )
+                    .all()
+                ):
+                    self.snapshot_allowed_persons_by_snapshot[
+                        sap.snapshot_id
+                    ].add(sap.person_id)
+                for sc in (
+                    db.query(SlotPeriodSnapshotCategory)
+                    .filter(
+                        SlotPeriodSnapshotCategory.snapshot_id.in_(
+                            snapshot_ids
+                        )
+                    )
+                    .all()
+                ):
+                    self.snapshot_categories_by_snapshot[
+                        sc.snapshot_id
+                    ].add(sc.category_id)
+            # Succession + cap deltas (unchanged from V.2).
             for o in (
                 db.query(SlotSuccessionRulePeriodOverride)
                 .filter(
@@ -372,70 +544,93 @@ class _Context:
             self.prior_published_counts[key] += 1
 
     # ---------------------------------------------------------------
-    # Period-aware effective config getters (V.1 vacation feature).
+    # Period-aware effective config getters (V.2.5 vacation feature).
     # Every callsite that needs slot.headcount / slot.staffing_mode /
     # the allow-list / the categoría restriction should go through
     # these helpers instead of reading the Slot column directly. For
-    # dates not inside any periodo, the helpers return the slot's
-    # default — same semantics as before the feature shipped.
+    # dates not inside any periodo, OR inside a period where no
+    # snapshot exists for the (period, slot), the helpers return the
+    # slot's default — same semantics as before the feature shipped.
     # ---------------------------------------------------------------
-    def _slot_override(
+    def _snapshot_for(
         self, slot_id: int, d: date
-    ) -> SlotPeriodOverride | None:
+    ) -> SlotPeriodSnapshot | None:
         pid = self.period_id_by_date.get(d)
         if pid is None:
             return None
-        return self.overrides_by_slot_period.get((slot_id, pid))
+        return self.snapshots_by_period_slot.get((pid, slot_id))
 
     def is_period_dismissed(self, slot_id: int, d: date) -> bool:
-        """True when an active periodo override marks this slot as
-        not running on date d. Callers should skip demand generation
-        for the (slot, date) pair entirely."""
-        ovr = self._slot_override(slot_id, d)
-        return bool(ovr and ovr.dismissed)
+        """True when an active snapshot marks this slot as not running
+        on date d. Callers should skip demand generation for the
+        (slot, date) pair entirely."""
+        snap = self._snapshot_for(slot_id, d)
+        return bool(snap and snap.dismissed)
 
     def effective_headcount(self, slot: Slot, d: date) -> int:
-        ovr = self._slot_override(slot.id, d)
-        if ovr and ovr.headcount_override is not None:
-            return ovr.headcount_override
+        snap = self._snapshot_for(slot.id, d)
+        if snap and not snap.dismissed:
+            return snap.headcount
         return slot.headcount
 
     def effective_staffing_mode(self, slot: Slot, d: date) -> str:
         """Returns the staffing_mode that should apply for this
-        (slot, date). V.1 stores the override but the demand
-        generator doesn't switch shape mid-period yet — flipping
-        between single and team_composition requires more solver
-        plumbing (V.2). For now the helper is here so callers that
-        DO care (the future per-rule strategy override) can use it."""
-        ovr = self._slot_override(slot.id, d)
-        if ovr and ovr.staffing_mode_override is not None:
-            return ovr.staffing_mode_override
+        (slot, date). The snapshot can flip between
+        single / multiple_same / team_composition — solver branches
+        downstream continue to read `slot.staffing_mode` for the
+        per-day mode decision, this helper is here for callers that
+        explicitly want the period-aware value."""
+        snap = self._snapshot_for(slot.id, d)
+        if snap and not snap.dismissed:
+            return snap.staffing_mode
         return slot.staffing_mode
 
     def effective_allowed_persons(self, slot_id: int, d: date) -> set[int]:
         """Returns the eligible-person set for (slot, date). An empty
         set means "no restriction" — matches the existing semantics
-        for slots with no SlotAllowedPerson rows. Override semantics:
-          - NULL → use the slot's default list
-          - [] → drop the restriction entirely during the period
-          - [a, b, ...] → restrict to exactly that set during the period
+        for slots with no SlotAllowedPerson rows. Snapshot semantics:
+          - no snapshot → use the slot's default list
+          - snapshot exists with no rows → empty set ("no restriction")
+          - snapshot with [a, b, ...] → restrict to exactly that set
         """
-        ovr = self._slot_override(slot_id, d)
-        if ovr and ovr.allowed_person_ids_override is not None:
-            return set(ovr.allowed_person_ids_override)
+        snap = self._snapshot_for(slot_id, d)
+        if snap is not None:
+            return self.snapshot_allowed_persons_by_snapshot.get(
+                snap.id, set()
+            )
         return set(self.slot_allowed_persons.get(slot_id, set()))
 
     def effective_allowed_categories(self, slot_id: int, d: date) -> set[int]:
         """Same semantics as effective_allowed_persons but for the
         slot-level categoría restriction (SlotCategory rows)."""
-        ovr = self._slot_override(slot_id, d)
-        if ovr and ovr.allowed_category_ids_override is not None:
-            return set(ovr.allowed_category_ids_override)
+        snap = self._snapshot_for(slot_id, d)
+        if snap is not None:
+            return self.snapshot_categories_by_snapshot.get(snap.id, set())
         return set(self.slot_categories.get(slot_id, set()))
 
+    def effective_team_roles(self, slot_id: int, d: date) -> list:
+        """Return the team roles applying to (slot, date). When a
+        non-dismissed snapshot exists, use the snapshot's roles
+        (which are SlotPeriodSnapshotTeamRole rows — same shape:
+        `id`, `role_label`, `headcount`). Otherwise use the slot's
+        default SlotTeamRole rows."""
+        snap = self._snapshot_for(slot_id, d)
+        if snap and not snap.dismissed:
+            return self.snapshot_team_roles_by_snapshot.get(snap.id, [])
+        return self.team_roles_by_slot.get(slot_id, [])
+
+    def effective_team_role_categories(self, role) -> set[int]:
+        """Return the category-id set restricting a team role.
+        Dispatches by type: snapshot team roles and default
+        SlotTeamRole rows live in different id namespaces, so
+        category lookups must route by row type rather than id."""
+        if isinstance(role, SlotPeriodSnapshotTeamRole):
+            return self.snapshot_team_role_categories.get(role.id, set())
+        return self.team_role_categories.get(role.id, set())
+
     # ---------------------------------------------------------------
-    # V.2 effective-rule helpers. Each takes the target row + a date
-    # and returns either:
+    # Cross-slot delta helpers (kept from V.2 — succession + caps).
+    # Each takes the target row + a date and returns either:
     #   - (effective_value, False)   — the override is "active" but
     #                                  the rule still fires; the
     #                                  caller uses effective_value
@@ -446,22 +641,6 @@ class _Context:
     # The wrapping is verbose but explicit; callers don't have to
     # juggle None semantics or check `disabled` separately.
     # ---------------------------------------------------------------
-    def effective_rule_strategy(self, rule: SlotRule, d: date) -> tuple[str, bool]:
-        """Return (strategy, disabled). When disabled, the rule's
-        weekday-bitmap match falls through to "no rule applies" —
-        same as if the admin had no rule for that weekday."""
-        pid = self.period_id_by_date.get(d)
-        if pid is None:
-            return rule.strategy, False
-        ovr = self.rule_overrides_by_rule_period.get((rule.id, pid))
-        if ovr is None:
-            return rule.strategy, False
-        if ovr.disabled:
-            return rule.strategy, True
-        if ovr.strategy_override is not None:
-            return ovr.strategy_override, False
-        return rule.strategy, False
-
     def effective_succession_rule(
         self, rule: SlotSuccessionRule, d: date
     ) -> tuple[int, str, bool]:
@@ -533,30 +712,64 @@ class _Context:
                 return True
         return False
 
-    def rule_for(self, slot_id: int, d: date) -> SlotRule | None:
+    def rule_for(self, slot_id: int, d: date):
         """Return the single rule that covers `d` for this slot, or None.
 
         Rules within a slot are guaranteed non-overlapping at the API
-        layer, so there's at most one match. None means the slot has no
-        rule that covers this weekday — admin chose to leave that day
-        uncovered.
+        layer, so there's at most one match. None means the slot has
+        no rule that covers this weekday — admin chose to leave that
+        day uncovered.
 
-        V.2 vacation feature: if the matching rule has an active
-        period override marking it `disabled`, return None — same
-        semantics as "no rule applies." The slot falls through to
-        the no-rule branch (no demand emitted, cell stays empty).
+        V.2.5 vacation feature: when a snapshot exists for the
+        (period, slot) covering `d`, look up rules from the snapshot's
+        own rule set instead of the default. The snapshot rule set is
+        completely independent — it may add / remove / re-shape rules
+        relative to the default. A dismissed snapshot short-circuits
+        to None ("slot doesn't run"). The returned row is either a
+        `SlotRule` or a `SlotPeriodSnapshotRule`; both expose the same
+        fields (`position`, `days_bitmap`, `strategy`, `anchor_date`,
+        `weeks_per_position`) so downstream code that reads them
+        works unchanged. ID namespaces differ — see the dispatch
+        helpers below for rotation / weekly-pin lookups.
         """
         wd = d.weekday()
         bit = 1 << wd
+        snap = self._snapshot_for(slot_id, d)
+        if snap is not None:
+            if snap.dismissed:
+                return None
+            for r in self.snapshot_rules_by_snapshot.get(snap.id, ()):
+                if r.days_bitmap & bit:
+                    return r
+            return None
         for r in self.rules_by_slot.get(slot_id, ()):
             if r.days_bitmap & bit:
-                _, disabled = self.effective_rule_strategy(r, d)
-                if disabled:
-                    return None
                 return r
         return None
 
-    def rotation_persons_for(self, rule: SlotRule, d: date) -> list[int]:
+    # ---------------------------------------------------------------
+    # Rotation / fixed-weekly accessors. The rule passed in may be a
+    # `SlotRule` (default) or a `SlotPeriodSnapshotRule` (in-period).
+    # These dispatch helpers pull the matching child rows from the
+    # right dict so the rotation math below is identical regardless
+    # of source.
+    # ---------------------------------------------------------------
+    def _rotation_blocks_for(self, rule) -> list:
+        if isinstance(rule, SlotPeriodSnapshotRule):
+            return self.snapshot_rotation_blocks_by_rule.get(rule.id, [])
+        return self.rotation_blocks_by_rule.get(rule.id, [])
+
+    def _rotation_members_for(self, rule) -> list:
+        if isinstance(rule, SlotPeriodSnapshotRule):
+            return self.snapshot_rotation_members_by_rule.get(rule.id, [])
+        return self.rotation_members_by_rule.get(rule.id, [])
+
+    def _weekly_pins_for(self, rule) -> dict[int, list[int]]:
+        if isinstance(rule, SlotPeriodSnapshotRule):
+            return self.snapshot_weekly_pins_by_rule.get(rule.id, {})
+        return self.weekly_pins_by_rule.get(rule.id, {})
+
+    def rotation_persons_for(self, rule, d: date) -> list[int]:
         """Compute the rotation-assigned team for a rotation rule + date.
 
         Each block on the calendar advances the position by exactly 1.
@@ -583,8 +796,8 @@ class _Context:
         """
         if rule.anchor_date is None:
             return []
-        blocks = self.rotation_blocks_by_rule.get(rule.id, [])
-        members = self.rotation_members_by_rule.get(rule.id, [])
+        blocks = self._rotation_blocks_for(rule)
+        members = self._rotation_members_for(rule)
         if not blocks or not members:
             return []
         wd = d.weekday()
@@ -647,11 +860,11 @@ class _Context:
     # Back-compat shim: a few legacy code paths and tests want a single
     # person. Returns the first member of the rotation team for this date,
     # or None.
-    def rotation_person_for(self, rule: SlotRule, d: date) -> int | None:
+    def rotation_person_for(self, rule, d: date) -> int | None:
         team = self.rotation_persons_for(rule, d)
         return team[0] if team else None
 
-    def team_block_rank_for(self, rule: SlotRule, d: date) -> int:
+    def team_block_rank_for(self, rule, d: date) -> int:
         """Return how many blocks of the SAME rotation team have
         elapsed since anchor_date, up to (and including) the block
         containing date d.
@@ -673,8 +886,8 @@ class _Context:
         """
         if rule.anchor_date is None:
             return 0
-        blocks = self.rotation_blocks_by_rule.get(rule.id, [])
-        members = self.rotation_members_by_rule.get(rule.id, [])
+        blocks = self._rotation_blocks_for(rule)
+        members = self._rotation_members_for(rule)
         if not blocks or not members:
             return 0
         wd = d.weekday()
@@ -713,9 +926,9 @@ class _Context:
         advance_counter = (weeks // weeks_step) * k + rank
         return advance_counter // p_count
 
-    def fixed_weekly_persons(self, rule: SlotRule, d: date) -> list[int]:
+    def fixed_weekly_persons(self, rule, d: date) -> list[int]:
         """Return the pinned person_ids for the (rule, weekday) pair."""
-        return list(self.weekly_pins_by_rule.get(rule.id, {}).get(d.weekday(), []))
+        return list(self._weekly_pins_for(rule).get(d.weekday(), []))
 
     # -- Eligibility, used by both solver and the manual-edit endpoint. ---
 
@@ -725,10 +938,19 @@ class _Context:
         slot: Slot,
         d: date,
         team_role_id: int | None = None,
+        team_role=None,
     ) -> str | None:
         """Return None if the person CAN take the slot on date d, else a
         Spanish human-readable reason. Mirrors the filters used by the
-        solver — keep the two in lockstep."""
+        solver — keep the two in lockstep.
+
+        `team_role` (preferred when available) is the actual role row
+        — either a `SlotTeamRole` or a `SlotPeriodSnapshotTeamRole`.
+        Passing it lets the helper dispatch to the right category dict
+        regardless of id namespace. `team_role_id` is kept for legacy
+        callers that only have the int id (always interpreted in the
+        default SlotTeamRole namespace).
+        """
         m = self.member_by_person_id.get(person_id)
         if not m:
             return "La persona no es miembro activo del equipo"
@@ -753,8 +975,13 @@ class _Context:
         slot_cats = self.effective_allowed_categories(slot.id, d)
         if slot_cats and m.category_id not in slot_cats:
             return "Su categoría no cubre este turno"
-        # Team-role categories.
-        if team_role_id is not None:
+        # Team-role categories. Snapshot team roles have their own id
+        # namespace, so prefer the object-based dispatch when given.
+        if team_role is not None:
+            cats = self.effective_team_role_categories(team_role)
+            if cats and m.category_id not in cats:
+                return "Su categoría no cubre este rol"
+        elif team_role_id is not None:
             cats = self.team_role_categories.get(team_role_id)
             if cats and m.category_id not in cats:
                 return "Su categoría no cubre este rol"
@@ -771,10 +998,16 @@ class _Context:
         slot: Slot,
         d: date,
         team_role_id: int | None = None,
+        team_role=None,
     ) -> list[int]:
         out: list[int] = []
         for m in self.memberships:
-            if self.eligibility_reason(m.person_id, slot, d, team_role_id) is None:
+            if (
+                self.eligibility_reason(
+                    m.person_id, slot, d, team_role_id, team_role
+                )
+                is None
+            ):
                 out.append(m.person_id)
         return out
 
@@ -786,7 +1019,12 @@ def is_eligible(
     d: date,
     team_role_id: int | None = None,
 ) -> tuple[bool, str | None]:
-    """Public wrapper for use by the manual-edit endpoint."""
+    """Public wrapper for use by the manual-edit endpoint. Always
+    uses the default `SlotTeamRole` namespace — the manual-edit
+    endpoint operates on persisted Assignment rows, whose
+    `team_role_id` always points at a default slot_team_roles row
+    (snapshot roles never make it onto Assignment.team_role_id; see
+    V.2.5 limitation note in scheduler.py)."""
     reason = ctx.eligibility_reason(person_id, slot, d, team_role_id)
     return (reason is None, reason)
 
@@ -833,7 +1071,11 @@ def _greedy_fallback(
     # team-pinned days. CP-SAT enforces this exactly via balance blocks;
     # the greedy fallback only nudges by preferring the lowest-count
     # role-person pairing.
-    role_counts: Counter[tuple[int, int]] = Counter()
+    # Key shape: (person_id, role_table_name, role_id). The table-name
+    # discriminator keeps snapshot team roles in their own counter
+    # namespace — their ids overlap with default SlotTeamRole.id but
+    # they represent different "roles" semantically.
+    role_counts: Counter[tuple[int, str, int]] = Counter()
     locked = locked or []
     # Sprint 28: dismissed (slot, date) pairs. Greedy must skip them
     # just like CP-SAT does — no demands, no fills. The dismissed
@@ -897,14 +1139,14 @@ def _greedy_fallback(
         pool.sort(key=lambda pid: (counts[pid], pid))
         return pool[0]
 
-    def _pin_persons(rule: SlotRule, d: date) -> list[int] | None:
-        """Return the configured person_ids for a non-solver rule on date d,
-        or None if the rule is solver/manual (caller round-robins instead).
-
-        V.2: route through effective_rule_strategy so a period override
-        that switches rotation → solver (or disables the rule) doesn't
-        emit stale pins."""
-        strategy, _ = ctx.effective_rule_strategy(rule, d)
+    def _pin_persons(rule, d: date) -> list[int] | None:
+        """Return the configured person_ids for a non-solver rule on
+        date d, or None if the rule is solver/manual (caller
+        round-robins instead). The rule may be either a SlotRule
+        (default) or a SlotPeriodSnapshotRule (in-period); both
+        expose a `strategy` field. Rotation / pin dict access goes
+        through ctx's dispatch helpers."""
+        strategy = rule.strategy
         if strategy == "fixed_weekly":
             return list(ctx.fixed_weekly_persons(rule, d))
         if strategy == "rotation":
@@ -920,13 +1162,11 @@ def _greedy_fallback(
     def _slot_priority(slot: Slot, d: date) -> int:
         """Lower runs first. Pinned/rotation slots before round-robin —
         applies to both single/multiple_same AND team_composition slots
-        (sprint 16: the latter can now have a rule pinning a team).
-        V.2: same effective-strategy routing as _pin_persons."""
+        (sprint 16: the latter can now have a rule pinning a team)."""
         rule = ctx.rule_for(slot.id, d)
         if rule is None:
             return 1
-        strategy, _ = ctx.effective_rule_strategy(rule, d)
-        if strategy in ("fixed_weekly", "rotation"):
+        if rule.strategy in ("fixed_weekly", "rotation"):
             return 0
         return 1
 
@@ -950,11 +1190,10 @@ def _greedy_fallback(
             rule = ctx.rule_for(slot.id, d)
             if rule is None:
                 continue
-            # V.2 vacation feature: resolve the effective strategy once
-            # per (rule, d) so every branch below sees a period
-            # override (e.g. rotation → manual during a vacation period)
-            # rather than the rule's authored value.
-            strategy, _ = ctx.effective_rule_strategy(rule, d)
+            # V.2.5 vacation feature: rule_for() routes through the
+            # snapshot's rule set when one exists, so `rule.strategy`
+            # is already the period-aware strategy.
+            strategy = rule.strategy
 
             mode = slot.staffing_mode
             # Sprint 16: pre-compute the team pin per (slot, date). For
@@ -1104,7 +1343,7 @@ def _greedy_fallback(
                         )
                     )
             elif mode == "team_composition":
-                roles = ctx.team_roles_by_slot.get(slot.id, [])
+                roles = ctx.effective_team_roles(slot.id, d)
                 if not roles:
                     db.add(
                         Assignment(
@@ -1117,6 +1356,23 @@ def _greedy_fallback(
                         )
                     )
                     continue
+                # V.2.5: when the roles came from a snapshot they
+                # belong to a different table than slot_team_roles.
+                # Assignment.team_role_id points at slot_team_roles.id
+                # so we can't store the snapshot role id there; we
+                # stuff the role label in notes instead and write
+                # team_role_id=NULL. See V.2.5 limitation in the
+                # module docstring (TODO: polymorphic role FK).
+                role_id_for_assignment = (
+                    lambda r: None
+                    if isinstance(r, SlotPeriodSnapshotTeamRole)
+                    else r.id
+                )
+                role_note = (
+                    lambda r: f"Role: {r.role_label}"
+                    if isinstance(r, SlotPeriodSnapshotTeamRole)
+                    else None
+                )
                 # Sprint 16: when a rule pins a team for this date,
                 # restrict the candidate pool to those people. Otherwise
                 # (rule.strategy == "solver" or "manual") fall back to
@@ -1152,9 +1408,12 @@ def _greedy_fallback(
                 # as defined by the user").
                 picked_for_slot: set[int] = set()
                 for role in roles:
-                    if (d, slot.id, role.id) in locked_keys:
+                    role_id_db = role_id_for_assignment(role)
+                    if (d, slot.id, role_id_db) in locked_keys:
                         continue
-                    cands = ctx.candidates_for_slot(slot, d, team_role_id=role.id)
+                    cands = ctx.candidates_for_slot(
+                        slot, d, team_role=role
+                    )
                     if team_pin_set is not None:
                         cands = [p for p in cands if p in team_pin_set]
                     for _ in range(max(1, role.headcount)):
@@ -1167,6 +1426,9 @@ def _greedy_fallback(
                             )
                         ]
                         if not pool:
+                            note = role_note(role) or "No hay personal disponible"
+                            if role_note(role):
+                                note = f"{role_note(role)} — No hay personal disponible"
                             db.add(
                                 Assignment(
                                     tenant_id=ctx.tenant_id,
@@ -1174,8 +1436,8 @@ def _greedy_fallback(
                                     slot_id=slot.id,
                                     date=d,
                                     person_id=None,
-                                    team_role_id=role.id,
-                                    notes="No hay personal disponible",
+                                    team_role_id=role_id_db,
+                                    notes=note,
                                 )
                             )
                             continue
@@ -1189,7 +1451,7 @@ def _greedy_fallback(
                         if team_pin_set is not None:
                             pool.sort(
                                 key=lambda pid: (
-                                    role_counts[(pid, role.id)],
+                                    role_counts[(pid, type(role).__name__, role.id)],
                                     counts[pid],
                                     pid,
                                 )
@@ -1199,7 +1461,7 @@ def _greedy_fallback(
                         pid = pool[0]
                         picked_for_slot.add(pid)
                         record_assignment(pid, slot, d)
-                        role_counts[(pid, role.id)] += 1
+                        role_counts[(pid, type(role).__name__, role.id)] += 1
                         db.add(
                             Assignment(
                                 tenant_id=ctx.tenant_id,
@@ -1207,7 +1469,8 @@ def _greedy_fallback(
                                 slot_id=slot.id,
                                 date=d,
                                 person_id=pid,
-                                team_role_id=role.id,
+                                team_role_id=role_id_db,
+                                notes=role_note(role),
                             )
                         )
 
@@ -1486,17 +1749,23 @@ def _compute_team_composition_rotation_prepins(
             if not _slot_applies(slot, d, ctx.holiday_dates):
                 flush()
                 continue
+            # V.2.5 vacation feature: skip dates with an active
+            # snapshot for this slot — the snapshot's role set may
+            # not match the default slot's roles, and the Latin
+            # pre-pin builds `role_demand` once from the default
+            # roles. Letting the regular per-date demand path
+            # handle in-period dates (via team_pinned_by_slot_day
+            # in _solve_cpsat) keeps the pre-pin pass safe.
+            if ctx._snapshot_for(slot.id, d) is not None:
+                flush()
+                continue
             rule = ctx.rule_for(slot.id, d)
-            # V.2 vacation feature: a rotation rule might be flipped to
-            # solver/manual (or disabled) for date d by a periodo
-            # override — only same-team blocks under the rotation
-            # strategy qualify for the Latin-rectangle pre-pin.
-            strategy = (
-                ctx.effective_rule_strategy(rule, d)[0]
-                if rule is not None
-                else None
-            )
-            if rule is None or strategy != "rotation":
+            # V.2.5 vacation feature: rule_for() already routes to the
+            # snapshot's rule set when a snapshot exists for (period,
+            # slot), so `rule.strategy` is already period-aware. (The
+            # snapshot-skip above means we only hit default rules
+            # here.)
+            if rule is None or rule.strategy != "rotation":
                 flush()
                 continue
             team = list(ctx.rotation_persons_for(rule, d))
@@ -1577,16 +1846,25 @@ def _solve_cpsat(
     # team form a "balance block" → see the Latin-square constraint
     # added after the hard same-slot exclusivity below.
     team_pinned_by_slot_day: dict[tuple[int, date], list[int]] = {}
+    # V.2.5: per-(date, slot_id, role_id) → the actual role row object
+    # backing the demand. Snapshot team roles can't be stored in
+    # Assignment.team_role_id (FK to slot_team_roles), so at
+    # materialization we look up the role here, write None +
+    # role-label note when it's a snapshot role, or the real id
+    # otherwise.
+    role_obj_by_demand: dict[tuple[date, int, int | None], object] = {}
 
     def _emit_team_prepin(
         slot: Slot,
         d: date,
-        rule: SlotRule,
+        rule,
         team_role_id: int | None,
         head: int,
     ) -> None:
         """Materialize up to `head` pre-pinned assignments for a
-        non-solver rule (rotation / fixed_weekly / manual).
+        non-solver rule (rotation / fixed_weekly / manual). `rule`
+        may be a SlotRule or a SlotPeriodSnapshotRule — both expose
+        `.strategy`.
 
         Multi-person handling (sprint 15): rotation and fixed_weekly both
         return a list of configured persons for (rule, date). For each:
@@ -1605,10 +1883,10 @@ def _solve_cpsat(
         manual rules always emit head NULL rows with "Pendiente de asignar
         manualmente".
         """
-        # V.2 vacation feature: a periodo override may flip the rule's
-        # strategy (e.g. rotation → manual) for date `d`. Resolve once
-        # and use throughout this helper.
-        strategy, _ = ctx.effective_rule_strategy(rule, d)
+        # V.2.5 vacation feature: rule_for() routes through the
+        # snapshot's rule set when a snapshot exists, so the rule
+        # passed in already has the period-aware strategy.
+        strategy = rule.strategy
         if strategy == "manual":
             for _ in range(head):
                 db.add(
@@ -1808,10 +2086,10 @@ def _solve_cpsat(
             if rule is None:
                 # Admin chose not to cover this weekday on this slot.
                 continue
-            # V.2 vacation feature: resolve effective strategy once per
-            # (rule, d) so every branch below — both team_composition
-            # and non-team_composition — respects period overrides.
-            strategy, _ = ctx.effective_rule_strategy(rule, d)
+            # V.2.5 vacation feature: rule_for() returns either a
+            # default SlotRule or a snapshot SlotPeriodSnapshotRule;
+            # either way `rule.strategy` is correct for the date.
+            strategy = rule.strategy
             mode = slot.staffing_mode
             if mode == "team_composition":
                 # Sprint 16: team_composition slots are always
@@ -1821,7 +2099,14 @@ def _solve_cpsat(
                 # decides which person covers which role; a Latin-square
                 # balance constraint added below makes the role
                 # distribution rotate within the block.
-                roles = ctx.team_roles_by_slot.get(slot.id, [])
+                # V.2.5: pull the role set period-aware. When a
+                # snapshot exists for (period, slot), this returns
+                # SlotPeriodSnapshotTeamRole rows; otherwise the
+                # default SlotTeamRole rows. The two share the same
+                # shape (.id, .headcount, .role_label) but live in
+                # different id namespaces — see role_obj_by_demand
+                # below.
+                roles = ctx.effective_team_roles(slot.id, d)
                 if not roles:
                     db.add(
                         Assignment(
@@ -1834,13 +2119,25 @@ def _solve_cpsat(
                         )
                     )
                     continue
+                # Track the role object behind each demand. At
+                # materialization time we use this to decide whether
+                # `Assignment.team_role_id` should be the real
+                # `SlotTeamRole.id` (default path) or NULL + role
+                # label in notes (snapshot path — V.2.5 limitation:
+                # Assignment.team_role_id FKs slot_team_roles, not
+                # the snapshot table).
+                for role in roles:
+                    role_obj_by_demand[(d, slot.id, role.id)] = role
                 # Sprint 28: if the role_prepins pre-pass covered this
                 # (date, slot) — i.e. the cell belongs to a same-team
                 # rotation block, no lock conflicts, team big enough —
                 # emit the deterministic Latin-rectangle assignments
                 # directly and skip adding solver demands. This is the
                 # cross-block role-rotation mechanism: see
-                # _compute_team_composition_rotation_prepins().
+                # _compute_team_composition_rotation_prepins(). The
+                # pre-pass skips snapshot dates, so any role here is a
+                # default SlotTeamRole — safe to write into
+                # Assignment.team_role_id directly.
                 if any(
                     (d, slot.id, r.id) in role_prepins for r in roles
                 ):
@@ -1898,7 +2195,13 @@ def _solve_cpsat(
                 # point of choosing manual.
                 if strategy == "manual":
                     for role in roles:
+                        is_snap = isinstance(
+                            role, SlotPeriodSnapshotTeamRole
+                        )
                         for _ in range(max(1, role.headcount)):
+                            note = "Pendiente de asignar manualmente"
+                            if is_snap:
+                                note = f"Role: {role.role_label} — {note}"
                             db.add(
                                 Assignment(
                                     tenant_id=ctx.tenant_id,
@@ -1906,8 +2209,8 @@ def _solve_cpsat(
                                     slot_id=slot.id,
                                     date=d,
                                     person_id=None,
-                                    team_role_id=role.id,
-                                    notes="Pendiente de asignar manualmente",
+                                    team_role_id=None if is_snap else role.id,
+                                    notes=note,
                                 )
                             )
                     continue
@@ -1995,7 +2298,17 @@ def _solve_cpsat(
 
     for (d, slot_id, role_id, head) in demands:
         slot = ctx.slot_by_id[slot_id]
-        cands = ctx.candidates_for_slot(slot, d, team_role_id=role_id)
+        # V.2.5: prefer object-based role lookup so snapshot roles
+        # dispatch to the snapshot category dict. Falls back to the
+        # legacy id-based path when no role row is recorded (i.e.
+        # single/multiple_same demands where role_id is None).
+        role_obj = role_obj_by_demand.get((d, slot_id, role_id))
+        if role_obj is not None:
+            cands = ctx.candidates_for_slot(slot, d, team_role=role_obj)
+        else:
+            cands = ctx.candidates_for_slot(
+                slot, d, team_role_id=role_id
+            )
         # Filter out candidates owed a post_slot_rest from yesterday's
         # pre-pinned shift (a real physical-rest constraint). DON'T
         # filter out anyone who happens to be pre-pinned to some OTHER
@@ -2173,6 +2486,16 @@ def _solve_cpsat(
     # can't take role R on any day of the block (no x-variable
     # exists), the (P,R) constraint is skipped and other team members
     # pick up the slack via the per-demand head==N constraint above.
+    # V.2.5 limitation: this block uses the default `team_roles_by_slot`
+    # role list per slot. For dates inside an active snapshot the
+    # x-variables are keyed by snapshot role ids (different namespace),
+    # so the (p, r.id) lookup below silently produces no matches and
+    # the balance constraint is effectively skipped for those dates.
+    # That's a degradation of fairness, not a correctness bug — the
+    # solver may produce slightly less balanced (person, role)
+    # distributions inside a snapshot block. Acceptable for V.2.5;
+    # follow-up would walk the dates per-(slot, day) and look up
+    # effective_team_roles each time.
     by_slot_team_composition = [
         s for s in ctx.slots if s.staffing_mode == "team_composition"
     ]
@@ -2711,7 +3034,28 @@ def _solve_cpsat(
         chosen = chosen_per_demand.get((d, slot_id, role_id), [])
         # Locked rows for this key.
         locks_here = locked_by_key.get((d, slot_id, role_id), [])
-        # Emit locks first verbatim.
+        # V.2.5: dispatch based on whether the role came from a
+        # snapshot. Assignment.team_role_id FKs slot_team_roles, so
+        # snapshot roles get None + role-label stuffed in notes.
+        role_obj = role_obj_by_demand.get((d, slot_id, role_id))
+        is_snap_role = isinstance(role_obj, SlotPeriodSnapshotTeamRole)
+        db_role_id: int | None = None if is_snap_role else role_id
+        role_label_prefix = (
+            f"Role: {role_obj.role_label}" if is_snap_role else None
+        )
+
+        def _combine_notes(base: str | None) -> str | None:
+            if role_label_prefix is None:
+                return base
+            if base is None:
+                return role_label_prefix
+            return f"{role_label_prefix} — {base}"
+
+        # Emit locks first verbatim. Locks reference slot_team_roles
+        # ids directly; if this demand was actually backed by a
+        # snapshot role the lock's team_role_id won't match anyway
+        # (snapshot role ids never make it onto Assignment), so the
+        # lock-carry path here only fires for default-role demands.
         for la in locks_here:
             db.add(
                 Assignment(
@@ -2720,8 +3064,8 @@ def _solve_cpsat(
                     slot_id=slot_id,
                     date=d,
                     person_id=la.person_id,
-                    team_role_id=role_id,
-                    notes=la.notes,
+                    team_role_id=db_role_id,
+                    notes=_combine_notes(la.notes),
                     **{
                         k: v
                         for k, v in (
@@ -2747,7 +3091,8 @@ def _solve_cpsat(
                     slot_id=slot_id,
                     date=d,
                     person_id=pid,
-                    team_role_id=role_id,
+                    team_role_id=db_role_id,
+                    notes=role_label_prefix,
                 )
             )
         # Unfilled gap (eligible candidates < headcount, or empty locks).
@@ -2767,8 +3112,8 @@ def _solve_cpsat(
                     slot_id=slot_id,
                     date=d,
                     person_id=None,
-                    team_role_id=role_id,
-                    notes="No hay personal disponible",
+                    team_role_id=db_role_id,
+                    notes=_combine_notes("No hay personal disponible"),
                 )
             )
 
