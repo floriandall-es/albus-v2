@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
+  personLastName,
   type Meeting,
   type ReminderMinutesBefore,
   type TeamMember,
@@ -195,10 +196,18 @@ export function MeetingDialog({
     return m;
   }, [team.data]);
   const servicioPersonById = useMemo(() => {
-    const m = new Map<number, { person_name: string; tenant_name: string }>();
+    const m = new Map<
+      number,
+      {
+        person_name: string;
+        person_last_name: string | null;
+        tenant_name: string;
+      }
+    >();
     for (const p of servicioPersons.data ?? []) {
       m.set(p.person_id, {
         person_name: p.person_name,
+        person_last_name: p.person_last_name,
         tenant_name: p.tenant_name,
       });
     }
@@ -380,7 +389,9 @@ export function MeetingDialog({
                     checked={personIds.has(m.person_id)}
                     onChange={() => togglePerson(m.person_id)}
                   />
-                  <span className="flex-1 truncate">{m.person_name}</span>
+                  <span className="flex-1 truncate">
+                    {personLastName({ name: m.person_name })}
+                  </span>
                   {m.person_email && (
                     <span className="text-[11px] text-gray-400 truncate">
                       {m.person_email}
@@ -419,7 +430,10 @@ export function MeetingDialog({
                           onChange={() => togglePerson(p.person_id)}
                         />
                         <span className="flex-1 truncate">
-                          {p.person_name}
+                          {personLastName({
+                            name: p.person_name,
+                            last_name: p.person_last_name,
+                          })}
                         </span>
                         {p.category_name && (
                           <span className="text-[11px] text-gray-400 truncate">
@@ -439,7 +453,14 @@ export function MeetingDialog({
               {Array.from(personIds).map((pid) => {
                 const local = teamById.get(pid);
                 const cross = servicioPersonById.get(pid);
-                const label = local?.person_name ?? cross?.person_name ?? `#${pid}`;
+                const label = local
+                  ? personLastName({ name: local.person_name })
+                  : cross
+                    ? personLastName({
+                        name: cross.person_name,
+                        last_name: cross.person_last_name,
+                      })
+                    : `#${pid}`;
                 // Show the equipo badge on cross-tenant invitees so
                 // the organizer can tell at a glance which chips are
                 // "external" — matters when the picker has many

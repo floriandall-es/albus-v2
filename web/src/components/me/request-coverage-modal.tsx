@@ -364,7 +364,10 @@ export function RequestCoverageModal({
                                 className="h-3.5 w-3.5 accent-brand-600"
                               />
                               <span className="text-gray-800">
-                                {m.person_name}
+                                {personLastName({
+                                  name: m.person_name,
+                                  last_name: null,
+                                })}
                               </span>
                             </label>
                           </li>
