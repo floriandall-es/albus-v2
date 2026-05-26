@@ -33,6 +33,17 @@ export function clearToken(): void {
 
 export type PresetKind = "quirurgico" | "medico" | "otro";
 
+/** Equipos redesign: per-equipo control over what siblings see in
+ * the Servicio timeline. 'none' = invisible, 'selected' = only
+ * slots marked shared_with_servicio, 'full' = everything published. */
+export type SharePolicy = "none" | "selected" | "full";
+
+/** Equipos redesign: tenant approval state. 'pending' on equipos
+ * that joined an existing servicio and are awaiting a sibling
+ * admin's nod; 'approved' otherwise. Pending equipos don't show
+ * up in the servicio timeline or cross-tenant meeting audiences. */
+export type ApprovalState = "pending" | "approved";
+
 export type Tenant = {
   id: number;
   slug: string;
@@ -48,6 +59,18 @@ export type Tenant = {
    * an extra fetch. */
   hospital_id: number | null;
   hospital_name: string | null;
+  /** Equipos redesign: the Servicio this Equipo belongs to. Null
+   * only for legacy tenants (pre-Phase-A). Drives the "Servicio"
+   * sidebar entry and the /admin/servicio page. */
+  servicio_id: number | null;
+  /** What this equipo exposes to other equipos in its servicio.
+   * Default 'none' for new signups; 'full' both ways for the
+   * alpha customer's existing equipos. */
+  share_policy: SharePolicy;
+  /** 'pending' when an equipo signs up against an existing
+   * servicio and is waiting for a sibling admin's nod. Existing
+   * data is grandfathered to 'approved'. */
+  approval_state: ApprovalState;
   created_at: string;
   onboarding_completed_at: string | null;
   /** Onboarding template chosen on the new first wizard step.
@@ -78,6 +101,55 @@ export type Tenant = {
 };
 
 export type SetupArea = "activities" | "rules" | "team" | "subteams";
+
+/** Phase C.2: one peer Equipo within a Servicio. Returned as part
+ * of the Servicio response so the /admin/servicio page can list
+ * every equipo + render its share_policy badge. */
+export type Equipo = {
+  tenant_id: number;
+  tenant_name: string;
+  tenant_slug: string;
+  share_policy: SharePolicy;
+  approval_state: ApprovalState;
+  created_at: string;
+};
+
+/** Phase C.2: top-level Servicio info + its peer equipos. */
+export type Servicio = {
+  id: number;
+  name: string;
+  slug: string;
+  hospital_id: number;
+  hospital_name: string;
+  equipos: Equipo[];
+};
+
+/** Phase C.2: one visible assignment in the cross-equipo timeline. */
+export type ServicioTimelineCell = {
+  assignment_id: number;
+  date: string;
+  tenant_id: number;
+  tenant_name: string;
+  slot_id: number;
+  slot_name: string;
+  slot_color: string | null;
+  slot_start_time: string | null;
+  slot_end_time: string | null;
+  person_id: number | null;
+  person_name: string | null;
+  person_last_name: string | null;
+  schedule_id: number;
+};
+
+/** Phase C.2: wrapper returned by GET /api/servicios/{id}/timeline.
+ * The cells array is flat; the page groups by date / equipo / slot
+ * client-side so we don't lock the wire shape to one view. */
+export type ServicioTimeline = {
+  servicio_id: number;
+  from_date: string;
+  to_date: string;
+  cells: ServicioTimelineCell[];
+};
 
 export type HolidaySource = "national" | "regional" | "custom";
 export type Holiday = {
@@ -743,6 +815,11 @@ export type Slot = {
    * in addition to each team_role's category list (intersection). */
   allowed_category_ids: number[];
   rules: SlotRule[];
+  /** Phase C.2: per-slot opt-in for the Servicio timeline. Only
+   * consulted when the owning tenant's share_policy='selected'.
+   * Editable via PATCH /api/slots/{id}; the /admin/slots page
+   * surfaces a toggle when the policy is in that mode. */
+  shared_with_servicio: boolean;
   created_at: string;
 };
 
@@ -771,6 +848,9 @@ export type SlotInput = {
   /** Empty = any categoría; non-empty = only members whose categoría
    * is in this list may cover the slot. */
   allowed_category_ids?: number[];
+  /** Phase C.2: per-slot Servicio timeline opt-in. Send true/false
+   * to toggle; omit to leave unchanged on a PATCH. */
+  shared_with_servicio?: boolean;
 };
 
 export type TeamMember = {
@@ -1908,6 +1988,34 @@ export const api = {
       `/api/schedules/${scheduleId}/violations/suppressions/${signature}`,
       { method: "DELETE" },
     ),
+  /** Phase C.2: servicio metadata + list of peer equipos with their
+   * share_policy + approval_state. The caller must belong to the
+   * servicio (any non-pending member of any equipo in it). 404
+   * otherwise — we don't leak servicio ids. */
+  getServicio: (servicioId: number) =>
+    request<Servicio>(`/api/servicios/${servicioId}`),
+  /** Phase C.2: cross-equipo timeline for [from, to] (date strings
+   * YYYY-MM-DD inclusive). Returns flat cells; the page groups
+   * client-side. Range capped server-side at 366 days. */
+  getServicioTimeline: (
+    servicioId: number,
+    from: string,
+    to: string,
+  ) => {
+    const qs = new URLSearchParams({ from, to });
+    return request<ServicioTimeline>(
+      `/api/servicios/${servicioId}/timeline?${qs.toString()}`,
+    );
+  },
+  /** Phase C.2: set the caller's own equipo share_policy. Admin-
+   * only on the server. The per-slot picker (when 'selected')
+   * lives on the slot itself — PATCH /api/slots/{id} accepts
+   * shared_with_servicio. */
+  updateMySharePolicy: (body: { share_policy: SharePolicy }) =>
+    request<void>(`/api/equipos/me/share-policy`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
   deleteAssignment: (scheduleId: number, assignmentId: number) =>
     request<void>(
       `/api/schedules/${scheduleId}/assignments/${assignmentId}`,

@@ -73,6 +73,12 @@ const NAV: NavSection[] = [
       { href: "/admin/reuniones", label: "Reuniones", icon: MessageSquare },
       { href: "/admin/incidents", label: "Incidencias", icon: AlertCircle },
       { href: "/admin/trasplantes", label: "Trasplantes", icon: Heart },
+      // Phase C.2: cross-equipo Servicio view (timeline + share
+      // policy + list of peer equipos). Hidden when the caller's
+      // tenant has no servicio_id — legacy pre-Phase-A tenants and
+      // any future standalone equipo. Same filter pattern as the
+      // Directorio entry below.
+      { href: "/admin/servicio", label: "Servicio", icon: Building2 },
       // Sprint 28: cross-tenant hospital directory. Hidden when
       // the current tenant has no parent hospital (standalone).
       // Links to the member-side route — same page either way.
@@ -235,6 +241,17 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                     if (
                       item.href === "/me/directorio"
                       && me.data?.current_tenant.hospital_id == null
+                    ) {
+                      return false;
+                    }
+                    // Servicio only when the tenant has been linked
+                    // to one (Phase A backfill, or new signup). The
+                    // page itself shows a placeholder for the null
+                    // case but the nav entry is wasted screen
+                    // estate when there's no servicio behind it.
+                    if (
+                      item.href === "/admin/servicio"
+                      && me.data?.current_tenant.servicio_id == null
                     ) {
                       return false;
                     }

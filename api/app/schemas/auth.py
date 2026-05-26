@@ -97,6 +97,21 @@ class TenantOut(BaseModel):
     # fetch for the common "show 'Department · Hospital' label" use.
     hospital_id: int | None = None
     hospital_name: str | None = None
+    # Equipos redesign (migration 0069): the Servicio this Equipo
+    # belongs to. Null only for legacy tenants that pre-date the
+    # Hospital layer (and were skipped by Phase A's backfill). The
+    # frontend reads this to gate the "Servicio" sidebar entry and
+    # the /admin/servicio page.
+    servicio_id: int | None = None
+    # 'none' / 'selected' / 'full' — what this equipo shares with
+    # other peers in its servicio. The /admin/servicio page reads
+    # and updates this.
+    share_policy: str = "none"
+    # 'pending' / 'approved'. Pending equipos don't appear in the
+    # servicio timeline or cross-tenant meeting audiences until a
+    # sibling admin approves them. All existing tenants are
+    # 'approved' (Phase A default).
+    approval_state: str = "approved"
     created_at: datetime
     onboarding_completed_at: datetime | None = None
     # Set by the onboarding preset step. One of 'quirurgico' / 'medico'
