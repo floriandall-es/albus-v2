@@ -15,6 +15,7 @@ import {
   Menu,
   MessageCircle,
   MessageSquare,
+  Network,
   Settings,
   X,
   type LucideIcon,
@@ -33,6 +34,11 @@ const NAV: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/me/swaps", label: "Cambios", icon: ArrowLeftRight },
   { href: "/me/bloqueos", label: "Mis bloqueos", icon: CalendarOff },
   { href: "/me/estadisticas", label: "Mis estadísticas", icon: BarChart3 },
+  // Phase C.2: cross-equipo Servicio view. Anyone in an equipo
+  // that belongs to a Servicio can read the joint view; only the
+  // tenant admin can change the share-policy radio inside the
+  // page. Gated below on tenant.servicio_id being non-null.
+  { href: "/me/servicio", label: "Servicio", icon: Network },
   // Sprint 28: cross-tenant hospital directory. Only renders when
   // the current tenant has a parent hospital — handled in the
   // filter below.
@@ -227,6 +233,14 @@ export default function MeLayout({ children }: { children: ReactNode }) {
               if (
                 item.href === "/me/mensajes"
                 && me.data?.current_tenant.hospital_id == null
+              ) {
+                return false;
+              }
+              // Servicio only when the tenant has one — pre-Phase-A
+              // legacy or future standalone equipos don't.
+              if (
+                item.href === "/me/servicio"
+                && me.data?.current_tenant.servicio_id == null
               ) {
                 return false;
               }
