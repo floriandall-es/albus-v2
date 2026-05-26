@@ -97,13 +97,17 @@ function PeriodoEditor({ periodo }: { periodo: Periodo }) {
   // Touched months — Mara should see what "Generar" is about to do
   // before pressing the button. Compute client-side from the date
   // range. Matches the server-side logic in generate_period: every
-  // (year, month) covered by [start, end] inclusive.
+  // (year, month) covered by [start, end] inclusive. Deps are the
+  // stable ISO strings rather than the new Date objects, so the
+  // memo doesn't recompute on every render.
   const touchedMonths = useMemo(() => {
+    const s = new Date(periodo.start_date + "T00:00:00");
+    const e = new Date(periodo.end_date + "T00:00:00");
     const out: { year: number; month: number; label: string }[] = [];
-    let y = start.getFullYear();
-    let m = start.getMonth(); // 0-indexed
-    const endY = end.getFullYear();
-    const endM = end.getMonth();
+    let y = s.getFullYear();
+    let m = s.getMonth(); // 0-indexed
+    const endY = e.getFullYear();
+    const endM = e.getMonth();
     while (y < endY || (y === endY && m <= endM)) {
       out.push({
         year: y,
@@ -121,7 +125,7 @@ function PeriodoEditor({ periodo }: { periodo: Periodo }) {
       }
     }
     return out;
-  }, [start, end]);
+  }, [periodo.start_date, periodo.end_date]);
 
   const overrideBySlot = useMemo(() => {
     const m = new Map<number, SlotPeriodOverride>();
@@ -455,7 +459,7 @@ function SlotOverrideForm({
           Esta actividad usa <strong>team_composition</strong> con{" "}
           {slot.team_roles.length} roles. Para reducir headcount en un
           rol individual necesitamos override por rol (V.2). Si quieres
-          desactivarla entera durante el periodo, marca "No aplica" arriba.
+          desactivarla entera durante el periodo, marca «No aplica» arriba.
         </p>
       )}
 
