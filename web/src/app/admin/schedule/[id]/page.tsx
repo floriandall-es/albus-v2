@@ -1,6 +1,6 @@
 "use client";
 import { useParams, useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
@@ -456,6 +456,27 @@ function AssignmentEditModal({
     queryKey: ["eligible", scheduleId, assignment.id],
     queryFn: () => api.listEligiblePersons(scheduleId, assignment.id),
   });
+
+  // If the previously-assigned person is no longer eligible (e.g.
+  // an approved bloqueo was created for them after the schedule
+  // was published — the canonical "user asked off, mark them libre,
+  // reassign their shift" flow), reset the dropdown to "Sin cubrir"
+  // so submitting the form doesn't fire the eligibility check with
+  // the dead person's id and surface a misleading bloqueo error.
+  // The admin then has to consciously pick a replacement, which is
+  // the whole point of opening this modal.
+  useEffect(() => {
+    if (!eligible.data) return;
+    const currentInEligible = eligible.data.some(
+      (p) => p.person_id === selectedPid,
+    );
+    if (selectedPid !== "" && !currentInEligible) {
+      setSelectedPid("");
+    }
+    // Intentionally don't depend on selectedPid — this is a one-shot
+    // reconciliation on eligible-load, not a continuous guard.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eligible.data]);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["schedule", scheduleId] });
