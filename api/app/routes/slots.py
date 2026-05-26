@@ -218,6 +218,7 @@ def _serialize(ctx: RequestContext, slot: Slot) -> SlotOut:
         allowed_person_ids=sorted({a.person_id for a in allowed_rows}),
         allowed_category_ids=sorted({c.category_id for c in allowed_cat_rows}),
         rules=rules_out,
+        shared_with_servicio=slot.shared_with_servicio,
         created_at=slot.created_at,
     )
 

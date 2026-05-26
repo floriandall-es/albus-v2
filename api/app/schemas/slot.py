@@ -73,6 +73,10 @@ class SlotUpdate(BaseModel):
     # Empty list = clear (any categoría); non-empty = only those
     # categorías are eligible.
     allowed_category_ids: list[int] | None = None
+    # Phase C.2: per-slot opt-in for the Servicio timeline. Only
+    # consulted when the owning tenant's share_policy='selected'.
+    # NULL on PATCH = "don't change"; pass true/false to toggle.
+    shared_with_servicio: bool | None = None
 
 
 class SlotTeamRoleOut(BaseModel):
@@ -108,6 +112,10 @@ class SlotOut(BaseModel):
     # non-empty = only those categorías eligible.
     allowed_category_ids: list[int] = []
     rules: list[SlotRuleOut]
+    # Phase C.2: per-slot flag. Always present in responses; only
+    # consulted by the Servicio timeline when the tenant's
+    # share_policy='selected'.
+    shared_with_servicio: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
