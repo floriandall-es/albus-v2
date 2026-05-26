@@ -1,0 +1,849 @@
+public_code,name,address,city,province,autonomous_community,postal_code,hospital_class,ownership,active
+310121,Hospital Garcia Orcoyen,Calle Santa Soria 22 -,Estella-Lizarra,Navarra,C. Foral de Navarra,31200,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+310044,Hospital San Juan de Dios,Calle Beloso Alto 3 -,Pamplona/Iruña,Navarra,C. Foral de Navarra,31006,Hospitales Generales,Privados,N
+310060,Clínica Universidad de Navarra,Avenida Pio Xia 36 -,Pamplona/Iruña,Navarra,C. Foral de Navarra,31008,Hospitales Generales,Privados,N
+310057,Clínica Psiquiatrica Padre Menni,Calle Joaquín Beunza 45 -,Pamplona/Iruña,Navarra,C. Foral de Navarra,31014,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+310076,Clínica Arcángel San Miguel - Pamplona,Calle Beloso Alto 32 -,Pamplona/Iruña,Navarra,C. Foral de Navarra,31006,Hospitales Generales,Privados,N
+310039,Centro San Francisco Javier,Avenida Villava 53 -,Pamplona/Iruña,Navarra,C. Foral de Navarra,31015,Hospitales de salud mental y tratamiento de toxicomanías,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+310150,Hospital Universitario de Navarra,Calle Irunlarrea 3 -,Pamplona/Iruña,Navarra,C. Foral de Navarra,31008,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+310137,Hospital Reina Sofia,Carretera Tarazona KM. 3 -,Tudela,Navarra,C. Foral de Navarra,31500,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+320126,Hospital Publico de Valdeorras,Avenida Conde de Fenosa 50,"Barco de Valdeorras, O",Ourense,Galicia,32300,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+320163,Clínica Santa Teresa,Calle Sáenz Diez 11,Ourense,Ourense,Galicia,32003,Hospitales Generales,Privados,N
+320087,Centro Medico El Carmen,Avenida Habana (De La) 50,Ourense,Ourense,Galicia,32003,Hospitales Generales,Privados,N
+320013,Complexo Hospitalario Universitario de Ourense,Calle Ramon Puga 52,Ourense,Ourense,Galicia,32005,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+120148,Instituto de Traumatología de Unión de Mutuas (Matepss Nº 267),Avenida Virgen de Lidón 67,Castelló de la Plana,Castellón,Comunidad Valenciana,12004,Hospitales especializados,Mútuas Colaboradoras con La Seguridad Social,N
+120159,Hospital Rey D. Jaime,Calle Maria Rosa Molas 25,Castelló de la Plana,Castellón,Comunidad Valenciana,12004,Hospitales Generales,Privados,N
+120043,Consorcio Hospitalario Provincial de Castellón,Avenida Doctor Clara 19,Castelló de la Plana,Castellón,Comunidad Valenciana,12002,Hospitales Generales,Otros Centros o Establecimientos Públicos de Dependencia Autonómica,N
+120038,Hospital La Magdalena,Camino Collet 32,Castelló de la Plana,Castellón,Comunidad Valenciana,12004,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+120017,Hospital General Universitario de Castellón,Avenida Benicasim S/N,Castelló de la Plana,Castellón,Comunidad Valenciana,12004,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+120136,Hospital Universitario de La Plana,"Carretera Vila-Real A Borriana KM 0,5",Vila-real,Castellón,Comunidad Valenciana,12540,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+120115,Hospital Comarcal de Vinaros,Avenida Gil de Atrocillo S/N,Vinaròs,Castellón,Comunidad Valenciana,12500,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+130052,Hospital General La Mancha Centro,Avenida De La Constitución 3,Alcázar de San Juan,Ciudad Real,Castilla-La Mancha,13600,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+130049,Hospital Quironsalud Ciudad Real,Calle Alisos 19,Ciudad Real,Ciudad Real,Castilla-La Mancha,13002,Hospitales Generales,Privados,N
+130034,Servicios Sanitarios y Asistenciales,Ronda Del Carmen S/Nº,Ciudad Real,Ciudad Real,Castilla-La Mancha,13002,Hospitales de salud mental y tratamiento de toxicomanías,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+130127,Hospital General Universitario de Ciudad Real,Calle Obispo Rafael Torija S/N,Ciudad Real,Ciudad Real,Castilla-La Mancha,13005,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+130065,Hospital Virgen de Altagracia,Avenida D. Emiliano Garcia Roldan 2,Manzanares,Ciudad Real,Castilla-La Mancha,13200,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+130071,Hospital Santa Barbara,Carretera Malagón S/Nº,Puertollano,Ciudad Real,Castilla-La Mancha,13500,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+130128,Hospital General de Tomelloso,Calle Vereda de Socuellamos S/N,Tomelloso,Ciudad Real,Castilla-La Mancha,13700,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+130087,Hospital General de Valdepeñas,Avenida De Los Estudiantes S/Nº,Valdepeñas,Ciudad Real,Castilla-La Mancha,13300,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+150341,Hospital Publico Virxe Da Xunqueira,Paseo Alcalde Pepe Sánchez 7,Cee,A Coruña,Galicia,15270,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+140116,Hospital Infanta Margarita,Avenida Góngora S/N,Cabra,Córdoba,Andalucía,14940,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+140082,Hospital San Juan de Dios de Córdoba,Avenida Del Brillante 106,Córdoba,Córdoba,Andalucía,14012,Hospitales Generales,Privados,N
+140241,Hospital Quironsalud Córdoba,"Avenida Del Aeropuerto, S/N S/N",Córdoba,Córdoba,Andalucía,14004,Hospitales Generales,Privados,N
+140076,Hospital Cruz Roja de Córdoba,Paseo De La Victoria S/N,Córdoba,Córdoba,Andalucía,14004,Hospitales Generales,Privados,N
+140044,Hospital Materno - Infantil del H.U. Reina Sofia,Avenida Menéndez Pidal S/N,Córdoba,Córdoba,Andalucía,14004,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+140039,Hospital Los Morales,Carretera Los Molares S/N,Córdoba,Córdoba,Andalucía,14012,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+140060,Hospital Provincial,Avenida Menéndez Pidal S/N,Córdoba,Córdoba,Andalucía,14004,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+140230,Hospital Universitario Reina Sofia,Avenida Menéndez Pidal S/N,Córdoba,Córdoba,Andalucía,14004,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+140263,Hospital Palma del Rio,Avenida V Califa S/N,Córdoba,Córdoba,Andalucía,14700,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+140252,Hospital Centro de Andalucía,Calle Pontevedra 1,Lucena,Córdoba,Andalucía,14900,Hospitales Generales,Privados,N
+140195,Hospital de Montilla,"Carretera Ctra. Montoro-Puente Genil, Km. 65,350 S/N",Montilla,Córdoba,Andalucía,14550,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+140229,Hospital de Alta Resolución Valle del Guadiato,Calle Paraje Cerro del Camello S/N,Peñarroya-Pueblonuevo,Córdoba,Andalucía,14200,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+140121,Hospital Valle de Los Pedroches,Calle Juan del Rey Calero S/N,Pozoblanco,Córdoba,Andalucía,14400,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+140218,Hospital de Alta Resolución de Puente Genil,Calle Burgos S/N,Puente Genil,Córdoba,Andalucía,14500,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+150063,Hospital Quironsalud A Coruña,Calle Londres 2,"Coruña, A",A Coruña,Galicia,15009,Hospitales Generales,Privados,N
+150079,Hospital San Rafael,Lugar Jubias de Arriba 82,"Coruña, A",A Coruña,Galicia,15006,Hospitales Generales,Privados,N
+150354,HM Modelo-Belen,Calle Virrey Osorio 30,"Coruña, A",A Coruña,Galicia,15011,Hospitales Generales,Privados,N
+150050,Centro Oncoloxico de Galicia,Calle Doctor Camilo Veiras 1,"Coruña, A",A Coruña,Galicia,15009,Hospitales especializados,Privados,N
+150011,Complexo Hospitalario Universitario A Coruña,Lugar Jubias de Arriba 84,"Coruña, A",A Coruña,Galicia,15006,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+150177,Hospital Ribera Juan Cardona,Calle Pardo Bazán S/N,Ferrol,A Coruña,Galicia,15406,Hospitales Generales,Privados,N
+150130,Complexo Hospitalario Universitario de Ferrol,Avenida Residencia S/N,Ferrol,A Coruña,Galicia,15405,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+150308,Hestia La Robleda,Lugar Santiso S/N,"Pino, O",A Coruña,Galicia,15821,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+150336,Hospital Publico Da Barbanza,Lugar Salmon S/N,Ribeira,A Coruña,Galicia,15993,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+150365,Hospital HM Rosaleda-HM La Esperanza,Calle Santiago León de Caracas (De) 1,Santiago de Compostela,A Coruña,Galicia,15701,Hospitales Generales,Privados,N
+150200,Complexo Hospitalario Universitario de Santiago,Calle Choupana (Da) S/N,Santiago de Compostela,A Coruña,Galicia,15706,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+160053,"Hospital Recoletas Cuenca, S.L.U.",Avenida De San Julián 1,Cuenca,Cuenca,Castilla-La Mancha,16003,Hospitales Generales,Privados,N
+160014,Hospital Virgen de La Luz,Calle Hermandad Donantes de Sangre 1,Cuenca,Cuenca,Castilla-La Mancha,16002,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+170097,Clínica Salus Infirmorum,Paseo Mossen Lluis Constans 130,Banyoles,Girona,Cataluña,17820,Hospitales Generales,Privados,N
+170237,Hospital Comarcal de Blanes,Carretera Acces Cala Sant Francesc 5,Blanes,Girona,Cataluña,17300,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+170101,Hospital de Sant Jaume,Calle Jaume Arcelos 1,Blanes,Girona,Cataluña,17300,Hospitales de media y larga estancia,Otras Entidades u o rganismos Públicos,N
+170118,Hospital de Campdevanol,Carretera De Gombren 20,Campdevànol,Girona,Cataluña,17530,Hospitales Generales,Privados,N
+170123,Hospital de Figueres,Ronda Rector Arolas S/N,Figueres,Girona,Cataluña,17600,Hospitales Generales,Privados,N
+170288,Centre Sociosanitari Bernat Jaume,Ronda Rector Arolas S/N,Figueres,Girona,Cataluña,17600,Hospitales de media y larga estancia,Privados,N
+170139,Clínica Santa Creu,"Calle Pere Mii, 41",Figueres,Girona,Cataluña,17600,Hospitales Generales,Privados,N
+170062,Clínica Quirúrgica Onyar,Calle Heroines de Santa Barbara 6,Girona,Girona,Cataluña,17004,Hospitales Generales,Privados,N
+170059,Clínica Girona,Calle De Barcelona 204,Girona,Girona,Cataluña,17005,Hospitales Generales,Privados,N
+170255,Hospital Sociosanitari Mutuam Girona,Avenida França 64,Girona,Girona,Cataluña,17007,Hospitales de media y larga estancia,Privados,N
+170242,Residencia Geriátrica Maria Gay,Calle Portal Nou 12,Girona,Girona,Cataluña,17004,Hospitales de media y larga estancia,Privados,N
+170031,Clínica Bofill,Ronda Sant Antoni Maria Claret 20,Girona,Girona,Cataluña,17002,Hospitales Generales,Privados,N
+170299,Institut Catalá D'Oncologia Girona - Hospital Josep Trueta,Avenida França S/N,Girona,Girona,Cataluña,17007,Hospitales especializados,Otras Entidades u o rganismos Públicos,N
+170221,Residencia de Gent Gran Puig D'En Roca,Calle Antoni Vares I Martinell 37,Girona,Girona,Cataluña,17007,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+170010,Hospital Universitari de Girona Dr. Josep Trueta,Avenida França S/N,Girona,Girona,Cataluña,17007,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+170160,Hospital Sociosanitari de Lloret de Mar,"Calle Vall de Venecia, 59",Lloret de Mar,Girona,Cataluña,17310,Hospitales de media y larga estancia,Otras Entidades u o rganismos Públicos,N
+170176,Hospital D'Olot I Comarcal de La Garrotxa,Avenida Països Catalans 86,Olot,Girona,Cataluña,17800,Hospitales Generales,Privados,N
+170195,Hospital de Palamós,Calle Hospital. 36,Palamós,Girona,Cataluña,17230,Hospitales Generales,Privados,N
+170312,Centre Palamós Gent Gran,Calle Provença 36,Palamós,Girona,Cataluña,17230,Hospitales de media y larga estancia,Privados,N
+170277,Centre Sociosanitari de Puigcerdà,Camino Antic de Llivia S/N,Puigcerdà,Girona,Cataluña,17520,Hospitales de media y larga estancia,Privados,N
+170334,Hospital de Cerdanya / Hospital de Cerdagne,Camino D'Ur 31,Puigcerdà,Girona,Cataluña,17520,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+170323,Centre Sociosanitari Parc Hospitalari Marti I Julia,Calle Dr. Castany S/N,Salt,Girona,Cataluña,17190,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+170216,Hospital Psiquiatric,"Calle Doctor Castany, S/N",Salt,Girona,Cataluña,17190,Hospitales de salud mental y tratamiento de toxicomanías,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+170301,Hospital Santa Caterina-Ias,Avenida Doctor Castany (P. H. Marti I Julia) 90,Salt,Girona,Cataluña,17190,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+180093,Hospital de Baza,"Carretera Murcia, Km. 1,6 S/N",Baza,Granada,Andalucía,18800,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+180074,Hospital de La Inmaculada Concepción,Calle Doctor Alejandro Otero 8,Granada,Granada,Andalucía,18004,Hospitales Generales,Privados,N
+180146,Hospital Vithas Granada,Avenida Santa Maria de La Alhambra S/N,Granada,Granada,Andalucía,18008,Hospitales Generales,Privados,N
+180055,Hospital San Rafael,Calle San Juan de Dios 19-23,Granada,Granada,Andalucía,18001,Hospitales Generales,Privados,N
+180150,Hospital Universitario Clínico San Cecilio,Avenida De La Investigación S/N,Granada,Granada,Andalucía,18016,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+180042,Hospital de Neurotraumatologia y Rehabilitación del H.U. Virgen de Las Nieves,Carretera De Jaén S/N,Granada,Granada,Andalucía,18013,Hospitales especializados,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+180166,Hospital Materno-Infantil del H.U. Virgen de Las Nieves,Avenida De Las Fuerzas Armadas 2,Granada,Granada,Andalucía,18014,Hospitales especializados,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+180016,Hospital Universitario Virgen de Las Nieves,Avenida De Las Fuerzas Armadas 2,Granada,Granada,Andalucía,18014,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+180191,Hospital Doctor Oloriz,Avenida Dr. Oloriz 16,Granada,Granada,Andalucía,18012,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+180122,Hospital de Alta Resolución de Guadix,Avenida Mariana Pineda S/N,Guadix,Granada,Andalucía,18500,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+180133,Hospital de Alta Resolución de Loja,Avenida Tierno Galván S/N,Loja,Granada,Andalucía,18300,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+180107,Hospital Santa Ana,Avenida Enrique Martin Cuevas S/N,Motril,Granada,Andalucía,18600,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+190045,Clínica Doctor Sanz Vázquez,Paseo Doctor Fernandez Iparraguirre 6,Guadalajara,Guadalajara,Castilla-La Mancha,19001,Hospitales Generales,Privados,N
+190030,Hospital La Antigua,Calle Constitución 18,Guadalajara,Guadalajara,Castilla-La Mancha,19003,Hospitales Generales,Privados,N
+190077,Instituto de Enfermedades Neurológicas de Castilla-La Mancha,Paseo De La Estación 2,Guadalajara,Guadalajara,Castilla-La Mancha,19004,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+190019,Hospital Universitario de Guadalajara,Avenida Donantes de Sangre S/N,Guadalajara,Guadalajara,Castilla-La Mancha,19002,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+190061,U.R.R. de Enfermos Psíquicos Alcohete,Paseo Conde Romanones S/N S/N,Yebes,Guadalajara,Castilla-La Mancha,19141,Hospitales de salud mental y tratamiento de toxicomanías,Otros Centros o Establecimientos Públicos de Dependencia Autonómica,N
+200198,Hospital Aita Menni,Barrio Gesalibar 15,Arrasate/Mondragón,Guipúzcoa,País Vasco,20509,Hospitales de salud mental y tratamiento de toxicomanías,Organizaciones No Gubernamentales,N
+200202,Hospital Psiquiátrico San Juan de Dios,Barrio Gesalibar 14,Arrasate/Mondragón,Guipúzcoa,País Vasco,20509,Hospitales de salud mental y tratamiento de toxicomanías,Organizaciones No Gubernamentales,N
+200185,Organización Sanitaria Integrada Debagoiena,Avenida Nafarroa 16,Arrasate/Mondragón,Guipúzcoa,País Vasco,20500,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+200271,Hospital San Juan de Dios Donostia,Camino San Juan de Dios 12,Donostia/San Sebastián,Guipúzcoa,País Vasco,20009,Hospitales de salud mental y tratamiento de toxicomanías,Organizaciones No Gubernamentales,N
+200049,Mutualia Clínica Pakea,Paseo Arriola 26,Donostia/San Sebastián,Guipúzcoa,País Vasco,20018,Hospitales especializados,Mútuas Colaboradoras con La Seguridad Social,N
+200071,Hospital Ricardo Bermingham,"Camino Los Pinos, Camino/Bidea 35",Donostia/San Sebastián,Guipúzcoa,País Vasco,20018,Hospitales de media y larga estancia,Privados,N
+200104,Policlínica Gipuzkoa,Paseo Miramón 174,Donostia/San Sebastián,Guipúzcoa,País Vasco,20014,Hospitales Generales,Privados,N
+200132,Fundacion Onkologikoa Fundazioa,Paseo Doctor Begiristain 121,Donostia/San Sebastián,Guipúzcoa,País Vasco,20014,Hospitales especializados,Privados,N
+200261,Hospital Universitario Donostia,Paseo Doctor Begiristain 109,Donostia/San Sebastián,Guipúzcoa,País Vasco,20014,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+200163,Hospital Bidasoa (Osi Bidasoa),Barrio Jaitzubia 154,Hondarribia,Guipúzcoa,País Vasco,20280,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+200258,Hospital de Mendaro (Osi Bajo Deba),Calle Mendarozabal 2,Mendaro,Guipúzcoa,País Vasco,20850,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+200219,Clínica Santa Maria de La Asunción (Inviza S. A.),Cuesta Izaskungo Aldapa 9,Tolosa,Guipúzcoa,País Vasco,20400,Hospitales Generales,Privados,N
+200230,"Sanatorio Usurbil, S. L.","Barrio Urdaiaga, Barrio/Auzoa 48",Usurbil,Guipúzcoa,País Vasco,20170,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+200245,Hospital de Zumarraga (Osi Goierri - Alto Urola),Grupo Argixao 1,Zumarraga,Guipúzcoa,País Vasco,20700,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+210084,Clínica Los Naranjos,Paseo De Los Naranjos 1,Huelva,Huelva,Andalucía,21004,Hospitales Generales,Privados,N
+210137,Hospital Quironsalud Huelva,Calle Punta Umbría 8,Huelva,Huelva,Andalucía,21002,Hospitales Generales,Privados,N
+210025,Hospital Infanta Elena,Calle Dr. Pedro Naranjo Rodríguez S/N,Huelva,Huelva,Andalucía,21007,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+210123,Hospital Universitario Juan Ramon Jimenez,Ronda Exterior Norte S/N,Huelva,Huelva,Andalucía,21005,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+210031,Hospital Vázquez Diaz,Carretera Sevilla-Huelva S/N,Huelva,Huelva,Andalucía,21005,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+210148,Hospital Virgen de La Bella,"Avenida Las Rosas, S/N S/N",Lepe,Huelva,Andalucía,21440,Hospitales Generales,Privados,N
+210097,Hospital de Riotinto,Avenida La Esquila 5,Minas de Riotinto,Huelva,Andalucía,21660,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+220054,Hospital de Barbastro,Carretera Nacional 240 S/N,Barbastro,Huesca,Aragón,22300,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+220105,Centro Sanitario Bajo Cinca-Baix Cinca,Calle Hermana Andresa 2,Fraga,Huesca,Aragón,22520,Otros Centros con Internamiento,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+220041,Hospital Viamed Santiago,Calle Sariñena 12,Huesca,Huesca,Aragón,22004,Hospitales Generales,Privados,N
+220020,Centro de Rehabilitación Psicosocial Santo Cristo de Los Milagros,"Carretera Arguis KM 2,5",Huesca,Huesca,Aragón,22006,Hospitales de salud mental y tratamiento de toxicomanías,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+220015,Hospital Universitario San Jorge,Avenida Martínez de Velasco 36,Huesca,Huesca,Aragón,22004,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+220036,Hospital Sagrado Corazón de Jesús,Paseo Lucas Mallada 22,Huesca,Huesca,Aragón,22006,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+220089,Hospital de Jaca Salud,Carretera Rapitan S/N,Jaca,Huesca,Aragón,22700,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+230184,Hospital de Alta Resolución de Alcalá La Real,Avenida De Iberoamérica S/N,Alcalá la Real,Jaén,Andalucía,23680,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+230173,Hospital de Alta Resolución de Alcaudete,Camino Viejo de La Fuensanta 2,Alcaudete,Jaén,Andalucía,23660,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+230145,Hospital Alto Guadalquivir,Avenida Blas Infante S/N,Andújar,Jaén,Andalucía,23740,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+230206,Centro Hospitalario de Alta Resolución de Cazorla,Carretera A-319 Cazorla-Peal del Becerro S/N,Cazorla,Jaén,Andalucía,23470,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+230217,Hospital Metropolitano de Jaén,Carretera Córdoba-Valencia S/N,Jaén,Jaén,Andalucía,23005,Hospitales Generales,Privados,N
+230063,Clínica Cristo Rey,Paseo La Estación 40,Jaén,Jaén,Andalucía,23008,Hospitales Generales,Privados,N
+230195,Hospital Puerta de Andalucía,Carretera Carretera Bailen-Motril S/N,Jaén,Jaén,Andalucía,23009,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+230026,Hospital Doctor Sagaz,Carretera Del Neveral S/N,Jaén,Jaén,Andalucía,23004,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+230151,Hospital Materno-Infantil del H.U. de Jaén,Avenida Del Ejercito Español 10,Jaén,Jaén,Andalucía,23007,Hospitales especializados,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+230047,Hospital Neurotraumatologico del H.U. de Jaén,Carretera Bailen Motril S/N,Jaén,Jaén,Andalucía,23007,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+230011,Hospital Universitario de Jaén,Avenida Ejercito Español 10,Jaén,Jaén,Andalucía,23007,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+230079,Hospital San Agustín,Avenida San Cristóbal S/N,Linares,Jaén,Andalucía,23700,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+230162,Hospital de Alta Resolución Sierra de Segura,"Carretera Puente Genave - La Puerta de Segura, Km. 0,300 S/N",Puente de Génave,Jaén,Andalucía,23350,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+230098,Hospital San Juan de La Cruz,Carretera De Linares S/N,Úbeda,Jaén,Andalucía,23400,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+240055,HM Regla,Calle Cardenal Landázuri 2,León,León,Castilla y León,24003,Hospitales Generales,Organizaciones No Gubernamentales,N
+240074,Hospital HM San Francisco,Calle Marqueses de San Isidro 11,León,León,Castilla y León,24004,Hospitales Generales,Privados,N
+240021,Hospital Monte San Isidro. Complejo Asistencial Universitario de León.,"Carretera Nacional N-630, Km140 S/N",León,León,Castilla y León,24008,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+240016,Hospital de León. Complejo Asistencial Universitario de León.,Calle Altos de Nava S/N S/N,León,León,Castilla y León,24080,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+240093,Hospital Santa Isabel. Complejo Asistencial Universitario de León.,Avenida De Madrid 118,León,León,Castilla y León,24080,Hospitales de salud mental y tratamiento de toxicomanías,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+240140,Hospital de La Reina,Calle Hospital 28,Ponferrada,León,Castilla y León,24401,Hospitales Generales,Organizaciones No Gubernamentales,N
+240212,Clínica Ponferrada Recoletas,Camino De Santiago 101,Ponferrada,León,Castilla y León,24404,Hospitales Generales,Privados,N
+240135,Hospital El Bierzo,Calle Médicos Sin Fronteras 7,Ponferrada,León,Castilla y León,24404,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+240188,Hospital San Juan de Dios León,Avenida San Ignacio de Loyola 73,San Andrés del Rabanedo,León,Castilla y León,24010,Hospitales Generales,Organizaciones No Gubernamentales,N
+240220,Hospital Valle de Laciana,Avenida De Asturias Sn S/N,Villablino,León,Castilla y León,24100,Hospitales de media y larga estancia,Otros Centros o Establecimientos Públicos de Dependencia Autonómica,N
+250210,Sant Joan de Deu Terres de Lleida,Carretera N-240 .,Almacelles,Lleida,Cataluña,25100,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+250175,Residencia Terraferma,Calle Partida del Grao S/N,Alpicat,Lleida,Cataluña,25110,Hospitales de media y larga estancia,Privados,N
+250169,Hestia Balaguer.,Calle Gregori Gallego 22-28,Balaguer,Lleida,Cataluña,25600,Hospitales de media y larga estancia,Privados,N
+250254,Acompanya'M Lleida,Transversal D'Extremadura 13,Lleida,Lleida,Cataluña,25001,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+250243,Avantmedic,Calle Alfred Pereña 10,Lleida,Lleida,Cataluña,25008,Otros Centros con Internamiento,Privados,N
+250061,Clínica Mi Nova Aliança,Avenida Enric Prat de La Riba 79-81,Lleida,Lleida,Cataluña,25004,Hospitales Generales,Privados,N
+250232,Hospital Sant Joan de Deu Lleida,Avenida Canadenca 28,Lleida,Lleida,Cataluña,25001,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+250077,Clínica Psiquiatrica Bellavista,Avenida Rovira Roure 116,Lleida,Lleida,Cataluña,25198,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+250045,Vithas Hospital Montserrat,Calle Bisbe Torres 13,Lleida,Lleida,Cataluña,25002,Hospitales Generales,Privados,N
+250058,"Clínica Perpetuo Socorro de Lérida, Grupo Ha, Slu",Calle Bisbe Messeguer 3,Lleida,Lleida,Cataluña,25003,Hospitales Generales,Privados,N
+250209,Hospital Jaume Nadal Meroles,Calle Academia 41,Lleida,Lleida,Cataluña,25002,Hospitales de media y larga estancia,Otras Entidades u o rganismos Públicos,N
+250024,Hospital Santa Maria,Avenida Alcalde Rovira Roure 44,Lleida,Lleida,Cataluña,25198,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+250019,Hospital Universitari Arnau de Vilanova de Lleida.,Avenida Alcalde Rovira Roure 80,Lleida,Lleida,Cataluña,25198,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+250181,"Castell D'Oliana Residencial, S.L",Carretera De Lleida A Puigcerdà .,Oliana,Lleida,Cataluña,25790,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+250117,Fundacio Sant Hospital.,Paseo Joan Brudieu 8,"Seu d'Urgell, La",Lleida,Cataluña,25700,Hospitales Generales,Privados,N
+250138,"Centre Sanitari del Solsones, F.P.C.","Plaza Antoni Guitart, 1",Solsona,Lleida,Cataluña,25280,Hospitales de media y larga estancia,Otras Entidades u o rganismos Públicos,N
+250143,Hospital Comarcal del Pallars,Avenida Pau Casals 5,Tremp,Lleida,Cataluña,25620,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+250156,Espitau Val D'Aran,"Calle Espitau, 8",Vielha e Mijaran,Lleida,Cataluña,25530,Hospitales Generales,Privados,N
+260110,Centro Asistencial Albelda de Iregua,Carretera De Soria KM. 8,Albelda de Iregua,La Rioja,La Rioja,26120,Hospitales de salud mental y tratamiento de toxicomanías,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+260132,Centro Sociosanitario de Convalecencia Nuestra Señora Virgen del Carmen,Calle Severo Ochoa S/N,Calahorra,La Rioja,La Rioja,26500,Hospitales de media y larga estancia,Otros Centros o Establecimientos Públicos de Dependencia Autonómica,N
+260099,Fundacion Hospital Calahorra,Carretera Carretera de Logroño S/N,Calahorra,La Rioja,La Rioja,26500,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+260121,Centro Sociosanitario de Convalecencia Los Jazmines,Calle Severo Ochoa 5,Haro,La Rioja,La Rioja,26200,Hospitales de media y larga estancia,Privados,N
+260109,Clínica Los Manzanos,Calle Hnos. Maristas S/N,Lardero,La Rioja,La Rioja,26140,Hospitales Generales,Privados,N
+260051,Policlínico Riojano Nuestra Señora de Valvanera,Calle Ramon y Cajal S/N,Logroño,La Rioja,La Rioja,26006,Hospitales de media y larga estancia,Privados,N
+260027,Hospital Universitario San Pedro,Calle Piqueras 98,Logroño,La Rioja,La Rioja,26006,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+260048,Hospital de La Rioja,Avenida Avenida de Viana 1,Logroño,La Rioja,La Rioja,26071,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+270095,Hospital Publico Da Mariña,Calle Medico Vior S/N,Burela,Lugo,Galicia,27880,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+270076,Hospital Quirón Salud Lugo,Calle Montevideo 23,Lugo,Lugo,Galicia,27001,Hospitales Generales,Privados,N
+270057,Hospital Ribera Polusa,Calle Doutor Iglesias Otero S/N,Lugo,Lugo,Galicia,27004,Hospitales Generales,Privados,N
+270018,Complexo Hospitalario Universitario de Lugo,Calle Ulises Romero 1,Lugo,Lugo,Galicia,27003,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+270109,Hospital Publico de Monforte,Calle Corredoira S/N,Monforte de Lemos,Lugo,Galicia,27400,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+281371,Hospital HM Valles,Calle Santiago 14,Alcalá de Henares,Madrid,Madrid,28801,Otros Centros con Internamiento,Privados,N
+280745,Hospital Universitario Príncipe de Asturias,Carretera De Meco S/N,Alcalá de Henares,Madrid,Madrid,28805,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+281124,Hospital Quironsalud Sur,Calle De Estambul 30,Alcorcón,Madrid,Madrid,28922,Hospitales Generales,Privados,N
+281071,Hospital Universitario Fundacion Alcorcón,Calle Budapest 1,Alcorcón,Madrid,Madrid,28922,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+281292,Hospital Universitario del Tajo,Avenida Amazonas Central S/N,Aranjuez,Madrid,Madrid,28300,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+281281,Hospital Universitario del Sureste,Ronda Del Sur 10,Arganda del Rey,Madrid,Madrid,28500,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+281090,Hospital Universitario HM Monteprincipe,Avenida De Monteprincipe 25,Boadilla del Monte,Madrid,Madrid,28660,Hospitales Generales,Privados,N
+281180,Hospital Los Madroños,"Carretera De M-501 (De Alcorcón A Plasencia) KM.17,900",Brunete,Madrid,Madrid,28690,Hospitales Generales,Privados,N
+280761,Hospital de La Fuenfria,Carretera De Dehesas S/N,Cercedilla,Madrid,Madrid,28470,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+280783,Centro San Juan de Dios Ciempozuelos,Avenida De San Juan de Dios 1,Ciempozuelos,Madrid,Madrid,28350,Otros Centros con Internamiento,Privados,N
+280777,Complejo Asistencial Benito Menni,Calle De Los Jardines 1,Ciempozuelos,Madrid,Madrid,28350,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+281359,Hospital General de Villalba,"Carretera De Alpedrete M-608, KM. 41",Collado Villalba,Madrid,Madrid,28400,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+280796,Hospital Asepeyo Madrid,Calle De Joaquín de Cárdenas 2,Coslada,Madrid,Madrid,28823,Hospitales especializados,Mútuas Colaboradoras con La Seguridad Social,N
+281269,Hospital Universitario del Henares,Avenida De Marie Curie S/N,Coslada,Madrid,Madrid,28822,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+281146,Hospital Universitario de Fuenlabrada,Camino Del Molino 2,Fuenlabrada,Madrid,Madrid,28942,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+280989,Hospital Universitario de Getafe,"Carretera De Madrid-Toledo KM.12,500",Getafe,Madrid,Madrid,28905,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+281326,Casta Guadarrama,"Carretera De La Coruña KM.50,300",Guadarrama,Madrid,Madrid,28440,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+280800,Hospital Asociado Universitario Guadarrama,Paseo Molino del Rey 2,Guadarrama,Madrid,Madrid,28440,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+281438,Hospital Universitario José Germain,Calle Aragón 17,Leganés,Madrid,Madrid,28913,Hospitales de salud mental y tratamiento de toxicomanías,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+280843,Hospital Universitario José Germain,Calle Luna 1,Leganés,Madrid,Madrid,28911,Hospitales de salud mental y tratamiento de toxicomanías,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+280838,Hospital Universitario Severo Ochoa,Avenida Orellana S/N,Leganés,Madrid,Madrid,28911,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+281383,"Fraternidad Muprespa, Mutua Colaboradora Con La Seguridad Social Nº 275",Paseo De La Habana 83,Madrid,Madrid,Madrid,28036,Hospitales especializados,Mútuas Colaboradoras con La Seguridad Social,N
+281393,Clínica Universidad de Navarra,Calle Del Marquesado de Santa Marta 1,Madrid,Madrid,Madrid,28022,Hospitales Generales,Privados,N
+281247,Hospital Pardo de Aravaca,Calle De La Salle 12,Madrid,Madrid,Madrid,28023,Hospitales Generales,Privados,N
+281113,Hospital Md Anderson Cáncer Center Madrid,Calle De Gómez Hemans 2,Madrid,Madrid,Madrid,28033,Hospitales especializados,Privados,N
+281034,Clínica Isadora S.A.,Calle De Los Pirineos 7,Madrid,Madrid,Madrid,28040,Otros Centros con Internamiento,Privados,N
+280395,Clínica San Miguel,Calle De Arturo Soria 204,Madrid,Madrid,Madrid,28043,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+280339,Hospital San Rafael,Calle De Serrano 199,Madrid,Madrid,Madrid,28016,Hospitales Generales,Privados,N
+280954,Hospital Universitario HM Madrid,Plaza Del Conde del Valle de Suchil 16,Madrid,Madrid,Madrid,28015,Hospitales Generales,Privados,N
+280468,Hospital San Camilo,Calle De Juan Bravo 39,Madrid,Madrid,Madrid,28006,Hospitales Generales,Privados,N
+280604,Hospital Universitario La Zarzuela,Calle De Pléyades 25,Madrid,Madrid,Madrid,28023,Hospitales Generales,Privados,N
+280534,"Clínica La Luz, S.L.",Calle Del Maestro Ángel Llorca 8,Madrid,Madrid,Madrid,28003,Hospitales Generales,Privados,N
+280549,Hospital Fuensanta,Calle De Arturo Soria 17,Madrid,Madrid,Madrid,28027,Hospitales Generales,Privados,N
+281491,"HM Hospitales 1989, S.A.",Calle De Cobos de Segovia 4,Madrid,Madrid,Madrid,28005,Hospitales Generales,Privados,S
+281478,Alm Univass S.L.,Calle De Las Cerilleras 7,Madrid,Madrid,Madrid,28054,Hospitales de media y larga estancia,Privados,N
+281225,Hospital Universitario HM Sanchinarro,Calle De Oña 10,Madrid,Madrid,Madrid,28050,Hospitales Generales,Privados,N
+281049,Hospital Ha Universitario Moncloa,Avenida De Valladolid 83,Madrid,Madrid,Madrid,28008,Hospitales Generales,Privados,N
+280382,Hospital San Francisco de Asís,Calle De Joaquín Costa 28,Madrid,Madrid,Madrid,28002,Hospitales Generales,Privados,N
+280376,"Hospital Viamed Santa Elena, S.L",Calle De Abtao 25,Madrid,Madrid,Madrid,28007,Otros Centros con Internamiento,Privados,N
+280421,Hospital Universitario Fundacion Jimenez Diaz,Avenida De Los Reyes Católicos 2,Madrid,Madrid,Madrid,28040,Hospitales Generales,Privados,N
+281179,Hospital Universitario La Moraleja,Avenida De Francisco Pi y Margall 81,Madrid,Madrid,Madrid,28050,Hospitales Generales,Privados,N
+280565,Hospital Ruber Internacional,Calle De La Maso 38,Madrid,Madrid,Madrid,28034,Hospitales Generales,Privados,N
+280587,Hospital La Milagrosa S.A.,Calle De Modesto Lafuente 14,Madrid,Madrid,Madrid,28010,Hospitales Generales,Privados,N
+280360,Hospital Beata Maria Ana,Calle Del Doctor Esquerdo 83,Madrid,Madrid,Madrid,28007,Hospitales Generales,Privados,N
+281214,Hospital Centro de Cuidados Laguna,Calle Del Concejal Francisco José Jimenez Martin 128,Madrid,Madrid,Madrid,28047,Hospitales de media y larga estancia,Privados,N
+281087,Clínica Cemtro,Avenida Del Ventisquero de La Condesa 42,Madrid,Madrid,Madrid,28035,Hospitales Generales,Privados,N
+280679,"Sanatorio Esquerdo, S.A.",Avenida De Los Poblados 70,Madrid,Madrid,Madrid,28044,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+280650,Clínica López Ibor,Calle Del Doctor Juan José López Ibor 2,Madrid,Madrid,Madrid,28035,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+280647,Clínica Dr. León,Plaza De Mariano de Cavia 3,Madrid,Madrid,Madrid,28007,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+280626,Hospital HM Nuevo Belen,Calle De José Silva 7,Madrid,Madrid,Madrid,28043,Hospitales especializados,Privados,N
+280552,Hospital Ruber Juan Bravo,Calle De Juan Bravo 49,Madrid,Madrid,Madrid,28006,Hospitales Generales,Privados,N
+280474,Hospital Nuestra Señora de América,Calle De Arturo Soria 103-105-107,Madrid,Madrid,Madrid,28043,Hospitales Generales,Privados,N
+280455,Hospital Hestia Madrid,Carretera De Colmenar Viejo KM.16,Madrid,Madrid,Madrid,28049,Hospitales de media y larga estancia,Privados,N
+280442,Hospital Virgen del Mar,Calle De Honduras 14,Madrid,Madrid,Madrid,28016,Hospitales Generales,Privados,N
+280409,Clínica Nuestra Señora de La Paz,Calle De López de Hoyos 259,Madrid,Madrid,Madrid,28043,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+280357,Hospital Quironsalud San José,Calle De Cartagena 111,Madrid,Madrid,Madrid,28002,Hospitales Generales,Privados,N
+280344,Hospital de La V.O.T. de San Francisco de Asís,Calle De San Bernabé 13,Madrid,Madrid,Madrid,28005,Otros Centros con Internamiento,Privados,N
+280416,Fundacion Instituto San José,Calle Del Pinar de San José 98,Madrid,Madrid,Madrid,28054,Hospitales de media y larga estancia,Privados,N
+280323,Sanatorio Nuestra Señora del Rosario,Calle Del Cardenal Cisneros 7,Madrid,Madrid,Madrid,28010,Hospitales Generales,Privados,N
+280724,Hospital Central de La Defensa Gómez Ulla,Glorieta Del Ejercito S/N,Madrid,Madrid,Madrid,28047,Hospitales Generales,Ministerio de Defensa,N
+280127,Hospital Universitario de La Princesa,Calle De Diego de León 62,Madrid,Madrid,Madrid,28006,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+280035,Hospital Universitario 12 de Octubre,Avenida De Córdoba S/N,Madrid,Madrid,Madrid,28041,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+280029,Hospital Universitario Ramon y Cajal,Calle De Ayala 38,Madrid,Madrid,Madrid,28001,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+280262,Hospital Psiquiátrico Doctor Rodriguez Lafora,"Carretera De Colmenar Viejo K.13,8",Madrid,Madrid,Madrid,28049,Hospitales de salud mental y tratamiento de toxicomanías,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+280133,Hospital Infantil Universitario Niño Jesús,Avenida De Menéndez Pelayo 65,Madrid,Madrid,Madrid,28009,Hospitales especializados,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+280112,Hospital Universitario Santa Cristina,Calle Del Maestro Vives 2,Madrid,Madrid,Madrid,28009,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+280072,Hospital Universitario Clínico San Carlos,Calle Del Profesor Martin Lagos S/N,Madrid,Madrid,Madrid,28040,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+280014,Hospital Universitario La Paz,Paseo De La Castellana 261,Madrid,Madrid,Madrid,28046,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+280246,Hospital General Universitario Gregorio Marañón,Calle Del Doctor Esquerdo 46,Madrid,Madrid,Madrid,28007,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+280210,Hospital de Cantoblanco,"Carretera De Colmenar Viejo K.14,500",Madrid,Madrid,Madrid,28049,Otros Centros con Internamiento,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+280164,Hospital Carlos III,Calle De Sinesio Delgado 8-10,Madrid,Madrid,Madrid,28029,Otros Centros con Internamiento,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+281270,Hospital Universitario Infanta Leonor,Avenida De La Gran Vía del Este 80,Madrid,Madrid,Madrid,28031,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+280259,Instituto Provincial de Rehabilitación,Calle De Francisco Silvela 40,Madrid,Madrid,Madrid,28028,Hospitales especializados,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+281445,Servicio Madrileño de Salud,Avenida De Manuel Fraga Iribarne 2,Madrid,Madrid,Madrid,28055,Otros Centros con Internamiento,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+280091,Hospital Virgen de La Torre,Calle Del Puerto de Lumbreras 5,Madrid,Madrid,Madrid,28031,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+280148,"Hospital Central de La Cruz Roja, San José y Santa Adela",Avenida De La Reina Victoria 22-26,Madrid,Madrid,Madrid,28003,Otros Centros con Internamiento,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+280856,Fremap Hospital Majadahonda,Carretera M-515 (Pozuelo) 61,Majadahonda,Madrid,Madrid,28220,Hospitales especializados,Mútuas Colaboradoras con La Seguridad Social,N
+281315,Hospital Universitario Puerta de Hierro Majadahonda,Calle Manuel de Falla 1,Majadahonda,Madrid,Madrid,28222,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+281360,Hospital Universitario HM Puerta del Sur,Avenida De Carlos V 70,Móstoles,Madrid,Madrid,28938,Hospitales Generales,Privados,N
+280894,Hospital Universitario de Móstoles,Calle Rio Júcar S/N,Móstoles,Madrid,Madrid,28935,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+281348,ID Dalud Móstoles Sa,Calle Gladiolo S/N,Móstoles,Madrid,Madrid,28933,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+281304,Hospital Universitario Infanta Cristina,Avenida 9 de Junio 2,Parla,Madrid,Madrid,28981,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+281203,Hospital Universitario Quironsalud Madrid,Calle Diego de Velázquez 1,Pozuelo de Alarcón,Madrid,Madrid,28223,Hospitales Generales,Privados,N
+281467,"HM Hospitales 1.989, S.A.",Avenida De José Hierro 94,Rivas-Vaciamadrid,Madrid,Madrid,28521,Hospitales Generales,Privados,N
+280920,Hospital El Escorial,"Carretera De Guadarrama 6,255",San Lorenzo de El Escorial,Madrid,Madrid,28200,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+281258,Hospital Universitario Infanta Sofia,Paseo Europa 34,San Sebastián de los Reyes,Madrid,Madrid,28702,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+281456,Hospital Quirón Salud Valle del Henares,Avenida Constitución 249,Torrejón de Ardoz,Madrid,Madrid,28850,Hospitales Generales,Privados,N
+281337,Hospital Universitario de Torrejón,Calle Mateo Inurria 1,Torrejón de Ardoz,Madrid,Madrid,28850,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+281157,Hospital Universitario HM Torrelodones,Avenida Castillo de Olivares S/N,Torrelodones,Madrid,Madrid,28250,Hospitales Generales,Privados,N
+281236,Hospital Universitario Infanta Elena,Avenida Reyes Católicos 21,Valdemoro,Madrid,Madrid,28342,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+280936,Hospital Virgen de La Poveda,Carretera M-952 (Acceso Al Hospital) KM.5,Villa del Prado,Madrid,Madrid,28630,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+290154,Hospital de Antequera,Avenida Poeta Muñoz Rojas S/N,Antequera,Malaga,Andalucía,29200,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+290393,Fundacion Cudeca. Centro de Cuidados Paliativos,Avenida Del Cosmos S/N,Benalmádena,Malaga,Andalucía,29631,Hospitales especializados,Privados,N
+290405,Hospital Vithas Xanit Internacional,Avenida De Los Argonautas S/N,Benalmádena,Malaga,Andalucía,29630,Hospitales Generales,Privados,N
+290450,Hospital Vithas Xanit Estepona,Avenida Andalucía 2 y 4,Estepona,Malaga,Andalucía,29680,Hospitales Generales,Privados,N
+290382,Clínicas del Sur Slu,Carretera Nacional 340 S/N,Estepona,Malaga,Andalucía,29680,Hospitales Generales,Privados,N
+290528,Hospital de Alta Resolución de Estepona,Calle Irene Villa González 9,Estepona,Malaga,Andalucía,29680,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+290081,Hospital Vithas Parque San Antonio,Avenida Pintor Joaquín Sorolla 2,Málaga,Malaga,Andalucía,29016,Hospitales Generales,Privados,N
+290449,Hospital Quironsalud Málaga,Avenida Imperio Argentina 1,Málaga,Malaga,Andalucía,29004,Hospitales Generales,Privados,N
+290075,Centro Asistencial Hnas. Hospitalarias del Sagrado Corazón de Jesús,Calle San Juan Bosco 41,Málaga,Malaga,Andalucía,29014,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+290108,HM Gálvez,Calle San Agustín 1,Málaga,Malaga,Andalucía,29015,Hospitales Generales,Privados,N
+290136,Hospital Psiquiátrico San Francisco de Asís,Avenida Hernan Núñez de Toledo 5,Málaga,Malaga,Andalucía,29018,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+290069,Centro Asistencial San Juan de Dios,Camino Casabermeja 126,Málaga,Malaga,Andalucía,29014,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+290141,HM El Pilar,Paseo De Sancha 15,Málaga,Malaga,Andalucía,29016,Hospitales Generales,Privados,N
+290094,Hospital El Ángel,Calle Corregidor Nicolas Isidro 16,Málaga,Malaga,Andalucía,29007,Hospitales Generales,Privados,N
+290115,HM Málaga,Avenida Carlos Haya 121,Málaga,Malaga,Andalucía,29010,Hospitales Generales,Privados,N
+290038,Hospital Civil,Plaza Del Hospital Civil S/N,Málaga,Malaga,Andalucía,29009,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+290517,Hospital Valle de Guadalhorce de Cartama,Carretera Autovía A-357 Málaga S/N,Málaga,Malaga,Andalucía,29570,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+290022,Hospital Universitario Virgen de La Victoria,Calle Campus Universitario Teatinos S/N,Málaga,Malaga,Andalucía,29010,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+290265,Hospital Materno Infantil del H.U.R. de Málaga,Calle Arroyo de Los Ángeles S/N,Málaga,Malaga,Andalucía,29009,Hospitales especializados,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+290017,Hospital Universitario Regional de Málaga,Avenida Carlos Haya S/N,Málaga,Malaga,Andalucía,29010,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+290173,Hospital Quironsalud Marbella,Avenida Severo Ochoa 22,Marbella,Malaga,Andalucía,29603,Hospitales Generales,Privados,N
+290494,Helicópteros Sanitarios Hospital,Carretera Nacional 340 S/N,Marbella,Malaga,Andalucía,29600,Hospitales Generales,Privados,N
+290359,Ha Marbella International Hospital,Calle Ventura del Mar 11,Marbella,Malaga,Andalucía,29660,Hospitales Generales,Privados,N
+290472,Hospital Recoletas Marbella Slu,Calle Maestra Doña Carola 8,Marbella,Malaga,Andalucía,29602,Hospitales Generales,Privados,N
+290461,Hospital Ochoa,Paseo Alfonso Cañas Nogueras (Paseo Marítimo) S/N,Marbella,Malaga,Andalucía,29603,Hospitales Generales,Privados,N
+290287,Hospital Costa del Sol,Carretera Autovía A-7 S/N,Marbella,Malaga,Andalucía,29603,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+290506,Hospital de La Serranía,"Carretera Ronda-San Pedro, Km. 2 S/N",Ronda,Malaga,Andalucía,29400,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+290228,Hospital Internacional HM Santa Elena,Urbanización Los Álamos S/N,Torremolinos,Malaga,Andalucía,29620,Hospitales Generales,Privados,N
+290213,Hospital Marítimo de Torremolinos,Calle Sanatorio 5,Torremolinos,Malaga,Andalucía,29620,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+290348,Clínica El Seranil,Carretera Almería S/N,Vélez-Málaga,Malaga,Andalucía,29790,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+290206,Hospital de La Axarquia,Avenida Del Sol 43,Vélez-Málaga,Malaga,Andalucía,29740,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+300119,Hospital Viamed San José,Calle Maestra Lola Meseguer S/N,Alcantarilla,Murcia,Región de Murcia,30820,Otros Centros con Internamiento,Privados,N
+300130,Hospital Centro Medico Virgen de La Caridad Caravaca,Calle Doctor Robles S/N,Caravaca de la Cruz,Murcia,Región de Murcia,30400,Otros Centros con Internamiento,Privados,N
+300124,Hospital Comarcal del Noroeste,Avenida Miguel Espinosa S/N,Caravaca de la Cruz,Murcia,Región de Murcia,30400,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+300161,Santo y Real Hospital de Caridad,Camino Barrio Peral S/N,Cartagena,Murcia,Región de Murcia,30310,Hospitales de media y larga estancia,Privados,N
+300373,Hospital Perpetuo Socorro Alameda,Calle Alameda San Antón 6,Cartagena,Murcia,Región de Murcia,30205,Otros Centros con Internamiento,Privados,N
+300384,Hospital C. M. Virgen de La Caridad Cartagena,Calle Jorge Juan 30,Cartagena,Murcia,Región de Murcia,30205,Otros Centros con Internamiento,Privados,N
+300177,Hospital Ntra. Sra. del Perpetuo Socorro,Calle Sebastián Feringan 12,Cartagena,Murcia,Región de Murcia,30205,Otros Centros con Internamiento,Privados,N
+300145,Hospital Santa Maria del Rosell,Paseo Alfonso Xia 61,Cartagena,Murcia,Región de Murcia,30203,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+300362,Hospital General Universitario Santa Lucia,Calle Mezquita (Paraje Los Arcos) S/N,Cartagena,Murcia,Región de Murcia,30202,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+300196,Hospital Asilo de La Real Piedad de Cehegín,Plaza Mesoncico 3,Cehegín,Murcia,Región de Murcia,30430,Hospitales de media y larga estancia,Privados,N
+300281,Hospital de La Vega Lorenzo Guirao,Carretera De Abaran S/N,Cieza,Murcia,Región de Murcia,30530,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+300217,Hospital Virgen del Alcázar de Lorca,Alameda De Los Tristes S/N,Lorca,Murcia,Región de Murcia,30800,Otros Centros con Internamiento,Privados,N
+300256,Hospital Rafael Méndez,"Carretera Nacional 340, Km 589 S/N",Lorca,Murcia,Región de Murcia,30817,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+300406,Hospital del Guadalentín,Calle Jerez de La Frontera S/N URB CAMPOSOL SECOR A,Mazarrón,Murcia,Región de Murcia,30875,Otros Centros con Internamiento,Privados,S
+300294,Ribera Hospital de Molina,Calle Asociación S/N,Molina de Segura,Murcia,Región de Murcia,30500,Otros Centros con Internamiento,Privados,N
+300275,Hospital Ibermutuamur - Patología Laboral,Calle Antonio Rocamora 4,Murcia,Murcia,Región de Murcia,30100,Hospitales especializados,Mútuas Colaboradoras con La Seguridad Social,N
+300079,Hospital La Vega Grupo Ha,Calle Doctor Román Alberca S/N,Murcia,Murcia,Región de Murcia,30008,Hospitales Generales,Privados,N
+300395,Hospital IMED Virgen de La Fuensanta,Calle Padre Félix Sánchez Blanco 5,Murcia,Murcia,Región de Murcia,30009,Otros Centros con Internamiento,Privados,S
+300050,Hospital Quironsalud Murcia,Calle Miguel Hernández 12,Murcia,Murcia,Región de Murcia,30011,Hospitales Generales,Privados,N
+300317,Clínica San Felipe,Finca El Mayayo 16,Murcia,Murcia,Región de Murcia,30120,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+300098,Sanatorio Dr. Muñoz,Carretera Cartagena 59,Murcia,Murcia,Región de Murcia,30120,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+300085,Hospital Mesa del Castillo,Ronda Sur 20,Murcia,Murcia,Región de Murcia,30010,Otros Centros con Internamiento,Privados,N
+300011,Hospital Clínico Universitario Virgen de La Arrixaca,Carretera Madrid-Cartagena S/N,Murcia,Murcia,Región de Murcia,30120,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+300032,Hospital Psiquiátrico Román Alberca,Calle Lorca 58 CALLE LORCA 58,Murcia,Murcia,Región de Murcia,30120,Hospitales de salud mental y tratamiento de toxicomanías,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+300026,Hospital General Universitario Reina Sofia,Avenida Intendente Jorge Palacios 1,Murcia,Murcia,Región de Murcia,30003,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+300269,Hospital G. Universitario J.M. Morales Meseguer,Avenida Marques de Los Vélez 0,Murcia,Murcia,Región de Murcia,30008,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+300222,Hospital General Universitario Los Arcos del Mar Menor,Paraje Torre Octavio S/N,San Javier,Murcia,Región de Murcia,30739,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+300339,Hospital de Cuidados Medios Villademar,Avenida Concejal Mariano Henarejos 13,San Pedro del Pinatar,Murcia,Región de Murcia,30740,Hospitales de media y larga estancia,Privados,N
+300243,Hospital Virgen del Castillo,Avenida De La Feria S/N,Yecla,Murcia,Región de Murcia,30510,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+310142,Clínica Psico geriátrica Josefina Arregui,Calle Erburua S/N -,Altsasu/Alsasua,Navarra,C. Foral de Navarra,31800,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+310109,Centro Hospitalario Benito Menni,Calle Mendinueta S/N -,Baztan,Navarra,C. Foral de Navarra,31700,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+500172,Unidad de Rehabilitación de Larga Estancia,Carretera Sos S/N,Sádaba,Zaragoza,Aragón,50670,Hospitales de salud mental y tratamiento de toxicomanías,Organizaciones No Gubernamentales,N
+500114,Hospital San Juan de Dios,Paseo Colon 14,Zaragoza,Zaragoza,Aragón,50006,Hospitales de media y larga estancia,Organizaciones No Gubernamentales,N
+500107,Centro Neuropsiquiátrico Nuestra Señora del Carmen,Camino Abejar 100,Zaragoza,Zaragoza,Aragón,50190,Hospitales de salud mental y tratamiento de toxicomanías,Organizaciones No Gubernamentales,N
+500188,Unidad Rehabilitadora de Media Estancia Profesor Rey Ardid,Calle Camino Viejo de La Alfocea 10,Zaragoza,Zaragoza,Aragón,50191,Hospitales de salud mental y tratamiento de toxicomanías,Organizaciones No Gubernamentales,N
+500080,Hospital Maz,Avenida Academia General Militar 74,Zaragoza,Zaragoza,Aragón,50015,Hospitales Generales,Mútuas Colaboradoras con La Seguridad Social,N
+500218,Hospital Viamed Montecanal,Calle Franz Schubert 2,Zaragoza,Zaragoza,Aragón,50012,Hospitales Generales,Privados,N
+500223,Hospital Hernan Cortes Miraflores,Camino Torres (De Las) 51-53,Zaragoza,Zaragoza,Aragón,50008,Hospitales Generales,Privados,N
+500195,Hospital de Rehabilitación Psiquiatrica Prisma,Calle Torre del Cerezo (San Juan de Mozarrifar) 17,Zaragoza,Zaragoza,Aragón,50820,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+500093,"Clínica Montpellier, Grupo Ha, S.A.U",Vía Hispanidad 37,Zaragoza,Zaragoza,Aragón,50012,Hospitales Generales,Privados,N
+500129,Hospital Quironsalud Zaragoza,Paseo Mariano Renovales S/N,Zaragoza,Zaragoza,Aragón,50006,Hospitales Generales,Privados,N
+500140,Hospital General de La Defensa En Zaragoza,Calle Vía Ibérica 1-15 1-15,Zaragoza,Zaragoza,Aragón,50009,Hospitales Generales,Ministerio de Defensa,N
+500055,Hospital Royo Villanova,Avenida San Gregorio 30,Zaragoza,Zaragoza,Aragón,50015,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+500068,Centro de Rehabilitación Psicosocial Nuestra Señora del Pilar,Calle Duquesa Villahermosa 66-68,Zaragoza,Zaragoza,Aragón,50009,Hospitales de salud mental y tratamiento de toxicomanías,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+500074,Hospital Nuestra Señora de Gracia,Calle Ramon y Cajal 60,Zaragoza,Zaragoza,Aragón,50004,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+500016,Hospital Clínico Universitario Lozano Blesa,Calle San Juan Bosco 15,Zaragoza,Zaragoza,Aragón,50009,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+500021,Hospital Universitario Miguel Servet,Paseo Isabel La Católica 1-3,Zaragoza,Zaragoza,Aragón,50009,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+510039,Hospital Universitario de Ceuta,Calle Loma Colmenar S/N,Ceuta,Ceuta,Ceuta,51003,Hospitales Generales,Instituto de Gestión Sanitaria-Ingesa,N
+520042,EV Medical-Rusadir,Calle José Abadía Benhamú 1,Melilla,Melilla,Melilla,52003,Otros Centros con Internamiento,Privados,S
+520018,Hospital Comarcal,Calle Remonta 2,Melilla,Melilla,Melilla,52005,Hospitales Generales,Instituto de Gestión Sanitaria-Ingesa,N
+320150,Hospital Publico de Verín,Carretera Laza (De) S/N,Verín,Ourense,Galicia,32600,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+330117,Fundacion Hospital de Avilés,Calle Cabruñana 19,Avilés,Asturias,Ppdo. de Asturias,33402,Hospitales especializados,Privados,N
+330100,Hospital Universitario San Agustín,Camino De Heros 6,Avilés,Asturias,Ppdo. de Asturias,33401,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+330138,Hospital Carmen y Severo Ochoa,Calle Sienra 11,Cangas del Narcea,Asturias,Ppdo. de Asturias,33800,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+330143,Hospital de Jarrio,Carretera De Jarrio S/N,Coaña,Asturias,Ppdo. de Asturias,33719,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+330194,Hospital de Jove,Avenida Eduardo Castro S/N,Gijón,Asturias,Ppdo. de Asturias,33290,Hospitales Generales,Privados,N
+330175,Hospital Covadonga,Calle General Suarez Valdés 40,Gijón,Asturias,Ppdo. de Asturias,33204,Hospitales Generales,Privados,N
+330169,Hospital Cruz Roja Gijón,Calle Uría 37,Gijón,Asturias,Ppdo. de Asturias,33202,Hospitales Generales,Privados,N
+330365,Centro Terapeutico Vista Alegre,Calle Profesor Perez Pimentel (La Guía - Somio) 518,Gijón,Asturias,Ppdo. de Asturias,33203,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+330332,Clínica Psiquiatrica Somio,"Carretera La Providencia-Infanzon, 3518 3518",Gijón,Asturias,Ppdo. de Asturias,33203,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+330208,Hospital Begoña,Avenida Pablo Iglesias 92,Gijón,Asturias,Ppdo. de Asturias,33204,Hospitales Generales,Privados,N
+330354,Hospital Gijón,Avenida De La Costa 45,Gijón,Asturias,Ppdo. de Asturias,33201,Hospitales de media y larga estancia,Privados,N
+330409,Centro de Tratamiento Integral Montevil,Calle Álava 67,Gijón,Asturias,Ppdo. de Asturias,33210,Otros Centros con Internamiento,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+330156,Hospital Universitario de Cabueñes,Calle Los Prados 395,Gijón,Asturias,Ppdo. de Asturias,33203,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+330254,Fundacion Sanatorio Adaro,Calle Jove y Canella 1,Langreo,Asturias,Ppdo. de Asturias,33900,Hospitales de media y larga estancia,Privados,N
+330241,Hospital Valle del Nalon,Polígono De Riaño S/N,Langreo,Asturias,Ppdo. de Asturias,33920,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+330321,Centro Salud Mental Perez Espinosa,Calle Santa Rosa 6,Llanera,Asturias,Ppdo. de Asturias,33690,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+330325,Hospital Vital Alvarez Buylla,Calle Vistalegre 2,Mieres,Asturias,Ppdo. de Asturias,33619,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+330061,Centro Medico de Asturias,Avenida Richard Grandio S/N,Oviedo,Asturias,Ppdo. de Asturias,33193,Hospitales Generales,Privados,N
+330077,Clínica Asturias,Calle Naranjo de Bulnes 4-6,Oviedo,Asturias,Ppdo. de Asturias,33012,Hospitales Generales,Privados,N
+330096,Clínica San Rafael,"Calle La Estrecha, 33",Oviedo,Asturias,Ppdo. de Asturias,33011,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+330376,Instituto Oftalmológico Fernandez-Vega,Avenida Dres. Fernandez Vega 34,Oviedo,Asturias,Ppdo. de Asturias,33012,Hospitales especializados,Privados,N
+330045,Hospital Monte Naranco,Avenida Doctores Fernández Vega S/N,Oviedo,Asturias,Ppdo. de Asturias,33012,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+330322,Cti de La Corredoria,Calle Molin Los Canales S/N,Oviedo,Asturias,Ppdo. de Asturias,33011,Otros Centros con Internamiento,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+330292,Hospital Universitario Central de Asturias,Avenida De Roma S/N,Oviedo,Asturias,Ppdo. de Asturias,33011,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+330306,Hospital del Oriente de Asturias Francisco Grande Covian,Urbanización Castañera S/N,Parres,Asturias,Ppdo. de Asturias,33540,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+330313,Hospital de Luarca,Calle Villar S/N,Valdés,Asturias,Ppdo. de Asturias,33700,Otros Centros con Internamiento,Privados,N
+340035,Hospital Psiquiátrico San Luis,Carretera De Burgos Sn S/N,Palencia,Palencia,Castilla y León,34004,Hospitales de salud mental y tratamiento de toxicomanías,Organizaciones No Gubernamentales,N
+340040,Área Psiquiatrica San Juan de Dios,Paseo Padre Faustino Calvo 46,Palencia,Palencia,Castilla y León,34005,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+340053,Hospital Recoletas de Palencia,Avenida Simón Nieto 31-34,Palencia,Palencia,Castilla y León,34005,Hospitales Generales,Privados,N
+340029,Hospital San Telmo. Complejo Asistencial Universitario de Palencia.,Avenida San Telmo S/N,Palencia,Palencia,Castilla y León,34004,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+340014,Hospital Rio Carrión. Complejo Asistencial Universitario de Palencia.,Avenida Donantes de Sangre Sn S/N,Palencia,Palencia,Castilla y León,34005,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+350249,Hospital Insular de Lanzarote,Calle Juan de Quesada S/N,Arrecife,Las Palmas,Canarias,35500,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+350228,Hospital Universitario Dr. José Molina Orosa,Calle Carretera Arrecife- Tinajo Km 1300 0,Arrecife,Las Palmas,Canarias,35500,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+350401,Centro Sanitario Residencial Las Palmas (Cesar Las Palmas),Calle Párroco Villar Reina 1,"Palmas de Gran Canaria, Las",Las Palmas,Canarias,35011,Hospitales de media y larga estancia,Privados,N
+350120,Hospital Universitario Vithas Las Palmas,Calle León y Castillo 292,"Palmas de Gran Canaria, Las",Las Palmas,Canarias,35005,Hospitales Generales,Privados,N
+350173,Hospital Universitario San Roque Las Palmas,Calle Dolores de La Rocha 5,"Palmas de Gran Canaria, Las",Las Palmas,Canarias,35001,Hospitales Generales,Privados,N
+350154,Hospital La Paloma,Calle Maestro Valle 20,"Palmas de Gran Canaria, Las",Las Palmas,Canarias,35005,Hospitales Generales,Privados,N
+350167,Clínica Cajal,Calle Senador Castillo Olivares 15,"Palmas de Gran Canaria, Las",Las Palmas,Canarias,35003,Hospitales Generales,Privados,N
+350192,Clínica Bandama,Calle Santa Teresa 9,"Palmas de Gran Canaria, Las",Las Palmas,Canarias,35017,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+350115,Hospital San José,Calle Padre Cueto 26,"Palmas de Gran Canaria, Las",Las Palmas,Canarias,35008,Hospitales Generales,Privados,N
+350206,Hospital Perpetuo Socorro,Calle León y Castillo 407,"Palmas de Gran Canaria, Las",Las Palmas,Canarias,35007,Hospitales Generales,Privados,N
+350069,Hospital Universitario de Salud Mental Juan Carlos I,Calle Real del Castillo 152,"Palmas de Gran Canaria, Las",Las Palmas,Canarias,35014,Hospitales de salud mental y tratamiento de toxicomanías,Otros Centros o Establecimientos Públicos de Dependencia Autonómica,N
+350311,Hospital Universitario de Gran Canaria Dr. Negrín,Plaza Barranco de La Ballena S/N,"Palmas de Gran Canaria, Las",Las Palmas,Canarias,35012,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+350290,Complejo Hospitalario Universitario Insular Materno Infantil,Calle Autovía del Sur S/N,"Palmas de Gran Canaria, Las",Las Palmas,Canarias,35016,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+350402,Hospital Polivalente Anexo Juan Carlos I,Calle Real del Castillo 152,"Palmas de Gran Canaria, Las",Las Palmas,Canarias,35014,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+350389,Hospital Parque Fuerteventura,Calle León y Castillo S/N,Puerto del Rosario,Las Palmas,Canarias,35600,Otros Centros con Internamiento,Privados,N
+350252,Hospital General de Fuerteventura,Calle Carretera Aeropuerto KM 1,Puerto del Rosario,Las Palmas,Canarias,35600,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+350367,Hospital Universitario San Roque Maspalomas,Calle Mar de Siberia 1,San Bartolomé de Tirajana,Las Palmas,Canarias,35100,Hospitales Generales,Privados,N
+350304,Hospiten Clínica Roca San Agustín,Calle Buganvilla 1,San Bartolomé de Tirajana,Las Palmas,Canarias,35100,Hospitales Generales,Privados,N
+350265,Quinta Medica de Reposo,Camino Palma Romero 7,Santa Brígida,Las Palmas,Canarias,35300,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+350271,Hospital San Roque de Guía,Lugar Diseminado Cuesta de Caraballo 11,Santa María de Guía de Gran Canaria,Las Palmas,Canarias,35450,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+350287,Hospital Ciudad de Telde,Calle Mister Blisse S/N,Telde,Las Palmas,Canarias,35212,Hospitales de media y larga estancia,Privados,N
+350326,Hospiten Lanzarote,Camino Lomo Gordo S/N,Tías,Las Palmas,Canarias,35572,Hospitales Generales,Privados,N
+360059,Grupo Quironsalud Pontevedra,Calle Fray Juan Navarrete 9,Pontevedra,Pontevedra,Galicia,36001,Hospitales Generales,Privados,N
+360340,Complexo Hospitalario Universitario de Pontevedra,Calle Mourente S/N,Pontevedra,Pontevedra,Galicia,36071,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+360160,"Fremap, Hospital de Vigo",Calle Feliciano Rolan 12,Vigo,Pontevedra,Galicia,36203,Hospitales especializados,Mútuas Colaboradoras con La Seguridad Social,N
+360268,Hestia San José,Calle Tomas A Alonso 89,Vigo,Pontevedra,Galicia,36208,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+360209,Vithas Hospital Nosa Señora de Fátima,Calle Vía Norte 48,Vigo,Pontevedra,Galicia,36206,Hospitales Generales,Privados,N
+360182,Hospital Ribera Povisa,Calle Salamanca 5,Vigo,Pontevedra,Galicia,36211,Hospitales Generales,Privados,N
+360216,Concheiro Centro Medico Quirúrgico,Avenida Madrid 4,Vigo,Pontevedra,Galicia,36204,Hospitales Generales,Privados,N
+360274,Clínica Residencia El Pinar,Carretera Vella Madrid 120,Vigo,Pontevedra,Galicia,36214,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+360255,Centro Medico Pintado,Avenida Hispanidade 40,Vigo,Pontevedra,Galicia,36203,Hospitales Generales,Privados,N
+360368,Complexo Hospitalario Universitario de Vigo,Carretera Clara Campoamor 341,Vigo,Pontevedra,Galicia,36312,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+360353,Hospital Publico Do Salnes,Calle Hospital Do Salnes 30,Vilagarcía de Arousa,Pontevedra,Galicia,36619,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+370074,Hospital Los Montalvos. Complejo Asistencial Universitario de Salamanca.,"Carretera Ciudad Rodrigo, S/N S/N",Carrascal de Barregas,Salamanca,Castilla y León,37192,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+370055,Hospital General de La Santísima Trinidad,"Paseo De Carmelitas, 74-94",Salamanca,Salamanca,Castilla y León,37007,Hospitales Generales,Privados,N
+370037,Hospital Universitario de Salamanca. Complejo Asistencial Universitario de Salmanca,Paseo De San Vicente 58-182,Salamanca,Salamanca,Castilla y León,37007,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+380282,Hospital Quirón Salud Costa Adeje,Urbanización San Eugenio S/N,Adeje,Santa Cruz De Tenerife,Canarias,38660,Hospitales Generales,Privados,N
+380146,Hospital Universitario Hospiten Sur,Calle Av. Marítima 8,Arona,Santa Cruz De Tenerife,Canarias,38660,Hospitales Generales,Privados,N
+380348,Hospital del Sur,Carretera Tf-28 21,Arona,Santa Cruz De Tenerife,Canarias,38652,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+380316,Hospital Universitario General de La Palma,Carretera Cumbre (De La) 28,Breña Alta,Santa Cruz De Tenerife,Canarias,38713,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+380337,Hospital del Norte,Calle Gaviotas (Las) 22,Icod de los Vinos,Santa Cruz De Tenerife,Canarias,38437,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+380201,Hospital Quironsalud Vida,Calle Magnolias 2,"Orotava, La",Santa Cruz De Tenerife,Canarias,38312,Hospitales Generales,Privados,N
+380223,Hospital Universitario Hospiten Bellevue,Calle Alemania 4,Puerto de la Cruz,Santa Cruz De Tenerife,Canarias,38400,Hospitales Generales,Privados,N
+380178,Hospital Universitario de Canarias,Carretera Cuesta Taco S/N,San Cristóbal de La Laguna,Santa Cruz De Tenerife,Canarias,38320,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+380244,Hospital Nuestra Señora de Guadalupe,Calle Langrero S/N,San Sebastián de la Gomera,Santa Cruz De Tenerife,Canarias,38800,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+380064,Hospital San Juan de Dios Tenerife,Carretera Santa Cruz Laguna 53,Santa Cruz de Tenerife,Santa Cruz De Tenerife,Canarias,38009,Hospitales Generales,Organizaciones No Gubernamentales,N
+380086,Hospital Quirón Salud Tenerife,Calle Poeta Rodriguez Herrera 1,Santa Cruz de Tenerife,Santa Cruz De Tenerife,Canarias,38006,Hospitales Generales,Privados,N
+380295,Hospital Universitario Hospiten Rambla,Rambla Santa Cruz 115,Santa Cruz de Tenerife,Santa Cruz De Tenerife,Canarias,38001,Hospitales Generales,Privados,N
+380099,Vithas Hospital Santa Cruz,Calle Enrique Wolfson 8,Santa Cruz de Tenerife,Santa Cruz De Tenerife,Canarias,38006,Hospitales Generales,Privados,N
+380103,Hospital Parque,Calle Méndez Núñez 40-44,Santa Cruz de Tenerife,Santa Cruz De Tenerife,Canarias,38003,Hospitales Generales,Privados,N
+380048,Unidades Clínicas y de Rehabilitación de Salud Mental,Calle Domingo J Manrique 2,Santa Cruz de Tenerife,Santa Cruz De Tenerife,Canarias,38006,Hospitales de salud mental y tratamiento de toxicomanías,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+380033,Hospital de Ofra,Calle Santa Maria Soledad 28,Santa Cruz de Tenerife,Santa Cruz De Tenerife,Canarias,38010,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+380027,Hospital Universitario Nuestra Señora de Candelaria,Carretera Rosario (Del) 145,Santa Cruz de Tenerife,Santa Cruz De Tenerife,Canarias,38010,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+380361,Centro Asistencial Polivalente USAN,Carretera Rosario (Del) 145,Santa Cruz de Tenerife,Santa Cruz De Tenerife,Canarias,38010,Otros Centros con Internamiento,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+380359,Clínica Tara,Calle Casas Altas S/N,Tacoronte,Santa Cruz De Tenerife,Canarias,38399,Otros Centros con Internamiento,Privados,N
+380276,Hospital Insular Nuestra Señora de Los Reyes,Calle Calle Los Barriales 1,Valverde,Santa Cruz De Tenerife,Canarias,38900,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+390134,Hospital Comarcal de Laredo,Avenida Derechos Humanos S/N,Laredo,Cantabria,Cantabria,39770,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+390152,Hospital Mompia,Avenida De Los Condes S/N,Santa Cruz de Bezana,Cantabria,Cantabria,39108,Hospitales Generales,Privados,N
+390041,Hospital Mutua Montañesa,Avenida Del Faro - Pintor Eduardo Sanz 19 BAJO,Santander,Cantabria,Cantabria,39012,Hospitales especializados,Mútuas Colaboradoras con La Seguridad Social,N
+390067,Centro Hospitalario Padre Menni,Avenida Cantabria 52,Santander,Cantabria,Cantabria,39012,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+390054,Hospital Santa Clotilde,Calle General Dávila 35,Santander,Cantabria,Cantabria,39006,Hospitales de media y larga estancia,Privados,N
+390015,Hospital Universitario Marques de Valdecilla,Avenida Valdecilla 25,Santander,Cantabria,Cantabria,39008,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+390149,Hospital Sierrallana,Barrio Ganzo S/N,Torrelavega,Cantabria,Cantabria,39300,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+400045,Hospital Recoletas Segovia Nuestra Señora de La Misericordia,Calle Doctor Velasco 21-23,Segovia,Segovia,Castilla y León,40003,Hospitales Generales,Privados,N
+400019,Hospital General de Segovia Complejo Asistencial de Segovia,Calle Luis Erik Claveria Neurólogo Sn S/N,Segovia,Segovia,Castilla y León,40002,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+410227,Hospital El Tomillar,Carretera Alcalá-Dos Hermanas S/N,Alcalá de Guadaíra,Sevilla,Andalucía,41500,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+410212,Residencia de Salud Mental Nuestra Señora del Carmen,Avenida Rio Pudio S/N,Bormujos,Sevilla,Andalucía,41930,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+410353,Hospital San Juan de Dios del Aljarafe,Avenida San Juan de Dios S/N,Bormujos,Sevilla,Andalucía,41930,Hospitales Generales,Otros Centros o Establecimientos Públicos de Dependencia Autonómica,N
+410375,Hospital Vithas Sevilla,Avenida Placido Fernandez Viagas S/N,Castilleja de la Cuesta,Sevilla,Andalucía,41950,Hospitales Generales,Privados,N
+410496,"Adinfa, Sociedad Cooperativa Andaluza",Calle Maria Jesús 3,Coria del Río,Sevilla,Andalucía,41100,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+410432,Clínica de Salud Mental Miguel de Mañara,Calle Hermanos de La Cruz Blanca 1,Dos Hermanas,Sevilla,Andalucía,41089,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+410233,Hospital San Agustín,"Calle Prolongación Doctor Fleming, Sector 13 S/N",Dos Hermanas,Sevilla,Andalucía,41703,Hospitales Generales,Privados,N
+410454,Hospital de Alta Resolución de Lebrija,Avenida El Cuervo S/N,Lebrija,Sevilla,Andalucía,41740,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+410248,Hospital de Alta Resolución de Morón de La Frontera,Plaza San Francisco S/N,Morón de la Frontera,Sevilla,Andalucía,41530,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+410251,Hospital La Merced,Avenida De La Constitución 2,Osuna,Sevilla,Andalucía,41640,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+410325,Fremap_Hospital y Centro de Rehabilitación de Sevilla,Avenida De Jerez S/N,Sevilla,Sevilla,Andalucía,41014,Hospitales especializados,Mútuas Colaboradoras con La Seguridad Social,N
+410107,Clínica Santa Isabel,Calle Luis Montoto 100,Sevilla,Sevilla,Andalucía,41018,Hospitales Generales,Privados,N
+410191,Clínica Nuestra Señora de Aránzazu,Calle Jesús del Gran Poder 29,Sevilla,Sevilla,Andalucía,41002,Otros Centros con Internamiento,Privados,N
+410135,Hospital Quironsalud Infanta Luisa,Calle San Jacinto 87,Sevilla,Sevilla,Andalucía,41010,Hospitales Generales,Privados,N
+410483,Ita Clinic Bcn,Calle Vidrio 32,Sevilla,Sevilla,Andalucía,41005,Otros Centros con Internamiento,Privados,N
+410074,Hospital Victoria Eugenia de La Cruz Roja Española,Avenida De La Cruz Roja 1,Sevilla,Sevilla,Andalucía,41009,Hospitales Generales,Privados,N
+410114,Hospital Quironsalud Sagrado Corazón,Calle Rafael Salgado 3,Sevilla,Sevilla,Andalucía,41013,Hospitales Generales,Privados,N
+410129,Hospital Fátima,Glorieta De Méjico 1,Sevilla,Sevilla,Andalucía,41012,Hospitales Generales,Privados,N
+410409,Hospital Viamed Santa Angela de La Cruz,Avenida De Jerez 59,Sevilla,Sevilla,Andalucía,41014,Hospitales Generales,Privados,N
+410080,Hospital San Juan de Dios de Sevilla,Avenida Eduardo Dato 42,Sevilla,Sevilla,Andalucía,41005,Hospitales Generales,Privados,N
+410346,Hospital Psiquiátrico Penitenciario,"Carretera Torreblanca-Mairena Km. 3,5 S/N",Sevilla,Sevilla,Andalucía,41007,Hospitales de salud mental y tratamiento de toxicomanías,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+410021,Hospital Universitario Virgen de Valme,Avenida De Bellavista S/N,Sevilla,Sevilla,Andalucía,41014,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+410476,Hospital de La Mujer,Avenida Manuel Siurot S/N,Sevilla,Sevilla,Andalucía,41013,Hospitales especializados,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+410465,Hospital Infantil,Avenida Manuel Siurot S/N,Sevilla,Sevilla,Andalucía,41013,Hospitales especializados,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+410443,Hospital de Rehabilitación y Traumatología del H.U. Virgen del Rocío,Avenida Manuel Siurot S/N,Sevilla,Sevilla,Andalucía,41013,Hospitales especializados,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+410016,Hospital Universitario Virgen del Rocío,Avenida Manuel Siurot S/N,Sevilla,Sevilla,Andalucía,41013,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+410055,Hospital San Lázaro,Avenida Doctor Fedriani S/N,Sevilla,Sevilla,Andalucía,41009,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+410042,Hospital Universitario Virgen Macarena,Avenida Doctor Fedriani 3,Sevilla,Sevilla,Andalucía,41009,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+410205,Hospital de Emergencia Covid 19,Calle Maria Galiana 8,Sevilla,Sevilla,Andalucía,41013,Hospitales especializados,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+410386,Hospital de Alta Resolución de Utrera,Calle Brigadas Internacionales S/N,Utrera,Sevilla,Andalucía,41710,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+420051,Hospital Latorre,"Camino De Los Royales, 8 S/N",Soria,Soria,Castilla y León,42005,Hospitales Generales,Privados,N
+420026,"Hospital Virgen del Mirón ,Complejo Asistencial de Soria",Carretera De Logroño 8,Soria,Soria,Castilla y León,42005,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+420011,"Hospital Santa Barbara ,Complejo Asistencial de Soria","Paseo De Santa Barbara, S/N S/N",Soria,Soria,Castilla y León,42005,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+430287,Unitat Polivalent En Salut Mental D'Amposta,Calle América 15,Amposta,Tarragona,Cataluña,43870,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+430252,Hospital Comarcal D'Amposta,Calle Jacint Verdaguer 11,Amposta,Tarragona,Cataluña,43870,Hospitales Generales,Municipio,N
+430081,Hospital Comarcal Mora D'Ebre,Calle Benet Messeguer S/N,Móra d'Ebre,Tarragona,Cataluña,43740,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+430115,"Villablanca Serveis Assistencials, Sa",Partida Bellisens S/N,Reus,Tarragona,Cataluña,43204,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+430249,Centre Sociosanitari Ciutat de Reus,Camino De Tarragona 10-12,Reus,Tarragona,Cataluña,43204,Hospitales de media y larga estancia,Privados,N
+430120,"Institut Pere Mata, S.A",Carretera De L'Institut Pere Mata S/N,Reus,Tarragona,Cataluña,43206,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+430108,Centre Mq Reus,Calle Antoni Gaudí 26,Reus,Tarragona,Cataluña,43203,Hospitales Generales,Privados,N
+430094,Hospital Universitari de Sant Joan de Reus,Avenida Josep Laporte 2,Reus,Tarragona,Cataluña,43204,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+430300,Centre Sociosanitari I Residencia Assistida Salou,Avenida Pau Casals 4,Salou,Tarragona,Cataluña,43840,Hospitales de media y larga estancia,Privados,N
+430213,Policlínica Comarcal del Vendrell.,Avenida Santa Oliva 1-13,Santa Oliva,Tarragona,Cataluña,43710,Hospitales Generales,Privados,N
+430069,Clínica Activa Mutua 2008,Calle Pin I Soler 12,Tarragona,Tarragona,Cataluña,43002,Hospitales especializados,Mútuas Colaboradoras con La Seguridad Social,N
+430322,Residencia Santa Tecla Ponent,Calle Menorca 26,Tarragona,Tarragona,Cataluña,43006,Hospitales de media y larga estancia,Privados,N
+430265,Centre Sociosanitari Llevant,Calle Joan Fuster Ortells S/N,Tarragona,Tarragona,Cataluña,43007,Hospitales de media y larga estancia,Privados,N
+430056,Hospital Viamed Monegal,Calle López Peláez 15-17,Tarragona,Tarragona,Cataluña,43002,Hospitales Generales,Privados,N
+430043,Hospital de Sant Pau I Santa Tecla,Rambla Vella 14,Tarragona,Tarragona,Cataluña,43003,Hospitales Generales,Privados,N
+430344,Llarga Estada Gipss,Calle Maternita D'Elna 1,Tarragona,Tarragona,Cataluña,43005,Hospitales de media y larga estancia,Otras Entidades u o rganismos Públicos,S
+430022,Hospital Sociosanitari Francoli,Calle Joan Pau Ir 2,Tarragona,Tarragona,Cataluña,43005,Hospitales de media y larga estancia,Otras Entidades u o rganismos Públicos,N
+430017,Hospital Universitari Joan Xixi de Tarragona,Calle Doctor Mallafre Guasch 4,Tarragona,Tarragona,Cataluña,43005,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+430173,Hospital de La Santa Creu,Paseo Mossen Valls Bartomeu 1,Tortosa,Tarragona,Cataluña,43590,Hospitales de media y larga estancia,Municipio,N
+430189,Clínica Terres de L'Ebre,Plaza Joaquim Bau 6-8,Tortosa,Tarragona,Cataluña,43500,Hospitales Generales,Municipio,N
+430167,Hospital de Tortosa Vergé de La Cinta,Calle Esplanetes 44,Tortosa,Tarragona,Cataluña,43500,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+430355,Centro Zeus,Carretera Tv-3319 (Els Rajolars) S/N,Ulldecona,Tarragona,Cataluña,43550,Hospitales de salud mental y tratamiento de toxicomanías,Privados,S
+430228,Pius Hospital de Valls,Plaza Sant Francesc S/N,Valls,Tarragona,Cataluña,43800,Hospitales Generales,Privados,N
+430234,Residencia Alt Camp,Camino Del Bosc S/N,Valls,Tarragona,Cataluña,43800,Hospitales de media y larga estancia,Privados,N
+430298,Hospital del Vendrell,Carretera N-340 1193,"Vendrell, El",Tarragona,Cataluña,43700,Hospitales Generales,Privados,N
+430276,Residencia Vila-Seca,Calle Requet de Félix 35,Vila-seca,Tarragona,Cataluña,43480,Hospitales de media y larga estancia,Privados,N
+440048,Hospital de Alcañiz,Calle Doctor Repolles 2,Alcañiz,Teruel,Aragón,44600,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+440027,Hospital de San José,Avenida Zaragoza 16,Teruel,Teruel,Aragón,44001,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+440033,Centro de Rehabilitación Psicosocial San Juan de Dios,Avenida Zaragoza 10-14,Teruel,Teruel,Aragón,44001,Hospitales de salud mental y tratamiento de toxicomanías,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+440012,Hospital Obispo Polanco,Avenida Ruiz Jarabo S/N,Teruel,Teruel,Aragón,44002,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+450089,Hospital Parque Marazuela,Avenida De Extremadura 5,Talavera de la Reina,Toledo,Castilla-La Mancha,45600,Hospitales Generales,Privados,N
+450067,Hospital General Nuestra Señora del Prado,Carretera Madrid KM 114,Talavera de la Reina,Toledo,Castilla-La Mancha,45600,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+450113,Hospital San José Solimat,Calle San Pedro El Verde 35,Toledo,Toledo,Castilla-La Mancha,45004,Hospitales Generales,Mútuas Colaboradoras con La Seguridad Social,N
+450122,Hospital Quironsalud Toledo,Calle Urbanización Tres Culturas S/N,Toledo,Toledo,Castilla-La Mancha,45005,Hospitales Generales,Privados,N
+450133,Centro de Tratamiento de Drogodependientes El Alba,"Carretera Puebla de Montalbán KM. 3,6",Toledo,Toledo,Castilla-La Mancha,45071,Hospitales de salud mental y tratamiento de toxicomanías,Otros Centros o Establecimientos Públicos de Dependencia Autonómica,N
+450036,Hospital Nacional de Parapléjicos,Calle Finca de La Peraleda S/N,Toledo,Toledo,Castilla-La Mancha,45071,Hospitales especializados,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+450020,Hospital Geriátrico Virgen del Valle,Carretera Cobisa S/N,Toledo,Toledo,Castilla-La Mancha,45004,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+450041,Hospital Provincial Ntra.Sra. De La Misericordia,Calle San Servando S/N,Toledo,Toledo,Castilla-La Mancha,45006,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+450144,Hospital Universitario de Toledo (Hut),Avenida Rio Guadiana S/N,Toledo,Toledo,Castilla-La Mancha,45007,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+460351,Hospital Universitario de La Ribera,Carretera Corbera 1,Alzira,Valencia,Comunidad Valenciana,46600,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+460168,Hospital de Salud Mental Provincial,Carretera Burjassot - Torres Torres KM 9,Bétera,Valencia,Comunidad Valenciana,46117,Hospitales de salud mental y tratamiento de toxicomanías,Diputación o Cabildo,N
+460404,IMED Valencia,Calle Ferrocarril 57,Burjassot,Valencia,Comunidad Valenciana,46100,Hospitales Generales,Privados,N
+460333,Hospital Nisa Aguas Vivas,"Urbanización Vall D'Aigues Vives, de La S/N",Carcaixent,Valencia,Comunidad Valenciana,46740,Hospitales Generales,Privados,N
+460327,Hospital IMED Gandía,Calle Daimus 26,Gandia,Valencia,Comunidad Valenciana,46701,Hospitales Generales,Privados,N
+460207,Hospital Francesc de Borja de Gandía,Avenida Medicina (De La) 6,Gandia,Valencia,Comunidad Valenciana,46702,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+460180,Ita Godella,Avenida Joan Peset 31,Godella,Valencia,Comunidad Valenciana,46110,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+460392,Hospital de Lliria,Paraje Cabeço de L'Aguila Cv-35 S/N,Llíria,Valencia,Comunidad Valenciana,46160,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+460370,Hospital de Manises,Avenida Generalitat Valenciana 50,Manises,Valencia,Comunidad Valenciana,46940,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+460381,Hospital de Crónicos de Mislata (Antiguo Hospital Militar de Valencia),Calle Dolores Ibárruri 1,Mislata,Valencia,Comunidad Valenciana,46920,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+460235,Hospital General de Ontinyent,Avenida De Francisco Cerda 3,Ontinyent,Valencia,Comunidad Valenciana,46870,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+460460,Hospital Infanto-Juvenil J. Peirón,Calle De Les Mareselves 1,"Pobla de Vallbona, la",Valencia,Comunidad Valenciana,46185,Otros Centros con Internamiento,Privados,S
+460288,Hospital General de Requena,Calle Casablanca S/N,Requena,Valencia,Comunidad Valenciana,46340,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+460266,Hospital de Sagunto,Calle Ramon y Cajal 46,Sagunto/Sagunt,Valencia,Comunidad Valenciana,46520,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+460240,Hospital Intermutual de Levante,"Carretera Ctra. Valencia-Ademuz KM 11,700",San Antonio de Benagéber,Valencia,Comunidad Valenciana,46184,Hospitales especializados,Mútuas Colaboradoras con La Seguridad Social,N
+460272,Hospital Doctor Moliner,Calle Porta Coeli S/N,Serra,Valencia,Comunidad Valenciana,46118,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+460109,Fundacion Instituto Valenciano de Oncología,Calle Profesor Beltrán Baguena 8,València,Valencia,Comunidad Valenciana,46009,Hospitales especializados,Organizaciones No Gubernamentales,N
+460437,Clínica Imske,Calle Suiza S/N,València,Valencia,Comunidad Valenciana,46024,Hospitales especializados,Privados,N
+460116,Hospital Vithas Valencia Consuelo,Calle Callosa D'En Sarria 12,València,Valencia,Comunidad Valenciana,46007,Hospitales Generales,Privados,N
+460459,IMED Colón,Calle Isabel La Católica 12,València,Valencia,Comunidad Valenciana,46004,Hospitales Generales,Privados,S
+460082,Hospital Católico Casa de Salud,Calle Doctor Manuel Candela 41,València,Valencia,Comunidad Valenciana,46021,Hospitales Generales,Privados,N
+460291,Hospital 9 de Octubre,Calle Valle de La Ballestera 59,València,Valencia,Comunidad Valenciana,46015,Hospitales Generales,Privados,N
+460137,Hospital Quironsalud Valencia,Avenida Blasco Ibáñez 14,València,Valencia,Comunidad Valenciana,46010,Hospitales Generales,Privados,N
+460060,Consorcio Hospital General Universitario de Valencia,Avenida Tres Creus 2,València,Valencia,Comunidad Valenciana,46014,Hospitales Generales,Otros Centros o Establecimientos Públicos de Dependencia Autonómica,N
+460057,Hospital de La Malva-Rosa,Calle Isabel de Villena 2,València,Valencia,Comunidad Valenciana,46011,Otros Centros con Internamiento,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+460369,Hospital Pare Jofre,Calle San Lázaro S/N,València,Valencia,Comunidad Valenciana,46017,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+460023,Hospital Universitario Dr. Peset Aleixandre,Avenida Gaspar Aguilar 90,València,Valencia,Comunidad Valenciana,46017,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+460018,Hospital Universitario y Politécnico La Fe,Avenida Fernando Abril Martorell 106,València,Valencia,Comunidad Valenciana,46026,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+460044,Hospital Clínico Universitario de Valencia,Avenida Blasco Ibáñez 17,València,Valencia,Comunidad Valenciana,46010,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+460426,Centro Habilitado Ernest Lluch,Avenida Campanar 66,València,Valencia,Comunidad Valenciana,46015,Otros Centros con Internamiento,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+460039,Hospital Arnau de Vilanova,Calle Sant Clement 12,València,Valencia,Comunidad Valenciana,46015,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+460229,Hospital Lluis Alcanyis de Xativa,Carretera Xativa-Silla KM. 2,Xàtiva,Valencia,Comunidad Valenciana,46800,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+470091,Hospital Medina del Campo,Calle Peñaranda de Bracamonte 24,Medina del Campo,Valladolid,Castilla y León,47400,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+470072,Centro Hospitalario Benito Menni,Paseo Juan Carlos I 10,Valladolid,Valladolid,Castilla y León,47008,Hospitales de media y larga estancia,Organizaciones No Gubernamentales,N
+470053,Sanatorio Sagrado Corazón,Calle Fidel Recio 1,Valladolid,Valladolid,Castilla y León,47002,Hospitales Generales,Organizaciones No Gubernamentales,N
+470124,Hospital Casaverde Valladolid,Calle Universo C.V. A C Astrofísico Carlos Sánchez Magro S/N,Valladolid,Valladolid,Castilla y León,47011,Hospitales especializados,Privados,N
+470105,Hospital de Valladolid Felipe Ir,Calle Felipe Ir 9,Valladolid,Valladolid,Castilla y León,47003,Hospitales Generales,Privados,N
+470113,Hospital Recoletas Campo Grande,Plaza De Colon Sn S/N,Valladolid,Valladolid,Castilla y León,47007,Hospitales Generales,Privados,N
+470029,Hospital Clínico Universitario de Valladolid,Avenida Ramon y Cajal 3,Valladolid,Valladolid,Castilla y León,47003,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+470014,Hospital Universitario Rio Hortega,Calle Dulzaina 2,Valladolid,Valladolid,Castilla y León,47012,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+480176,Hospital Universitario Cruces,Plaza Cruces 11,Barakaldo,Vizcaya,País Vasco,48903,Hospitales Generales,Otros Centros o Establecimientos Públicos de Dependencia Estatal,N
+480182,Hospital San Eloy,Avenida Miranda 5,Barakaldo,Vizcaya,País Vasco,48902,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+480195,Hospital de Bermeo,Calle Tonpoi Bidea 0,Bermeo,Vizcaya,País Vasco,48370,Hospitales de salud mental y tratamiento de toxicomanías,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+480046,Hospital Cruz Roja de Bilbao - Victoria Eugenia,Alameda Urquijo 65,Bilbao,Vizcaya,País Vasco,48013,Hospitales Generales,Organizaciones No Gubernamentales,N
+480059,Sanatorio Bilbaíno,Calle Gordoniz 18,Bilbao,Vizcaya,País Vasco,48010,Hospitales Generales,Organizaciones No Gubernamentales,N
+480031,Clínica Ercilla Mutualia,"Calle Ercilla, Calle/Kalea 10",Bilbao,Vizcaya,País Vasco,48009,Hospitales especializados,Mútuas Colaboradoras con La Seguridad Social,N
+480025,Hospital Intermutual de Euskadi,"Calle Fontecha y Salazar, Calle/Kalea 6",Bilbao,Vizcaya,País Vasco,48007,Hospitales especializados,Mútuas Colaboradoras con La Seguridad Social,N
+480160,"Clínica Indautxu, S.A.",Calle Gordoniz 9,Bilbao,Vizcaya,País Vasco,48010,Hospitales Generales,Privados,N
+480097,Clínica Virgen Blanca,Calle Maestro Mendiri 2,Bilbao,Vizcaya,País Vasco,48006,Hospitales Generales,Privados,N
+480316,Clínica Imq Zorrotzaurre,Calle Ballets Olaeta 4,Bilbao,Vizcaya,País Vasco,48014,Hospitales Generales,Privados,N
+480123,"Clínica Guimon, S.A.",Calle Manuel Allende 24,Bilbao,Vizcaya,País Vasco,48010,Hospitales Generales,Privados,N
+480078,Hospital Universitario Basurto,Avenida Montevideo 16,Bilbao,Vizcaya,País Vasco,48013,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+480010,Hospital Santa Marina,"Carretera Santa Marina, Carretera/Errepidea 41",Bilbao,Vizcaya,País Vasco,48004,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+480305,Hospital Quironsalud Bizkaia,Carretera Leioa-Unbe 33,Erandio,Vizcaya,País Vasco,48950,Hospitales Generales,Privados,N
+480209,Hospital Galdakao-Usansolo,Calle Labeaga 46A,Galdakao,Vizcaya,País Vasco,48960,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+480216,Hospital de Gorliz,Paseo Urezarantza 1,Gorliz,Vizcaya,País Vasco,48630,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+480255,Hospital San Juan de Dios,Avenida Cristóbal de Murrieta 70,Santurtzi,Vizcaya,País Vasco,48980,Hospitales Generales,Organizaciones No Gubernamentales,N
+480293,Avances Médicos S.A.,"Avenida Cristóbal de Murrieta, Avenida/Etorbidea 70",Santurtzi,Vizcaya,País Vasco,48980,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+480327,Hospital Urduliz Ospitalea,Calle Goieta 32,Urduliz,Vizcaya,País Vasco,48610,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+480268,Hospital de Zaldibar,Avenida Bilbo S/N,Zaldibar,Vizcaya,País Vasco,48250,Hospitales de salud mental y tratamiento de toxicomanías,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+480274,Hospital de Zamudio,Barrio Arteaga 45,Zamudio,Vizcaya,País Vasco,48170,Hospitales de salud mental y tratamiento de toxicomanías,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+490065,Hospital de Benavente Complejo Asistencial de Zamora,Calle Hospital San Juan 4-6,Benavente,Zamora,Castilla y León,49600,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+490081,Hospital Recoletas de Zamora,Calle Pinar 7,Zamora,Zamora,Castilla y León,49023,Hospitales Generales,Privados,N
+490013,Hospital Virgen de La Concha Complejo Asistencial de Zamora,Avenida Requejo 35,Zamora,Zamora,Castilla y León,49022,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+490028,Hospital Provincial de Zamora Complejo Asistencial de Zamora,Calle Hernan Cortes 40,Zamora,Zamora,Castilla y León,49021,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+500153,Hospital Ernest Lluch Martin,Carretera Sagunto Burgos KM 254,Calatayud,Zaragoza,Aragón,50300,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+500200,Centro Sanitario Cinco Villas,Calle Antonio Machado 15,Ejea de los Caballeros,Zaragoza,Aragón,50009,Otros Centros con Internamiento,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+100113,Hospital Parque San Francisco,Ronda De San Francisco 0,Cáceres,Cáceres,Extremadura,10005,Hospitales Generales,Privados,N
+100092,Hospital Quironsalud Cáceres,Avenida De La Universidad 5,Cáceres,Cáceres,Extremadura,10004,Hospitales Generales,Privados,N
+100115,Hospital Universitario de Cáceres,Avenida De La Universidad 75,Cáceres,Cáceres,Extremadura,10004,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+100015,Hospital San Pedro de Alcántara,Avenida Pablo Naranjo Porras 0,Cáceres,Cáceres,Extremadura,10005,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+100041,Hospital Ciudad de Coria,Calle Cervantes 75,Coria,Cáceres,Extremadura,10800,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+100054,Hospital Campo Arañuelo,Calle Tomas Yuste Mirón 0,Navalmoral de la Mata,Cáceres,Extremadura,10300,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+100106,Clínica Soquimex,Avenida La Salle 22,Plasencia,Cáceres,Extremadura,10600,Hospitales Generales,Privados,N
+100073,Centro Sociosanitario de Plasencia,Carretera Cáceres 0,Plasencia,Cáceres,Extremadura,10600,Hospitales de media y larga estancia,Otros Centros o Establecimientos Públicos de Dependencia Autonómica,N
+100067,Hospital Virgen del Puerto,Finca Valcorchero 2,Plasencia,Cáceres,Extremadura,10600,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+110259,Hospital Punta de Europa,Carretera Getares S/N,Algeciras,Cádiz,Andalucía,11207,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+110282,Hospital Quirón Campo de Gibraltar,Calle Arttysur - P. E. T. Las Marismas de Palmones S/N,"Barrios, Los",Cádiz,Andalucía,11379,Hospitales Generales,Privados,N
+110051,Hospital San Rafael,Calle Diego Arias 2,Cádiz,Cádiz,Andalucía,11002,Hospitales Generales,Privados,N
+110048,Hospital Nuestra Sra. de La Salud Ha S.L.,Calle Feduchy 8-14,Cádiz,Cádiz,Andalucía,11001,Hospitales Generales,Privados,N
+110327,Hospital Universitario Puerta del Mar,Avenida Ana de Viya 21,Cádiz,Cádiz,Andalucía,11009,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+110248,Hospital Viamed Bahía de Cádiz,Calle Ayala 2,Chiclana de la Frontera,Cádiz,Andalucía,11130,Hospitales Generales,Privados,N
+110260,Hospital Viamed Novo Sancti Petri,"Avenida Octavio Augusto, S/N S/N",Chiclana de la Frontera,Cádiz,Andalucía,11139,Hospitales Generales,Privados,N
+110103,Clínica Los Álamos,Avenida Tamarix 4,Jerez de la Frontera,Cádiz,Andalucía,11407,Hospitales Generales,Privados,N
+110239,Hospital Jerez Puerta del Sur,Avenida Puerta del Sur S/N,Jerez de la Frontera,Cádiz,Andalucía,11408,Hospitales Generales,Privados,N
+110125,Hospital San Juan Grande,Glorieta Doctor Félix Rodriguez de La Fuente S/N,Jerez de la Frontera,Cádiz,Andalucía,11408,Hospitales Generales,Privados,N
+110110,Hospital Universitario de Jerez de La Frontera,Carretera Ronda Circunvalación S/N,Jerez de la Frontera,Cádiz,Andalucía,11408,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+110316,Hospital de La Línea de La Concepción,"Ronda Norte, Esquina C/ Gabriel Mirã³ S/N","Línea de la Concepción, La",Cádiz,Andalucía,11300,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+110162,Hospital General Santa Maria del Puerto,Calle Valdés S/N,"Puerto de Santa María, El",Cádiz,Andalucía,11500,Hospitales Generales,Privados,N
+110184,Hospital Universitario de Puerto Real,"Carretera Nacional Ib., Km. 665 S/N",Puerto Real,Cádiz,Andalucía,11510,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+110305,Hospital San Carlos de San Fernando,Paseo Capitán Conforto S/N,San Fernando,Cádiz,Andalucía,11100,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+110223,Hospital Virgen del Camino,"Carretera Sanlúcar-Chipiona, S/N S/N",Sanlúcar de Barrameda,Cádiz,Andalucía,11540,Hospitales Generales,Privados,N
+110213,Hospital de Alta Resolución de Especialidades de La Janda,Polígono 53 Parcela 72 S/N,Vejer de la Frontera,Cádiz,Andalucía,11150,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+110218,Hospital Virgen de Las Montañas,Avenida Ambulatorio S/N,Villamartín,Cádiz,Andalucía,11650,Hospitales Generales,Privados,N
+010088,Hospital de Leza,Calle Hospital de Leza 1,Laguardia,Álava,País Vasco,01309,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+010040,Hospital Vithas Vitoria,Calle Beato Tomas de Zumarraga 10,Vitoria-Gasteiz,Álava,País Vasco,01008,Hospitales Generales,Privados,N
+010053,Hospital Quironsalud Vitoria,Calle La Esperanza 3,Vitoria-Gasteiz,Álava,País Vasco,01002,Hospitales Generales,Privados,N
+010035,Red de Salud Mental de Araba (Hospital Psiquiátrico de Araba),"Calle Álava, Calle/Kalea 43",Vitoria-Gasteiz,Álava,País Vasco,01006,Hospitales de salud mental y tratamiento de toxicomanías,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+010090,Hospital Universitario Araba (Sede Txagorritxu y Sede Santiago),Calle José Achotegui 1,Vitoria-Gasteiz,Álava,País Vasco,01009,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+020100,Hospital Quironsalud Albacete,Plaza Del Madroño 11,Albacete,Albacete,Castilla-La Mancha,02008,Hospitales Generales,Privados,N
+020061,Hospital Quironsalud Santa Cristina,Calle Perez Galdós 7-9,Albacete,Albacete,Castilla-La Mancha,02003,Hospitales Generales,Privados,N
+020030,Hospital General Universitario de Albacete,Calle Hermanos Falco 37,Albacete,Albacete,Castilla-La Mancha,02006,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+020158,Centro de Atención A La Salud Mental La Milagrosa,Travesía De La Igualdad S/N,Albacete,Albacete,Castilla-La Mancha,02006,Hospitales de salud mental y tratamiento de toxicomanías,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+020117,Hospital Universitario Nuestra Señora del Perpetuo Socorro,Calle Seminario 4,Albacete,Albacete,Castilla-La Mancha,02006,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+020136,Hospital General de Almansa,Avenida Adolfo Suarez S/N,Almansa,Albacete,Castilla-La Mancha,02640,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+020096,Hospital de Hellín,Calle Juan Ramon Jimenez 40,Hellín,Albacete,Castilla-La Mancha,02400,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+020147,Hospital General de Villarrobledo,"Avenida Miguel de Cervantes C/V Ctra. Provencio KM. 0,3",Villarrobledo,Albacete,Castilla-La Mancha,02600,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+030089,Hospital IMED San Jorge,Calle Oliver 55,Alcoy/Alcoi,Alicante,Comunidad Valenciana,03802,Hospitales Generales,Privados,N
+030067,Hospital Virgen de Los Lirios,Calle Caramanxel S/N,Alcoy/Alcoi,Alicante,Comunidad Valenciana,03804,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+030036,Clínica Vistahermosa Grupo Ha,Avenida Denia 103,Alicante/Alacant,Alicante,Comunidad Valenciana,03015,Hospitales Generales,Privados,N
+030041,Vithas Hospital Perpetuo Internacional,Plaza Doctor Gómez Ulla 15,Alicante/Alacant,Alicante,Comunidad Valenciana,03013,Hospitales Generales,Privados,N
+030226,Hospital Medimar Internacional,Avenida Denia 78,Alicante/Alacant,Alicante,Comunidad Valenciana,03016,Hospitales Generales,Privados,N
+030232,Hospital Psiquiátrico Penitenciario de Fontcalent,Complejo Centro Penitenc. Fontcalen 1,Alicante/Alacant,Alicante,Comunidad Valenciana,03113,Hospitales de salud mental y tratamiento de toxicomanías,Otros Centros o Establecimientos Públicos de Dependencia Estatal,N
+030015,Hospital General Universitario Dr. Balmis,Avenida Pintor Baeza 12,Alicante/Alacant,Alicante,Comunidad Valenciana,03010,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+030092,Hospital Clínica Benidorm,Avenida Alfonso Puchades 8,Benidorm,Alicante,Comunidad Valenciana,03501,Hospitales Generales,Privados,N
+030328,Hospital IMED Levante,Calle Dr. Santiago Ramon y Cajal 7,Benidorm,Alicante,Comunidad Valenciana,03503,Hospitales Generales,Privados,N
+030406,Hospital Internacional Hcb Denia,Avenida Gandía 45,Dénia,Alicante,Comunidad Valenciana,03700,Hospitales Generales,Privados,N
+030128,Hospital San Carlos de Denia Grupo HA,Partida Madrigueres Sud 8,Dénia,Alicante,Comunidad Valenciana,03700,Hospitales Generales,Privados,N
+030340,Hospital de Denia,Partida Beniadla S/N,Dénia,Alicante,Comunidad Valenciana,03700,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+030351,Hospital La Pedrera,Partida Plana Est 4,Dénia,Alicante,Comunidad Valenciana,03700,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+030384,Hospital IMED Elche,Calle Max Planck S/N,Elche/Elx,Alicante,Comunidad Valenciana,03203,Hospitales Generales,Privados,N
+030373,Hospital Universitario Vinalopó,Calle Tonico Sansano Mora 14,Elche/Elx,Alicante,Comunidad Valenciana,03293,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+030152,Hospital General Universitario de Elche,Calle Cami Almazara 11,Elche/Elx,Alicante,Comunidad Valenciana,03203,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+030165,Hospital General Universitario de Elda-Virgen de La Salud,Carretera Sax S/N,Elda,Alicante,Comunidad Valenciana,03600,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+030362,Centro de Rehabilitación Neurológica Casaverde,Calle Ponent 15,Mutxamel,Alicante,Comunidad Valenciana,03110,Hospitales especializados,Privados,N
+030211,Hospital Vega Baja de Orihuela,Carretera Orihuela-Almoradi S/N,Orihuela,Alicante,Comunidad Valenciana,03314,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+030187,Hospital Sant Vicent del Raspeig,Calle Lillo Juan 137,San Vicente del Raspeig/Sant Vicent del Raspeig,Alicante,Comunidad Valenciana,03690,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+030250,Hospital Universitario San Juan de Alicante,"Carretera C.Nal. 332, Alicante-Valencia S/N",Sant Joan d'Alacant,Alicante,Comunidad Valenciana,03550,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+030298,Hospital Quironsalud Torrevieja,Partida De La Loma S/N,Torrevieja,Alicante,Comunidad Valenciana,03184,Hospitales Generales,Privados,N
+030339,Hospital Universitario de Torrevieja,Carretera Carretera C.V. 95 S. Miguel Salinas-Torrevieja Pda. La Ceñuela S/N,Torrevieja,Alicante,Comunidad Valenciana,03186,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+030190,Sanatorio San Francisco de Borja Fontilles,"Carretera Orba-Vall de Laguar, Km 4 Numero S/N","Vall de Laguar, la",Alicante,Comunidad Valenciana,03791,Hospitales de media y larga estancia,Organizaciones No Gubernamentales,N
+030204,Hospital Marina Baixa de La Vila Joiosa,Avenida Alcalde En Jaume Botella Mayor 7,"Villajoyosa/Vila Joiosa, la",Alicante,Comunidad Valenciana,03570,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+040059,Hospital Virgen del Mar,Carretera Del Mami KM 1,Almería,Almería,Andalucía,04120,Hospitales Generales,Privados,N
+040101,Hospital Mediterráneo,Calle Nueva Musa 8,Almería,Almería,Andalucía,04007,Hospitales Generales,Privados,N
+040127,Hospital de Alta Resolución El Toyo,Camino De La Botica S/N,Almería,Almería,Andalucía,04131,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+040010,Hospital Universitario Torrecardenas,Calle Paraje Torrecardenas S/N,Almería,Almería,Andalucía,04009,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+040138,Hospital Materno Infantil,Calle Donantes de Sangre S/N,Almería,Almería,Andalucía,04700,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+040118,Hospital Universitario de Poniente,Carretera Almerimar S/N,"Ejido, El",Almería,Andalucía,04700,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+040084,Hospital La Inmaculada,Avenida Doctora Ana Parra S/N,Huércal-Overa,Almería,Andalucía,04600,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+050072,Hospital de Salud Mental Casta Salud Arévalo,"Paseo San Juan Bosco, 2",Arévalo,Ávila,Castilla y León,05200,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+050049,Hospital Santa Teresa,Avenida Santa Cruz de Tenerife 11,Ávila,Ávila,Castilla y León,05005,Hospitales Generales,Privados,N
+050034,Hospital Provincial de Ávila,"Calle Jesús del Gran Poder, 42",Ávila,Ávila,Castilla y León,05003,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+050013,Hospital Nuestra Señora de Sonsoles,"Avenida De Juan Carlos I, S/N S/N",Ávila,Ávila,Castilla y León,05071,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+060080,Hospital Ribera Almendralejo,Calle Monsalud 1,Almendralejo,Badajoz,Extremadura,06200,Hospitales de media y larga estancia,Privados,N
+060242,Hospital Tierra de Barros,Carretera Nacional 630 0,Almendralejo,Badajoz,Extremadura,06200,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+060286,Hospital Ribera Badajoz,Calle Federico Mayor Zaragoza 0,Badajoz,Badajoz,Extremadura,06006,Hospitales Generales,Privados,N
+060172,Hospital Quironsalud Clideba,Calle Eladio Salinero de Los Santos 6,Badajoz,Badajoz,Extremadura,06011,Hospitales Generales,Privados,N
+060037,Hospital Materno-Infantil,Calle Violeta 1,Badajoz,Badajoz,Extremadura,06010,Hospitales especializados,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+060021,Hospital Universitario de Badajoz,Avenida Elvas 0,Badajoz,Badajoz,Extremadura,06006,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+060220,Hospital Perpetuo Socorro,Avenida Damián Téllez Lafuente 0,Badajoz,Badajoz,Extremadura,06010,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+060107,Hospital de San Antonio,Calle Cervantes 12,Don Benito,Badajoz,Extremadura,06400,Hospitales especializados,Privados,N
+060297,Hospital Parque Vegas Altas,Avenida Madrid 12,Don Benito,Badajoz,Extremadura,06400,Hospitales Generales,Privados,N
+060093,Hospital Don Benito-Villanueva de La Serena,Carretera Don Benito Villanueva 0,Don Benito,Badajoz,Extremadura,06400,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+060114,Hospital General de Llerena,Avenida Badajoz 1,Llerena,Badajoz,Extremadura,06900,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+060275,Casaverde Centro de Rehabilitación Neurológico de Extremadura S.L.,Avenida Adolfo Suarez 56,Mérida,Badajoz,Extremadura,06800,Hospitales especializados,Privados,N
+060129,Hospital de Mérida,Avenida Don Antonio Campos Hoyos 26,Mérida,Badajoz,Extremadura,06800,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+060135,Centro Sociosanitario de Mérida,Carretera Valverde 0,Mérida,Badajoz,Extremadura,06800,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+060231,Hospital Siberia-Serena,Carretera Talarrubias-Agudo Km 2 0,Talarrubias,Badajoz,Extremadura,06640,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+060140,Hospital Santa Justa,Calle Concepción 24,Villanueva de la Serena,Badajoz,Extremadura,06700,Hospitales Generales,Municipio,N
+060208,Hospital de Zafra,Carretera Badajoz Granada 0,Zafra,Badajoz,Extremadura,06300,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+070162,Hospital Joan March,Carretera Palma-Soller KM. 12,Bunyola,Illes Balears,Illes Balears,07110,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+070456,Clínica Juaneda Ciutadella,Carretera Carretera Ciutadella - Sa Caleta 31,Ciutadella de Menorca,Illes Balears,Illes Balears,07760,Hospitales Generales,Privados,S
+070244,Clínica Juaneda Menorca,Calle Canonge Moll S/N,Ciutadella de Menorca,Illes Balears,Illes Balears,07760,Hospitales Generales,Privados,N
+070201,Policlínica Nuestra Sra. del Rosario,Vía Romana S/N,Eivissa,Illes Balears,Illes Balears,07800,Hospitales Generales,Privados,N
+070184,Hospital Can Misses,Calle Corona S/N,Eivissa,Illes Balears,Illes Balears,07800,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+070366,Hospital de Formentera,Calle Venda Des Brolls S/N,Formentera,Illes Balears,Illes Balears,07860,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+070445,Hospital Sant Joan de Deu Inca,Avenida Jaume Ir 44,Inca,Illes Balears,Illes Balears,07300,Hospitales especializados,Privados,N
+070377,Hospital Comarcal D´Inca,Carretera Vella de Llubi S/N,Inca,Illes Balears,Illes Balears,07300,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+070423,Hospital Quironsalud Son Veri,Paseo Arbreda S/N,Llucmajor,Illes Balears,Illes Balears,07609,Hospitales Generales,Privados,N
+070412,Hospital de Llevant,Calle Escamarla 6,Manacor,Illes Balears,Illes Balears,07680,Hospitales Generales,Privados,N
+070309,Hospital de Manacor,Carretera Manacor - Alcudia S/N,Manacor,Illes Balears,Illes Balears,07500,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+070295,Clínica Juaneda Mahón,Avenida Vives Llull 6,Maó-Mahón,Illes Balears,Illes Balears,07703,Hospitales Generales,Privados,N
+070388,Hospital Mateu Orfila,Ronda Malbuger 1,Maó-Mahón,Illes Balears,Illes Balears,07703,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+070260,Hospital Juaneda Muro,Calle Veler S/N,Muro,Illes Balears,Illes Balears,07459,Hospitales Generales,Privados,N
+070064,Mutua Balear,Calle Bisbe Campins 4,Palma,Illes Balears,Illes Balears,07012,Hospitales Generales,Mútuas Colaboradoras con La Seguridad Social,N
+070131,Juaneda Miramar,Calle Cami de La Vileta 30,Palma,Illes Balears,Illes Balears,07011,Hospitales Generales,Privados,N
+070344,Hospital Quironsalud Palmaplanas,Calle Cami Dels Reis 308,Palma,Illes Balears,Illes Balears,07010,Hospitales Generales,Privados,N
+070110,Clínica Juaneda,Calle Company 30,Palma,Illes Balears,Illes Balears,07014,Hospitales Generales,Privados,N
+070099,Clínica Rotger,Calle Santiago Russinyol 9,Palma,Illes Balears,Illes Balears,07012,Hospitales Generales,Privados,N
+070434,Clínica Luz de Palma,Calle Camilo José Cela 20,Palma,Illes Balears,Illes Balears,07014,Hospitales Generales,Privados,N
+070086,Hospital Sant Joan de Deu,Calle Sant Joan de Deu 7,Palma,Illes Balears,Illes Balears,07007,Hospitales de media y larga estancia,Privados,N
+070070,Hospital de La Creu Roja Espanyola,Calle Pons I Gallarza 90,Palma,Illes Balears,Illes Balears,07004,Hospitales de media y larga estancia,Privados,N
+070048,Hospital General de Mallorca,Plaza Hospital 3,Palma,Illes Balears,Illes Balears,07012,Hospitales de media y larga estancia,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+070399,Hospital Universitari Son Espases,Carretera Valldemossa 79,Palma,Illes Balears,Illes Balears,07120,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+070051,Hospital Psiquiatric,Calle Cami de Jesús 40,Palma,Illes Balears,Illes Balears,07010,Hospitales de salud mental y tratamiento de toxicomanías,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+070333,Hospital Son Llatzer,Carretera Manacor KM. 4,Palma,Illes Balears,Illes Balears,07198,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+081192,Centre Sociosanitari Can Torras,Calle Ferrer I Guardia 9,Alella,Barcelona,Cataluña,08328,Hospitales de media y larga estancia,Privados,N
+081350,Centre Polivalent Can Fosc,Carretera De Llerona S/N,"Ametlla del Vallès, L'",Barcelona,Cataluña,08480,Hospitales de media y larga estancia,Privados,N
+081616,Comunitat Terapéutica Arenys de Munt,Carretera Barri Orient Can Zariquiey 26,Arenys de Munt,Barcelona,Cataluña,08358,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+082213,Centre D'Hospitalitzacio I Hospital de Dia Trastorns de La Conducta,Calle Cires S/N,Argentona,Barcelona,Cataluña,08310,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+080333,Institut Guttmann,Camino Can Ruti S/N,Badalona,Barcelona,Cataluña,08916,Hospitales especializados,Privados,N
+081694,Institut Catalá D'Oncologia - Hospital Germans Trías I Pujol,Carretera Canyet S/N,Badalona,Barcelona,Cataluña,08916,Hospitales especializados,Otras Entidades u o rganismos Públicos,N
+080689,Centre Sociosanitari El Carme,"Camino Sant Jeroni de La Murtra, 60",Badalona,Barcelona,Cataluña,08917,Hospitales de media y larga estancia,Municipio,N
+080673,Hospital Municipal de Badalona,Vía Augusta 9,Badalona,Barcelona,Cataluña,08911,Hospitales Generales,Municipio,N
+080667,Hospital Universitari Germans Trías I Pujol de Badalona,Carretera Canyet S/N,Badalona,Barcelona,Cataluña,08916,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+080142,Clínica Mc Copernic,Calle Copernic 58,Barcelona,Barcelona,Cataluña,08006,Hospitales Generales,Mútuas Colaboradoras con La Seguridad Social,N
+080168,Hospital Egarsat Sant Honorat,Avenida Tibidabo 20,Barcelona,Barcelona,Cataluña,08022,Hospitales Generales,Mútuas Colaboradoras con La Seguridad Social,N
+080155,Clínica Mc Londres,Calle Londres 28-38,Barcelona,Barcelona,Cataluña,08029,Hospitales Generales,Mútuas Colaboradoras con La Seguridad Social,N
+080116,"Fremap, Hospital de Barcelona",Calle Madrazo 8,Barcelona,Barcelona,Cataluña,08006,Hospitales Generales,Mútuas Colaboradoras con La Seguridad Social,N
+080229,Clínica Nostra Senyora del Remei,Calle Escorial 148,Barcelona,Barcelona,Cataluña,08024,Hospitales Generales,Privados,N
+082279,Eatica,Calle Angli 64,Barcelona,Barcelona,Cataluña,08017,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+082268,"Ronda de Dalt, Centre Sociosanitari",Calle Pare Mariana 15,Barcelona,Barcelona,Cataluña,08035,Hospitales de media y larga estancia,Privados,N
+080235,Clínica Sagrada Familia,Calle Torras I Pujalt 1,Barcelona,Barcelona,Cataluña,08022,Hospitales Generales,Privados,N
+082145,Centre Sociosanitari del Centre Integral de Salut Cotxeres,Avenida Borbo 18-30,Barcelona,Barcelona,Cataluña,08016,Hospitales de media y larga estancia,Privados,N
+081920,Centre Integral de Serveis En Salut Mental Comunitaria,Calle Verntallat 11-19,Barcelona,Barcelona,Cataluña,08024,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+081874,Clínica Galatea,Calle Palafolls 15-19,Barcelona,Barcelona,Cataluña,08017,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+080253,Hospital Mare de Déu de La Mercé?,Paseo Universal 34,Barcelona,Barcelona,Cataluña,08042,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+080575,Clínica Coroleu - Ssr Hestia.,Calle Coroleu 50,Barcelona,Barcelona,Cataluña,08030,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+080497,Centre Hospitalari Policlínica Barcelona,Calle Guillem Tell 4,Barcelona,Barcelona,Cataluña,08006,Hospitales Generales,Privados,N
+080399,Hospital Quironsalud Barcelona,Plaza Alfons Comín 5,Barcelona,Barcelona,Cataluña,08023,Hospitales Generales,Privados,N
+080370,Clínica Corachan,Calle Buigas 19,Barcelona,Barcelona,Cataluña,08017,Hospitales Generales,Privados,N
+081942,"Lepant Residencial Qgg, S.L.",Calle Lepant 401-403,Barcelona,Barcelona,Cataluña,08025,Hospitales de media y larga estancia,Privados,N
+082189,Centre Sociosanitari Isabel Roig,Calle Fernando Pessoa 47-51,Barcelona,Barcelona,Cataluña,08030,Hospitales de media y larga estancia,Privados,N
+080538,Centre D'Oftalmologia Barraquer,Calle Muntaner 314,Barcelona,Barcelona,Cataluña,08021,Hospitales especializados,Privados,N
+080484,Hospital de Barcelona,Avenida Diagonal 660,Barcelona,Barcelona,Cataluña,08034,Hospitales Generales,Privados,N
+080478,"Centro Medico Teknon, Grupo Quironsalud",Calle Vilana 12,Barcelona,Barcelona,Cataluña,08022,Hospitales Generales,Privados,N
+080446,Hospital Universitari Quirón Dexeus,Calle Sabino de Arana 5-19,Barcelona,Barcelona,Cataluña,08028,Hospitales Generales,Privados,N
+080403,HM Nou Delfos,Avenida Vallcarca 151,Barcelona,Barcelona,Cataluña,08023,Hospitales Generales,Privados,N
+080364,Hospital Universitari Sagrat Cor,Calle Viladomat 288,Barcelona,Barcelona,Cataluña,08029,Hospitales Generales,Privados,N
+080291,Hospital de La Santa Creu I Sant Pau,Calle Sant Quinti 89,Barcelona,Barcelona,Cataluña,08041,Hospitales Generales,Privados,N
+082246,Unitat Terapéutica-Educativa Acompanya'M,Calle Jesús I Maria 18-20,Barcelona,Barcelona,Cataluña,08022,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+082156,Clínica Sant Antoni,Calle Sant Eloi 6-8,Barcelona,Barcelona,Cataluña,08038,Hospitales de media y larga estancia,Privados,N
+082134,Ita Maresme,Calle Avenir 14,Barcelona,Barcelona,Cataluña,08006,Hospitales especializados,Privados,N
+081964,Unitat Polivalent Salut Mental Barcelona-Nord,Avenida Jorda 8,Barcelona,Barcelona,Cataluña,08035,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+081931,Centre Sociosanitari Sant Jordi de La Vall D'Hebron,Paseo Vall D'Hebron 135-141,Barcelona,Barcelona,Cataluña,08035,Hospitales de media y larga estancia,Privados,N
+081830,Centre Sociosanitari Blauclinic Dolors Aleu,Calle Marques de Santa Anna 9,Barcelona,Barcelona,Cataluña,08023,Hospitales de media y larga estancia,Privados,N
+081762,Hestia Gracia,Calle Secretari Coloma 95,Barcelona,Barcelona,Cataluña,08024,Hospitales de media y larga estancia,Privados,N
+080386,Clínica Tres Torres,Calle Doctor Roux 76,Barcelona,Barcelona,Cataluña,08017,Hospitales Generales,Privados,N
+080348,Fundacio Puigvert - Iuna,Calle Cartagena 340,Barcelona,Barcelona,Cataluña,08025,Hospitales especializados,Privados,N
+081740,Centro Residencial Domusvi La Salut Josep Servat.,Calle Antequera 8-18,Barcelona,Barcelona,Cataluña,08024,Hospitales de media y larga estancia,Privados,N
+081706,Centre Collserola Mutual,"Paseo Vall D'Hebron, 159",Barcelona,Barcelona,Cataluña,08035,Hospitales de media y larga estancia,Privados,N
+081593,Parc Sanitari Sant Joan de Deu - Numancia,Calle Numancia 7-13,Barcelona,Barcelona,Cataluña,08029,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+081574,Clínica Lluria,Pasaje Mercader 14,Barcelona,Barcelona,Cataluña,08008,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+081379,Hospital Sociosanitari Mutuam Güell,Calle Mare de Deu de La Salut 49,Barcelona,Barcelona,Cataluña,08024,Hospitales de media y larga estancia,Privados,N
+080641,Clínica Planas,Calle Pere Ir de Montcada 16,Barcelona,Barcelona,Cataluña,08034,Hospitales especializados,Privados,N
+080556,"Serveis Clinics, S.A.",Calle Garcia Mariño 4,Barcelona,Barcelona,Cataluña,08022,Hospitales de media y larga estancia,Privados,N
+080351,Hestia Palau.,"Calle Sant Antoni Maria Claret , 135",Barcelona,Barcelona,Cataluña,08025,Hospitales de media y larga estancia,Privados,N
+080312,Nou Hospital Evangelic,Calle Ciutat de Granada 108,Barcelona,Barcelona,Cataluña,08018,Hospitales de media y larga estancia,Privados,N
+081672,Hospital Sanitas Cima,Paseo Manuel Girona 33,Barcelona,Barcelona,Cataluña,08034,Hospitales Generales,Privados,N
+080180,Hospital El Pilar,Calle Balmes 271,Barcelona,Barcelona,Cataluña,08006,Hospitales Generales,Privados,N
+081751,Clínica Creu Blanca,"Paseo Reina Elisenda de Montcada, 17",Barcelona,Barcelona,Cataluña,08034,Hospitales Generales,Privados,N
+081829,Centre Fórum,"Calle Llull, 410",Barcelona,Barcelona,Cataluña,08019,Hospitales de media y larga estancia,Otras Entidades u o rganismos Públicos,N
+080109,Hospital Clinic de Barcelona,Calle Villarroel 170,Barcelona,Barcelona,Cataluña,08036,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+080057,Hospital del Mar,Paseo Maritim de La Barceloneta 25-29,Barcelona,Barcelona,Cataluña,08003,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+080060,Hospital de L'Esperança.,Avenida Sant Josep de La Muntanya 12,Barcelona,Barcelona,Cataluña,08024,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+080431,"Hospital Clinic de Barcelona, Seu Plato",Calle Plato 21,Barcelona,Barcelona,Cataluña,08006,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+080214,Hospital Sant Rafael,Paseo Vall D'Hebron 107,Barcelona,Barcelona,Cataluña,08035,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+081649,Hospital Sociosanitari Pere Virgili,Avenida Vallcarca 169-205,Barcelona,Barcelona,Cataluña,08023,Hospitales de media y larga estancia,Otras Entidades u o rganismos Públicos,N
+080174,Hospital Dos de Maig,Calle Dos de Maig 301,Barcelona,Barcelona,Cataluña,08025,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+080044,"Hospital Clinic de Barcelona, Seu Sabino de Arana",Calle Sabino de Arana 1,Barcelona,Barcelona,Cataluña,08028,Hospitales especializados,Otras Entidades u o rganismos Públicos,N
+081347,Hospital Universitari Vall D'Hebron,Paseo Vall D'Hebron 119-129,Barcelona,Barcelona,Cataluña,08035,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+080692,Hospital de Berga,Carretera De Ribes 47,Berga,Barcelona,Cataluña,08600,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+081311,Residencia Santa Susanna,Calle Font I Boet 16,Caldes de Montbui,Barcelona,Cataluña,08140,Hospitales de media y larga estancia,Privados,N
+080706,Hospital Comarcal Sant Jaume de Calella,Calle Sant Jaume 209-217,Calella,Barcelona,Cataluña,03500,Hospitales Generales,Privados,N
+081568,Ita Canet,Ronda Sant Elm 2,Canet de Mar,Barcelona,Cataluña,08360,Hospitales especializados,Privados,N
+081717,Centre Sociosanitari Sarquavitae Sant Jordi,Carretera Sant Joan Despi 60,Cornellà de Llobregat,Barcelona,Cataluña,08940,Hospitales de media y larga estancia,Privados,N
+081784,Centre Sociosanitari D'Esplugues,Vía Augusta 66-70,Esplugues de Llobregat,Barcelona,Cataluña,08950,Hospitales de media y larga estancia,Privados,N
+080713,Hospital de Sant Joan de Deu.,Calle Sant Joan de Deu 2,Esplugues de Llobregat,Barcelona,Cataluña,08950,Hospitales especializados,Privados,N
+080728,Clínica Nostra Senyora de Guadalupe,Calle Francesc Moragas 2,Esplugues de Llobregat,Barcelona,Cataluña,08950,Hospitales de media y larga estancia,Privados,N
+082167,Clínica Diagonal,Calle Sant Mateu 24-26,Esplugues de Llobregat,Barcelona,Cataluña,08950,Hospitales Generales,Privados,N
+081661,Benito Menni Complex Assistencial En Salut Mental,Calle Francesc Ribas 59,Granollers,Barcelona,Cataluña,08402,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+081402,"Mutua de Granollers, Mutua de Previsio Social A Prima Fixa",Plaza Pau Casals S/N,Granollers,Barcelona,Cataluña,08402,Hospitales Generales,Privados,N
+080734,Hospital General de Granollers.,Avenida Francesc Ribas 1,Granollers,Barcelona,Cataluña,08402,Hospitales Generales,Privados,N
+082112,Unitat Polivalent Benito Menni En Salut Mental de L'Hospitalet-El Prat de Llobregat,Calle Sant Rafael 11,"Hospitalet de Llobregat, L'",Barcelona,Cataluña,08905,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+081605,Prytanis Hospitalet Centre Sociosanitari,Calle Aprestadora 43-45,"Hospitalet de Llobregat, L'",Barcelona,Cataluña,08902,Hospitales de media y larga estancia,Privados,N
+080543,Hestia Duran I Reynals,Avenida Gran Vía 203,"Hospitalet de Llobregat, L'",Barcelona,Cataluña,08908,Hospitales de media y larga estancia,Privados,N
+080771,Hospital General de L'Hospitalet,Avenida Josep Molins 29,"Hospitalet de Llobregat, L'",Barcelona,Cataluña,08906,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+081461,Institut Catalá D'Oncologia - Hospital Duran I Reynals,Avenida Gran Vía 203,"Hospitalet de Llobregat, L'",Barcelona,Cataluña,08908,Hospitales especializados,Otras Entidades u o rganismos Públicos,N
+081739,Centre Sociosanitari de L'Hospitalet - Consorci Sanitari Integral,Avenida Josep Molins 41,"Hospitalet de Llobregat, L'",Barcelona,Cataluña,08906,Hospitales de media y larga estancia,Otras Entidades u o rganismos Públicos,N
+080752,Hospital Universitari de Bellvitge,Calle Feixa Llarga S/N,"Hospitalet de Llobregat, L'",Barcelona,Cataluña,08907,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+080787,Fundacio Sanitaria Sant Josep,Calle Carme Verdaguer 56,Igualada,Barcelona,Cataluña,08700,Hospitales de media y larga estancia,Privados,N
+081885,Hospital D'Igualada,Avenida Catalunya 11,Igualada,Barcelona,Cataluña,08700,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+082337,Residencia Nazaret,Calle Guillem de Palafolls 3,Malgrat de Mar,Barcelona,Cataluña,08380,Hospitales de media y larga estancia,Privados,S
+080826,Hospital de Sant Jaume,Carretera D'Olot 7,Manlleu,Barcelona,Cataluña,08560,Hospitales de media y larga estancia,Otras Entidades u o rganismos Públicos,N
+080863,Hospital de Sant Joan de Deu (Manresa),Calle Joan Soler 1-3,Manresa,Barcelona,Cataluña,08243,Hospitales Generales,Privados,N
+080879,Hospital de Sant Andreu,Calle Remei de Dalt 3,Manresa,Barcelona,Cataluña,08240,Hospitales de media y larga estancia,Privados,N
+080832,Clínica Sant Josep,Calle Caputxins 16,Manresa,Barcelona,Cataluña,08241,Hospitales Generales,Privados,N
+080898,Fundacio Hospital Sant Joan de Deu (Martorell),Avenida Mancomunitats Comarcals 1,Martorell,Barcelona,Cataluña,08760,Hospitales Generales,Privados,N
+080885,Germanes Hospitalaries. Hospital Sagrat Cor,Avenida Comte de Llobregat 117,Martorell,Barcelona,Cataluña,08760,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+081997,"Cqm Clinic Maresme, S.L.",Calle Lepant 13-21,Mataró,Barcelona,Cataluña,08301,Hospitales Generales,Privados,N
+081213,Centre Geriatric del Maresme,Calle Lepant 13-21,Mataró,Barcelona,Cataluña,08301,Hospitales de media y larga estancia,Privados,N
+081326,Hospital de Mataró,Carretera Cirera 230,Mataró,Barcelona,Cataluña,08304,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+081580,Antic Hospital de Sant Jaume I Santa Magdalena,Calle Hospital 29-31,Mataró,Barcelona,Cataluña,08301,Hospitales de media y larga estancia,Otras Entidades u o rganismos Públicos,N
+080930,"Centre Medic Molins, S.L.",Paseo Del Terraple 97,Molins de Rei,Barcelona,Cataluña,08750,Hospitales de media y larga estancia,Privados,N
+080945,Hospital de Mollet,Ronda Pinetons 6-8,Mollet del Vallès,Barcelona,Cataluña,08100,Hospitales Generales,Privados,N
+081841,Parc Sanitari Sant Joan de Deu - Til·Lers,Calle Mossos D'Esquadra 3,Mollet del Vallès,Barcelona,Cataluña,08100,Hospitales de salud mental y tratamiento de toxicomanías,Privados,N
+082178,Hospital Sociosanitari de Mollet,Calle Sant Llorenç 39-41,Mollet del Vallès,Barcelona,Cataluña,08100,Hospitales de media y larga estancia,Privados,N
+081483,Sar Mont Marti,Carretera Casserres (Abans Po. La Sala S/N) 1,Puig-reig,Barcelona,Cataluña,08692,Hospitales de media y larga estancia,Privados,N
+081304,Residencia Puig-Reig,Calle Llobregat 75,Puig-reig,Barcelona,Cataluña,08692,Hospitales de media y larga estancia,Privados,N
+082236,Centre La Creueta,Plaza De Les Vaques S/N,Sabadell,Barcelona,Cataluña,08202,Hospitales de media y larga estancia,Privados,N
+082012,Hospital Quirón Salud del Valles - Clínica del Valles,Paseo Rubio I Ors 25-27,Sabadell,Barcelona,Cataluña,08203,Hospitales Generales,Privados,N
+080958,Hospital de Sabadell,Calle Parc Taulí­ 1,Sabadell,Barcelona,Cataluña,08208,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+081287,Residencia L'Estada,Camino De La Masía S/N,Sant Andreu de Llavaneres,Barcelona,Cataluña,08392,Hospitales de media y larga estancia,Privados,N
+081228,Prytanis Sant Boi Centre Sociosanitari,Calle Josep Torras I Bages 55,Sant Boi de Llobregat,Barcelona,Cataluña,08830,Hospitales de media y larga estancia,Privados,N
+080983,Parc Sanitari Sant Joan de Deu - Recinte Sant Boi.,Calle Dr. Antoni Pujadas 42,Sant Boi de Llobregat,Barcelona,Cataluña,08830,Hospitales Generales,Privados,N
+080977,"Benito Menni, Complex Assistencial En Salut Mental",Calle Doctor Antoni Pujadas 38,Sant Boi de Llobregat,Barcelona,Cataluña,08830,Hospitales de salud mental y tratamiento de toxicomanías,Otras Entidades u o rganismos Públicos,N
+081234,Centre Sociosanitari Verge del Puig,Calle Campins 37,Sant Celoni,Barcelona,Cataluña,08470,Hospitales de media y larga estancia,Privados,N
+081000,Hospital de Sant Celoni.,Avenida De L'Hospital 19,Sant Celoni,Barcelona,Cataluña,08470,Hospitales Generales,Privados,N
+080137,Centre de Prevencio I Rehabilitacio Asepeyo,Avenida Alcalde Barnils 54-60,Sant Cugat del Vallès,Barcelona,Cataluña,08174,Hospitales Generales,Mútuas Colaboradoras con La Seguridad Social,N
+081017,Hospital Universitari General de Catalunya,Calle Pedro I Pons 1,Sant Cugat del Vallès,Barcelona,Cataluña,08195,Hospitales Generales,Privados,N
+082190,Iván Mañero Clinic,Calle Víctor Hugo 24,Sant Cugat del Vallès,Barcelona,Cataluña,08174,Hospitales especializados,Privados,N
+081919,Parc Sanitari Sant Joan de Deu - App - 2,Carretera Martorell A Capellades 23,Sant Esteve Sesrovires,Barcelona,Cataluña,08635,Hospitales Generales,Privados,N
+081683,Parc Sanitari Sant Joan de Deu - App - 1,"Carretera De Martorell A Capellades ,",Sant Esteve Sesrovires,Barcelona,Cataluña,08635,Hospitales Generales,Privados,N
+082066,Hospital de Sant Joan Despi Moisés Broggi,Calle Oriol Martorell 12,Sant Joan Despí,Barcelona,Cataluña,08970,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+081038,Hospital Residencia Sant Camil - Consorci Sanitari de L'Alt Penedés I Garraf,Ronda Sant Camil S/N,Sant Pere de Ribes,Barcelona,Cataluña,08810,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+081069,Fundacio Hospital de L'Esperit Sant,Avenida Mossen Josep Pons I Robada  S/N,Santa Coloma de Gramenet,Barcelona,Cataluña,08923,Hospitales Generales,Privados,N
+081056,Centres Assistencials Dr. Emili Mira I López (Recinte Torribera).,Calle Prat de La Riba 171,Santa Coloma de Gramenet,Barcelona,Cataluña,08921,Hospitales de salud mental y tratamiento de toxicomanías,Otras Entidades u o rganismos Públicos,N
+082338,Mas Amigo Centre Especialitzat En Addiccions,Barriada Mas Amigo S/N,Santa Margarida de Montbui,Barcelona,Cataluña,08710,Hospitales de salud mental y tratamiento de toxicomanías,Privados,S
+081458,Aptima Centre Clinic - Mutua de Terrassa,Plaza Doctor Robert 5,Terrassa,Barcelona,Cataluña,08221,Hospitales Generales,Privados,N
+081094,Hospital Universitari Mutua de Terrassa,Plaza Doctor Robert 5,Terrassa,Barcelona,Cataluña,08221,Hospitales Generales,Privados,N
+081075,Hospital de Terrassa.,Carretera Torrebonica S/N,Terrassa,Barcelona,Cataluña,08227,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+081728,Hospital General Penitenciari,Carretera Torrebonica S/N,Terrassa,Barcelona,Cataluña,08227,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+081081,Hospital de Sant Llatzer,Plaza Doctor Robert 1,Terrassa,Barcelona,Cataluña,08221,Hospitales de media y larga estancia,Otras Entidades u o rganismos Públicos,N
+081115,Clínica Sant Josep,Calle Sant Segimon 3,Vic,Barcelona,Cataluña,08500,Hospitales Generales,Privados,N
+081120,Hospital de La Santa Creu,Rambla Hospital 52,Vic,Barcelona,Cataluña,08500,Hospitales de media y larga estancia,Privados,N
+081108,Hospital General de Vic,Calle Francesc Pla El Vigata 1,Vic,Barcelona,Cataluña,08500,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+081896,Centre Social I Sanitari Frederica Montseny,Calle Eslida 6-8,Viladecans,Barcelona,Cataluña,08840,Hospitales de media y larga estancia,Privados,N
+081141,Hospital de Viladecans,Avenida Gava 38,Viladecans,Barcelona,Cataluña,08840,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+081430,Hospital Comarcal de L'Alt Penedés,Calle Espirall S/N,Vilafranca del Penedès,Barcelona,Cataluña,08720,Hospitales Generales,Otras Entidades u o rganismos Públicos,N
+081795,Centre Sociosanitari Ricard Fortuny,Avenida Garraf 3,Vilafranca del Penedès,Barcelona,Cataluña,08720,Hospitales de media y larga estancia,Otras Entidades u o rganismos Públicos,N
+081189,Hospital Sant Antoni Abat - Consorci Sanitari del Garraf.,Calle Sant Josep 21,Vilanova i la Geltrú,Barcelona,Cataluña,08800,Hospitales de media y larga estancia,Otras Entidades u o rganismos Públicos,N
+081022,Casal de Curacio,Calle Maria Vidal 19,Vilassar de Mar,Barcelona,Cataluña,08340,Hospitales de media y larga estancia,Privados,N
+090079,Hospital Santos Reyes,Avenida Ruperta Baraya 6,Aranda de Duero,Burgos,Castilla y León,09400,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+090050,Hospital San Juan de Dios Burgos,Paseo De La Isla 3,Burgos,Burgos,Castilla y León,09003,Hospitales de media y larga estancia,Organizaciones No Gubernamentales,N
+090047,Hospital Recoletas de Burgos,Calle Cruz Roja S/N,Burgos,Burgos,Castilla y León,09006,Hospitales Generales,Privados,N
+090026,Hospital Fuente Bermeja. Complejo Asistencial Universitario de Burgos.,Calle Francisco Salinas Sn S/N,Burgos,Burgos,Castilla y León,09003,Hospitales de salud mental y tratamiento de toxicomanías,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+090155,Hospital Universitario de Burgos. Complejo Asistencial Universitario de Burgos,Avenida Islas Baleares 3,Burgos,Burgos,Castilla y León,09006,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
+090098,Hospital Santiago Apóstol,Carretera De Oron Sn S/N,Miranda de Ebro,Burgos,Castilla y León,09200,Hospitales Generales,Servicios e Institutos de Salud de Las Comunidades Autónomas,N
