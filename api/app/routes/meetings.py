@@ -29,7 +29,7 @@ from datetime import date, datetime, timedelta
 from typing import Iterable
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import or_
+from sqlalchemy import and_, or_
 
 from app.models import (
     Group,
@@ -62,6 +62,25 @@ def _require_admin(ctx: RequestContext) -> None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Admin role required"
         )
+
+
+def _can_write_meeting(ctx: RequestContext, m) -> bool:
+    """Write authority for edit/delete on a meeting row.
+
+    Admin power applies only within the caller's OWN tenant. The
+    equipos redesign made some meetings visible cross-tenant
+    (residentes see their adjuntos-hosted comités in their audience),
+    but a residente admin must not be able to rewrite the adjuntos'
+    meeting just because she now sees it. The organizer check
+    implicitly stays same-tenant — an organizer's membership is in
+    the meeting's tenant by construction.
+    """
+    same_tenant = m.tenant_id == ctx.tenant.id
+    if same_tenant and _is_admin(ctx):
+        return True
+    if m.organizer_membership_id == ctx.membership.id:
+        return True
+    return False
 
 
 def _validate_audience(
@@ -202,20 +221,27 @@ def _serialize(ctx: RequestContext, m: Meeting) -> MeetingOut:
 def _visible_meetings_query(ctx: RequestContext):
     """Base query returning meetings the caller can see.
 
-    Admins see everything. Plain members see meetings where any of
-    these is true:
-      - include_main_team AND caller has no group, OR
-      - the caller's group is in the meeting's group audience, OR
-      - the caller's person is in the meeting's person audience.
-    Organizers always see their own meetings (covered by the person
-    audience clause whenever they ARE in the audience; we also OR
-    in organizer_membership_id so the organizer of an empty-people
-    audience meeting still sees their own row).
-    """
-    q = ctx.db.query(Meeting).filter(Meeting.tenant_id == ctx.tenant.id)
-    if _is_admin(ctx):
-        return q
+    Two surfaces:
+      A. In-tenant — everything the caller would see in today's
+         model (admin: all; member: organizer / person audience /
+         group audience / include_main_team).
+      B. Cross-tenant via person audience — meetings hosted by a
+         sibling tenant (same servicio) where the caller's
+         person_id is in MeetingAudiencePerson.
 
+    Surface (B) was added in the equipos redesign so residentes
+    still see their adjuntos-hosted comités after Phase B moves
+    them into their own tenant. The migration 0070 RLS policy on
+    `meetings` + `meeting_audience_persons` is what actually makes
+    those rows visible to the caller's session — this Python query
+    enumerates the AND/OR shape the application cares about, and
+    RLS is defence-in-depth.
+
+    Group audience is in-tenant only (groups don't cross tenants
+    by definition), and after Phase B residentes are no longer in
+    any group anyway. include_main_team is also in-tenant only
+    (the concept doesn't extend across tenants).
+    """
     person_id = ctx.person.id
     membership_id = ctx.membership.id
     group_id = ctx.membership.group_id
@@ -223,24 +249,50 @@ def _visible_meetings_query(ctx: RequestContext):
     person_subq = ctx.db.query(MeetingAudiencePerson.meeting_id).filter(
         MeetingAudiencePerson.person_id == person_id
     )
-    group_subq = (
-        ctx.db.query(MeetingAudienceGroup.meeting_id).filter(
-            MeetingAudienceGroup.group_id == group_id
-        )
-        if group_id is not None
-        else None
+
+    # Cross-tenant slice: meetings outside the caller's tenant where
+    # they're personally invited. Applies to admins and members
+    # alike — an admin in tenant A is just a "regular invitee" of a
+    # meeting in tenant B. _can_write_meeting() refuses any write
+    # attempt against those rows for non-organizers.
+    cross_tenant_clause = and_(
+        Meeting.tenant_id != ctx.tenant.id,
+        Meeting.id.in_(person_subq),
     )
 
-    conditions = [
+    if _is_admin(ctx):
+        # Admin: every meeting in own tenant, plus any cross-tenant
+        # meeting where they're personally invited.
+        return ctx.db.query(Meeting).filter(
+            or_(
+                Meeting.tenant_id == ctx.tenant.id,
+                cross_tenant_clause,
+            )
+        )
+
+    # Non-admin: own-tenant rows must match an audience rule; cross-
+    # tenant rows must match the person-audience slice (the same
+    # clause as for admins — RLS gates the rest).
+    own_tenant_conditions = [
         Meeting.organizer_membership_id == membership_id,
         Meeting.id.in_(person_subq),
     ]
     if group_id is None:
-        conditions.append(Meeting.include_main_team.is_(True))
+        own_tenant_conditions.append(Meeting.include_main_team.is_(True))
     else:
-        conditions.append(Meeting.id.in_(group_subq))  # type: ignore[arg-type]
+        group_subq = ctx.db.query(MeetingAudienceGroup.meeting_id).filter(
+            MeetingAudienceGroup.group_id == group_id
+        )
+        own_tenant_conditions.append(Meeting.id.in_(group_subq))
 
-    return q.filter(or_(*conditions))
+    own_tenant_clause = and_(
+        Meeting.tenant_id == ctx.tenant.id,
+        or_(*own_tenant_conditions),
+    )
+
+    return ctx.db.query(Meeting).filter(
+        or_(own_tenant_clause, cross_tenant_clause)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -292,17 +344,11 @@ def list_meeting_instances(
         ):
             organizer_names[mid] = name
 
-    is_admin = _is_admin(ctx)
-
     out: list[MeetingInstanceOut] = []
     for m in meetings:
-        # Editable by tenant admin always, or by the organizer on
-        # their own row — regular or ad-hoc, same rule. The route
-        # layer enforces this on writes; here we just surface the
-        # flag so the UI can hide Edit/Eliminar for non-organizers.
-        can_edit = is_admin or (
-            m.organizer_membership_id == ctx.membership.id
-        )
+        # UI flag mirroring _can_write_meeting: admin-of-same-tenant
+        # or organizer. Cross-tenant invitees see read-only.
+        can_edit = _can_write_meeting(ctx, m)
         org_name = (
             organizer_names.get(m.organizer_membership_id)
             if m.organizer_membership_id
@@ -452,10 +498,11 @@ def update_regular_meeting(
             status_code=422,
             detail="Esta reunión no es semanal; usa el endpoint de ad-hoc.",
         )
-    # Same rule as ad-hoc: admin or organizer can edit. We let any
-    # member create regular meetings, so they need to be able to
-    # tweak their own without an admin round-trip.
-    if not _is_admin(ctx) and m.organizer_membership_id != ctx.membership.id:
+    # Admin-of-same-tenant or organizer can edit. Cross-tenant admin
+    # (a residente admin who can SEE this meeting via audience but
+    # isn't the organizer) is not allowed to rewrite an adjuntos-
+    # hosted meeting.
+    if not _can_write_meeting(ctx, m):
         raise HTTPException(
             status_code=403,
             detail="Solo el organizador o el administrador pueden editar esta reunión.",
@@ -488,8 +535,8 @@ def update_ad_hoc_meeting(
             status_code=422,
             detail="Esta reunión es semanal; usa el endpoint regular.",
         )
-    # Editable by tenant admin or by the organizer.
-    if not _is_admin(ctx) and m.organizer_membership_id != ctx.membership.id:
+    # Same rule as the regular endpoint — see _can_write_meeting.
+    if not _can_write_meeting(ctx, m):
         raise HTTPException(
             status_code=403,
             detail="Solo el organizador o el administrador pueden editar esta reunión.",
@@ -520,16 +567,12 @@ def delete_meeting(
     ctx: RequestContext = Depends(get_current_context),
 ) -> None:
     m = _get_or_404(ctx, meeting_id)
-    # Admin deletes anything. Otherwise the organizer can delete
-    # their own meeting, regular or ad-hoc — same rule we use for
-    # editing. Random invitees (anyone in the audience but not the
-    # organizer) still get a 403 here so they can't wipe the weekly
-    # sesión clínica out from under everyone.
-    if _is_admin(ctx):
-        pass
-    elif m.organizer_membership_id == ctx.membership.id:
-        pass
-    else:
+    # Admin-of-same-tenant or organizer can delete (same rule as
+    # editing; see _can_write_meeting). Random invitees, including
+    # admins of *other* tenants who only see this meeting because
+    # they're in the audience, get a 403 so they can't wipe the
+    # weekly sesión clínica out from under everyone.
+    if not _can_write_meeting(ctx, m):
         raise HTTPException(
             status_code=403,
             detail="Solo el organizador o el administrador pueden eliminar esta reunión.",

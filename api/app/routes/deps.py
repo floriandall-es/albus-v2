@@ -6,7 +6,7 @@ from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.security import decode_access_token
-from app.db.session import SessionLocal, set_tenant
+from app.db.session import SessionLocal, set_person, set_tenant
 from app.models import Membership, Person, Tenant
 
 
@@ -66,6 +66,13 @@ def get_current_context(
 
     # Set RLS context for this request's transaction.
     set_tenant(db, tenant_id)
+    # app.person_id is the secondary identity GUC introduced for the
+    # equipos redesign (migration 0070). Cross-tenant RLS policies on
+    # meetings + meeting_audience_persons read it to decide if the
+    # caller is in an audience entry that lives in a sibling tenant.
+    # Set early so EVERY query in the request — including any
+    # diagnostic helpers — sees a consistent identity.
+    set_person(db, person_id)
 
     membership = (
         db.query(Membership)

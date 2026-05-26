@@ -37,5 +37,21 @@ def set_tenant(db: Session, tenant_id: int) -> None:
     db.execute(text("SET LOCAL app.tenant_id = :tid"), {"tid": str(tenant_id)})
 
 
+def set_person(db: Session, person_id: int) -> None:
+    """Set the Postgres session variable for the caller's person id.
+
+    Used by cross-tenant RLS predicates introduced in the equipos
+    redesign (migration 0070). The `meetings` and
+    `meeting_audience_persons` policies allow a caller to see rows
+    in OTHER tenants when their person_id is in the audience — those
+    policies read `app.person_id` to find the caller.
+
+    Same SET LOCAL semantics as set_tenant: transaction-scoped.
+    """
+    if not db.in_transaction():
+        db.begin()
+    db.execute(text("SET LOCAL app.person_id = :pid"), {"pid": str(person_id)})
+
+
 def clear_tenant(db: Session) -> None:
     db.execute(text("RESET app.tenant_id"))
