@@ -13,7 +13,6 @@ import {
   Clock,
   Heart,
   Home,
-  Layers,
   LogOut,
   MessageSquare,
   PartyPopper,
@@ -85,7 +84,11 @@ const NAV: NavSection[] = [
     items: [
       { href: "/admin/team", label: "Equipo", icon: Users },
       { href: "/admin/categories", label: "Categorías", icon: Tag },
-      { href: "/admin/groups", label: "Sub-equipos", icon: Layers },
+      // The "Sub-equipos" entry (linking to /admin/groups) was
+      // removed in Bucket 1 of the equipos redesign. Sub-equipos
+      // are now peer equipos with their own admin/tenant; the
+      // legacy /admin/groups route still exists (Phase E drops it)
+      // but is no longer surfaced in navigation.
       { href: "/admin/slots", label: "Actividades", icon: Clock },
       { href: "/admin/rules", label: "Reglas", icon: Sparkles },
       { href: "/admin/holidays", label: "Festivos", icon: PartyPopper },
@@ -117,15 +120,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     queryKey: ["me"],
     queryFn: api.me,
     retry: false,
-    enabled: authChecked,
-  });
-
-  // Sub-team groups for the dynamic sidebar entries (one
-  // per group). Only the tenant admin sees these — group leads
-  // never land in this layout.
-  const groups = useQuery({
-    queryKey: ["groups"],
-    queryFn: api.listGroups,
     enabled: authChecked,
   });
 
@@ -299,46 +293,13 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             </div>
           ))}
 
-          {/* Dynamic sub-team plans: one entry per group so the
-              tenant admin can read each group's planning without
-              it mixing into the main schedule view. Read-only —
-              actual editing happens in /lead/* by the group's
-              lead. */}
-          {groups.data && groups.data.length > 0 && (
-            <div>
-              <div className="px-2 mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                Sub-equipos
-              </div>
-              <div className="space-y-0.5">
-                {groups.data.map((g) => {
-                  const href = `/admin/groups/${g.id}/planificacion`;
-                  const active = pathname === href;
-                  return (
-                    <Link
-                      key={g.id}
-                      href={href}
-                      className={
-                        "group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors "
-                        + (active
-                          ? "bg-brand-50 text-brand-700"
-                          : "text-gray-700 hover:bg-gray-100")
-                      }
-                    >
-                      <Layers
-                        className={
-                          "h-4 w-4 shrink-0 "
-                          + (active
-                            ? "text-brand-600"
-                            : "text-gray-400 group-hover:text-gray-600")
-                        }
-                      />
-                      <span className="truncate">{g.name}</span>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          {/* The dynamic per-group entries (one sidebar link per
+              sub-equipo's planning) was removed in Bucket 1 of the
+              equipos redesign. Sub-equipos are now peer Equipos
+              with their own admin login + sidebar — the parent
+              tenant admin no longer reads their planning here.
+              Cross-equipo visibility will return as the Servicio
+              timeline page in Phase C.2. */}
         </nav>
 
         <div className="border-t border-gray-100 px-3 py-3">

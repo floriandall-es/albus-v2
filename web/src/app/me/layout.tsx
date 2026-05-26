@@ -11,7 +11,6 @@ import {
   CalendarDays,
   CalendarOff,
   Home,
-  Layers,
   LogOut,
   Menu,
   MessageCircle,
@@ -73,14 +72,6 @@ export default function MeLayout({ children }: { children: ReactNode }) {
     enabled: authChecked,
   });
 
-  // Sub-team groups for the dynamic sidebar section. Every member
-  // can browse them: the per-group page surfaces published plans
-  // only (drafts stay between the lead and tenant admin).
-  const groups = useQuery({
-    queryKey: ["groups"],
-    queryFn: api.listGroups,
-    enabled: authChecked,
-  });
   // Phase 2B: total unread DM count. Polls every 60s so the
   // sidebar badge stays roughly fresh without becoming a
   // perceived network expense. Skipped when the current tenant
@@ -285,60 +276,12 @@ export default function MeLayout({ children }: { children: ReactNode }) {
             })}
           </div>
 
-          {/* Dynamic sub-team plans — same shape as the admin
-              sidebar's Sub-equipos section. Members see only
-              published group plans (the per-group page handles
-              "not yet published" empty states).
-              We hide the user's OWN group, because /me/turnos
-              already shows that planning for them — the sidebar
-              entry would just be a duplicate route to the same
-              data. Other groups stay visible so cross-cohort
-              snooping (adjunto checking who's on guardia) works. */}
-          {(() => {
-            const currentMembership = me.data?.memberships.find(
-              (m) => m.tenant_id === me.data?.current_tenant.id,
-            );
-            const myGroupId = currentMembership?.group_id ?? null;
-            const visibleGroups = (groups.data ?? []).filter(
-              (g) => g.id !== myGroupId,
-            );
-            if (visibleGroups.length === 0) return null;
-            return (
-            <div>
-              <div className="px-2 mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
-                Sub-equipos
-              </div>
-              <div className="space-y-0.5">
-                {visibleGroups.map((g) => {
-                  const href = `/me/sub-equipos/${g.id}`;
-                  const active = pathname?.startsWith(href);
-                  return (
-                    <Link
-                      key={g.id}
-                      href={href}
-                      className={
-                        "group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors "
-                        + (active
-                          ? "bg-brand-50 text-brand-700"
-                          : "text-gray-700 hover:bg-gray-100")
-                      }
-                    >
-                      <Layers
-                        className={
-                          "h-4 w-4 shrink-0 "
-                          + (active
-                            ? "text-brand-600"
-                            : "text-gray-400 group-hover:text-gray-600")
-                        }
-                      />
-                      <span className="truncate">{g.name}</span>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-            );
-          })()}
+          {/* The dynamic sub-equipos section was removed in Bucket 1
+              of the equipos redesign. Each sub-equipo is now a peer
+              Equipo (its own tenant) — a member only belongs to one
+              tenant at a time, so there's nothing useful to list
+              here. Cross-equipo visibility returns as the Servicio
+              timeline page in Phase C.2. */}
         </nav>
 
         <div className="border-t border-gray-100 px-3 py-3">

@@ -10,7 +10,6 @@ import {
   CalendarOff,
   CheckCircle2,
   Clock,
-  Layers,
   MailWarning,
   Sparkles,
   Stethoscope,
@@ -178,14 +177,9 @@ const TOUR_STEPS: TourStep[] = [
       + "actividad.",
     placement: "right",
   },
-  {
-    tourId: "nav-grupos",
-    title: "Sub-equipos",
-    body:
-      "Grupos dentro del servicio (residentes, becarios…) con su "
-      + "propio responsable y planificación independiente.",
-    placement: "right",
-  },
+  // The "Sub-equipos" tour stop (nav-grupos) was removed in
+  // Bucket 1 — the corresponding sidebar item no longer exists,
+  // and orphan tour stops crash the guided-tour overlay.
   {
     tourId: "nav-actividades",
     title: "Actividades",
@@ -363,22 +357,13 @@ export default function AdminDashboard() {
               && !state.teamDone
             }
           />
-          {state.hasSubteamsFlag && (
-            <StepCard
-              done={state.subteamsDone}
-              icon={<Layers className="h-5 w-5" />}
-              title="Configura tus sub-equipos"
-              description="Crea un sub-equipo (residentes, becarios, etc.) para que su responsable gestione sus propias actividades y planificación."
-              ctaLabel="Ir a Sub-equipos"
-              href="/admin/groups"
-              primary={
-                state.activitiesDone
-                && state.rulesDone
-                && state.teamDone
-                && !state.subteamsDone
-              }
-            />
-          )}
+          {/* The "Configura tus sub-equipos" setup card was
+              removed in Bucket 1 of the equipos redesign — each
+              sub-equipo is now a peer Equipo with its own admin
+              login. The has_subteams flag stays in the tenant
+              schema for now (read by other code paths during
+              transition); Phase E will retire the flag and the
+              flow that sets it on signup. */}
         </section>
       )}
 
