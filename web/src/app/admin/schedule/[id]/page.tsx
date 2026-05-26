@@ -1,12 +1,15 @@
 "use client";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Sun } from "lucide-react";
 import {
   api,
   personLastName,
   type Assignment,
   type AvailabilityBlockType,
+  type Periodo,
   type TeamMember,
 } from "@/lib/api";
 import {
@@ -195,6 +198,28 @@ export default function ScheduleDetailPage() {
     queryFn: () => api.listScheduleViolations(id),
     enabled: !!detail.data,
   });
+  // Vacation V.1: surface a banner when the schedule's month overlaps
+  // an active periodo, so the admin understands why some cells have
+  // different slot config than usual (Quirófano halved, Consulta off,
+  // etc.). Fetches all periodos and filters client-side — there are
+  // at most a handful per tenant.
+  const periodos = useQuery({
+    queryKey: ["periodos"],
+    queryFn: api.listPeriodos,
+  });
+  const overlappingPeriodos = useMemo(() => {
+    if (!detail.data || !periodos.data) return [] as Periodo[];
+    // Build [month_start, month_end] for this schedule.
+    const monthFirst = detail.data.period;
+    const [yy, mm] = monthFirst.split("-").map(Number);
+    const monthStart = `${monthFirst.slice(0, 8)}01`;
+    const lastDay = new Date(yy, mm, 0).getDate();
+    const monthEnd = `${monthFirst.slice(0, 8)}${String(lastDay).padStart(2, "0")}`;
+    // Overlap: periodo.end >= monthStart AND periodo.start <= monthEnd.
+    return periodos.data.filter(
+      (p) => p.end_date >= monthStart && p.start_date <= monthEnd,
+    );
+  }, [detail.data, periodos.data]);
   const flaggedAssignmentIds = useMemo(() => {
     const s = new Set<number>();
     // Suppressed ("Ocultar"-ed by admin) violations don't paint the
@@ -349,6 +374,10 @@ export default function ScheduleDetailPage() {
           </span>
         )}
       </p>
+
+      {overlappingPeriodos.length > 0 && (
+        <PeriodoBanner periodos={overlappingPeriodos} />
+      )}
 
       <ViolationsBanner
         scheduleId={id}
@@ -1516,4 +1545,56 @@ function formatShortDate(iso: string): string {
     "diciembre",
   ];
   return `${dt.getDate()} ${MONTHS[dt.getMonth()]}`;
+}
+
+// Vacation V.1: small awareness banner. Renders above the violations
+// banner when the current schedule's month overlaps an active periodo.
+// Click-through to the periodo editor so the admin can see / tweak the
+// regime that produced this month's atypical cells.
+function PeriodoBanner({ periodos }: { periodos: Periodo[] }) {
+  const fmt = (d: string) =>
+    new Date(d + "T00:00:00").toLocaleDateString("es-ES", {
+      day: "numeric",
+      month: "short",
+    });
+  return (
+    <div className="mb-4 rounded-md border border-amber-200 bg-amber-50/70 px-3 py-2">
+      <div className="flex items-start gap-2">
+        <Sun className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+        <div className="flex-1 text-sm text-amber-900">
+          {periodos.length === 1 ? (
+            <span>
+              <strong>{periodos[0].name}</strong> activo del{" "}
+              {fmt(periodos[0].start_date)} al {fmt(periodos[0].end_date)}.
+              Las actividades y reglas pueden estar modificadas en esas
+              fechas.{" "}
+              <Link
+                href={`/admin/periodos/${periodos[0].id}`}
+                className="underline-offset-2 hover:underline"
+              >
+                Editar reglas →
+              </Link>
+            </span>
+          ) : (
+            <span>
+              {periodos.length} periodos especiales activos este mes:{" "}
+              {periodos.map((p, i) => (
+                <span key={p.id}>
+                  {i > 0 ? ", " : ""}
+                  <Link
+                    href={`/admin/periodos/${p.id}`}
+                    className="font-medium underline-offset-2 hover:underline"
+                  >
+                    {p.name}
+                  </Link>
+                  {" "}
+                  ({fmt(p.start_date)} – {fmt(p.end_date)})
+                </span>
+              ))}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
