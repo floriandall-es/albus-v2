@@ -116,7 +116,6 @@ TENANT_SLUG = "cirugia-toracica-hospital-la-fe"
 COUNTRY_CODE = "ES"
 REGION_CODE = "ES-VC"
 PRESET_KIND = "quirurgico"
-HAS_SUBTEAMS = True
 # The customer runs the regional lung transplant program — turn
 # on the trasplantes module so the imported case log surfaces in
 # /admin/trasplantes from day one.
@@ -408,7 +407,6 @@ def run_migration(db: Session) -> dict[str, Any]:
         country_code=COUNTRY_CODE,
         region_code=REGION_CODE,
         preset_kind=PRESET_KIND,
-        has_subteams=HAS_SUBTEAMS,
         transplants_enabled=TRANSPLANTS_ENABLED,
         onboarding_completed_at=datetime.now(timezone.utc),
     )

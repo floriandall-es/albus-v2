@@ -119,10 +119,6 @@ class TenantOut(BaseModel):
     # Set by the onboarding preset step. One of 'quirurgico' / 'medico'
     # / 'otro'. Null on tenants created before this feature shipped.
     preset_kind: str | None = None
-    # Legacy column kept for backward compatibility with the DB row;
-    # the sub-equipos feature was removed in Phase E. Always False
-    # going forward.
-    has_subteams: bool = False
     # Opt-in module flag: when true, the "Trasplantes" sidebar
     # entry appears and /api/transplants is reachable. False by
     # default — most services don't run a transplant program.

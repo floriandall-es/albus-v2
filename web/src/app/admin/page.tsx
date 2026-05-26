@@ -282,20 +282,14 @@ export default function AdminDashboard() {
       activitiesDone: !!t?.setup_activities_completed_at,
       rulesDone: !!t?.setup_rules_completed_at,
       teamDone: !!t?.setup_team_completed_at,
-      subteamsDone: !!t?.setup_subteams_completed_at,
-      hasSubteamsFlag: t?.has_subteams ?? false,
       firstName: me.data ? personFirstName(me.data.person) : "",
       nextSchedule,
     };
   }, [me.data, schedules.data]);
 
-  // Setup is "done" when every applicable area has been explicitly
-  // marked done. Sub-equipos only counts when has_subteams=true.
+  // Setup is "done" when every area has been explicitly marked done.
   const setupDone =
-    state.activitiesDone
-    && state.rulesDone
-    && state.teamDone
-    && (!state.hasSubteamsFlag || state.subteamsDone);
+    state.activitiesDone && state.rulesDone && state.teamDone;
 
   return (
     <>
@@ -320,8 +314,7 @@ export default function AdminDashboard() {
       {/* Setup checklist — only shown while there are pending items.
           Each card's `done` state is driven by the explicit
           tenant.setup_<area>_completed_at flag toggled on the
-          subpage via the SetupBanner. The sub-equipos card only
-          appears when the admin answered "Sí" at signup. */}
+          subpage via the SetupBanner. */}
       {!setupDone && (
         <section
           className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
@@ -358,13 +351,6 @@ export default function AdminDashboard() {
               && !state.teamDone
             }
           />
-          {/* The "Configura tus sub-equipos" setup card was
-              removed in Bucket 1 of the equipos redesign — each
-              sub-equipo is now a peer Equipo with its own admin
-              login. The has_subteams flag stays in the tenant
-              schema for now (read by other code paths during
-              transition); Phase E will retire the flag and the
-              flow that sets it on signup. */}
         </section>
       )}
 

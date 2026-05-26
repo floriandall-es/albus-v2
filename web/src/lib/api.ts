@@ -76,10 +76,6 @@ export type Tenant = {
   /** Onboarding template chosen on the new first wizard step.
    * Null on tenants created before the preset selector shipped. */
   preset_kind: PresetKind | null;
-  /** Yes/No answer the admin gave at signup to "¿Vas a usar
-   * sub-equipos?". Drives whether /admin Inicio surfaces a
-   * sub-equipos setup card. False by default. */
-  has_subteams: boolean;
   /** Opt-in module: trasplantes (case log + stats). False for
    * most tenants; the customer flips it on at signup if their
    * service runs a transplant program. When false, the
@@ -1633,9 +1629,6 @@ export const api = {
   updateTenantDefaults: (body: {
     country_code?: string | null;
     region_code?: string | null;
-    /** Onboarding step 1 sets this — drives the "Configura
-     * sub-equipos" card on /admin Inicio and the StepNav. */
-    has_subteams?: boolean;
     /** Onboarding step 1 sets this — gates the /admin/trasplantes
      * module visibility and the related API endpoints. */
     transplants_enabled?: boolean;

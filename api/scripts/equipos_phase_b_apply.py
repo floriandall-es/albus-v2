@@ -327,7 +327,6 @@ def apply_plan(db, plan: GroupPlan) -> dict:
         country_code=parent.country_code,
         region_code=parent.region_code,
         preset_kind=parent.preset_kind,
-        has_subteams=False,
         transplants_enabled=False,
         share_policy="full",
         approval_state="approved",

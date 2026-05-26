@@ -81,12 +81,6 @@ class Tenant(Base):
     preset_kind: Mapped[str | None] = mapped_column(
         String(32), nullable=True
     )
-    # Legacy column kept for backward compatibility with existing DB
-    # rows; the sub-equipos / Groups machinery was dropped in Phase E.
-    # Always False on new tenants going forward.
-    has_subteams: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="false"
-    )
     # Opt-in module flag for the transplant case log
     # (/admin/trasplantes + /api/transplants). False = the feature
     # is dormant: the sidebar entry hides and the API endpoints

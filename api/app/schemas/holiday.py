@@ -45,10 +45,9 @@ class TenantUpdate(BaseModel):
     country_code: str | None = Field(default=None, max_length=8)
     region_code: str | None = Field(default=None, max_length=16)
     # Sprint 28: moved out of the signup form. The onboarding step 1
-    # (Tipo de equipo) writes these via the same endpoint, so admins
-    # answer "service shape" questions when they have authenticated
-    # context, not on the public credentials page.
-    has_subteams: bool | None = None
+    # (Tipo de equipo) writes this via the same endpoint, so admins
+    # answer the question when they have authenticated context, not
+    # on the public credentials page.
     transplants_enabled: bool | None = None
     # Sprint 28 / migration 0050: cap on cambios de turno per member
     # per monthly schedule. PATCH with `null` to clear (= unlimited).

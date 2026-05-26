@@ -323,7 +323,6 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthRespons
         servicio_id=servicio.id,
         approval_state=approval_state,
         share_policy="none",
-        has_subteams=False,
         transplants_enabled=payload.transplants_enabled,
     )
     db.add(tenant)

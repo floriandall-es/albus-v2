@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clock, Info, Layers, Plus } from "lucide-react";
+import { Clock, Info, Plus } from "lucide-react";
 import {
   api,
   type Slot,
@@ -68,12 +68,6 @@ const ALL_TEMPLATE_NAMES = new Set(SLOT_TEMPLATES.items.map((i) => i.name));
 export default function SlotsStep() {
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ["slots"], queryFn: () => api.listSlots() });
-  // Used to surface the sub-equipo note: when the tenant has
-  // sub-teams, we want admins to know that this step is about
-  // the MAIN team's activities — the sub-team lead will pick
-  // their own later from /lead/actividades.
-  const me = useQuery({ queryKey: ["me"], queryFn: api.me });
-  const hasSubteams = me.data?.current_tenant.has_subteams === true;
 
   // Manual form state. Custom slots get the same minimal defaults
   // as the template ones: no horario, todos los días, una persona.
@@ -135,26 +129,8 @@ export default function SlotsStep() {
       <StepHeader
         icon={Clock}
         title="Paso 3 — Actividades"
-        subtitle={
-          hasSubteams
-            ? "Marca las actividades del equipo principal. El líder de cada sub-equipo configurará las suyas más tarde."
-            : "Marca las que se hacen en tu servicio. Cada actividad se asigna luego automáticamente y de forma equitativa."
-        }
+        subtitle="Marca las que se hacen en tu servicio. Cada actividad se asigna luego automáticamente y de forma equitativa."
       />
-
-      {hasSubteams && (
-        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/60 p-4 flex items-start gap-3">
-          <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white text-amber-700 ring-1 ring-amber-200 shrink-0">
-            <Layers className="h-4 w-4" />
-          </span>
-          <p className="text-sm text-amber-900/80 leading-relaxed">
-            <strong>Sólo equipo principal.</strong> Las actividades
-            de los sub-equipos (residentes, becarios) las añade
-            cada líder desde <strong>Sub-equipo → Actividades</strong>
-            cuando entre por primera vez.
-          </p>
-        </div>
-      )}
 
       <div className="mb-6 rounded-xl border border-brand-100 bg-brand-50/60 p-4 flex items-start gap-3">
         <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white text-brand-700 ring-1 ring-brand-200 shrink-0">
