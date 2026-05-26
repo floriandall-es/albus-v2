@@ -142,6 +142,14 @@ class AssignmentCreate(BaseModel):
 class EligiblePersonOut(BaseModel):
     person_id: int
     person_name: str
+    # Split name fields so the Reasignar dropdown can render
+    # last-name-only (Mara's convention) without falling back to
+    # whitespace-split on `person_name`. Either may be null on
+    # legacy rows that never got the split fields populated; the
+    # client's personLastName helper falls back to splitting
+    # `person_name` in that case.
+    person_first_name: str | None = None
+    person_last_name: str | None = None
 
 
 class ScheduleDetail(ScheduleOut):

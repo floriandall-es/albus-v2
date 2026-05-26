@@ -595,7 +595,10 @@ function AssignmentEditModal({
             <option value="">— Sin cubrir —</option>
             {(eligible.data ?? []).map((p) => (
               <option key={p.person_id} value={String(p.person_id)}>
-                {p.person_name}
+                {personLastName({
+                  name: p.person_name,
+                  last_name: p.person_last_name,
+                })}
               </option>
             ))}
           </select>
@@ -1219,7 +1222,12 @@ function ManageAbsencesModal({
               { value: "", label: "— Selecciona —" },
               ...candidates.map((m) => ({
                 value: m.person_id,
-                label: m.person_name,
+                // Last-name-only convention (matches the planning
+                // grid, BalanceStats, rotation pickers, etc.).
+                // personLastName falls back to whitespace-splitting
+                // when no explicit last_name field is present, which
+                // is the case for TeamMember rows today.
+                label: personLastName({ name: m.person_name }),
               })),
             ]}
           />

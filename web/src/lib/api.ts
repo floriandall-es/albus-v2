@@ -326,6 +326,11 @@ export type Assignment = {
 export type EligiblePerson = {
   person_id: number;
   person_name: string;
+  /** Split name fields used by the Reasignar dropdown to render
+   * last-name-only. Both fall back to whitespace-splitting
+   * `person_name` via the personLastName helper if null. */
+  person_first_name?: string | null;
+  person_last_name?: string | null;
 };
 
 export type ScheduleDetail = Schedule & {

@@ -1031,7 +1031,14 @@ def list_eligible_persons(
     for m, p in rows:
         ok, _ = is_eligible(sctx, m.person_id, slot, a.date, team_role_id=a.team_role_id)
         if ok:
-            out.append(EligiblePersonOut(person_id=m.person_id, person_name=p.name))
+            out.append(
+                EligiblePersonOut(
+                    person_id=m.person_id,
+                    person_name=p.name,
+                    person_first_name=p.first_name,
+                    person_last_name=p.last_name,
+                )
+            )
     return out
 
 

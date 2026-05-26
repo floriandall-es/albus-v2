@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
+  personLastName,
   type AvailabilityBlock,
   type AvailabilityBlockType,
   type TeamMember,
@@ -89,7 +90,7 @@ export default function AvailabilityPage() {
               ...((team.data ?? [])
                 .map((m: TeamMember) => ({
                   value: m.person_id,
-                  label: m.person_name,
+                  label: personLastName({ name: m.person_name }),
                 })) as { value: number | ""; label: string }[]),
             ]}
           />
@@ -252,7 +253,10 @@ function BlockModal({
           label="Persona"
           value={personId}
           onChange={(v) => setPersonId(v === "" ? "" : Number(v))}
-          options={team.map((m) => ({ value: m.person_id, label: m.person_name }))}
+          options={team.map((m) => ({
+            value: m.person_id,
+            label: personLastName({ name: m.person_name }),
+          }))}
         />
         <DateRangeField
           startDate={start}
