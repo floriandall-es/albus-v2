@@ -39,6 +39,7 @@ from app.models.conversation import (
 )
 from app.models.directory_favorite import DirectoryFavorite
 from app.models.violation_suppression import ViolationSuppression
+from app.models.periodo_especial import PeriodoEspecial, SlotPeriodOverride
 
 __all__ = [
     "Hospital",
@@ -78,4 +79,6 @@ __all__ = [
     "Message",
     "DirectoryFavorite",
     "ViolationSuppression",
+    "PeriodoEspecial",
+    "SlotPeriodOverride",
 ]
