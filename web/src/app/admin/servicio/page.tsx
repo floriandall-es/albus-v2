@@ -44,14 +44,14 @@ const POLICY_LABEL: Record<SharePolicy, string> = {
 
 const POLICY_HELP: Record<SharePolicy, string> = {
   none:
-    "Tu equipo no aparece en la línea de tiempo del servicio. Es el "
+    "Tu equipo no aparece en la vista conjunta del servicio. Es el "
     + "valor por defecto para equipos nuevos.",
   selected:
     "Tu equipo aparece solo en las actividades que marques como "
     + "compartidas en /admin/slots.",
   full:
     "Tu equipo aparece con toda su planificación publicada en la "
-    + "línea de tiempo del servicio. Los borradores no se incluyen.",
+    + "vista conjunta del servicio. Los borradores no se incluyen.",
 };
 
 export default function ServicioPage() {
@@ -195,7 +195,7 @@ export default function ServicioPage() {
             <p className="mb-3 text-xs text-gray-500">
               Controla qué ven los otros equipos del servicio
               {" en la "}
-              <span className="font-medium">línea de tiempo</span>
+              <span className="font-medium">vista conjunta</span>
               {". Solo lectura — los demás equipos nunca pueden editar tu planificación."}
             </p>
             <div className="space-y-2">
@@ -257,7 +257,7 @@ export default function ServicioPage() {
       <section>
         <div className="mb-2 flex flex-wrap items-end gap-3">
           <h2 className="text-sm font-semibold text-gray-700">
-            Línea de tiempo del servicio
+            Vista conjunta del servicio
           </h2>
           <div className="ml-auto w-60">
             <MonthPicker
