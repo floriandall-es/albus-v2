@@ -23,10 +23,6 @@ class TeamMemberOut(BaseModel):
     # UI shows a "Desactivado" badge. Past assignments + login
     # remain unaffected.
     disabled_at: datetime | None = None
-    # Sub-team this person belongs to (null = main team). The
-    # group's lead can manage them; tenant admin always can.
-    group_id: int | None = None
-    group_name: str | None = None
     # True when the underlying Person row still has a NULL
     # hashed_password — the admin invited them but they haven't yet
     # opened the activation link to set a password. The solver
@@ -53,11 +49,6 @@ class TeamMemberUpdate(BaseModel):
     # silently turn "Todo el equipo" into "everyone-except-Pérez"
     # otherwise, a side effect this view should not produce).
     allowed_slot_ids: list[int] | None = None
-    # Tenant admin only: move this member into / out of a group.
-    # Null = main team. Group leads can't change this via the team
-    # endpoint — they use POST /api/groups/{id}/members instead.
-    group_id: int | None = None
-    clear_group: bool = False
     # Admin override for a pendiente member's email. Only honoured
     # when the underlying Person is still pendiente (hashed_password
     # IS NULL). Once a member has activated, they change their own

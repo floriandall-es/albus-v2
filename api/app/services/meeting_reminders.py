@@ -39,7 +39,6 @@ from app.core.config import settings
 from app.db.session import AdminSessionLocal
 from app.models import (
     Meeting,
-    MeetingAudienceGroup,
     MeetingAudiencePerson,
     MeetingReminderSent,
     Membership,
@@ -82,39 +81,17 @@ def _weekday_dates_between(
 
 def _resolve_recipients(db: Session, m: Meeting) -> list[Person]:
     """Audience snapshot at fire time: the union of
-    include_main_team (every active main-team person in the
-    tenant), each group's active members, and individually-named
-    persons. Filters out pendientes (no password set) and people
-    we've been asked not to email."""
+    include_main_team (every active person in the tenant) and
+    individually-named persons. Filters out pendientes (no password
+    set) and people we've been asked not to email."""
     person_ids: set[int] = set()
 
-    # Main team (group_id IS NULL).
     if m.include_main_team:
         rows = (
             db.query(Membership.person_id)
             .filter(
                 Membership.tenant_id == m.tenant_id,
                 Membership.disabled_at.is_(None),
-                Membership.group_id.is_(None),
-            )
-            .all()
-        )
-        person_ids.update(r[0] for r in rows)
-
-    # Whole sub-equipos.
-    group_ids = [
-        r[0]
-        for r in db.query(MeetingAudienceGroup.group_id)
-        .filter(MeetingAudienceGroup.meeting_id == m.id)
-        .all()
-    ]
-    if group_ids:
-        rows = (
-            db.query(Membership.person_id)
-            .filter(
-                Membership.tenant_id == m.tenant_id,
-                Membership.disabled_at.is_(None),
-                Membership.group_id.in_(group_ids),
             )
             .all()
         )

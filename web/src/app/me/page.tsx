@@ -43,23 +43,11 @@ export default function MeHome() {
   });
   const [swapTarget, setSwapTarget] = useState<Assignment | null>(null);
 
-  // Members only see published schedules — but "published" means
-  // different things depending on whether they're in a sub-equipo
-  // or on the main team. Mirrors the rule on /me/turnos so the
-  // Inicio shifts match what they see on the full list.
-  const myMembership = me.data?.memberships.find(
-    (m) => m.tenant_id === me.data?.current_tenant.id,
-  );
-  const myGroupId = myMembership?.group_id ?? null;
+  // Members only see published schedules.
   const publishedSchedules = useMemo(() => {
     const all = schedules.data ?? [];
-    return all.filter((s) => {
-      if (myGroupId !== null) {
-        return s.published_group_ids?.includes(myGroupId) ?? false;
-      }
-      return s.status === "published";
-    });
-  }, [schedules.data, myGroupId]);
+    return all.filter((s) => s.status === "published");
+  }, [schedules.data]);
 
   // Both today and tomorrow can live in the same calendar month,
   // OR straddle a month boundary. Resolve which schedule(s) we need.

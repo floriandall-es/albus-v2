@@ -105,9 +105,8 @@ export default function TrasplantesPage() {
     return (team.data ?? [])
       .filter(
         (m) =>
-          (m.category_name === "Adjunto" ||
-            m.person_name === "Pastor (inactivo)") &&
-          m.group_id == null,
+          m.category_name === "Adjunto" ||
+            m.person_name === "Pastor (inactivo)",
       )
       .map((m) => ({
         ...m,

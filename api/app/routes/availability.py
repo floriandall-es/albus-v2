@@ -50,14 +50,6 @@ def _ensure_member(ctx: RequestContext, person_id: int) -> None:
         )
 
 
-# `_ensure_main_team_member` used to reject sub-equipo persons here
-# so the tenant admin couldn't create/edit/approve their bloqueos.
-# Dropped — sub-equipo members can now request bloqueos themselves,
-# and the tenant admin approves them along with main-team requests.
-# Callers now use `_ensure_member` directly. Kept the function name
-# as a thin alias for diff hygiene; will be removed in a follow-up.
-
-
 def _serialize(block: AvailabilityBlock, person: Person) -> AvailabilityBlockOut:
     return AvailabilityBlockOut(
         id=block.id,
@@ -102,10 +94,6 @@ def list_blocks(
         q = q.filter(AvailabilityBlock.start_date <= to)
     if status_ is not None:
         q = q.filter(AvailabilityBlock.status == status_)
-    # No group filter — tenant admin sees bloqueos for everyone in
-    # the tenant, including sub-equipo members. The frontend
-    # /admin/availability page surfaces the person's group on each
-    # row so admins can spot "este es del sub-equipo X".
     rows = q.order_by(AvailabilityBlock.start_date.desc()).all()
     return [_serialize(b, p) for b, p in rows]
 
@@ -117,19 +105,12 @@ def list_blocks(
 def list_team_absences(
     from_: date | None = Query(default=None, alias="from"),
     to: date | None = None,
-    main_team_only: bool = False,
     ctx: RequestContext = Depends(get_current_context),
 ) -> list[TeamAbsence]:
     """Sanitized read-only view of APPROVED availability blocks for the
     whole tenant. Returned to any authenticated user — the team needs to
     see who's on vacation / baja for the Libre row in the planning grid.
     No notes / review notes are exposed; only what the row needs.
-
-    Scope: by default, returns absences for every person in the
-    tenant. /admin/schedule passes `main_team_only=true` so its
-    Libre row shows only people whose Membership has
-    `group_id IS NULL` — sub-equipo members' libre time belongs in
-    the sub-equipo's own planning, not in the main team's grid.
     """
     q = (
         ctx.db.query(AvailabilityBlock, Person)
@@ -140,38 +121,6 @@ def list_team_absences(
         q = q.filter(AvailabilityBlock.end_date >= from_)
     if to is not None:
         q = q.filter(AvailabilityBlock.start_date <= to)
-    if main_team_only:
-        # Restrict to persons whose Membership in THIS tenant has
-        # no group_id (main team). We can't filter on Person alone
-        # — Persons aren't tenant-scoped, only Memberships are.
-        # EXISTS subquery keeps the row count correct even when a
-        # person has multiple memberships somehow.
-        #
-        # Sprint 28 tightening: ALSO exclude persons who have ANY
-        # sub-team membership. Without this guard, a person with
-        # both a main-team and a residents-group membership (e.g.
-        # admin/lead merge into clinical membership from task #69)
-        # would still pass the EXISTS check and leak into the
-        # main planning's Libre row even though their clinical
-        # work is on the sub-team. The user-visible symptom was
-        # "veo residentes en la fila Libre del equipo principal".
-        q = q.filter(
-            ctx.db.query(Membership.id)
-            .filter(
-                Membership.person_id == AvailabilityBlock.person_id,
-                Membership.tenant_id == ctx.tenant.id,
-                Membership.group_id.is_(None),
-            )
-            .exists()
-        ).filter(
-            ~ctx.db.query(Membership.id)
-            .filter(
-                Membership.person_id == AvailabilityBlock.person_id,
-                Membership.tenant_id == ctx.tenant.id,
-                Membership.group_id.isnot(None),
-            )
-            .exists()
-        )
     rows = q.order_by(AvailabilityBlock.start_date).all()
     return [
         TeamAbsence(
@@ -230,7 +179,6 @@ def update_block(
     block = ctx.db.get(AvailabilityBlock, block_id)
     if not block or block.tenant_id != ctx.tenant.id:
         raise HTTPException(status_code=404, detail="Block not found")
-    # Both the existing target and the new target must be main team.
     _ensure_member(ctx, block.person_id)
     _ensure_member(ctx, payload.person_id)
     block.person_id = payload.person_id
@@ -322,9 +270,6 @@ def create_my_request(
     payload: AvailabilityRequestCreate,
     ctx: RequestContext = Depends(get_current_context),
 ) -> AvailabilityBlockOut:
-    # Sub-equipo members can request bloqueos too — the request
-    # goes through tenant-admin approval the same way main-team
-    # ones do. Lead-side approval is a separate scope.
     block = AvailabilityBlock(
         tenant_id=ctx.tenant.id,
         person_id=ctx.person.id,

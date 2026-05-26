@@ -16,25 +16,21 @@ Two flavours of reads:
     planning-grid Reuniones row and /me/reuniones list.
 
 Audience model: a caller is "in the audience" iff any of:
-  - meeting.include_main_team is true AND caller is in main team
-    (membership.group_id IS NULL), OR
-  - meeting has a MeetingAudienceGroup pointing at caller's group, OR
+  - meeting.include_main_team is true, OR
   - meeting has a MeetingAudiencePerson pointing at caller.person_id.
 Admins see all meetings regardless of audience.
 """
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Iterable
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, or_, text
 
 from app.models import (
-    Group,
     Meeting,
-    MeetingAudienceGroup,
     MeetingAudiencePerson,
     Membership,
     Person,
@@ -86,13 +82,9 @@ def _can_write_meeting(ctx: RequestContext, m) -> bool:
 def _validate_audience(
     ctx: RequestContext,
     include_main_team: bool,
-    group_ids: list[int],
     person_ids: list[int],
 ) -> None:
     """422 if the audience is empty or references unknown ids.
-
-    Group ids stay strictly in-tenant — groups don't cross tenants
-    by definition (and Phase E drops them entirely).
 
     Person ids may belong to any approved Equipo in the same
     Servicio as the caller's tenant. This is what makes the
@@ -104,24 +96,11 @@ def _validate_audience(
     fall back to the strict in-tenant lookup so visibility doesn't
     accidentally widen on rows we haven't migrated yet.
     """
-    if not include_main_team and not group_ids and not person_ids:
+    if not include_main_team and not person_ids:
         raise HTTPException(
             status_code=422,
-            detail="La reunión debe tener al menos un grupo o persona en la audiencia.",
+            detail="La reunión debe tener al menos una persona en la audiencia.",
         )
-    if group_ids:
-        found = (
-            ctx.db.query(Group.id)
-            .filter(Group.tenant_id == ctx.tenant.id, Group.id.in_(group_ids))
-            .all()
-        )
-        found_ids = {row[0] for row in found}
-        missing = set(group_ids) - found_ids
-        if missing:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Sub-equipos desconocidos: {sorted(missing)}",
-            )
     if person_ids:
         if ctx.tenant.servicio_id is not None:
             # Servicio-aware: validate against the SECURITY DEFINER
@@ -164,14 +143,8 @@ def _validate_audience(
 
 def _audience_for(
     ctx: RequestContext, meeting_id: int
-) -> tuple[list[int], list[int], dict[int, str], dict[int, str]]:
-    """Returns (group_ids, person_ids, group_name_by_id, person_name_by_id)."""
-    g_rows = (
-        ctx.db.query(MeetingAudienceGroup.group_id, Group.name)
-        .join(Group, Group.id == MeetingAudienceGroup.group_id)
-        .filter(MeetingAudienceGroup.meeting_id == meeting_id)
-        .all()
-    )
+) -> tuple[list[int], dict[int, str]]:
+    """Returns (person_ids, person_name_by_id)."""
     p_rows = (
         ctx.db.query(MeetingAudiencePerson.person_id, Person.name)
         .join(Person, Person.id == MeetingAudiencePerson.person_id)
@@ -179,9 +152,7 @@ def _audience_for(
         .all()
     )
     return (
-        [gid for gid, _ in g_rows],
         [pid for pid, _ in p_rows],
-        {gid: name for gid, name in g_rows},
         {pid: name for pid, name in p_rows},
     )
 
@@ -189,21 +160,11 @@ def _audience_for(
 def _replace_audience(
     ctx: RequestContext,
     meeting: Meeting,
-    group_ids: Iterable[int],
     person_ids: Iterable[int],
 ) -> None:
-    ctx.db.query(MeetingAudienceGroup).filter(
-        MeetingAudienceGroup.meeting_id == meeting.id
-    ).delete(synchronize_session=False)
     ctx.db.query(MeetingAudiencePerson).filter(
         MeetingAudiencePerson.meeting_id == meeting.id
     ).delete(synchronize_session=False)
-    for gid in set(group_ids):
-        ctx.db.add(
-            MeetingAudienceGroup(
-                tenant_id=ctx.tenant.id, meeting_id=meeting.id, group_id=gid
-            )
-        )
     for pid in set(person_ids):
         ctx.db.add(
             MeetingAudiencePerson(
@@ -225,7 +186,7 @@ def _organizer_name(ctx: RequestContext, membership_id: int | None) -> str | Non
 
 
 def _serialize(ctx: RequestContext, m: Meeting) -> MeetingOut:
-    group_ids, person_ids, g_names, p_names = _audience_for(ctx, m.id)
+    person_ids, p_names = _audience_for(ctx, m.id)
     return MeetingOut(
         id=m.id,
         tenant_id=m.tenant_id,
@@ -241,9 +202,7 @@ def _serialize(ctx: RequestContext, m: Meeting) -> MeetingOut:
         organizer_name=_organizer_name(ctx, m.organizer_membership_id),
         audience=MeetingAudienceOut(
             include_main_team=m.include_main_team,
-            group_ids=group_ids,
             person_ids=person_ids,
-            group_names=[g_names[g] for g in group_ids],
             person_names=[p_names[p] for p in person_ids],
         ),
         reminder_minutes_before=m.reminder_minutes_before,  # type: ignore[arg-type]
@@ -257,27 +216,20 @@ def _visible_meetings_query(ctx: RequestContext):
     Two surfaces:
       A. In-tenant — everything the caller would see in today's
          model (admin: all; member: organizer / person audience /
-         group audience / include_main_team).
+         include_main_team).
       B. Cross-tenant via person audience — meetings hosted by a
          sibling tenant (same servicio) where the caller's
          person_id is in MeetingAudiencePerson.
 
     Surface (B) was added in the equipos redesign so residentes
-    still see their adjuntos-hosted comités after Phase B moves
-    them into their own tenant. The migration 0070 RLS policy on
-    `meetings` + `meeting_audience_persons` is what actually makes
-    those rows visible to the caller's session — this Python query
-    enumerates the AND/OR shape the application cares about, and
-    RLS is defence-in-depth.
-
-    Group audience is in-tenant only (groups don't cross tenants
-    by definition), and after Phase B residentes are no longer in
-    any group anyway. include_main_team is also in-tenant only
-    (the concept doesn't extend across tenants).
+    still see their adjuntos-hosted comités. The migration 0070
+    RLS policy on `meetings` + `meeting_audience_persons` is what
+    actually makes those rows visible to the caller's session —
+    this Python query enumerates the AND/OR shape the application
+    cares about, and RLS is defence-in-depth.
     """
     person_id = ctx.person.id
     membership_id = ctx.membership.id
-    group_id = ctx.membership.group_id
 
     person_subq = ctx.db.query(MeetingAudiencePerson.meeting_id).filter(
         MeetingAudiencePerson.person_id == person_id
@@ -304,19 +256,12 @@ def _visible_meetings_query(ctx: RequestContext):
         )
 
     # Non-admin: own-tenant rows must match an audience rule; cross-
-    # tenant rows must match the person-audience slice (the same
-    # clause as for admins — RLS gates the rest).
+    # tenant rows must match the person-audience slice.
     own_tenant_conditions = [
         Meeting.organizer_membership_id == membership_id,
         Meeting.id.in_(person_subq),
+        Meeting.include_main_team.is_(True),
     ]
-    if group_id is None:
-        own_tenant_conditions.append(Meeting.include_main_team.is_(True))
-    else:
-        group_subq = ctx.db.query(MeetingAudienceGroup.meeting_id).filter(
-            MeetingAudienceGroup.group_id == group_id
-        )
-        own_tenant_conditions.append(Meeting.id.in_(group_subq))
 
     own_tenant_clause = and_(
         Meeting.tenant_id == ctx.tenant.id,
@@ -452,9 +397,7 @@ def create_regular_meeting(
     # often residents or fellows, not the tenant admin. The
     # organizer-only edit/delete rules below keep accidental
     # cross-team meddling out.
-    _validate_audience(
-        ctx, payload.include_main_team, payload.group_ids, payload.person_ids
-    )
+    _validate_audience(ctx, payload.include_main_team, payload.person_ids)
     m = Meeting(
         tenant_id=ctx.tenant.id,
         kind="regular",
@@ -471,7 +414,7 @@ def create_regular_meeting(
     )
     ctx.db.add(m)
     ctx.db.flush()
-    _replace_audience(ctx, m, payload.group_ids, payload.person_ids)
+    _replace_audience(ctx, m, payload.person_ids)
     ctx.db.flush()
     return _serialize(ctx, m)
 
@@ -485,12 +428,8 @@ def create_ad_hoc_meeting(
     payload: AdHocMeetingCreate,
     ctx: RequestContext = Depends(get_current_context),
 ) -> MeetingOut:
-    # Any authenticated member can create ad-hoc meetings, including
-    # sub-equipo members (per the spec for this feature: "everybody
-    # should be able to put in an ad-hoc meeting").
-    _validate_audience(
-        ctx, payload.include_main_team, payload.group_ids, payload.person_ids
-    )
+    # Any authenticated member can create ad-hoc meetings.
+    _validate_audience(ctx, payload.include_main_team, payload.person_ids)
     m = Meeting(
         tenant_id=ctx.tenant.id,
         kind="ad_hoc",
@@ -507,7 +446,7 @@ def create_ad_hoc_meeting(
     )
     ctx.db.add(m)
     ctx.db.flush()
-    _replace_audience(ctx, m, payload.group_ids, payload.person_ids)
+    _replace_audience(ctx, m, payload.person_ids)
     ctx.db.flush()
     return _serialize(ctx, m)
 
@@ -540,9 +479,7 @@ def update_regular_meeting(
             status_code=403,
             detail="Solo el organizador o el administrador pueden editar esta reunión.",
         )
-    _validate_audience(
-        ctx, payload.include_main_team, payload.group_ids, payload.person_ids
-    )
+    _validate_audience(ctx, payload.include_main_team, payload.person_ids)
     m.title = payload.title.strip()
     m.description = payload.description
     m.location = payload.location
@@ -551,7 +488,7 @@ def update_regular_meeting(
     m.end_time = payload.end_time
     m.include_main_team = payload.include_main_team
     m.reminder_minutes_before = payload.reminder_minutes_before
-    _replace_audience(ctx, m, payload.group_ids, payload.person_ids)
+    _replace_audience(ctx, m, payload.person_ids)
     ctx.db.flush()
     return _serialize(ctx, m)
 
@@ -574,9 +511,7 @@ def update_ad_hoc_meeting(
             status_code=403,
             detail="Solo el organizador o el administrador pueden editar esta reunión.",
         )
-    _validate_audience(
-        ctx, payload.include_main_team, payload.group_ids, payload.person_ids
-    )
+    _validate_audience(ctx, payload.include_main_team, payload.person_ids)
     m.title = payload.title.strip()
     m.description = payload.description
     m.location = payload.location
@@ -585,7 +520,7 @@ def update_ad_hoc_meeting(
     m.end_time = payload.end_time
     m.include_main_team = payload.include_main_team
     m.reminder_minutes_before = payload.reminder_minutes_before
-    _replace_audience(ctx, m, payload.group_ids, payload.person_ids)
+    _replace_audience(ctx, m, payload.person_ids)
     ctx.db.flush()
     return _serialize(ctx, m)
 

@@ -63,20 +63,6 @@ export default function AvailabilityPage() {
       }),
   });
 
-  // Person → group_name lookup so the table can show "este es del
-  // sub-equipo X" next to each row's name. AvailabilityBlockOut
-  // doesn't carry group info directly; we join with the team list
-  // (which is loaded above for the picker anyway).
-  const groupByPerson = useMemo(() => {
-    const m = new Map<number, string>();
-    for (const t of team.data ?? []) {
-      if (t.group_id !== null && t.group_name) {
-        m.set(t.person_id, t.group_name);
-      }
-    }
-    return m;
-  }, [team.data]);
-
   const qc = useQueryClient();
   const del = useMutation({
     mutationFn: (id: number) => api.deleteAvailabilityBlock(id),
@@ -100,10 +86,6 @@ export default function AvailabilityPage() {
             onChange={(v) => setPersonId(v === "" ? "" : Number(v))}
             options={[
               { value: "", label: "— Todas —" },
-              // Lista completa del tenant — el admin ve y aprueba
-              // bloqueos de cualquier persona, incluidos miembros
-              // de sub-equipos. La columna Sub-equipo en la tabla
-              // ayuda a saber de qué grupo procede cada solicitud.
               ...((team.data ?? [])
                 .map((m: TeamMember) => ({
                   value: m.person_id,
@@ -150,21 +132,10 @@ export default function AvailabilityPage() {
             </thead>
             <tbody>
               {list.data.map((b: AvailabilityBlock) => {
-                const groupName = groupByPerson.get(b.person_id);
                 return (
                 <tr key={b.id} className="border-b last:border-b-0">
                   <td className="px-4 py-2">
-                    <div className="flex items-center gap-2">
-                      <span>{b.person_name}</span>
-                      {groupName && (
-                        <span
-                          className="inline-flex items-center rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700"
-                          title={`Sub-equipo: ${groupName}`}
-                        >
-                          {groupName}
-                        </span>
-                      )}
-                    </div>
+                    <span>{b.person_name}</span>
                   </td>
                   <td className="px-4 py-2">{b.start_date}</td>
                   <td className="px-4 py-2">{b.end_date}</td>
@@ -212,8 +183,6 @@ export default function AvailabilityPage() {
       )}
       {(adding || editing) && (
         <BlockModal
-          // El admin puede crear/editar bloqueos para cualquier
-          // miembro del tenant — equipo principal y sub-equipos.
           team={team.data ?? []}
           existing={editing}
           onClose={() => {
@@ -329,19 +298,6 @@ function PendingApprovals() {
     queryKey: ["availability", "pending"],
     queryFn: () => api.listAvailabilityBlocks({ status: "pending" }),
   });
-  // Same lookup the parent table uses to render the sub-equipo
-  // pill — React Query dedupes against the parent's ["team"]
-  // fetch so this doesn't trigger an extra request.
-  const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
-  const groupByPerson = useMemo(() => {
-    const m = new Map<number, string>();
-    for (const t of team.data ?? []) {
-      if (t.group_id !== null && t.group_name) {
-        m.set(t.person_id, t.group_name);
-      }
-    }
-    return m;
-  }, [team.data]);
   const approve = useMutation({
     mutationFn: (id: number) => api.approveAvailabilityBlock(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["availability"] }),
@@ -372,21 +328,10 @@ function PendingApprovals() {
           </thead>
           <tbody>
             {rows.map((b: AvailabilityBlock) => {
-              const groupName = groupByPerson.get(b.person_id);
               return (
               <tr key={b.id} className="border-b last:border-b-0">
                 <td className="px-4 py-2">
-                  <div className="flex items-center gap-2">
-                    <span>{b.person_name}</span>
-                    {groupName && (
-                      <span
-                        className="inline-flex items-center rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700"
-                        title={`Sub-equipo: ${groupName}`}
-                      >
-                        {groupName}
-                      </span>
-                    )}
-                  </div>
+                  <span>{b.person_name}</span>
                 </td>
                 <td className="px-4 py-2">{b.start_date}</td>
                 <td className="px-4 py-2">{b.end_date}</td>

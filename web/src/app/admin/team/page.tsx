@@ -140,7 +140,6 @@ export default function TeamPage() {
                 <th className="px-4 py-2 font-medium">Nombre</th>
                 <th className="px-4 py-2 font-medium">Email</th>
                 <th className="px-4 py-2 font-medium">Categoría</th>
-                <th className="px-4 py-2 font-medium">Sub-equipo</th>
                 <th className="px-4 py-2 font-medium">FTE</th>
                 <th className="px-4 py-2 font-medium text-right">Acciones</th>
               </tr>
@@ -205,15 +204,6 @@ export default function TeamPage() {
                     {m.person_email}
                   </td>
                   <td className="px-4 py-2">{m.category_name ?? "—"}</td>
-                  <td className="px-4 py-2">
-                    {m.group_name ? (
-                      <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700">
-                        {m.group_name}
-                      </span>
-                    ) : (
-                      <span className="text-gray-400">—</span>
-                    )}
-                  </td>
                   <td className="px-4 py-2">{m.fte_pct}%</td>
                   <td className="px-4 py-2">
                     <div className="flex justify-end gap-2 whitespace-nowrap">

@@ -112,30 +112,11 @@ export default function TurnosPage() {
     queryFn: api.listSchedules,
   });
 
-  // Visible schedules for a member depend on which planning
-  // context they belong to (set per-membership, not per-tenant):
-  //
-  //   - In a group → their group's planning is theirs. They see
-  //     a schedule iff that group has published for it.
-  //   - Not in a group → they're a main-team member; they see a
-  //     schedule iff status === "published".
-  //
-  // The backend's _serialize_detail already filters assignments
-  // by the same context rule, so even if a stale schedule sneaks
-  // through here they'll just see an empty list.
-  const myMembership = me.data?.memberships.find(
-    (m) => m.tenant_id === me.data?.current_tenant.id,
-  );
-  const myGroupId = myMembership?.group_id ?? null;
+  // Members see published schedules only.
   const publishedSchedules = useMemo(() => {
     if (!schedules.data) return [];
-    return schedules.data.filter((s) => {
-      if (myGroupId !== null) {
-        return s.published_group_ids?.includes(myGroupId) ?? false;
-      }
-      return s.status === "published";
-    });
-  }, [schedules.data, myGroupId]);
+    return schedules.data.filter((s) => s.status === "published");
+  }, [schedules.data]);
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [swapTarget, setSwapTarget] = useState<Assignment | null>(null);
@@ -401,22 +382,9 @@ export default function TurnosPage() {
     && slotCatalogue.every((s) => hiddenSlotIds.has(s.id));
 
   // "Publicado el X a las Y" timestamp for the currently selected
-  // schedule. For sub-equipo members we prefer the per-group
-  // publication time (their lead's publish moment) because the
-  // parent schedule may still be "draft" from the tenant admin's
-  // perspective. Main-team members use the parent timestamp.
   const selectedSchedule =
     publishedSchedules.find((s) => s.id === selectedId) ?? null;
-  const publishedAtIso = (() => {
-    if (!selectedSchedule) return null;
-    if (myGroupId !== null) {
-      const g = selectedSchedule.published_groups?.find(
-        (p) => p.group_id === myGroupId,
-      );
-      if (g) return g.published_at;
-    }
-    return selectedSchedule.published_at;
-  })();
+  const publishedAtIso = selectedSchedule?.published_at ?? null;
 
   return (
     <>

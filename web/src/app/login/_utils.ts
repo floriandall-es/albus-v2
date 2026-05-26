@@ -25,17 +25,11 @@ export function finalizeLogin(
   setToken(res.access_token);
   qc?.clear();
   const isAdmin = res.memberships.some((m) => m.roles.includes("admin"));
-  const isGroupLead = res.lead_group_id !== null;
   const onboarded = res.tenant.onboarding_completed_at != null;
   if (isAdmin && !onboarded) {
     router.push("/onboarding");
   } else if (isAdmin) {
     router.push("/admin");
-  } else if (isGroupLead) {
-    // Group leads have a dedicated UI at /lead — purpose-built for
-    // "manage your group's actividades + planning". Not a filtered
-    // version of /admin.
-    router.push("/lead");
   } else {
     router.push("/me");
   }

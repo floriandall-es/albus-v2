@@ -192,7 +192,6 @@ def _serialize(ctx: RequestContext, slot: Slot) -> SlotOut:
         id=slot.id,
         tenant_id=slot.tenant_id,
         department_id=slot.department_id,
-        group_id=slot.group_id,
         name=slot.name,
         start_time=slot.start_time,
         end_time=slot.end_time,
@@ -355,28 +354,11 @@ def _replace_allowed_categories(
 @router.get("/slots", response_model=list[SlotOut])
 def list_slots(
     ctx: RequestContext = Depends(get_current_context),
-    main_team_only: bool = False,
 ) -> list[SlotOut]:
     # Admin-controlled order (sprint 17): position is the primary
     # sort key, with name + id as deterministic tiebreakers in the
     # (rare) case two slots end up with the same position.
-    #
-    # Scope filtering:
-    #   - Group lead: only slots owned by their group (forced;
-    #     they can't even see main-team slots via this endpoint).
-    #   - Tenant admin + plain members: all slots by default,
-    #     UNLESS the caller passes ?main_team_only=true, which
-    #     restricts to slots with group_id IS NULL. /admin/slots
-    #     uses this so sub-equipo slots don't appear in the
-    #     admin's main actividades list — sub-equipos are the
-    #     lead's responsibility, the admin manages them through
-    #     /admin/groups/[id] (still TODO at time of writing).
-    scope = caller_scope(ctx)
     q = ctx.db.query(Slot).order_by(Slot.position, Slot.name, Slot.id)
-    if scope.is_group_lead:
-        q = q.filter(Slot.group_id == scope.group_id)
-    elif main_team_only:
-        q = q.filter(Slot.group_id.is_(None))
     return [_serialize(ctx, r) for r in q.all()]
 
 
@@ -387,18 +369,6 @@ def create_slot(
     scope = caller_scope(ctx)
     if not scope.has_admin_powers:
         raise HTTPException(status_code=403, detail="Permisos insuficientes.")
-    # Group lead: new slots are auto-tagged with their group. We
-    # ignore any incoming group_id from the payload (could be a
-    # malicious or stale value); a lead can't create slots outside
-    # their group.
-    group_id = payload.group_id
-    if scope.is_group_lead:
-        group_id = scope.group_id
-    elif group_id is not None:
-        # Tenant admin specifying a group → validate it exists.
-        g = ctx.db.get(Group, group_id)
-        if not g or g.tenant_id != ctx.tenant.id:
-            raise HTTPException(status_code=422, detail="Unknown group_id")
     # Sprint 17: new slots land at the end of the admin's ordering.
     # `max(position) + 1`; if there are no slots yet, position = 0.
     max_pos = ctx.db.query(sa.func.max(Slot.position)).scalar()
@@ -407,7 +377,6 @@ def create_slot(
         tenant_id=ctx.tenant.id,
         name=payload.name,
         department_id=payload.department_id,
-        group_id=group_id,
         start_time=payload.start_time,
         end_time=payload.end_time,
         days_applied=payload.days_applied,
@@ -430,18 +399,13 @@ def create_slot(
     _replace_team_roles(ctx, obj, payload.team_roles)
     _replace_allowed_persons(ctx, obj, payload.allowed_person_ids)
     _replace_allowed_categories(ctx, obj, payload.allowed_category_ids)
-    # Default rule strategy depends on whether this is a main-team
-    # or group-owned slot: group slots are manual-only by policy
-    # (see scheduler skip + UI hide), main-team slots default to
-    # the solver as before.
-    default_strategy = "manual" if obj.group_id is not None else "solver"
     ctx.db.add(
         SlotRule(
             tenant_id=ctx.tenant.id,
             slot_id=obj.id,
             position=0,
             days_bitmap=_default_rule_bitmap(obj),
-            strategy=default_strategy,
+            strategy="solver",
             anchor_date=None,
         )
     )
@@ -463,29 +427,10 @@ def update_slot(
     if not scope.has_admin_powers:
         raise HTTPException(status_code=403, detail="Permisos insuficientes.")
     obj = _get_or_404(ctx, slot_id)
-    if scope.is_group_lead and obj.group_id != scope.group_id:
-        raise HTTPException(
-            status_code=403,
-            detail="No puedes editar actividades fuera de tu sub-equipo.",
-        )
     data = payload.model_dump(exclude_unset=True)
     team_roles = data.pop("team_roles", None)
     allowed_person_ids = data.pop("allowed_person_ids", None)
     allowed_category_ids = data.pop("allowed_category_ids", None)
-    # group_id reassignment: tenant admin only. Group leads cannot
-    # move slots between groups (they could otherwise hide a slot
-    # from the tenant admin's view).
-    if "group_id" in data:
-        if scope.is_group_lead:
-            raise HTTPException(
-                status_code=403,
-                detail="Solo el administrador puede cambiar el sub-equipo de una actividad.",
-            )
-        gid = data["group_id"]
-        if gid is not None:
-            g = ctx.db.get(Group, gid)
-            if not g or g.tenant_id != ctx.tenant.id:
-                raise HTTPException(status_code=422, detail="Unknown group_id")
     if "guardia_type" in data:
         # Normalize empty string to None so the column reflects "not a guardia".
         gt = data["guardia_type"]
@@ -519,11 +464,6 @@ def delete_slot(slot_id: int, ctx: RequestContext = Depends(get_current_context)
     if not scope.has_admin_powers:
         raise HTTPException(status_code=403, detail="Permisos insuficientes.")
     obj = _get_or_404(ctx, slot_id)
-    if scope.is_group_lead and obj.group_id != scope.group_id:
-        raise HTTPException(
-            status_code=403,
-            detail="No puedes eliminar actividades fuera de tu sub-equipo.",
-        )
     ctx.db.delete(obj)
     ctx.db.flush()
 
@@ -550,11 +490,8 @@ def move_slot(
     # Self-heal duplicate positions across the WHOLE tenant. The
     # Sprint 17 reorder design assumes every Slot has a unique
     # `position` value — swapping two integers is a no-op when
-    # they already match. Bulk imports (the legacy CSV migration
-    # on the alpha customer ran main-team slots 0..5 AND
-    # sub-equipo slots 0..6 in separate enumerations, producing
-    # 4 pairs of slots sharing position numbers) can produce ties
-    # that silently break the up/down arrows. Renumber to 0..N-1
+    # they already match. Bulk imports can produce ties that
+    # silently break the up/down arrows. Renumber to 0..N-1
     # along the current sort order so subsequent swaps always
     # have a real effect.
     all_slots = (
@@ -573,25 +510,16 @@ def move_slot(
         for i, s in enumerate(all_slots):
             s.position = i
         ctx.db.flush()
-    # Neighbor search is SCOPED to slots in the same `group_id` as
-    # the target. Main-team slots (group_id IS NULL) only swap
-    # with other main-team slots; sub-equipo slots only swap with
-    # siblings in the same group. Without this, an admin clicking
-    # ↑ on a main-team slot could end up swapping with an
-    # invisible sub-equipo slot (the admin UI hides sub-equipo
-    # slots since their lead owns them), making the click look
-    # like a no-op even after the duplicate-position self-heal.
-    same_scope = [s for s in all_slots if s.group_id == target.group_id]
     idx = next(
-        (i for i, s in enumerate(same_scope) if s.id == target.id), -1
+        (i for i, s in enumerate(all_slots) if s.id == target.id), -1
     )
     if idx == -1:
         raise HTTPException(status_code=404, detail="Slot not found")
     if payload.direction == "up" and idx == 0:
         return [_serialize(ctx, s) for s in all_slots]
-    if payload.direction == "down" and idx == len(same_scope) - 1:
+    if payload.direction == "down" and idx == len(all_slots) - 1:
         return [_serialize(ctx, s) for s in all_slots]
-    neighbor = same_scope[idx - 1 if payload.direction == "up" else idx + 1]
+    neighbor = all_slots[idx - 1 if payload.direction == "up" else idx + 1]
     target.position, neighbor.position = neighbor.position, target.position
     ctx.db.flush()
     new_order = (
@@ -810,28 +738,8 @@ def replace_slot_rules(
     if not scope.has_admin_powers:
         raise HTTPException(status_code=403, detail="Permisos insuficientes.")
     obj = _get_or_404(ctx, slot_id)
-    if scope.is_group_lead and obj.group_id != scope.group_id:
-        raise HTTPException(
-            status_code=403,
-            detail="No puedes editar reglas de actividades fuera de tu sub-equipo.",
-        )
     rules = payload.rules
     _validate_rules(rules, slot_headcount=max(1, obj.headcount))
-
-    # Group-owned slots are manual-only. Forbidden rule strategies
-    # here (rotation / fixed_weekly / solver) would conflict with
-    # the design: sub-team leads manage their schedules by hand.
-    if obj.group_id is not None:
-        non_manual = [r.strategy for r in rules if r.strategy != "manual"]
-        if non_manual:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    "Las actividades de un sub-equipo solo admiten "
-                    "asignación manual. Cambia las reglas a 'Manual' "
-                    "antes de guardar."
-                ),
-            )
 
     # Validate person_ids belong to this tenant via Membership.
     person_ids: set[int] = set()

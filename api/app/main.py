@@ -14,7 +14,6 @@ from app.routes import (
     availability,
     categories,
     dms,
-    groups,
     health,
     holidays,
     hospital_directory,
@@ -62,7 +61,6 @@ app.include_router(schedules.router, prefix="/api")
 app.include_router(shift_swaps.router, prefix="/api")
 app.include_router(stats.router, prefix="/api")
 app.include_router(incidents.router, prefix="/api")
-app.include_router(groups.router, prefix="/api")
 app.include_router(meetings.router, prefix="/api")
 app.include_router(transplants.router, prefix="/api")
 app.include_router(hospital_directory.router, prefix="/api")

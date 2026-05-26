@@ -254,11 +254,6 @@ export type StatsRow = {
   slot_id: number;
   slot_name: string;
   slot_color: string | null;
-  /** Mirrors Slot.group_id — null for main-team activities,
-   * non-null for sub-equipo activities. Drives the scope toggle
-   * on /admin/stats so admins can switch between main-team and
-   * per-sub-equipo views of the same date range. */
-  slot_group_id: number | null;
   team_role_id: number | null;
   team_role_label: string | null;
   year_month: string; // "YYYY-MM"
@@ -297,17 +292,6 @@ export type Schedule = {
   published_at: string | null;
   reopened_at: string | null;
   solver_used: SolverUsed | null;
-  /** Ids of groups whose lead has published the group's plan for
-   * this schedule. Empty when no group has published. Drives the
-   * Publicar/Despublicar button on /lead/planificacion and the
-   * member-visibility filter in /me/turnos. */
-  published_group_ids: number[];
-  /** Same set of groups as `published_group_ids` but with the
-   * per-group publish timestamps. The /me/turnos "Publicado el…"
-   * line picks the right timestamp from here for sub-equipo
-   * members — for them, the parent `published_at` may still be
-   * null even when their lead has already published. */
-  published_groups: { group_id: number; published_at: string }[];
   created_at: string;
 };
 
@@ -320,12 +304,6 @@ export type Assignment = {
   /** Mirror of Slot.position, set on the server-side serializer
    * so the planning grid can sort rows without a second roundtrip. */
   slot_position: number;
-  /** Set when the slot belongs to a sub-team group. Lets the
-   * planning grid render a "Sub-equipo: Foo" pill on the row so
-   * admins/members can see at a glance which rows are managed
-   * by a group lead. */
-  slot_group_id: number | null;
-  slot_group_name: string | null;
   /** Slot hours (HH:MM:SS). Null on on-call / all-day slots. Used by
    * the personal "Mis turnos" list to show "08:00 – 15:00" inline. */
   slot_start_time: string | null;
@@ -562,11 +540,6 @@ export type Membership = {
   /** ISO timestamp; non-null = membership is paused (solver
    * skips them, admin UI shows "Desactivado"). Null = active. */
   disabled_at: string | null;
-  /** Set when the person belongs to a sub-team group. Used by
-   * /me/turnos to filter the schedule list to the right context
-   * (a residente sees the residentes' plan, an Adjunto sees the
-   * main team's). */
-  group_id: number | null;
   /** Sprint 28 / migration 0052: appears in the cross-tenant
    * hospital directory? True by default. Settings page lets the
    * clinician flip it off. */
@@ -647,8 +620,6 @@ export type HospitalDirectoryEntry = {
   /** Free-text job titles (migration 0061). Rendered as pills on
    * the directory card. Falls back to category_name when empty. */
   cargos: string[];
-  group_id: number | null;
-  group_name: string | null;
   roles: string[];
   /** Contact methods. Each field is populated only when the
    * corresponding share_* flag is true on the membership AND the
@@ -699,27 +670,11 @@ export type Category = {
   created_at: string;
 };
 
-export type Group = {
-  id: number;
-  tenant_id: number;
-  name: string;
-  /** Membership id of the designated lead. Null when no lead set. */
-  lead_membership_id: number | null;
-  /** Display name of the lead (joined Person.name). */
-  lead_name: string | null;
-  member_count: number;
-  slot_count: number;
-  created_at: string;
-};
-
 export type MeetingKind = "regular" | "ad_hoc";
 
 export type MeetingAudience = {
   include_main_team: boolean;
-  group_ids: number[];
   person_ids: number[];
-  /** Aligned with `group_ids` by index. */
-  group_names: string[];
   /** Aligned with `person_ids` by index. */
   person_names: string[];
 };
@@ -838,8 +793,6 @@ export type Slot = {
   id: number;
   tenant_id: number;
   department_id: number | null;
-  /** Sub-team that owns this activity. Null = main team. */
-  group_id: number | null;
   name: string;
   start_time: string | null;
   end_time: string | null;
@@ -878,7 +831,6 @@ export type Slot = {
 export type SlotInput = {
   name: string;
   department_id?: number | null;
-  group_id?: number | null;
   start_time?: string | null;
   end_time?: string | null;
   days_applied: DaysApplied;
@@ -920,9 +872,6 @@ export type TeamMember = {
   /** ISO timestamp. Non-null = membership is paused; solver
    * skips them and admin UI shows "Desactivado". Null = active. */
   disabled_at: string | null;
-  /** Sub-team this person belongs to. Null = main team. */
-  group_id: number | null;
-  group_name: string | null;
   /** True when the admin has invited them but they haven't yet
    * opened the activation link to set a password. The solver
    * schedules pendientes like any other member; this flag just
@@ -942,10 +891,6 @@ export type TeamMemberUpdate = {
    * this person should be authorized on. Server reconciles
    * only restricted slots — unrestricted slots stay untouched. */
   allowed_slot_ids?: number[];
-  /** Tenant-admin only: move this member to a different group
-   * (or clear with `clear_group: true`). */
-  group_id?: number | null;
-  clear_group?: boolean;
   /** Admin override for a PENDIENTE member's email. Backend
    * rejects with 400 if the member already activated (they
    * change their own email via /me/email's confirmation flow).
@@ -966,10 +911,6 @@ export type AuthResponse = {
   tenant: Tenant;
   person: Person;
   memberships: Membership[];
-  /** Set when this person is the designated lead of a group in
-   * the selected tenant. Drives the post-login redirect (group
-   * leads land on /admin instead of /me). */
-  lead_group_id: number | null;
 };
 
 // Returned by /api/login when the person has 2+ memberships and must pick a
@@ -1001,10 +942,6 @@ export type MeResponse = {
   role_types: RoleType[];
   departments: Department[];
   counts: TenantSummaryCounts;
-  /** Set when this person is the designated lead of a group.
-   * Frontend uses it to let leads into the scoped admin UI even
-   * though their role is plain "member". Null otherwise. */
-  lead_group_id: number | null;
 };
 
 // Pydantic v2 error item we expect inside FastAPI's `detail` array for
@@ -1479,11 +1416,7 @@ export const api = {
     request<void>(`/api/categories/${id}`, { method: "DELETE" }),
 
   // Slots
-  listSlots: (opts?: { mainTeamOnly?: boolean }) =>
-    request<Slot[]>(
-      "/api/slots"
-      + (opts?.mainTeamOnly ? "?main_team_only=true" : ""),
-    ),
+  listSlots: () => request<Slot[]>("/api/slots"),
   getSlot: (id: number) => request<Slot>(`/api/slots/${id}`),
   createSlot: (body: SlotInput) =>
     request<Slot>("/api/slots", { method: "POST", body: JSON.stringify(body) }),
@@ -1618,33 +1551,6 @@ export const api = {
   deleteIncident: (id: number) =>
     request<void>(`/api/incidents/${id}`, { method: "DELETE" }),
 
-  // Sub-team groups
-  listGroups: () => request<Group[]>("/api/groups"),
-  createGroup: (body: { name: string; lead_membership_id?: number | null }) =>
-    request<Group>("/api/groups", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-  updateGroup: (
-    id: number,
-    body: {
-      name?: string;
-      lead_membership_id?: number | null;
-      clear_lead?: boolean;
-    },
-  ) =>
-    request<Group>(`/api/groups/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(body),
-    }),
-  deleteGroup: (id: number) =>
-    request<void>(`/api/groups/${id}`, { method: "DELETE" }),
-  replaceGroupMembers: (id: number, membership_ids: number[]) =>
-    request<Group>(`/api/groups/${id}/members`, {
-      method: "PUT",
-      body: JSON.stringify({ membership_ids }),
-    }),
-
   // Meetings (reuniones). Plain members see only meetings they're
   // in the audience of; admins see everything.
   listMeetings: () => request<Meeting[]>("/api/meetings"),
@@ -1660,7 +1566,6 @@ export const api = {
     start_time: string;
     end_time: string;
     include_main_team: boolean;
-    group_ids: number[];
     person_ids: number[];
     /** Migration 0066: optional email reminder offset. Pass null
      * (or omit) to disable. */
@@ -1680,7 +1585,6 @@ export const api = {
       start_time: string;
       end_time: string;
       include_main_team: boolean;
-      group_ids: number[];
       person_ids: number[];
       reminder_minutes_before?: ReminderMinutesBefore | null;
     },
@@ -1697,7 +1601,6 @@ export const api = {
     start_time: string;
     end_time: string;
     include_main_team: boolean;
-    group_ids: number[];
     person_ids: number[];
     reminder_minutes_before?: ReminderMinutesBefore | null;
   }) =>
@@ -1715,7 +1618,6 @@ export const api = {
       start_time: string;
       end_time: string;
       include_main_team: boolean;
-      group_ids: number[];
       person_ids: number[];
       reminder_minutes_before?: ReminderMinutesBefore | null;
     },
@@ -1794,19 +1696,14 @@ export const api = {
   },
 
   // Team absences (public, read-only). Used by the Libre row in
-  // the planning grid; visible to any authenticated user. Pass
-  // mainTeamOnly when rendering the main-team planning so the
-  // Libre row hides sub-equipo members (their absences belong on
-  // the sub-equipo's own grid, not the tenant admin's).
+  // the planning grid; visible to any authenticated user.
   listTeamAbsences: (params?: {
     from?: string;
     to?: string;
-    mainTeamOnly?: boolean;
   }) => {
     const qs = new URLSearchParams();
     if (params?.from) qs.set("from", params.from);
     if (params?.to) qs.set("to", params.to);
-    if (params?.mainTeamOnly) qs.set("main_team_only", "true");
     const q = qs.toString();
     return request<TeamAbsence[]>(
       `/api/availability/team-absences${q ? `?${q}` : ""}`,
@@ -1884,10 +1781,7 @@ export const api = {
 
   // Schedules
   listSchedules: () => request<Schedule[]>("/api/schedules"),
-  getSchedule: (id: number, opts?: { groupId?: number }) => {
-    const qs = opts?.groupId !== undefined ? `?group_id=${opts.groupId}` : "";
-    return request<ScheduleDetail>(`/api/schedules/${id}${qs}`);
-  },
+  getSchedule: (id: number) => request<ScheduleDetail>(`/api/schedules/${id}`),
   generateSchedule: (period: string) =>
     request<ScheduleDetail>("/api/schedules/generate", {
       method: "POST",
@@ -1909,21 +1803,6 @@ export const api = {
     ),
   deleteSchedule: (id: number) =>
     request<void>(`/api/schedules/${id}`, { method: "DELETE" }),
-  /** Publish a group's plan for a schedule. Idempotent — calling
-   * with an already-published (schedule, group) just refreshes
-   * the timestamp. Authorized for the group's lead or the
-   * tenant admin. */
-  publishGroupSchedule: (scheduleId: number, groupId: number) =>
-    request<Schedule>(
-      `/api/schedules/${scheduleId}/groups/${groupId}/publish`,
-      { method: "POST" },
-    ),
-  unpublishGroupSchedule: (scheduleId: number, groupId: number) =>
-    request<Schedule>(
-      `/api/schedules/${scheduleId}/groups/${groupId}/publish`,
-      { method: "DELETE" },
-    ),
-
   // Shift swaps
   listSwapOffers: (opts?: { mine?: boolean; status?: SwapOfferStatus }) => {
     const qs = new URLSearchParams();
@@ -2181,14 +2060,6 @@ export const api = {
     _downloadPdfFromUrl(
       `${API_BASE_URL}/api/schedules/${scheduleId}/pdf`,
       "planificacion.pdf",
-    ),
-  /** Sub-team PDF — same shape but filtered to one group's slots.
-   * Access matches the read-only group views: admin always, lead
-   * for own group always, plain member only when published. */
-  downloadGroupSchedulePdf: async (scheduleId: number, groupId: number) =>
-    _downloadPdfFromUrl(
-      `${API_BASE_URL}/api/schedules/${scheduleId}/groups/${groupId}/pdf`,
-      "planificacion-sub-equipo.pdf",
     ),
 
   // Bulk invite (CSV)

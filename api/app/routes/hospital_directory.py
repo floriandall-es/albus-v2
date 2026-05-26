@@ -54,8 +54,6 @@ class HospitalDirectoryEntry(BaseModel):
     # category_name only surfaces when this list is empty (legacy
     # fallback for users who haven't picked any cargo).
     cargos: list[str] = []
-    group_id: int | None = None
-    group_name: str | None = None
     roles: list[str] = []
     # Contact channels. Each field is populated only when the
     # corresponding share_* flag on the membership is true AND the
@@ -109,7 +107,7 @@ def list_hospital_directory(
             "person_last_name, person_avatar_url, person_email, "
             "person_work_phone, person_personal_phone, person_cargos, "
             "membership_id, tenant_id, tenant_name, tenant_slug, "
-            "category_id, category_name, group_id, group_name, roles, "
+            "category_id, category_name, roles, "
             "share_work_phone, share_personal_phone, share_email, "
             "share_whatsapp "
             "FROM list_hospital_directory(:hid)"
@@ -189,8 +187,6 @@ def list_hospital_directory(
                 category_id=r["category_id"],
                 category_name=r["category_name"],
                 cargos=list(r["person_cargos"] or []),
-                group_id=r["group_id"],
-                group_name=r["group_name"],
                 roles=list(r["roles"] or []),
                 email=r["person_email"] if r["share_email"] else None,
                 work_phone=(

@@ -7,7 +7,6 @@ import {
   personLastName,
   type Category,
   type DaysApplied,
-  type Group,
   type Slot,
   type SlotInput,
   type SlotRule,
@@ -44,15 +43,9 @@ const STAFFING: { value: StaffingMode; label: string }[] = [
 
 export default function SlotsPage() {
   const qc = useQueryClient();
-  // Main-team slots only. Sub-equipo slots belong to their lead;
-  // they're managed from the lead's /lead/actividades (and,
-  // separately, from a future /admin/groups/[id] flow). Distinct
-  // query key so the planning grid + team modal etc. can still
-  // request the full list under ["slots"] without colliding with
-  // our filtered view.
   const list = useQuery({
-    queryKey: ["slots", "main-team"],
-    queryFn: () => api.listSlots({ mainTeamOnly: true }),
+    queryKey: ["slots"],
+    queryFn: () => api.listSlots(),
   });
   const cats = useQuery({ queryKey: ["categories"], queryFn: api.listCategories });
   const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
@@ -230,12 +223,6 @@ export default function SlotsPage() {
           initial={editing === "new" ? null : editing}
           categories={cats.data ?? []}
           team={team.data ?? []}
-          // Sub-equipo slots are managed by the lead, not from
-          // here. Hand the dialog an empty list so the group
-          // selector hides automatically — admin can't
-          // accidentally create a slot that would immediately
-          // disappear from this view.
-          groups={[]}
           onClose={() => setEditing(null)}
         />
       )}
@@ -249,18 +236,15 @@ function SlotDialog({
   initial,
   categories,
   team,
-  groups,
   onClose,
 }: {
   initial: Slot | null;
   categories: Category[];
   team: TeamMember[];
-  groups: Group[];
   onClose: () => void;
 }) {
   const qc = useQueryClient();
   const [name, setName] = useState(initial?.name ?? "");
-  const [groupId, setGroupId] = useState<number | "">(initial?.group_id ?? "");
   const [startTime, setStartTime] = useState(initial?.start_time?.slice(0, 5) ?? "");
   const [endTime, setEndTime] = useState(initial?.end_time?.slice(0, 5) ?? "");
   // Two-mode schedule: "ranged" keeps the start/end time pickers and
@@ -360,7 +344,6 @@ function SlotDialog({
         counts_for_equity: countsEquity,
         guardia_type: guardiaType.trim() || null,
         color: color,
-        group_id: groupId === "" ? null : Number(groupId),
         // When scheduleMode = "all_day" both times stay null regardless
         // of what the user previously typed (state is preserved so a
         // toggle back to "ranged" doesn't lose values, but the save
@@ -506,25 +489,6 @@ function SlotDialog({
         }}
       >
         <TextField label="Nombre" value={name} onChange={setName} required />
-        {groups.length > 0 && (
-          <Select
-            label="Sub-equipo"
-            hint={
-              <>
-                Si esta actividad pertenece a un sub-equipo (p. ej.
-                residentes), su responsable la administrará por su cuenta
-                y solo admitirá asignación manual. Déjalo vacío para
-                que la actividad forme parte del equipo principal.
-              </>
-            }
-            value={groupId}
-            onChange={(v) => setGroupId(v === "" ? "" : Number(v))}
-            options={[
-              { value: "", label: "— Equipo principal —" },
-              ...groups.map((g) => ({ value: g.id, label: g.name })),
-            ]}
-          />
-        )}
         <div>
           <span className="text-sm font-medium text-gray-700">Horario</span>
           <div className="mt-1 flex flex-wrap gap-3 text-sm">

@@ -3,7 +3,6 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
-  type Group,
   type Meeting,
   type ReminderMinutesBefore,
   type TeamMember,
@@ -23,12 +22,11 @@ import {
  * pins the toggle when EDITING an existing row (you can't morph
  * weekly ↔ puntual on the same row).
  *
- * Audience is the union of three sources, all editable from the
+ * Audience is the union of two sources, both editable from the
  * same form:
  *   - "Todo el equipo principal" checkbox (include_main_team)
- *   - Sub-equipo checkboxes (group_ids)
  *   - Per-person picker (person_ids)
- * The backend validates that at least one of the three is non-empty.
+ * The backend validates that at least one of the two is non-empty.
  */
 export function MeetingDialog({
   initial,
@@ -45,7 +43,6 @@ export function MeetingDialog({
   onClose: () => void;
 }) {
   const qc = useQueryClient();
-  const groups = useQuery({ queryKey: ["groups"], queryFn: api.listGroups });
   const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
   // Phase C.2: also fetch persons from sibling equipos in the
   // same Servicio so the invitee picker can render them in a
@@ -96,9 +93,6 @@ export function MeetingDialog({
 
   const [includeMainTeam, setIncludeMainTeam] = useState<boolean>(
     initial?.audience.include_main_team ?? false,
-  );
-  const [groupIds, setGroupIds] = useState<Set<number>>(
-    new Set(initial?.audience.group_ids ?? []),
   );
   const [personIds, setPersonIds] = useState<Set<number>>(
     new Set(initial?.audience.person_ids ?? []),
@@ -155,22 +149,13 @@ export function MeetingDialog({
       else next.add(id);
       return next;
     });
-  const toggleGroup = (id: number) =>
-    setGroupIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
 
-  const audienceEmpty =
-    !includeMainTeam && groupIds.size === 0 && personIds.size === 0;
+  const audienceEmpty = !includeMainTeam && personIds.size === 0;
 
   const save = useMutation({
     mutationFn: () => {
       const audience = {
         include_main_team: includeMainTeam,
-        group_ids: Array.from(groupIds),
         person_ids: Array.from(personIds),
       };
       const common = {
@@ -370,27 +355,6 @@ export function MeetingDialog({
             Todo el equipo principal
           </label>
 
-          {groups.data && groups.data.length > 0 && (
-            <div>
-              <div className="text-xs text-gray-500 mb-1">Sub-equipos</div>
-              <div className="space-y-1">
-                {groups.data.map((g: Group) => (
-                  <label
-                    key={g.id}
-                    className="flex items-center gap-2 text-sm"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={groupIds.has(g.id)}
-                      onChange={() => toggleGroup(g.id)}
-                    />
-                    {g.name}
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
           <div>
             <div className="text-xs text-gray-500 mb-1">Personas concretas</div>
             <input
@@ -508,7 +472,7 @@ export function MeetingDialog({
           )}
           {audienceEmpty && (
             <p className="text-xs text-amber-700">
-              Selecciona al menos un grupo o persona.
+              Selecciona al menos una persona.
             </p>
           )}
         </div>

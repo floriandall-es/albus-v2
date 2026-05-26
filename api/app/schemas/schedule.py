@@ -71,20 +71,6 @@ class AssignmentSaveResponse(BaseModel):
     warnings: list[ViolationOut] = []
 
 
-class GroupPublicationOut(BaseModel):
-    """Per-group publication marker carried on every Schedule serialization.
-
-    Sub-equipo members' "Mis turnos" view is gated by the publication
-    state of THEIR group, not by the parent Schedule.status. We expose
-    the timestamp here so the member-side UI can show "Publicado el
-    [date]" using the right value (the lead's publish moment, not the
-    tenant admin's).
-    """
-
-    group_id: int
-    published_at: datetime
-
-
 class ScheduleOut(BaseModel):
     id: int
     tenant_id: int
@@ -94,20 +80,6 @@ class ScheduleOut(BaseModel):
     published_at: datetime | None
     reopened_at: datetime | None = None
     solver_used: SolverUsed | None = None
-    # Group ids whose lead has published the group's plan for this
-    # schedule. Empty when no group has published. Visible to all
-    # callers — used by both /lead/planificacion (to drive the
-    # Publicar/Despublicar button) and /me/turnos (to decide which
-    # group-slot assignments to render).
-    published_group_ids: list[int] = []
-    # Same set of groups as `published_group_ids` but with their
-    # per-group `published_at` timestamps. Sprint 30: the /me/turnos
-    # "Publicado el…" line uses this for sub-equipo members so it
-    # reflects the lead's publish moment instead of the parent
-    # schedule's (which may still be draft from the admin's view).
-    # Kept as a parallel field rather than replacing the legacy
-    # ids list so existing callers that only need ids stay unchanged.
-    published_groups: list[GroupPublicationOut] = []
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -123,12 +95,6 @@ class AssignmentOut(BaseModel):
     # with every assignment so the planning grid can sort rows by
     # it without needing a separate slot lookup.
     slot_position: int = 0
-    # Sub-team grouping (post-0035). When non-null the slot belongs
-    # to a Group; the admin/members planning grid renders a small
-    # pill on the row so tenant admins can tell at a glance which
-    # rows are managed by a group lead.
-    slot_group_id: int | None = None
-    slot_group_name: str | None = None
     # Slot hours (HH:MM:SS strings). Surfaced on each assignment so
     # the member-side "Mis turnos" list can show "08:00 – 15:00"
     # without a second roundtrip. Null = on-call / all-day slot.
@@ -164,10 +130,9 @@ class AssignmentPatch(BaseModel):
 
 
 class AssignmentCreate(BaseModel):
-    """Body for POST /api/schedules/{id}/assignments — used by
-    group leads to create a new Assignment row for one of THEIR
-    group's slots on a specific date. Tenant admin uses a
-    different path (assignments come from the solver run)."""
+    """Body for POST /api/schedules/{id}/assignments — admin path
+    for creating a new Assignment row on a specific (slot, date) the
+    solver didn't produce."""
     slot_id: int
     date: date
     person_id: int | None = None

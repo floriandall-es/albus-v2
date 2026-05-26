@@ -47,7 +47,7 @@ def _last_name(full_name: str | None, last_name: str | None) -> str:
 
     Result drives every cell + Libre chip in the PDF — the same
     convention the on-screen grids use, so a printed plan reads
-    identically to /me/turnos and /lead/planificacion.
+    identically to /me/turnos.
     """
     if last_name and last_name.strip():
         return last_name.strip()

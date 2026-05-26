@@ -28,7 +28,6 @@ from app.models import (
     Assignment,
     Category,
     Department,
-    Group,
     Membership,
     Person,
     RoleType,
@@ -88,16 +87,6 @@ def me(ctx: RequestContext = Depends(get_current_context)) -> MeResponse:
         ),
     )
 
-    # Is this person the lead of a group? Frontend uses this to
-    # let group leads into the (scoped) admin UI even though their
-    # role is plain "member". Single-row lookup; null if not.
-    lead_row = (
-        db.query(Group.id)
-        .filter(Group.lead_membership_id == ctx.membership.id)
-        .first()
-    )
-    lead_group_id = lead_row[0] if lead_row else None
-
     return MeResponse(
         person=ctx.person,  # type: ignore[arg-type]
         current_tenant=ctx.tenant,  # type: ignore[arg-type]
@@ -105,7 +94,6 @@ def me(ctx: RequestContext = Depends(get_current_context)) -> MeResponse:
         role_types=role_types,  # type: ignore[arg-type]
         departments=departments,  # type: ignore[arg-type]
         counts=counts,
-        lead_group_id=lead_group_id,
     )
 
 

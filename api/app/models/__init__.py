@@ -6,7 +6,6 @@ from app.models.membership import Membership
 from app.models.department import Department
 from app.models.role_type import RoleType
 from app.models.category import Category
-from app.models.group import Group
 from app.models.slot import (
     Slot,
     SlotAllowedPerson,
@@ -25,11 +24,10 @@ from app.models.incident import Incident
 from app.models.invitation import Invitation
 from app.models.holiday import Holiday
 from app.models.availability_block import AvailabilityBlock
-from app.models.schedule import Schedule, Assignment, ScheduleGroupPublication
+from app.models.schedule import Schedule, Assignment
 from app.models.shift_swap import ShiftSwapOffer, ShiftSwapResponse
 from app.models.meeting import (
     Meeting,
-    MeetingAudienceGroup,
     MeetingAudiencePerson,
     MeetingReminderSent,
 )
@@ -51,7 +49,6 @@ __all__ = [
     "Department",
     "RoleType",
     "Category",
-    "Group",
     "Slot",
     "SlotAllowedPerson",
     "SlotCategory",
@@ -69,11 +66,9 @@ __all__ = [
     "AvailabilityBlock",
     "Schedule",
     "Assignment",
-    "ScheduleGroupPublication",
     "ShiftSwapOffer",
     "ShiftSwapResponse",
     "Meeting",
-    "MeetingAudienceGroup",
     "MeetingAudiencePerson",
     "MeetingReminderSent",
     "TransplantCase",

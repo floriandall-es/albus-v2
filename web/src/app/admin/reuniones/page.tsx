@@ -198,11 +198,6 @@ function MeetingRow({
             {meeting.audience.include_main_team && (
               <StatusPill tone="info">Equipo principal</StatusPill>
             )}
-            {meeting.audience.group_names.map((name, i) => (
-              <StatusPill key={i} tone="neutral">
-                {name}
-              </StatusPill>
-            ))}
             {meeting.audience.person_names.map((name, i) => (
               <StatusPill key={i} tone="neutral">
                 {name}

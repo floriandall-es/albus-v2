@@ -41,9 +41,7 @@ type NavSection = {
  * gated items (Trasplantes, Directorio) are present in the map
  * too — their <Link> doesn't render when the tenant hasn't
  * opted in, so the tour drops those steps automatically via its
- * "missing anchor = skip" rule. Dynamic sub-team planning entries
- * are NOT anchored individually: the "Sub-equipos" configuration
- * step already explains the concept. */
+ * "missing anchor = skip" rule. */
 const TOUR_ID_BY_HREF: Record<string, string | undefined> = {
   "/admin": "nav-inicio",
   "/admin/schedule": "nav-planificacion",
@@ -56,7 +54,6 @@ const TOUR_ID_BY_HREF: Record<string, string | undefined> = {
   "/me/directorio": "nav-directorio",
   "/admin/team": "nav-equipo",
   "/admin/categories": "nav-categorias",
-  "/admin/groups": "nav-grupos",
   "/admin/slots": "nav-actividades",
   "/admin/rules": "nav-reglas",
   "/admin/holidays": "nav-festivos",
@@ -157,12 +154,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!me.data) return;
     const isAdmin = me.data.memberships.some((m) => m.roles.includes("admin"));
-    const isGroupLead = me.data.lead_group_id !== null;
-    // Only tenant admins get the full admin UI. Group leads have
-    // a dedicated UI at /lead purpose-built for "manage your
-    // group's actividades + planning" — they don't need (and
-    // shouldn't see) tenant-level pages here.
-    if (!isAdmin) router.replace(isGroupLead ? "/lead" : "/me");
+    if (!isAdmin) router.replace("/me");
   }, [me.data, router]);
 
   if (!authChecked || me.isLoading) {
@@ -327,13 +319,6 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             </div>
           ))}
 
-          {/* The dynamic per-group entries (one sidebar link per
-              sub-equipo's planning) was removed in Bucket 1 of the
-              equipos redesign. Sub-equipos are now peer Equipos
-              with their own admin login + sidebar — the parent
-              tenant admin no longer reads their planning here.
-              Cross-equipo visibility will return as the Servicio
-              timeline page in Phase C.2. */}
         </nav>
 
         <div className="border-t border-gray-100 px-3 py-3">

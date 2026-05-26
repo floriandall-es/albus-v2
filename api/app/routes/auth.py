@@ -24,9 +24,8 @@ from app.core.security import (
     verify_password,
 )
 from app.db.session import get_db, set_tenant
-from app.models import Group, Hospital, Membership, Person, Servicio, Tenant
+from app.models import Hospital, Membership, Person, Servicio, Tenant
 from app.routes.deps import RequestContext, get_current_context
-from app.services.person_name import compose_name
 from app.schemas.auth import (
     AuthResponse,
     ForgotPasswordRequest,
@@ -392,27 +391,12 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthRespons
                 tenant.id,
             )
 
-    # Fresh signup creates a tenant + first admin — no groups
-    # exist yet, so lead_group_id is definitionally None here.
     return AuthResponse(
         access_token=token,
         tenant=tenant,  # type: ignore[arg-type]
         person=person,  # type: ignore[arg-type]
         memberships=[membership],  # type: ignore[list-item]
-        lead_group_id=None,
     )
-
-
-def _lookup_lead_group_id(db: Session, membership_id: int) -> int | None:
-    """Mirror of the lead-group lookup in /me. Returns the group id
-    if this membership is the lead of a group in the current tenant
-    (RLS already scopes the query), else None."""
-    row = (
-        db.query(Group.id)
-        .filter(Group.lead_membership_id == membership_id)
-        .first()
-    )
-    return row[0] if row else None
 
 
 def _list_person_memberships(db: Session, person_id: int) -> list[dict]:
@@ -474,7 +458,6 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
             tenant=tenant,  # type: ignore[arg-type]
             person=person,  # type: ignore[arg-type]
             memberships=[membership],  # type: ignore[list-item]
-            lead_group_id=_lookup_lead_group_id(db, membership.id),
         )
 
     # 2+ memberships → tenant picker flow. Issue a short-lived pre-auth token
@@ -532,7 +515,6 @@ def select_tenant(payload: SelectTenantRequest, db: Session = Depends(get_db)) -
         tenant=tenant,  # type: ignore[arg-type]
         person=person,  # type: ignore[arg-type]
         memberships=[membership],  # type: ignore[list-item]
-        lead_group_id=_lookup_lead_group_id(db, membership.id),
     )
 
 

@@ -441,22 +441,9 @@ def _eligible_membership_ids_for_assignment(
     specific date" and are re-checked at accept time (see
     `_check_eligibility_for_slot`). The audience picker only wants
     to hide people the admin never authorised to touch this turno —
-    a residente shouldn't see an adjunto's guardia request, an
-    "Equipo autorizado" allow-list should be respected, etc.
-
-    Scope: the membership pool mirrors the slot's group:
-      - Slot.group_id IS NULL (main-team slot) → main-team
-        memberships (Membership.group_id IS NULL)
-      - Slot.group_id = X (sub-equipo slot) → memberships of
-        group X
-    Cross-group covers are deliberately excluded: a residente
-    shouldn't be in the audience for an adjunto's guardia, and
-    vice versa. The slot's allow-list / categoría restrictions
-    layer on top of this group filter.
+    an "Equipo autorizado" allow-list should be respected, the slot
+    categoría restriction filters out incompatible categorías, etc.
     """
-    slot = ctx.db.get(Slot, a.slot_id)
-    slot_group_id = slot.group_id if slot else None
-
     # Per-slot allow-list. NULL/empty set = no restriction.
     allowed_persons: set[int] = {
         row[0]
@@ -490,10 +477,6 @@ def _eligible_membership_ids_for_assignment(
         Membership.tenant_id == ctx.tenant.id,
         Membership.disabled_at.is_(None),
     )
-    if slot_group_id is None:
-        q = q.filter(Membership.group_id.is_(None))
-    else:
-        q = q.filter(Membership.group_id == slot_group_id)
     rows = q.all()
     out: set[int] = set()
     for mid, pid, cid in rows:
@@ -536,11 +519,6 @@ def create_offer(
             status_code=403,
             detail="Solo puedes ofrecer tus propios turnos",
         )
-    # Sub-equipo members can request swaps too — the audience
-    # pool is automatically scoped to their own group by
-    # `_eligible_membership_ids_for_assignment`, so a residente
-    # asking for cover only reaches other residentes (same slot
-    # allow-list / categoría restrictions still apply).
     _published_or_400(ctx, a)
     if a.locked_at is not None:
         raise HTTPException(
@@ -655,23 +633,13 @@ def list_offers(
 
     Visibility rules:
       - requester always sees their own offers
-      - everyone else: the offer's slot must live in the caller's
-        group scope (main slot ↔ main-team member; sub-equipo
-        slot ↔ member of that same group). This mirrors the
-        same-group-only swap rule we apply at create time.
-      - explicit audience (migration 0063) further narrows: an
-        offer with a non-null audience_membership_ids only
-        surfaces to callers whose membership id is in the array.
-        NULL audience = "everyone in the slot's group scope".
-
-    Pre-scope-rule offers in the DB (created before swaps
-    opened to sub-equipos, with audience set to all-main-team)
-    naturally drop off a residente's view because the slot's
-    group_id won't match. That's how legacy cancelled offers
-    that used to leak into a residente's Histórico now stay
-    out of it.
+      - everyone else: the offer's explicit audience (migration
+        0063) gates the listing. An offer with a non-null
+        audience_membership_ids only surfaces to callers whose
+        membership id is in the array. NULL audience = visible
+        to every tenant member.
     """
-    from sqlalchemy import and_ as sa_and, or_
+    from sqlalchemy import or_
 
     q = ctx.db.query(ShiftSwapOffer)
     if status_:
@@ -681,38 +649,17 @@ def list_offers(
             ShiftSwapOffer.requested_by_membership_id == ctx.membership.id
         )
     else:
-        # Caller's group scope: main team (NULL) or sub-equipo (id).
-        caller_group_id = ctx.membership.group_id
-        # The slot's group_id has to match the caller's group.
-        # We join via the assignment → slot path.
-        slot_group_condition = (
-            Slot.group_id.is_(None)
-            if caller_group_id is None
-            else Slot.group_id == caller_group_id
-        )
-        q = (
-            q.join(Assignment, Assignment.id == ShiftSwapOffer.assignment_id)
-            .join(Slot, Slot.id == Assignment.slot_id)
-            .filter(
-                or_(
-                    # Requester always sees their own — independent
-                    # of group, so they keep seeing the offer they
-                    # opened even if they switch teams later.
-                    ShiftSwapOffer.requested_by_membership_id
-                    == ctx.membership.id,
-                    # Otherwise the slot's group has to match the
-                    # caller's, AND the explicit audience (if any)
-                    # has to include them.
-                    sa_and(
-                        slot_group_condition,
-                        or_(
-                            ShiftSwapOffer.audience_membership_ids.is_(None),
-                            ShiftSwapOffer.audience_membership_ids.any(
-                                ctx.membership.id
-                            ),
-                        ),
-                    ),
-                )
+        q = q.filter(
+            or_(
+                # Requester always sees their own.
+                ShiftSwapOffer.requested_by_membership_id
+                == ctx.membership.id,
+                # Otherwise the explicit audience (if any) has to
+                # include the caller.
+                ShiftSwapOffer.audience_membership_ids.is_(None),
+                ShiftSwapOffer.audience_membership_ids.any(
+                    ctx.membership.id
+                ),
             )
         )
     rows = q.order_by(ShiftSwapOffer.created_at.desc()).all()

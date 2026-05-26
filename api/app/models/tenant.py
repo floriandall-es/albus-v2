@@ -81,10 +81,9 @@ class Tenant(Base):
     preset_kind: Mapped[str | None] = mapped_column(
         String(32), nullable=True
     )
-    # Answered yes/no on the signup form: "¿Vas a usar sub-equipos?".
-    # Drives whether /admin Inicio shows a "Configura tus sub-equipos"
-    # card. Admins who later change their mind can still create
-    # groups via /admin/groups regardless of this flag.
+    # Legacy column kept for backward compatibility with existing DB
+    # rows; the sub-equipos / Groups machinery was dropped in Phase E.
+    # Always False on new tenants going forward.
     has_subteams: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )

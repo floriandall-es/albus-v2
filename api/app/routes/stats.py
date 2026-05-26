@@ -82,7 +82,7 @@ def _aggregate_assignments(
     counts: dict[Bucket, int] = defaultdict(int)
     weekend_counts: dict[Bucket, int] = defaultdict(int)
     person_info: dict[int, tuple[str, str | None]] = {}
-    slot_info: dict[int, tuple[str, str | None, int | None]] = {}
+    slot_info: dict[int, tuple[str, str | None]] = {}
     role_label_by_id: dict[int, str] = {}
 
     for a, p, s, tr in rows:
@@ -92,14 +92,14 @@ def _aggregate_assignments(
         if a.date.weekday() >= 5 or a.date in holiday_dates:
             weekend_counts[key] += 1
         person_info[p.id] = (p.name, p.avatar_url)
-        slot_info[s.id] = (s.name, s.color, s.group_id)
+        slot_info[s.id] = (s.name, s.color)
         if tr is not None:
             role_label_by_id[tr.id] = tr.role_label
 
     out: list[StatsRow] = []
     for (pid, sid, rid, ym), n in counts.items():
         pname, pavatar = person_info[pid]
-        sname, scolor, sgid = slot_info[sid]
+        sname, scolor = slot_info[sid]
         out.append(
             StatsRow(
                 person_id=pid,
@@ -108,7 +108,6 @@ def _aggregate_assignments(
                 slot_id=sid,
                 slot_name=sname,
                 slot_color=scolor,
-                slot_group_id=sgid,
                 team_role_id=rid,
                 team_role_label=role_label_by_id.get(rid) if rid else None,
                 year_month=ym,

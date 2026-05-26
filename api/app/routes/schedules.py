@@ -14,12 +14,10 @@ from sqlalchemy.orm import Session
 from app.models import (
     Assignment,
     AvailabilityBlock,
-    Group,
     Holiday,
     Membership,
     Person,
     Schedule,
-    ScheduleGroupPublication,
     Slot,
     SlotTeamRole,
     ViolationSuppression,
@@ -32,7 +30,6 @@ from app.schemas.schedule import (
     AssignmentPatch,
     AssignmentSaveResponse,
     EligiblePersonOut,
-    GroupPublicationOut,
     ScheduleDetail,
     ScheduleGenerateRequest,
     ScheduleOut,
@@ -47,7 +44,7 @@ from app.services.violations import (
     violation_signature as _violation_signature,
 )
 from app.services.pdf import (
-    PdfAbsence,
+    PdfAbsence,  # noqa: F401  (re-exported by callers)
     build_absences_by_date,
     build_rows_from_assignments,
     render_schedule_pdf,
@@ -64,126 +61,32 @@ def _require_admin(ctx: RequestContext) -> None:
         )
 
 
-def _published_groups_for(
-    ctx: RequestContext, schedule_id: int
-) -> list[GroupPublicationOut]:
-    """All groups whose lead has published the group's plan for this
-    schedule, with the per-group `published_at` timestamp. Sorted by
-    group id so the response is stable.
-
-    Used by every ScheduleOut/ScheduleDetail serialization. The
-    /me/turnos "Publicado el…" line picks the right timestamp from
-    here for sub-equipo members — for them, the parent
-    Schedule.published_at may still be NULL even when their lead has
-    already published.
-    """
-    rows = (
-        ctx.db.query(
-            ScheduleGroupPublication.group_id,
-            ScheduleGroupPublication.published_at,
-        )
-        .filter(ScheduleGroupPublication.schedule_id == schedule_id)
-        .order_by(ScheduleGroupPublication.group_id)
-        .all()
-    )
-    return [
-        GroupPublicationOut(group_id=gid, published_at=ts) for gid, ts in rows
-    ]
-
-
-def _published_group_ids_for(
-    ctx: RequestContext, schedule_id: int
-) -> list[int]:
-    """Legacy helper kept for callers that only need the ids list.
-    Backed by `_published_groups_for` so the two never drift."""
-    return [g.group_id for g in _published_groups_for(ctx, schedule_id)]
-
-
 def _serialize_detail(
     ctx: RequestContext,
     schedule: Schedule,
-    override_group_id: int | None = None,
 ) -> ScheduleDetail:
-    """Serialize a schedule's assignments per caller context.
+    """Serialize a schedule's assignments.
 
-    `override_group_id` lets a tenant admin pin the view to a
-    specific group (the new /admin/groups/[id]/planificacion page
-    uses it). Group leads can also pass their own group_id but
-    not anyone else's — passing a foreign group is a 403.
+    Visibility:
+      - Tenant admin: every assignment, regardless of schedule status.
+      - Plain member: only when the schedule is published.
     """
-    from app.routes.scope import caller_scope
-
     scope = caller_scope(ctx)
-    published_groups = _published_groups_for(ctx, schedule.id)
-    published_group_ids = [g.group_id for g in published_groups]
-    published_group_set = set(published_group_ids)
-
-    if override_group_id is not None:
-        if scope.is_tenant_admin:
-            pass  # admin can see any group, any status
-        elif scope.is_group_lead and scope.group_id == override_group_id:
-            pass  # lead sees their own group at any status (drafts too)
-        else:
-            # Plain member (or lead peeking at a foreign group):
-            # allowed only when the group is published for THIS
-            # schedule. Drafts stay private to the lead + tenant
-            # admin.
-            if override_group_id not in published_group_set:
-                raise HTTPException(
-                    status_code=403,
-                    detail="La planificación de ese sub-equipo todavía no está publicada.",
-                )
+    is_published = schedule.status == "published"
 
     rows = (
-        ctx.db.query(Assignment, Slot, Person, SlotTeamRole, Group)
+        ctx.db.query(Assignment, Slot, Person, SlotTeamRole)
         .join(Slot, Slot.id == Assignment.slot_id)
         .outerjoin(Person, Person.id == Assignment.person_id)
         .outerjoin(SlotTeamRole, SlotTeamRole.id == Assignment.team_role_id)
-        .outerjoin(Group, Group.id == Slot.group_id)
         .filter(Assignment.schedule_id == schedule.id)
         .order_by(Assignment.date, Assignment.slot_id, Assignment.id)
         .all()
     )
 
-    # Strict context filter: a Schedule entity carries assignments
-    # for BOTH the main team and group sub-teams in one row set,
-    # but no caller ever wants to see both mixed together. We slice
-    # to the caller's relevant context here so the admin's main
-    # view, PDF, stats, etc. all naturally stay clean.
-    #
-    #   Tenant admin   → main team only (slot.group_id IS NULL).
-    #                    Group plans live in /lead/planificacion;
-    #                    admins peek at them only via a future
-    #                    dedicated route, never mixed here.
-    #   Group lead     → their group's assignments only (the only
-    #                    rows they manage).
-    #   Plain member   → their OWN context:
-    #                      - in a group → that group's assignments,
-    #                        gated by per-group publish state
-    #                      - not in a group → main team only, gated
-    #                        by the existing Schedule.status gate
-    is_published = schedule.status == "published"
-    member_group_id: int | None = ctx.membership.group_id
+    if not scope.is_tenant_admin and not is_published:
+        rows = []
 
-    def _visible(s: Slot) -> bool:
-        # When the caller explicitly asked for a specific group's
-        # view, narrow to that group. This is the
-        # /admin/groups/[id]/planificacion path; the auth check
-        # above already guaranteed the caller is allowed to see it.
-        if override_group_id is not None:
-            return s.group_id == override_group_id
-        if scope.is_tenant_admin:
-            return s.group_id is None
-        if scope.is_group_lead:
-            return s.group_id == scope.group_id
-        # Plain member: context is their membership's group_id.
-        if member_group_id is None:
-            return s.group_id is None and is_published
-        if s.group_id != member_group_id:
-            return False
-        return member_group_id in published_group_set
-
-    rows = [t for t in rows if _visible(t[1])]
     assignments = [
         AssignmentOut(
             id=a.id,
@@ -192,8 +95,6 @@ def _serialize_detail(
             slot_name=s.name,
             slot_color=s.color,
             slot_position=s.position,
-            slot_group_id=g.id if g else None,
-            slot_group_name=g.name if g else None,
             slot_start_time=s.start_time.isoformat() if s.start_time else None,
             slot_end_time=s.end_time.isoformat() if s.end_time else None,
             date=a.date,
@@ -210,7 +111,7 @@ def _serialize_detail(
             dismissed_at=a.dismissed_at,
             swap_offer_id=a.swap_offer_id,
         )
-        for a, s, p, tr, g in rows
+        for a, s, p, tr in rows
     ]
     return ScheduleDetail(
         id=schedule.id,
@@ -221,8 +122,6 @@ def _serialize_detail(
         published_at=schedule.published_at,
         reopened_at=schedule.reopened_at,
         solver_used=schedule.solver_used,  # type: ignore[arg-type]
-        published_group_ids=published_group_ids,
-        published_groups=published_groups,
         created_at=schedule.created_at,
         assignments=assignments,
     )
@@ -237,29 +136,6 @@ def list_schedules(
         .order_by(Schedule.period.desc(), Schedule.id.desc())
         .all()
     )
-    # Batch-load published groups (id + timestamp) per schedule. One
-    # query regardless of how many schedules there are.
-    pub_rows = (
-        ctx.db.query(
-            ScheduleGroupPublication.schedule_id,
-            ScheduleGroupPublication.group_id,
-            ScheduleGroupPublication.published_at,
-        )
-        .filter(
-            ScheduleGroupPublication.schedule_id.in_([s.id for s in schedules])
-        )
-        .all()
-        if schedules
-        else []
-    )
-    pub_by_sched: dict[int, list[GroupPublicationOut]] = {}
-    for sid, gid, ts in pub_rows:
-        pub_by_sched.setdefault(sid, []).append(
-            GroupPublicationOut(group_id=gid, published_at=ts)
-        )
-    # Sort each per-schedule list by group_id for a stable response.
-    for groups in pub_by_sched.values():
-        groups.sort(key=lambda g: g.group_id)
     return [
         ScheduleOut(
             id=s.id,
@@ -270,10 +146,6 @@ def list_schedules(
             published_at=s.published_at,
             reopened_at=s.reopened_at,
             solver_used=s.solver_used,  # type: ignore[arg-type]
-            published_group_ids=[
-                g.group_id for g in pub_by_sched.get(s.id, [])
-            ],
-            published_groups=pub_by_sched.get(s.id, []),
             created_at=s.created_at,
         )
         for s in schedules
@@ -339,11 +211,7 @@ def get_schedule_violations(
     current assignments. Warning data only — never blocks anything.
     The schedule detail page calls this to drive the violations
     banner + per-cell markers.
-
-    Visible to any caller who can read the schedule itself (tenant
-    admin always; group leads on their own group's slots; plain
-    members get only their assignments, but they don't see this
-    endpoint surface in the UI today)."""
+    """
     s = ctx.db.get(Schedule, schedule_id)
     if not s or s.tenant_id != ctx.tenant.id:
         raise HTTPException(status_code=404, detail="Schedule not found")
@@ -433,22 +301,12 @@ def unsuppress_violation(
 @router.get("/schedules/{schedule_id}", response_model=ScheduleDetail)
 def get_schedule(
     schedule_id: int,
-    group_id: int | None = Query(
-        default=None,
-        description=(
-            "Optional: narrow the response to one group's "
-            "assignments. Tenant admin uses this to view a "
-            "specific group's plan from /admin/groups/{id}/"
-            "planificacion. Group leads can only pass their own "
-            "group's id; anything else returns 403."
-        ),
-    ),
     ctx: RequestContext = Depends(get_current_context),
 ) -> ScheduleDetail:
     s = ctx.db.get(Schedule, schedule_id)
     if not s or s.tenant_id != ctx.tenant.id:
         raise HTTPException(status_code=404, detail="Schedule not found")
-    return _serialize_detail(ctx, s, override_group_id=group_id)
+    return _serialize_detail(ctx, s)
 
 
 @router.get("/schedules/{schedule_id}/pdf")
@@ -469,22 +327,12 @@ def get_schedule_pdf(
             detail="La planificación todavía está en borrador",
         )
 
-    # Pull the same assignment + slot + person + role tuple shape that
-    # _serialize_detail uses, so build_rows_from_assignments can pivot
-    # the data exactly like the planning grid does.
     rows = (
         ctx.db.query(Assignment, Slot, Person, SlotTeamRole)
         .join(Slot, Slot.id == Assignment.slot_id)
         .outerjoin(Person, Person.id == Assignment.person_id)
         .outerjoin(SlotTeamRole, SlotTeamRole.id == Assignment.team_role_id)
-        .filter(
-            Assignment.schedule_id == s.id,
-            # Strict context: the PDF is the admin's main-team
-            # plan; group sub-team plans never appear here.
-            # Sub-team admins publish + export their own plans
-            # separately (planned, not in v1).
-            Slot.group_id.is_(None),
-        )
+        .filter(Assignment.schedule_id == s.id)
         .order_by(Assignment.date, Assignment.slot_id, Assignment.id)
         .all()
     )
@@ -561,150 +409,6 @@ def get_schedule_pdf(
     )
 
 
-@router.get("/schedules/{schedule_id}/groups/{group_id}/pdf")
-def get_group_schedule_pdf(
-    schedule_id: int,
-    group_id: int,
-    ctx: RequestContext = Depends(get_current_context),
-) -> Response:
-    """Render one sub-team's plan for a schedule as a landscape PDF.
-
-    Mirrors the main /pdf endpoint but filters slots to a single
-    group. Access:
-      - Tenant admin: any group, any status (drafts too)
-      - Group lead: their own group, any status
-      - Plain member: any group, but only if the group is published
-        for this schedule
-    """
-    from app.routes.scope import caller_scope
-
-    s = ctx.db.get(Schedule, schedule_id)
-    if not s or s.tenant_id != ctx.tenant.id:
-        raise HTTPException(status_code=404, detail="Schedule not found")
-    g = ctx.db.get(Group, group_id)
-    if not g or g.tenant_id != ctx.tenant.id:
-        raise HTTPException(status_code=404, detail="Group not found")
-
-    scope = caller_scope(ctx)
-    if scope.is_tenant_admin:
-        pass
-    elif scope.is_group_lead and scope.group_id == group_id:
-        pass
-    else:
-        # Plain member or lead viewing a foreign group: must be
-        # published for this schedule.
-        published = (
-            ctx.db.query(ScheduleGroupPublication.id)
-            .filter(
-                ScheduleGroupPublication.schedule_id == s.id,
-                ScheduleGroupPublication.group_id == group_id,
-            )
-            .first()
-            is not None
-        )
-        if not published:
-            raise HTTPException(
-                status_code=403,
-                detail="La planificación de ese sub-equipo todavía no está publicada.",
-            )
-
-    rows = (
-        ctx.db.query(Assignment, Slot, Person, SlotTeamRole)
-        .join(Slot, Slot.id == Assignment.slot_id)
-        .outerjoin(Person, Person.id == Assignment.person_id)
-        .outerjoin(SlotTeamRole, SlotTeamRole.id == Assignment.team_role_id)
-        .filter(
-            Assignment.schedule_id == s.id,
-            Slot.group_id == group_id,
-        )
-        .order_by(Assignment.date, Assignment.slot_id, Assignment.id)
-        .all()
-    )
-    pdf_rows = build_rows_from_assignments(rows)
-
-    period_start = date(s.period.year, s.period.month, 1)
-    if s.period.month == 12:
-        period_end_exclusive = date(s.period.year + 1, 1, 1)
-    else:
-        period_end_exclusive = date(s.period.year, s.period.month + 1, 1)
-
-    # Absences row: scoped to people in this group so the "Libre"
-    # column reflects the sub-team's coverage, not the whole tenant.
-    absence_rows = (
-        ctx.db.query(AvailabilityBlock, Person)
-        .join(Person, Person.id == AvailabilityBlock.person_id)
-        .join(Membership, Membership.person_id == Person.id)
-        .filter(
-            AvailabilityBlock.status == "approved",
-            AvailabilityBlock.start_date < period_end_exclusive,
-            AvailabilityBlock.end_date >= period_start,
-            Membership.tenant_id == ctx.tenant.id,
-            Membership.group_id == group_id,
-        )
-        .all()
-    )
-
-    class _AbsenceView:
-        def __init__(self, block: AvailabilityBlock, person: Person):
-            self.person_id = block.person_id
-            self.person_name = person.name
-            self.person_last_name = person.last_name
-            self.start_date = block.start_date
-            self.end_date = block.end_date
-            self.block_type = block.block_type
-
-    absences = [_AbsenceView(b, p) for b, p in absence_rows]
-
-    import calendar as _cal
-    last_day = _cal.monthrange(s.period.year, s.period.month)[1]
-    month_dates = [
-        date(s.period.year, s.period.month, d) for d in range(1, last_day + 1)
-    ]
-    absences_by_date = build_absences_by_date(absences, month_dates)
-
-    holiday_rows = (
-        ctx.db.query(Holiday)
-        .filter(
-            Holiday.date >= period_start,
-            Holiday.date < period_end_exclusive,
-        )
-        .all()
-    )
-    holiday_dates = {h.date for h in holiday_rows}
-
-    pdf_bytes = render_schedule_pdf(
-        schedule_period=s.period,
-        # Surface the sub-team name in the document header so a
-        # printed PDF of "Residentes" doesn't look identical to the
-        # main team's. We piggyback on tenant_name here — render
-        # takes a single header string and doesn't need code changes.
-        schedule_status=s.status,
-        rows=pdf_rows,
-        absences_by_date=absences_by_date,
-        holiday_dates=holiday_dates,
-        tenant_name=f"{ctx.tenant.name} — {g.name}",
-        generated_at=datetime.now(timezone.utc),
-    )
-    filename = _group_schedule_pdf_filename(s.period, g.name)
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
-        },
-    )
-
-
-def _group_schedule_pdf_filename(period: date, group_name: str) -> str:
-    """Slug the group name for the download filename. ASCII-only
-    so quoted Content-Disposition is safe across all clients."""
-    slug = "".join(
-        c if c.isascii() and (c.isalnum() or c in "-_") else "-"
-        for c in group_name.lower()
-    ).strip("-_") or "sub-equipo"
-    return f"planificacion-{slug}-{period.strftime('%Y-%m')}.pdf"
-
-
 @router.post(
     "/schedules/generate",
     response_model=ScheduleDetail,
@@ -756,191 +460,6 @@ def generate(
         locked=locked_carry,
     )
     return _serialize_detail(ctx, schedule)
-
-
-@router.post(
-    "/schedules/{schedule_id}/groups/{group_id}/publish",
-    response_model=ScheduleOut,
-)
-def publish_group_schedule(
-    schedule_id: int,
-    group_id: int,
-    notify_members: bool = True,
-    ctx: RequestContext = Depends(get_current_context),
-) -> ScheduleOut:
-    """Publish a group's plan for this schedule. Idempotent — if
-    the row already exists, refresh the timestamp + actor and treat
-    the publish as a "republish" in the notification copy.
-
-    Authorized callers: tenant admin (full power) or the group's
-    designated lead. Members get 403.
-
-    Notifications: every person assigned to this group's slots in
-    this schedule gets an email when the publish succeeds. Mirror
-    of the main-team publish flow; pass notify_members=false to
-    skip (e.g. for a silent test publish).
-    """
-    from app.routes.scope import caller_scope
-
-    scope = caller_scope(ctx)
-    if not scope.is_tenant_admin and not (
-        scope.is_group_lead and scope.group_id == group_id
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo el responsable del sub-equipo (o el administrador) puede publicar esta planificación.",
-        )
-
-    s = ctx.db.get(Schedule, schedule_id)
-    if not s or s.tenant_id != ctx.tenant.id:
-        raise HTTPException(status_code=404, detail="Schedule not found")
-
-    g = ctx.db.get(Group, group_id)
-    if not g or g.tenant_id != ctx.tenant.id:
-        raise HTTPException(status_code=404, detail="Group not found")
-
-    existing = (
-        ctx.db.query(ScheduleGroupPublication)
-        .filter(
-            ScheduleGroupPublication.schedule_id == s.id,
-            ScheduleGroupPublication.group_id == g.id,
-        )
-        .first()
-    )
-    # is_republish snapshot taken before the row mutation — if
-    # `existing` is truthy this is the lead publishing again after
-    # a despublicar + edit cycle. Drives slightly different email
-    # copy ("publicada de nuevo" vs "publicada").
-    is_republish = existing is not None
-
-    # Snapshot the persons whose name is in a cell of this group's
-    # slots for this schedule. We capture BEFORE flushing for
-    # symmetry with the main-team publish flow — and because we
-    # want the audience the publication is *announcing*, not any
-    # post-publish drift.
-    assigned_persons: list[Person] = []
-    if notify_members:
-        assigned_persons = (
-            ctx.db.query(Person)
-            .join(Assignment, Assignment.person_id == Person.id)
-            .join(Slot, Slot.id == Assignment.slot_id)
-            .filter(
-                Assignment.schedule_id == s.id,
-                Slot.group_id == g.id,
-            )
-            .distinct()
-            .all()
-        )
-
-    if existing:
-        existing.published_at = datetime.now(timezone.utc)
-        existing.published_by_membership_id = ctx.membership.id
-    else:
-        ctx.db.add(
-            ScheduleGroupPublication(
-                tenant_id=ctx.tenant.id,
-                schedule_id=s.id,
-                group_id=g.id,
-                published_at=datetime.now(timezone.utc),
-                published_by_membership_id=ctx.membership.id,
-            )
-        )
-    ctx.db.flush()
-
-    if notify_members and assigned_persons:
-        # Lazy imports — keep send_email + templates out of the
-        # module load path. Same pattern as the main publish flow.
-        from app.core.config import settings
-        from app.services.email import send_email, should_email_person
-        from app.services.email_templates import (
-            schedule_published_group_member_email,
-        )
-
-        period_label = s.period.strftime("%B %Y")
-        app_url = settings.public_base_url
-        for person in assigned_persons:
-            if not person.email:
-                continue
-            # Skip pendientes — same routine-notification rule the
-            # main publish flow uses.
-            if not should_email_person(person.hashed_password):
-                continue
-            subject, body = schedule_published_group_member_email(
-                recipient_name=person.name,
-                period_label=period_label,
-                group_name=g.name,
-                app_url=app_url,
-                is_republish=is_republish,
-            )
-            send_email(to=person.email, subject=subject, body_text=body)
-
-    return ScheduleOut(
-        id=s.id,
-        tenant_id=s.tenant_id,
-        period=s.period,
-        status=s.status,  # type: ignore[arg-type]
-        generated_at=s.generated_at,
-        published_at=s.published_at,
-        reopened_at=s.reopened_at,
-        solver_used=s.solver_used,  # type: ignore[arg-type]
-        published_group_ids=_published_group_ids_for(ctx, s.id),
-        published_groups=_published_groups_for(ctx, s.id),
-        created_at=s.created_at,
-    )
-
-
-@router.delete(
-    "/schedules/{schedule_id}/groups/{group_id}/publish",
-    response_model=ScheduleOut,
-)
-def unpublish_group_schedule(
-    schedule_id: int,
-    group_id: int,
-    ctx: RequestContext = Depends(get_current_context),
-) -> ScheduleOut:
-    """Revert a group's published plan back to "internal". Same
-    authorization as publish. Idempotent — if the row doesn't
-    exist, return 200 anyway with the current state."""
-    from app.routes.scope import caller_scope
-
-    scope = caller_scope(ctx)
-    if not scope.is_tenant_admin and not (
-        scope.is_group_lead and scope.group_id == group_id
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo el responsable del sub-equipo (o el administrador) puede despublicar esta planificación.",
-        )
-
-    s = ctx.db.get(Schedule, schedule_id)
-    if not s or s.tenant_id != ctx.tenant.id:
-        raise HTTPException(status_code=404, detail="Schedule not found")
-
-    existing = (
-        ctx.db.query(ScheduleGroupPublication)
-        .filter(
-            ScheduleGroupPublication.schedule_id == s.id,
-            ScheduleGroupPublication.group_id == group_id,
-        )
-        .first()
-    )
-    if existing:
-        ctx.db.delete(existing)
-        ctx.db.flush()
-
-    return ScheduleOut(
-        id=s.id,
-        tenant_id=s.tenant_id,
-        period=s.period,
-        status=s.status,  # type: ignore[arg-type]
-        generated_at=s.generated_at,
-        published_at=s.published_at,
-        reopened_at=s.reopened_at,
-        solver_used=s.solver_used,  # type: ignore[arg-type]
-        published_group_ids=_published_group_ids_for(ctx, s.id),
-        published_groups=_published_groups_for(ctx, s.id),
-        created_at=s.created_at,
-    )
 
 
 @router.post("/schedules/{schedule_id}/publish", response_model=ScheduleOut)
@@ -1178,30 +697,6 @@ def reopen_schedule(
     return s
 
 
-@router.delete(
-    "/schedules/{schedule_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    response_model=None,
-)
-def delete_schedule(
-    schedule_id: int,
-    ctx: RequestContext = Depends(get_current_context),
-) -> None:
-    """Delete a draft schedule. Cascades to its assignments. Published
-    or archived schedules cannot be deleted — archive them first if you
-    want them out of the active list."""
-    _require_admin(ctx)
-    s = ctx.db.get(Schedule, schedule_id)
-    if not s or s.tenant_id != ctx.tenant.id:
-        raise HTTPException(status_code=404, detail="Schedule not found")
-    if s.status != "draft":
-        raise HTTPException(
-            status_code=400,
-            detail="Solo se pueden eliminar planificaciones en borrador",
-        )
-    scheduler.delete_draft(ctx.db, s)
-
-
 # ---------------------------------------------------------------------------
 # Manual assignment editing (Sprint 5 part B)
 # ---------------------------------------------------------------------------
@@ -1219,39 +714,6 @@ def _get_draft_schedule_or_400(ctx: RequestContext, schedule_id: int) -> Schedul
     return s
 
 
-def _reject_if_group_published(
-    ctx: RequestContext, schedule_id: int, group_id: int
-) -> None:
-    """Mirror of `_get_draft_schedule_or_400` for sub-equipo edits.
-
-    Group leads can only edit their group's assignments while the
-    plan is still in "borrador" for THEIR group — i.e. there is
-    no row in schedule_group_publications. After they publish,
-    they must despublicar before tweaking cells; otherwise we'd
-    silently flip cells under their residentes' feet (their
-    /me/turnos pulls the live, post-publish state).
-
-    Symmetric to how tenant admins must call /reopen on the main
-    schedule before editing main-team cells.
-    """
-    pub = (
-        ctx.db.query(ScheduleGroupPublication)
-        .filter(
-            ScheduleGroupPublication.schedule_id == schedule_id,
-            ScheduleGroupPublication.group_id == group_id,
-        )
-        .first()
-    )
-    if pub is not None:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "Esta planificación está publicada para tu sub-equipo. "
-                "Despublica antes de hacer cambios."
-            ),
-        )
-
-
 def _get_assignment(
     ctx: RequestContext, schedule: Schedule, assignment_id: int
 ) -> Assignment:
@@ -1266,7 +728,6 @@ def _serialize_assignment(ctx: RequestContext, a: Assignment) -> AssignmentOut:
     p = ctx.db.get(Person, a.person_id) if a.person_id else None
     tr = ctx.db.get(SlotTeamRole, a.team_role_id) if a.team_role_id else None
     assert s is not None
-    g = ctx.db.get(Group, s.group_id) if s.group_id else None
     return AssignmentOut(
         id=a.id,
         schedule_id=a.schedule_id,
@@ -1274,8 +735,6 @@ def _serialize_assignment(ctx: RequestContext, a: Assignment) -> AssignmentOut:
         slot_name=s.name,
         slot_color=s.color,
         slot_position=s.position,
-        slot_group_id=g.id if g else None,
-        slot_group_name=g.name if g else None,
         slot_start_time=s.start_time.isoformat() if s.start_time else None,
         slot_end_time=s.end_time.isoformat() if s.end_time else None,
         date=a.date,
@@ -1304,33 +763,9 @@ def patch_assignment(
     payload: AssignmentPatch,
     ctx: RequestContext = Depends(get_current_context),
 ) -> AssignmentSaveResponse:
-    scope = caller_scope(ctx)
-    if not scope.has_admin_powers:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes."
-        )
-    # Tenant admins still hit the draft-only gate (their bulk
-    # edits are scoped to "I'm editing a draft before publishing").
-    # Group leads have a parallel gate: they can edit at any
-    # parent-schedule status, but only while their group's plan
-    # is still in borrador (no ScheduleGroupPublication row).
-    # After they publish, they have to despublicar before
-    # tweaking cells — symmetric to the admin /reopen flow.
-    if scope.is_tenant_admin:
-        schedule = _get_draft_schedule_or_400(ctx, schedule_id)
-    else:
-        schedule = ctx.db.get(Schedule, schedule_id)
-        if not schedule or schedule.tenant_id != ctx.tenant.id:
-            raise HTTPException(status_code=404, detail="Schedule not found")
+    _require_admin(ctx)
+    schedule = _get_draft_schedule_or_400(ctx, schedule_id)
     a = _get_assignment(ctx, schedule, assignment_id)
-    if scope.is_group_lead:
-        slot = ctx.db.get(Slot, a.slot_id)
-        if not slot or slot.group_id != scope.group_id:
-            raise HTTPException(
-                status_code=403,
-                detail="Esta asignación no pertenece a tu sub-equipo.",
-            )
-        _reject_if_group_published(ctx, schedule_id, scope.group_id)
     data = payload.model_dump(exclude_unset=True)
     clear = data.pop("clear_person", False)
 
@@ -1385,38 +820,14 @@ def create_assignment(
     payload: AssignmentCreate,
     ctx: RequestContext = Depends(get_current_context),
 ) -> AssignmentSaveResponse:
-    """Create a new Assignment row. Used by group leads to add
-    cells for their group's slots — the solver never creates rows
-    for group slots, so a lead opening a "new" cell needs to insert
-    one before they can pick a person.
-
-    Tenant admin can also call this for edge cases (manual cells
-    on main-team slots that the solver missed). For tenant admin,
-    the draft-only gate applies. Group leads bypass that gate, same
-    rationale as patch_assignment.
-    """
-    scope = caller_scope(ctx)
-    if not scope.has_admin_powers:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes."
-        )
-    if scope.is_tenant_admin:
-        schedule = _get_draft_schedule_or_400(ctx, schedule_id)
-    else:
-        schedule = ctx.db.get(Schedule, schedule_id)
-        if not schedule or schedule.tenant_id != ctx.tenant.id:
-            raise HTTPException(status_code=404, detail="Schedule not found")
+    """Create a new Assignment row. Used for manual cells the solver
+    didn't produce."""
+    _require_admin(ctx)
+    schedule = _get_draft_schedule_or_400(ctx, schedule_id)
 
     slot = ctx.db.get(Slot, payload.slot_id)
     if not slot or slot.tenant_id != ctx.tenant.id:
         raise HTTPException(status_code=422, detail="Unknown slot_id")
-    if scope.is_group_lead and slot.group_id != scope.group_id:
-        raise HTTPException(
-            status_code=403,
-            detail="Esta actividad no pertenece a tu sub-equipo.",
-        )
-    if scope.is_group_lead:
-        _reject_if_group_published(ctx, schedule_id, scope.group_id)
 
     # Date must fall within the schedule's month.
     period_start = date(schedule.period.year, schedule.period.month, 1)
@@ -1469,37 +880,13 @@ def delete_assignment(
     assignment_id: int,
     ctx: RequestContext = Depends(get_current_context),
 ) -> Response:
-    """Delete an Assignment row entirely. Used by group leads to
-    remove a cell they added by mistake. Tenant admin can also
-    delete — but for main-team cells they typically just clear
-    the person via PATCH so the row structure stays intact for
-    the solver's next regenerate.
-
-    Returns 204 No Content via an explicit Response — declaring
-    `status_code=204` on the decorator was triggering a FastAPI
-    0.111 assertion on this route (route registration order +
-    something about the multi-decorator file made it complain
-    that the route had an implied body)."""
-    scope = caller_scope(ctx)
-    if not scope.has_admin_powers:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Permisos insuficientes."
-        )
-    if scope.is_tenant_admin:
-        schedule = _get_draft_schedule_or_400(ctx, schedule_id)
-    else:
-        schedule = ctx.db.get(Schedule, schedule_id)
-        if not schedule or schedule.tenant_id != ctx.tenant.id:
-            raise HTTPException(status_code=404, detail="Schedule not found")
+    """Delete an Assignment row entirely. Returns 204 No Content via
+    an explicit Response — declaring `status_code=204` on the
+    decorator was triggering a FastAPI 0.111 assertion on this
+    route."""
+    _require_admin(ctx)
+    schedule = _get_draft_schedule_or_400(ctx, schedule_id)
     a = _get_assignment(ctx, schedule, assignment_id)
-    if scope.is_group_lead:
-        slot = ctx.db.get(Slot, a.slot_id)
-        if not slot or slot.group_id != scope.group_id:
-            raise HTTPException(
-                status_code=403,
-                detail="Esta asignación no pertenece a tu sub-equipo.",
-            )
-        _reject_if_group_published(ctx, schedule_id, scope.group_id)
     ctx.db.delete(a)
     ctx.db.flush()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -1657,13 +1044,16 @@ def delete_schedule(
     schedule_id: int,
     ctx: RequestContext = Depends(get_current_context),
 ) -> None:
+    """Delete a draft schedule. Cascades to its assignments. Published
+    or archived schedules cannot be deleted — archive them first if you
+    want them out of the active list."""
     _require_admin(ctx)
     s = ctx.db.get(Schedule, schedule_id)
     if not s or s.tenant_id != ctx.tenant.id:
         raise HTTPException(status_code=404, detail="Schedule not found")
     if s.status != "draft":
         raise HTTPException(
-            status_code=400, detail="Solo se pueden eliminar planificaciones en borrador"
+            status_code=400,
+            detail="Solo se pueden eliminar planificaciones en borrador",
         )
-    ctx.db.delete(s)
-    ctx.db.flush()
+    scheduler.delete_draft(ctx.db, s)

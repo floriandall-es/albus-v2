@@ -119,9 +119,9 @@ class TenantOut(BaseModel):
     # Set by the onboarding preset step. One of 'quirurgico' / 'medico'
     # / 'otro'. Null on tenants created before this feature shipped.
     preset_kind: str | None = None
-    # Answered yes/no at signup. Drives whether /admin Inicio surfaces
-    # a "Configura tus sub-equipos" card. False by default — admins
-    # who change their mind later still have /admin/groups available.
+    # Legacy column kept for backward compatibility with the DB row;
+    # the sub-equipos feature was removed in Phase E. Always False
+    # going forward.
     has_subteams: bool = False
     # Opt-in module flag: when true, the "Trasplantes" sidebar
     # entry appears and /api/transplants is reachable. False by
@@ -187,10 +187,6 @@ class MembershipOut(BaseModel):
     category_id: int | None = None
     fte_pct: int = 100
     disabled_at: datetime | None = None
-    # Set when the person belongs to a sub-team group. Drives the
-    # per-context filtering on /me/turnos so a resident sees their
-    # group's planning instead of the main team's.
-    group_id: int | None = None
     # Sprint 28 / migration 0052: hospital directory opt-out. True
     # = visible in the cross-tenant directory of the parent hospital
     # (default). Frontend reads this on the settings page to render
@@ -239,11 +235,6 @@ class AuthResponse(BaseModel):
     tenant: TenantOut
     person: PersonOut
     memberships: list[MembershipOut]
-    # Mirrors MeResponse.lead_group_id — set when the person is the
-    # designated lead of a group in the selected tenant. Lets the
-    # login redirect send them to /admin instead of /me without an
-    # extra /me round-trip.
-    lead_group_id: int | None = None
 
 
 class TenantSummaryCounts(BaseModel):
@@ -258,10 +249,6 @@ class MeResponse(BaseModel):
     role_types: list[RoleTypeOut]
     departments: list[DepartmentOut]
     counts: TenantSummaryCounts
-    # When this person is the lead of a group, the group's id.
-    # Frontend uses it to give them the (scoped) admin UI even
-    # though their role is plain "member". Null otherwise.
-    lead_group_id: int | None = None
 
 
 # Profile self-management. `name` retained for backward compat with the

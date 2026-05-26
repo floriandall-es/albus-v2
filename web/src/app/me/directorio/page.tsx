@@ -498,16 +498,11 @@ function DirectoryCard({
               </div>
             )
           )}
-          {/* Department + sub-equipo line (separate from cargos
-              so it stays as quiet metadata under the pills). */}
-          {(!hideDepartment && entry.tenant_name) || entry.group_name ? (
+          {/* Department line (separate from cargos so it stays as
+              quiet metadata under the pills). */}
+          {!hideDepartment && entry.tenant_name ? (
             <div className="mt-1 truncate text-xs text-gray-500">
-              {[
-                hideDepartment ? null : entry.tenant_name,
-                entry.group_name,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
+              {entry.tenant_name}
             </div>
           ) : null}
         </div>

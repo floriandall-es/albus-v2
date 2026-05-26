@@ -47,12 +47,6 @@ class Membership(Base):
     disabled_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # Sprint 23 / migration 0035: sub-team grouping. Null = main team
-    # member (managed by the tenant admin). Non-null = member of that
-    # group, manageable by the tenant admin AND by the group lead.
-    group_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("groups.id", ondelete="SET NULL"), nullable=True, index=True
-    )
     # Sprint 28 / migration 0052: hospital directory opt-out. True =
     # visible in the cross-tenant directory of the parent hospital
     # (default). False = the clinician chose to hide from sibling

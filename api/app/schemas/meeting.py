@@ -29,12 +29,11 @@ ReminderMinutesBefore = Literal[15, 60, 180, 1440, 10080]
 
 class MeetingAudienceIn(BaseModel):
     """Shared audience block on create/update payloads. At least
-    one of include_main_team, group_ids, person_ids must be
-    non-empty — enforced at the route layer with a 422 (a meeting
-    with nobody invited is almost certainly a bug, not a feature)."""
+    one of include_main_team or person_ids must be non-empty —
+    enforced at the route layer with a 422 (a meeting with nobody
+    invited is almost certainly a bug, not a feature)."""
 
     include_main_team: bool = False
-    group_ids: list[int] = Field(default_factory=list)
     person_ids: list[int] = Field(default_factory=list)
     # Migration 0066: optional email reminder. Pass None or omit
     # to disable. The Literal typing means FastAPI returns 422
@@ -104,12 +103,10 @@ class AdHocMeetingUpdate(MeetingAudienceIn):
 
 class MeetingAudienceOut(BaseModel):
     include_main_team: bool
-    group_ids: list[int]
     person_ids: list[int]
     # Display-friendly names so the UI doesn't need a second
-    # round-trip for the audience labels. Lists are aligned
-    # with the corresponding *_ids lists by index.
-    group_names: list[str]
+    # round-trip for the audience labels. Aligned with person_ids
+    # by index.
     person_names: list[str]
 
 

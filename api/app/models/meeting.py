@@ -28,10 +28,9 @@ class Meeting(Base):
         /instances endpoint when a date range is requested.
       - kind='ad_hoc' : one-off. `date` set, `weekday` NULL.
 
-    Audience is the union of (a) the `include_main_team` boolean,
-    (b) MeetingAudienceGroup rows (whole sub-equipos), and (c)
-    MeetingAudiencePerson rows (specific people). A caller is
-    "in the audience" iff they match any of those three.
+    Audience is the union of (a) the `include_main_team` boolean
+    and (b) MeetingAudiencePerson rows (specific people). A caller
+    is "in the audience" iff they match either.
     """
 
     __tablename__ = "meetings"
@@ -89,40 +88,6 @@ class Meeting(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-
-
-class MeetingAudienceGroup(Base):
-    """Adds a whole sub-equipo to a meeting's audience. One row
-    per (meeting, group). CASCADE on both ends so deleting a
-    group or a meeting cleans up audience pointers automatically.
-    """
-
-    __tablename__ = "meeting_audience_groups"
-    __table_args__ = (
-        UniqueConstraint(
-            "meeting_id", "group_id", name="uq_meeting_audience_group"
-        ),
-    )
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    tenant_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("tenants.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    meeting_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("meetings.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    group_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("groups.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
     )
 
 

@@ -416,46 +416,6 @@ def schedule_published_member_email(
     return subject, body
 
 
-def schedule_published_group_member_email(
-    *,
-    recipient_name: str,
-    period_label: str,
-    group_name: str,
-    app_url: str,
-    is_republish: bool,
-) -> tuple[str, str]:
-    """Sub-equipo flavour of schedule_published_member_email. Same
-    "your schedule is ready" notification, but names the group so
-    a member who belongs to several sub-equipos can tell which
-    one published. Sent by the lead's publish action (or the
-    tenant admin's, when they publish on behalf of a group)."""
-    if is_republish:
-        subject = (
-            f"Planificación de {group_name} ({period_label}) "
-            f"publicada de nuevo"
-        )
-        body = (
-            f"Hola {recipient_name},\n\n"
-            f"La planificación de {group_name} para {period_label} se ha "
-            f"vuelto a publicar con los últimos ajustes. Consulta tus "
-            f"turnos actualizados en \"Mis turnos\".\n\n"
-            f"{app_url}/me/turnos\n\n"
-            f"— El equipo de Trivu\n"
-        )
-    else:
-        subject = (
-            f"Planificación de {group_name} ({period_label}) publicada"
-        )
-        body = (
-            f"Hola {recipient_name},\n\n"
-            f"La planificación de {group_name} para {period_label} ya está "
-            f"disponible. Consulta tus turnos en \"Mis turnos\".\n\n"
-            f"{app_url}/me/turnos\n\n"
-            f"— El equipo de Trivu\n"
-        )
-    return subject, body
-
-
 def meeting_reminder_email(
     *,
     recipient_first_name: str,

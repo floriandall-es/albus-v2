@@ -637,10 +637,6 @@ function buildGrid(assignments: Assignment[], forceDates?: string[]) {
     team_role_label: string | null;
     display_name: string;
     color: string | null;
-    /** Set when the slot belongs to a sub-team group. Used to
-     * render a small pill on the row label so admins can tell at
-     * a glance which rows are managed by a group lead. */
-    group_name: string | null;
     cells: Record<string, Assignment[]>;
   };
   const rowMap = new Map<string, GridRow>();
@@ -658,7 +654,6 @@ function buildGrid(assignments: Assignment[], forceDates?: string[]) {
         team_role_label: role,
         display_name: a.slot_name,
         color: a.slot_color ?? null,
-        group_name: a.slot_group_name ?? null,
         cells: {},
       };
       rowMap.set(key, row);

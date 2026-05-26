@@ -132,12 +132,7 @@ export default function ScheduleDetailPage() {
       const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
       const from = `${period.slice(0, 7)}-01`;
       const to = `${period.slice(0, 7)}-${String(last).padStart(2, "0")}`;
-      // Main planning's Libre row should only show main-team
-      // members. Sub-equipo absences live on the sub-equipo's
-      // own grid; mixing them in here was the source of "why
-      // are residents showing up as libre in the admin
-      // planning?" — fixed by scoping the absences fetch.
-      return api.listTeamAbsences({ from, to, mainTeamOnly: true });
+      return api.listTeamAbsences({ from, to });
     },
     enabled: !!detail.data,
   });
@@ -355,14 +350,7 @@ export default function ScheduleDetailPage() {
       />
 
       <BalanceStats
-        // Main planning's reparto only covers main-team
-        // assignments — sub-equipo slots belong on the
-        // sub-equipo's own balance view, mixing them in here
-        // surfaced residents in the admin's main breakdown.
-        // Same scoping as the Libre row above.
-        assignments={s.assignments.filter(
-          (a) => a.slot_group_id === null,
-        )}
+        assignments={s.assignments}
         holidayDates={holidayDates}
         team={team.data ?? []}
       />
