@@ -132,13 +132,30 @@ class GroupPlan:
         self.new_tenant_slug = self._compute_slug()
 
     def _compute_slug(self) -> str:
-        """`<group-slug>-<parent-slug>` so we get something like
-        `residentes-cirugia-toracica-la-fe`. Globally unique in
-        practice since tenant slugs already are. If a collision
-        somehow exists we fail loudly at insert time (the DB UNIQUE
-        constraint catches it) and the rollback keeps us safe."""
-        base = self.group.slug or self.group.name.lower().replace(" ", "-")
-        return f"{base}-{self.parent.slug}"
+        """`<group-name-slugged>-<parent-slug>` so we get something
+        like `residentes-cirugia-toracica-la-fe`. Group has no
+        `slug` column (the model identifies it by name within a
+        tenant), so we derive one from the name with the same
+        normalisation the signup flow uses elsewhere: lowercase,
+        accents stripped, spaces → hyphens, anything non-alnum
+        collapsed. Tenant slugs are already globally unique so
+        appending the parent slug gives us global uniqueness too.
+        If a collision somehow exists we fail loudly on insert
+        (UNIQUE constraint) and the txn rolls back — safe."""
+        import re
+        import unicodedata
+
+        raw = self.group.name.strip().lower()
+        # Decompose accents and drop the combining marks. Same trick
+        # the directory's name-normalize uses elsewhere in the API.
+        nfkd = unicodedata.normalize("NFKD", raw)
+        ascii_only = "".join(c for c in nfkd if not unicodedata.combining(c))
+        # Replace anything that's not alphanumeric with hyphen, then
+        # collapse runs and trim.
+        slugged = re.sub(r"[^a-z0-9]+", "-", ascii_only).strip("-")
+        if not slugged:
+            slugged = f"group-{self.group.id}"
+        return f"{slugged}-{self.parent.slug}"
 
 
 def gather(db, group: Group) -> GroupPlan | None:
