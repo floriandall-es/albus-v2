@@ -10,29 +10,33 @@ the SQLAlchemy models work out of the box):
     docker compose -f infra/docker-compose.prod.yml exec api \\
         python -m scripts.seed_hospitals_cnh
 
-Three operations, in order:
+Operations, in order:
 
-1. Upsert by public_code. For every CSV row, INSERT … ON CONFLICT
-   (public_code) DO UPDATE — sets name, city, province,
-   autonomous_community, even on existing rows so subsequent
-   re-runs propagate name changes (hospital rename, address fix,
-   etc.) from a newer catalog edition.
+1. UPSERT each CSV row, keyed on public_code:
+      - if a row with that public_code exists → refresh
+        name/city/province/AAC (catalog edition may have changed).
+      - else if a row with the slug we'd assign exists (no
+        public_code yet — pre-CNH manual data) → STAMP its
+        public_code and refresh metadata. This handles the
+        common case where someone created the hospital in the
+        admin onboarding flow before CNH was wired up.
+      - else INSERT fresh.
 
-2. Reconcile pre-CNH rows: any existing hospital with
-   `public_code IS NULL` is matched against the catalog by
-   (normalized name, city). Exact normalized match → stamp its
-   public_code from the catalog row, leave its slug + id alone
-   (so existing FK references in `tenants` keep working).
-   Ambiguous or no-match rows are listed at the end for the
-   operator to handle by hand.
+   Each row runs inside its own SAVEPOINT (db.begin_nested) so a
+   single failure (e.g. slug collision we can't resolve) doesn't
+   poison the rest of the batch.
 
-3. Print a summary: # inserted / # updated / # reconciled /
-   # left without public_code. Operator decides whether to drop
-   the leftover rows or keep them as one-off / private hospitals.
+2. Reconcile by normalized name + city. For any remaining
+   `hospitals` row with public_code IS NULL, try to match
+   against the CSV by accent-stripped, lowercase, stopword-
+   filtered name + city. Stopword list covers BOTH Spanish AND
+   Catalan terms (the alpha customer's La Fe is in Valencian).
+   When the DB row has no city, fall back to name-only match.
 
-Idempotent. Safe to re-run any time. Uses AdminSessionLocal so
-RLS / per-tenant policies don't filter the cross-tenant hospital
-read.
+3. Print a summary: inserted / updated / slug-reconciled /
+   name-reconciled / still without public_code.
+
+Idempotent. Safe to re-run any time.
 """
 
 from __future__ import annotations
@@ -45,7 +49,7 @@ import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from app.db.session import AdminSessionLocal
 from app.models import Hospital
@@ -58,41 +62,62 @@ CSV_PATH = os.path.join(
 )
 
 
-def normalize_name(s: str) -> str:
-    """Strip accents, lowercase, collapse whitespace + drop common
-    fluff so we can match "Hospital Universitario y Politécnico La
-    Fe" against "Hospital La Fe" with some chance of success.
+# ---------------------------------------------------------------------------
+# Normalisation helpers
+# ---------------------------------------------------------------------------
 
-    Heuristic — used only for the one-shot reconciliation pass.
-    The day-to-day matching at signup is by public_code, where
-    exact equality applies.
-    """
+
+# Stopwords stripped from hospital names before comparison. Covers
+# Spanish + Catalan/Valencian variants so the alpha customer's
+# "Hospital Universitari i Politècnic La Fe" matches CNH's
+# "Hospital Universitario y Politécnico La Fe".
+_NAME_STOPWORDS = {
+    # Spanish
+    "hospital", "universitario", "universitaria", "general",
+    "del", "de", "la", "el", "los", "las", "y",
+    "san", "santa", "ntra", "sra", "nuestra", "senora",
+    # Catalan / Valencian
+    "universitari", "universitaria", "politecnic", "politecnica",
+    "i", "el", "el", "dels",
+    # Filler that varies between editions
+    "complejo", "clinic", "clinico", "clinica",
+}
+
+
+def strip_accents(s: str) -> str:
+    nfkd = unicodedata.normalize("NFKD", s)
+    return "".join(c for c in nfkd if not unicodedata.combining(c))
+
+
+def normalize_name(s: str | None) -> str:
+    """Accent-strip, lowercase, drop parenthesised qualifiers, drop
+    stopwords. Returns empty string for None/empty input.
+
+    Used both for the slug-collision reconciliation and the
+    name+city pass. Heuristic — only the SECOND pass uses it; day-
+    to-day matching at signup is by public_code (exact)."""
     if not s:
         return ""
-    # NFD + strip combining marks → accent-free
-    nfkd = unicodedata.normalize("NFKD", s)
-    ascii_only = "".join(c for c in nfkd if not unicodedata.combining(c))
-    lower = ascii_only.lower()
-    # Trim parenthesised qualifiers — "Hospital X (HX)" → "Hospital X"
-    lower = re.sub(r"\([^)]*\)", " ", lower)
+    s = strip_accents(s).lower()
+    # Drop parenthesised qualifiers — "Hospital X (HX)" → "Hospital X"
+    s = re.sub(r"\([^)]*\)", " ", s)
     # Collapse non-alnum to single spaces
-    lower = re.sub(r"[^a-z0-9]+", " ", lower).strip()
-    # Drop common Spanish stopwords that show up in long official
-    # names but rarely match user-typed input.
-    drop = {"hospital", "universitario", "universitaria", "general",
-            "del", "de", "la", "el", "los", "las", "y", "san", "santa",
-            "ntra", "sra"}
-    return " ".join(w for w in lower.split() if w not in drop)
+    s = re.sub(r"[^a-z0-9]+", " ", s).strip()
+    return " ".join(w for w in s.split() if w not in _NAME_STOPWORDS)
 
 
 def slug_for(name: str, city: str) -> str:
-    """Generate a globally-unique-ish slug for fresh hospital rows.
-    Keep it short and predictable so the directory + signup URLs
-    read well; uniqueness is enforced by the DB UNIQUE constraint
-    so any collision raises and we deal with it manually."""
-    nfkd = unicodedata.normalize("NFKD", f"{name} {city}".lower())
-    ascii_only = "".join(c for c in nfkd if not unicodedata.combining(c))
-    return re.sub(r"[^a-z0-9]+", "-", ascii_only).strip("-")[:64]
+    """Globally-unique-ish slug for fresh hospital rows. Uniqueness
+    enforced by the DB UNIQUE constraint; the upsert path detects
+    collisions explicitly and falls back to adoption rather than
+    erroring out."""
+    base = strip_accents(f"{name} {city}".lower())
+    return re.sub(r"[^a-z0-9]+", "-", base).strip("-")[:64]
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
 
 def main() -> None:
@@ -102,18 +127,18 @@ def main() -> None:
     db = AdminSessionLocal()
     inserted = 0
     updated = 0
-    reconciled: list[tuple[int, str, str]] = []
-    unmatched_existing: list[tuple[int, str | None, str | None]] = []
+    slug_reconciled: list[tuple[int, str, str]] = []
+    name_reconciled: list[tuple[int, str, str]] = []
+    skipped: list[tuple[str, str, str]] = []  # (code, name, reason)
 
     try:
-        # ------------------------------------------------------------
-        # 1. Upsert every CNH row by public_code.
-        # ------------------------------------------------------------
         with open(CSV_PATH, newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            rows = list(reader)
+            rows = list(csv.DictReader(f))
         print(f"Read {len(rows)} hospitals from {CSV_PATH}")
 
+        # ------------------------------------------------------------
+        # 1. UPSERT each catalog row
+        # ------------------------------------------------------------
         for r in rows:
             code = (r["public_code"] or "").strip()
             if not code:
@@ -122,85 +147,121 @@ def main() -> None:
             city = (r["city"] or "").strip()
             province = (r["province"] or "").strip()
             aac = (r["autonomous_community"] or "").strip()
+            target_slug = slug_for(name, city)
 
-            # Check if row exists by public_code.
-            existing = (
-                db.query(Hospital)
-                .filter(Hospital.public_code == code)
-                .first()
-            )
-            if existing is None:
-                # Fresh insert. Slug is derived from name+city; if
-                # that slug collides with a pre-existing un-coded
-                # hospital (rare — same name, same city) we let the
-                # DB raise so the operator notices.
+            # Wrap each row in a SAVEPOINT so one failure doesn't
+            # poison the rest of the batch. Without this, IntegrityError
+            # bubbles up and the surrounding `try` rolls back the
+            # entire run.
+            sp = db.begin_nested()
+            try:
+                # First: do we already have a row at this public_code?
+                existing = (
+                    db.query(Hospital)
+                    .filter(Hospital.public_code == code)
+                    .first()
+                )
+                if existing is not None:
+                    # Refresh metadata.
+                    changed = False
+                    if existing.name != name:
+                        existing.name = name
+                        changed = True
+                    if existing.city != city:
+                        existing.city = city
+                        changed = True
+                    if existing.province != province:
+                        existing.province = province
+                        changed = True
+                    if existing.autonomous_community != aac:
+                        existing.autonomous_community = aac
+                        changed = True
+                    if changed:
+                        db.flush()
+                        updated += 1
+                    sp.commit()
+                    continue
+
+                # Second: does a row exist at the slug we'd insert?
+                # Adopt it (stamp its public_code) rather than collide.
+                slug_match = (
+                    db.query(Hospital)
+                    .filter(Hospital.slug == target_slug)
+                    .first()
+                )
+                if slug_match is not None:
+                    slug_match.public_code = code
+                    slug_match.name = name
+                    if not slug_match.city:
+                        slug_match.city = city
+                    if not slug_match.province:
+                        slug_match.province = province
+                    if not slug_match.autonomous_community:
+                        slug_match.autonomous_community = aac
+                    db.flush()
+                    slug_reconciled.append((slug_match.id, name, code))
+                    sp.commit()
+                    continue
+
+                # Otherwise: insert fresh.
                 h = Hospital(
                     public_code=code,
                     name=name,
-                    slug=slug_for(name, city),
+                    slug=target_slug,
                     city=city,
                     province=province,
                     autonomous_community=aac,
                     country_code="ES",
                 )
                 db.add(h)
-                try:
-                    db.flush()
-                    inserted += 1
-                except Exception as e:  # noqa: BLE001
-                    db.rollback()
-                    print(f"  SKIP {code} {name!r}: insert failed: {e}")
-            else:
-                # Refresh metadata in case the catalog updated it.
-                changed = False
-                if existing.name != name:
-                    existing.name = name
-                    changed = True
-                if existing.city != city:
-                    existing.city = city
-                    changed = True
-                if existing.province != province:
-                    existing.province = province
-                    changed = True
-                if existing.autonomous_community != aac:
-                    existing.autonomous_community = aac
-                    changed = True
-                if changed:
-                    db.flush()
-                    updated += 1
+                db.flush()
+                inserted += 1
+                sp.commit()
+            except IntegrityError as e:
+                sp.rollback()
+                skipped.append((code, name, str(e.orig)[:100]))
+            except Exception as e:  # noqa: BLE001
+                sp.rollback()
+                skipped.append((code, name, f"{type(e).__name__}: {e}"))
 
         # ------------------------------------------------------------
-        # 2. Reconcile pre-CNH rows by normalized name + city.
+        # 2. Reconcile pre-CNH rows by normalised name (+ city when
+        #    available). Build the catalog lookup once.
         # ------------------------------------------------------------
-        # Build the CNH lookup once: (normalized_name, normalized_city)
-        # → public_code. We use city in the key because the same
-        # hospital name appears in many cities (San Juan de Dios,
-        # Hospital General, etc.).
-        cnh_by_key: dict[tuple[str, str], str] = {}
+        # Two indexes: by (normalized_name, normalized_city) — strictest;
+        # and by normalized_name alone — fallback when the DB row has
+        # no city. The looser index loses precision on names that
+        # repeat across cities (San Juan de Dios, Hospital Provincial,
+        # etc.), so we only fall back when there's exactly one match.
+        cnh_by_name_city: dict[tuple[str, str], str] = {}
+        cnh_by_name: dict[str, list[str]] = {}
         for r in rows:
-            key = (
-                normalize_name(r["name"]),
-                normalize_name(r["city"]),
-            )
-            # If multiple CNH rows collide on the same normalized key
-            # (rare), the last one wins — operator can clean up later.
-            cnh_by_key[key] = (r["public_code"] or "").strip()
+            nn = normalize_name(r["name"])
+            nc = normalize_name(r["city"])
+            code = (r["public_code"] or "").strip()
+            if nn and code:
+                cnh_by_name_city[(nn, nc)] = code
+                cnh_by_name.setdefault(nn, []).append(code)
 
-        unmatched_hospitals = (
+        unmatched = (
             db.query(Hospital)
             .filter(Hospital.public_code.is_(None))
             .all()
         )
-        for h in unmatched_hospitals:
-            key = (normalize_name(h.name or ""), normalize_name(h.city or ""))
-            code = cnh_by_key.get(key)
+        for h in unmatched:
+            nn = normalize_name(h.name or "")
+            nc = normalize_name(h.city or "")
+            code: str | None = None
+            if nn and nc:
+                code = cnh_by_name_city.get((nn, nc))
+            if not code and nn:
+                candidates = cnh_by_name.get(nn) or []
+                if len(candidates) == 1:
+                    # Unambiguous name-only match — fine to adopt.
+                    code = candidates[0]
             if code:
-                # Stamp the code. Keep id + slug + name unchanged so
-                # tenant FKs and hospital_slug-keyed routes keep
-                # working. Pull city/province from CSV if missing
-                # locally.
                 h.public_code = code
-                # Fill in city/province/aac if our row was missing them
+                # Fill in metadata from the catalog row.
                 csv_row = next(
                     (r for r in rows if (r["public_code"] or "").strip() == code),
                     None,
@@ -215,9 +276,7 @@ def main() -> None:
                             csv_row["autonomous_community"] or ""
                         ).strip()
                 db.flush()
-                reconciled.append((h.id, h.name or "", code))
-            else:
-                unmatched_existing.append((h.id, h.name, h.city))
+                name_reconciled.append((h.id, h.name or "", code))
 
         db.commit()
     except Exception:
@@ -233,20 +292,31 @@ def main() -> None:
     print("=" * 60)
     print("SUMMARY")
     print("=" * 60)
-    print(f"  Inserted (fresh from CNH):      {inserted}")
-    print(f"  Updated  (existing public_code, refreshed metadata): {updated}")
-    print(f"  Reconciled (was NULL, now stamped via name+city match): {len(reconciled)}")
-    for hid, name, code in reconciled:
+    print(f"  Inserted (new from CNH):                    {inserted}")
+    print(f"  Updated  (existing code, metadata refresh): {updated}")
+    print(f"  Slug-adopted (collision on fresh insert):   {len(slug_reconciled)}")
+    for hid, name, code in slug_reconciled:
         print(f"    - id={hid}  '{name}'  → {code}")
-    print(f"  Still without public_code:      {len(unmatched_existing)}")
-    for hid, name, city in unmatched_existing:
-        print(f"    - id={hid}  name={name!r}  city={city!r}")
-    if unmatched_existing:
-        print()
-        print("  These rows weren't in the CNH (private/demo/typo). They keep")
-        print("  working as legacy data, but Phase D's signup flow will refuse")
-        print("  to create new tenants under them until they're either matched")
-        print("  by hand or merged into a CNH-coded row.")
+    print(f"  Name-reconciled (post-pass match):          {len(name_reconciled)}")
+    for hid, name, code in name_reconciled:
+        print(f"    - id={hid}  '{name}'  → {code}")
+    print(f"  Skipped due to errors:                      {len(skipped)}")
+    for code, name, reason in skipped:
+        print(f"    - {code} '{name}': {reason}")
+
+    # List remaining un-coded rows so the operator can decide.
+    db = AdminSessionLocal()
+    try:
+        leftovers = (
+            db.query(Hospital)
+            .filter(Hospital.public_code.is_(None))
+            .all()
+        )
+    finally:
+        db.close()
+    print(f"  Still without public_code:                  {len(leftovers)}")
+    for h in leftovers:
+        print(f"    - id={h.id}  name={h.name!r}  city={h.city!r}")
 
 
 if __name__ == "__main__":
