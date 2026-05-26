@@ -32,6 +32,19 @@ class Hospital(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     country_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
     region_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # CNH (Catálogo Nacional de Hospitales) fields — populated by
+    # api/scripts/seed_hospitals_cnh.py from the Ministerio de
+    # Sanidad CSV. Nullable today; the Phase D signup forbids
+    # creating a hospital row that lacks them, but legacy rows
+    # (just La Fe + dev tenants) need an admin reconciliation pass.
+    # public_code has a partial UNIQUE index — only enforced when
+    # set, so the existing NULL rows don't collide.
+    public_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    province: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    autonomous_community: Mapped[str | None] = mapped_column(
+        String(128), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

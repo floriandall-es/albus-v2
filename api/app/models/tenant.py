@@ -29,6 +29,36 @@ class Tenant(Base):
     hospital: Mapped["Hospital | None"] = relationship(
         "Hospital", lazy="joined"
     )
+    # Equipos redesign (migration 0069): the Servicio this Equipo
+    # belongs to. NULL today only for legacy tenants that don't have
+    # a hospital_id either (pre-sprint-28). Becomes NOT NULL in a
+    # follow-up migration after operator data cleanup. Every signed-
+    # up tenant after Phase D requires a servicio_id.
+    servicio_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("servicios.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    # What this Equipo exposes to other Equipos in its Servicio:
+    #   'none'     → nothing (default for new signups).
+    #   'selected' → only slots flagged shared_with_servicio=true.
+    #   'full'     → every slot's assignments (read-only).
+    # Enforced by a CHECK constraint in the migration.
+    share_policy: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="none", server_default="none"
+    )
+    # 'pending' = waiting for a sibling admin in the same Servicio
+    # to approve. 'approved' = visible in the Servicio timeline and
+    # eligible for cross-tenant meeting invitations. The first
+    # tenant in a brand-new Servicio is auto-approved; subsequent
+    # ones start as 'pending' (see signup route in Phase C).
+    approval_state: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="approved",
+        server_default="approved",
+    )
 
     @property
     def hospital_name(self) -> str | None:

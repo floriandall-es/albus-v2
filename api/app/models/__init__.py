@@ -1,4 +1,5 @@
 from app.models.hospital import Hospital
+from app.models.servicio import Servicio
 from app.models.tenant import Tenant
 from app.models.person import Person
 from app.models.membership import Membership
@@ -43,6 +44,7 @@ from app.models.violation_suppression import ViolationSuppression
 
 __all__ = [
     "Hospital",
+    "Servicio",
     "Tenant",
     "Person",
     "Membership",

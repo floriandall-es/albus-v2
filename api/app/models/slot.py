@@ -79,6 +79,14 @@ class Slot(Base):
     # admin reorder via up/down arrows; the planning grid sorts rows
     # by this value (then by team_role_label within the same slot).
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Equipos redesign (migration 0069): only consulted when this
+    # slot's tenant has share_policy='selected'. When true, the
+    # slot's assignments appear in the Servicio timeline for the
+    # other Equipos in the same Servicio (read-only). When the
+    # tenant policy is 'none' or 'full' this flag is ignored.
+    shared_with_servicio: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
