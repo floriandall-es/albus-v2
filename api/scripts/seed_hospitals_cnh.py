@@ -224,6 +224,12 @@ def main() -> None:
                 sp.rollback()
                 skipped.append((code, name, f"{type(e).__name__}: {e}"))
 
+        # Commit pass 1 so a crash in pass 2 doesn't wipe out the
+        # ~848 inserts/updates we just landed. Pass 2 only handles
+        # the few leftover rows; cheap to retry by itself if it
+        # fails later.
+        db.commit()
+
         # ------------------------------------------------------------
         # 2. Reconcile pre-CNH rows by normalised name (+ city when
         #    available). Build the catalog lookup once.
@@ -248,6 +254,17 @@ def main() -> None:
             .filter(Hospital.public_code.is_(None))
             .all()
         )
+        # Track which public_codes are ALREADY taken on other rows
+        # (typically by the pass-1 inserts). Reconciliation must
+        # never try to assign a duplicate — the UNIQUE constraint
+        # would raise, and even with a savepoint that's just noise.
+        taken_codes: set[str] = {
+            c
+            for (c,) in db.query(Hospital.public_code)
+            .filter(Hospital.public_code.isnot(None))
+            .all()
+            if c
+        }
         for h in unmatched:
             nn = normalize_name(h.name or "")
             nc = normalize_name(h.city or "")
@@ -257,11 +274,29 @@ def main() -> None:
             if not code and nn:
                 candidates = cnh_by_name.get(nn) or []
                 if len(candidates) == 1:
-                    # Unambiguous name-only match — fine to adopt.
                     code = candidates[0]
-            if code:
+            if not code:
+                continue
+            if code in taken_codes:
+                # Another hospital row owns this public_code already
+                # (e.g. the canonical CNH row for the same town). We
+                # don't merge automatically — that would orphan FKs.
+                # Surface it in the summary so the operator can decide
+                # whether to delete the duplicate or merge by hand.
+                skipped.append(
+                    (
+                        code,
+                        h.name or "",
+                        f"public_code already taken by another hospital row "
+                        f"(id={h.id} would have been stamped here)",
+                    )
+                )
+                continue
+
+            sp = db.begin_nested()
+            try:
                 h.public_code = code
-                # Fill in metadata from the catalog row.
+                taken_codes.add(code)
                 csv_row = next(
                     (r for r in rows if (r["public_code"] or "").strip() == code),
                     None,
@@ -277,6 +312,12 @@ def main() -> None:
                         ).strip()
                 db.flush()
                 name_reconciled.append((h.id, h.name or "", code))
+                sp.commit()
+            except IntegrityError as e:
+                sp.rollback()
+                skipped.append(
+                    (code, h.name or "", f"reconcile failed: {str(e.orig)[:80]}")
+                )
 
         db.commit()
     except Exception:
