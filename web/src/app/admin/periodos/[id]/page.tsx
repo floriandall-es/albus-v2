@@ -26,7 +26,10 @@ import {
 import {
   Button,
   Card,
+  Empty,
   ErrorText,
+  InfoHint,
+  Modal,
   PageHeader,
   StatusPill,
 } from "@/components/admin/ui";
@@ -410,11 +413,16 @@ function SlotSnapshotRow({
   );
 }
 
+
 // ---------------------------------------------------------------------------
-// Reglas tab — succession rules + frequency caps. Mirrors the structure
-// of /admin/rules, where these two live together under the same label
-// ("Reglas"). Per-SlotRule overrides moved to the V.2.5 snapshot model
-// — they're inside SlotDialog now under the Actividades tab.
+// Reglas tab — succession + frequency cap delta overrides.
+//
+// Visual layout mirrors /admin/rules: three rounded-xl section cards, one
+// per rule type, each holding a table of the tenant's rules with an extra
+// "Modificación" column that summarises what (if anything) the period
+// changes. A "Modificar" button per row opens a modal carrying the
+// override form. Per-SlotRule overrides moved to the V.2.5 snapshot
+// model (they're part of the slot's full config now, inside SlotDialog).
 // ---------------------------------------------------------------------------
 function ReglasTab({
   periodo,
@@ -453,8 +461,8 @@ function ReglasTab({
   }, [capOverrides.data]);
 
   const slotById = useMemo(() => {
-    const m = new Map<number, Slot>();
-    for (const s of slots) m.set(s.id, s);
+    const m: Record<number, Slot> = {};
+    for (const s of slots) m[s.id] = s;
     return m;
   }, [slots]);
 
@@ -469,190 +477,392 @@ function ReglasTab({
 
   return (
     <div className="space-y-6">
-      <section>
-        <h2 className="mb-2 text-sm font-semibold text-gray-700">
-          Incompatibilidades (mismo día)
-        </h2>
-        {incompat.length === 0 ? (
-          <p className="text-xs text-gray-500">
-            No hay incompatibilidades de mismo día definidas.
-          </p>
-        ) : (
-          <ul className="space-y-2">
-            {incompat.map((rule) => (
-              <SuccessionOverrideRow
-                key={rule.id}
-                rule={rule}
-                afterSlot={slotById.get(rule.after_slot_id) ?? null}
-                forbidSlot={slotById.get(rule.forbid_slot_id) ?? null}
-                override={succOverrideByRule.get(rule.id) ?? null}
-                periodId={periodo.id}
-              />
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section>
-        <h2 className="mb-2 text-sm font-semibold text-gray-700">
-          Sucesión (días siguientes)
-        </h2>
-        {succession.length === 0 ? (
-          <p className="text-xs text-gray-500">
-            No hay reglas de sucesión definidas.
-          </p>
-        ) : (
-          <ul className="space-y-2">
-            {succession.map((rule) => (
-              <SuccessionOverrideRow
-                key={rule.id}
-                rule={rule}
-                afterSlot={slotById.get(rule.after_slot_id) ?? null}
-                forbidSlot={slotById.get(rule.forbid_slot_id) ?? null}
-                override={succOverrideByRule.get(rule.id) ?? null}
-                periodId={periodo.id}
-              />
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section>
-        <h2 className="mb-2 text-sm font-semibold text-gray-700">
-          Límites de frecuencia
-        </h2>
-        {!caps.data || caps.data.length === 0 ? (
-          <p className="text-xs text-gray-500">
-            No hay límites de frecuencia definidos.
-          </p>
-        ) : (
-          <ul className="space-y-2">
-            {caps.data.map((cap) => (
-              <CapOverrideRow
-                key={cap.id}
-                cap={cap}
-                slot={slotById.get(cap.slot_id) ?? null}
-                override={capOverrideByCap.get(cap.id) ?? null}
-                periodId={periodo.id}
-              />
-            ))}
-          </ul>
-        )}
-      </section>
+      <SameDayOverrideSection
+        rules={incompat}
+        loading={successionRules.isLoading}
+        error={
+          successionRules.isError
+            ? (successionRules.error as Error).message
+            : null
+        }
+        overrideByRule={succOverrideByRule}
+        slotById={slotById}
+        periodId={periodo.id}
+      />
+      <SuccessionOverrideSection
+        rules={succession}
+        loading={successionRules.isLoading}
+        error={
+          successionRules.isError
+            ? (successionRules.error as Error).message
+            : null
+        }
+        overrideByRule={succOverrideByRule}
+        slotById={slotById}
+        periodId={periodo.id}
+      />
+      <CapOverrideSection
+        caps={caps.data ?? []}
+        loading={caps.isLoading}
+        error={caps.isError ? (caps.error as Error).message : null}
+        overrideByCap={capOverrideByCap}
+        slotById={slotById}
+        periodId={periodo.id}
+      />
     </div>
   );
 }
 
-function SuccessionOverrideRow({
-  rule,
-  afterSlot,
-  forbidSlot,
-  override,
+// Tiny status helper used in the override summary cells. Returns null
+// when the row has no override (renders as "—" in the cell).
+function summariseSuccessionOverride(
+  o: SuccessionPeriodOverride | null,
+): React.ReactNode {
+  if (!o) return <span className="text-gray-400">—</span>;
+  if (o.disabled) {
+    return <StatusPill tone="danger">Desactivada</StatusPill>;
+  }
+  const fragments: string[] = [];
+  if (o.days_after_override !== null && o.days_after_override !== undefined) {
+    fragments.push(`${o.days_after_override} d`);
+  }
+  if (o.severity_override) {
+    fragments.push(SEVERITY_LABEL[o.severity_override]);
+  }
+  if (fragments.length === 0) {
+    return <StatusPill tone="warning">Modificada</StatusPill>;
+  }
+  return <StatusPill tone="warning">→ {fragments.join(" · ")}</StatusPill>;
+}
+
+function summariseCapOverride(
+  o: CapPeriodOverride | null,
+): React.ReactNode {
+  if (!o) return <span className="text-gray-400">—</span>;
+  if (o.disabled) {
+    return <StatusPill tone="danger">Desactivado</StatusPill>;
+  }
+  const fragments: string[] = [];
+  if (o.max_count_override !== null && o.max_count_override !== undefined) {
+    fragments.push(`máx ${o.max_count_override}`);
+  }
+  if (o.severity_override) {
+    fragments.push(SEVERITY_LABEL[o.severity_override]);
+  }
+  if (fragments.length === 0) {
+    return <StatusPill tone="warning">Modificado</StatusPill>;
+  }
+  return <StatusPill tone="warning">→ {fragments.join(" · ")}</StatusPill>;
+}
+
+// ---------------------------------------------------------------------------
+// Same-day incompatibility overrides (days_after = 0). Mirrors the
+// SameDaySection layout in /admin/rules so the admin recognises the
+// shape: rounded-xl section card, header with InfoHint, table with
+// per-row Modificar button.
+// ---------------------------------------------------------------------------
+function SameDayOverrideSection({
+  rules,
+  loading,
+  error,
+  overrideByRule,
+  slotById,
   periodId,
 }: {
-  rule: SlotSuccessionRule;
-  afterSlot: Slot | null;
-  forbidSlot: Slot | null;
-  override: SuccessionPeriodOverride | null;
+  rules: SlotSuccessionRule[];
+  loading: boolean;
+  error: string | null;
+  overrideByRule: Map<number, SuccessionPeriodOverride>;
+  slotById: Record<number, Slot>;
   periodId: number;
 }) {
-  const qc = useQueryClient();
-  const [editing, setEditing] = useState(false);
-
-  const upsert = useMutation({
-    mutationFn: (body: SuccessionPeriodOverrideUpsert) =>
-      api.upsertSuccessionPeriodOverride(periodId, rule.id, body),
-    onSuccess: () => {
-      qc.invalidateQueries({
-        queryKey: ["periodo-succession-overrides", periodId],
-      });
-      setEditing(false);
-    },
-  });
-  const remove = useMutation({
-    mutationFn: () =>
-      api.deleteSuccessionPeriodOverride(periodId, rule.id),
-    onSuccess: () => {
-      qc.invalidateQueries({
-        queryKey: ["periodo-succession-overrides", periodId],
-      });
-      setEditing(false);
-    },
-  });
-
-  const summary =
-    rule.days_after === 0
-      ? `${afterSlot?.name ?? "?"} ⛔ mismo día ${forbidSlot?.name ?? "?"}`
-      : `${afterSlot?.name ?? "?"} → ${rule.days_after}d sin ${forbidSlot?.name ?? "?"}`;
+  const [editing, setEditing] = useState<SlotSuccessionRule | null>(null);
 
   return (
-    <li>
-      <Card>
-        <div className="p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold text-gray-900">
-              {summary}
-            </span>
-            <span className="text-xs text-gray-500">
-              {SEVERITY_LABEL[rule.severity]}
-            </span>
-            {override && !override.disabled && (
-              <StatusPill tone="warning">Modificada</StatusPill>
-            )}
-            {override?.disabled && (
-              <StatusPill tone="danger">Desactivada en el periodo</StatusPill>
-            )}
-            <div className="ml-auto flex gap-2">
-              {!editing && (
-                <Button variant="secondary" onClick={() => setEditing(true)}>
-                  {override ? "Editar" : "Modificar"}
-                </Button>
-              )}
-              {override && !editing && (
-                <Button
-                  variant="danger"
-                  onClick={() => {
-                    if (confirm("¿Quitar esta modificación?")) remove.mutate();
-                  }}
-                  disabled={remove.isPending}
-                >
-                  Quitar
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {editing && (
-            <SuccessionOverrideForm
-              rule={rule}
-              initial={override}
-              onCancel={() => setEditing(false)}
-              onSubmit={(body) => upsert.mutate(body)}
-              submitting={upsert.isPending}
-              error={upsert.error ? (upsert.error as Error).message : null}
-            />
-          )}
+    <section className="rounded-xl bg-white p-5 ring-1 ring-gray-200 shadow-soft">
+      <div className="flex items-center mb-3">
+        <h2 className="text-lg font-semibold inline-flex items-center">
+          Incompatibilidades del mismo día
+          <InfoHint position="below">
+            Reglas que prohíben combinar dos actividades el mismo día.
+            Aquí no creas reglas nuevas — eliges, para este periodo,
+            cuáles se desactivan o se relajan.
+          </InfoHint>
+        </h2>
+      </div>
+      {loading && <p className="text-sm text-gray-500">Cargando…</p>}
+      {error && <ErrorText>{error}</ErrorText>}
+      {!loading && rules.length === 0 && (
+        <Empty>No hay incompatibilidades del mismo día definidas.</Empty>
+      )}
+      {rules.length > 0 && (
+        <div className="overflow-hidden rounded-lg border border-gray-200">
+          <table className="w-full text-sm">
+            <thead className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+              <tr>
+                <th className="px-4 py-2 font-medium">Actividad</th>
+                <th className="px-4 py-2 font-medium">No se puede combinar con</th>
+                <th className="px-4 py-2 font-medium">Severidad</th>
+                <th className="px-4 py-2 font-medium">Modificación en el periodo</th>
+                <th className="px-4 py-2 font-medium text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rules.map((r) => {
+                const override = overrideByRule.get(r.id) ?? null;
+                return (
+                  <tr
+                    key={r.id}
+                    className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors"
+                  >
+                    <td className="px-4 py-2">
+                      {slotById[r.after_slot_id]?.name ?? `#${r.after_slot_id}`}
+                    </td>
+                    <td className="px-4 py-2">
+                      {slotById[r.forbid_slot_id]?.name ?? `#${r.forbid_slot_id}`}
+                    </td>
+                    <td className="px-4 py-2">{SEVERITY_LABEL[r.severity]}</td>
+                    <td className="px-4 py-2">
+                      {summariseSuccessionOverride(override)}
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <Button
+                        variant="secondary"
+                        onClick={() => setEditing(r)}
+                      >
+                        {override ? "Editar" : "Modificar"}
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-      </Card>
-    </li>
+      )}
+
+      {editing && (
+        <SuccessionOverrideModal
+          rule={editing}
+          initial={overrideByRule.get(editing.id) ?? null}
+          periodId={periodId}
+          onClose={() => setEditing(null)}
+        />
+      )}
+    </section>
   );
 }
 
-function SuccessionOverrideForm({
+// ---------------------------------------------------------------------------
+// Multi-day succession overrides (days_after >= 1). Same shape as
+// SameDayOverrideSection, different summary copy.
+// ---------------------------------------------------------------------------
+function SuccessionOverrideSection({
+  rules,
+  loading,
+  error,
+  overrideByRule,
+  slotById,
+  periodId,
+}: {
+  rules: SlotSuccessionRule[];
+  loading: boolean;
+  error: string | null;
+  overrideByRule: Map<number, SuccessionPeriodOverride>;
+  slotById: Record<number, Slot>;
+  periodId: number;
+}) {
+  const [editing, setEditing] = useState<SlotSuccessionRule | null>(null);
+
+  return (
+    <section className="rounded-xl bg-white p-5 ring-1 ring-gray-200 shadow-soft">
+      <div className="flex items-center mb-3">
+        <h2 className="text-lg font-semibold inline-flex items-center">
+          Sucesión entre actividades
+          <InfoHint position="below">
+            Reglas del tipo &quot;después de X, no Y durante N días&quot;.
+            Útil acortar el descanso obligatorio cuando la plantilla está
+            reducida, o desactivar la regla entera durante el periodo.
+          </InfoHint>
+        </h2>
+      </div>
+      {loading && <p className="text-sm text-gray-500">Cargando…</p>}
+      {error && <ErrorText>{error}</ErrorText>}
+      {!loading && rules.length === 0 && (
+        <Empty>No hay reglas de sucesión definidas.</Empty>
+      )}
+      {rules.length > 0 && (
+        <div className="overflow-hidden rounded-lg border border-gray-200">
+          <table className="w-full text-sm">
+            <thead className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+              <tr>
+                <th className="px-4 py-2 font-medium">Después de</th>
+                <th className="px-4 py-2 font-medium">No se puede</th>
+                <th className="px-4 py-2 font-medium">Días</th>
+                <th className="px-4 py-2 font-medium">Severidad</th>
+                <th className="px-4 py-2 font-medium">Modificación en el periodo</th>
+                <th className="px-4 py-2 font-medium text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rules.map((r) => {
+                const override = overrideByRule.get(r.id) ?? null;
+                return (
+                  <tr
+                    key={r.id}
+                    className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors"
+                  >
+                    <td className="px-4 py-2">
+                      {slotById[r.after_slot_id]?.name ?? `#${r.after_slot_id}`}
+                    </td>
+                    <td className="px-4 py-2">
+                      {slotById[r.forbid_slot_id]?.name ?? `#${r.forbid_slot_id}`}
+                    </td>
+                    <td className="px-4 py-2">{r.days_after}</td>
+                    <td className="px-4 py-2">{SEVERITY_LABEL[r.severity]}</td>
+                    <td className="px-4 py-2">
+                      {summariseSuccessionOverride(override)}
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <Button
+                        variant="secondary"
+                        onClick={() => setEditing(r)}
+                      >
+                        {override ? "Editar" : "Modificar"}
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {editing && (
+        <SuccessionOverrideModal
+          rule={editing}
+          initial={overrideByRule.get(editing.id) ?? null}
+          periodId={periodId}
+          onClose={() => setEditing(null)}
+        />
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Frequency cap overrides. Same section-card shape as the two above.
+// ---------------------------------------------------------------------------
+function CapOverrideSection({
+  caps,
+  loading,
+  error,
+  overrideByCap,
+  slotById,
+  periodId,
+}: {
+  caps: SlotFrequencyCap[];
+  loading: boolean;
+  error: string | null;
+  overrideByCap: Map<number, CapPeriodOverride>;
+  slotById: Record<number, Slot>;
+  periodId: number;
+}) {
+  const [editing, setEditing] = useState<SlotFrequencyCap | null>(null);
+
+  return (
+    <section className="rounded-xl bg-white p-5 ring-1 ring-gray-200 shadow-soft">
+      <div className="flex items-center mb-3">
+        <h2 className="text-lg font-semibold inline-flex items-center">
+          Límites de frecuencia
+          <InfoHint position="below">
+            Topes del tipo &quot;como máximo N de X por persona en este
+            periodo&quot;. Suele necesitar relajación cuando la plantilla
+            se reduce (ej. 2 guardias/mes → 5/mes en verano).
+          </InfoHint>
+        </h2>
+      </div>
+      {loading && <p className="text-sm text-gray-500">Cargando…</p>}
+      {error && <ErrorText>{error}</ErrorText>}
+      {!loading && caps.length === 0 && (
+        <Empty>No hay límites de frecuencia definidos.</Empty>
+      )}
+      {caps.length > 0 && (
+        <div className="overflow-hidden rounded-lg border border-gray-200">
+          <table className="w-full text-sm">
+            <thead className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+              <tr>
+                <th className="px-4 py-2 font-medium">Actividad</th>
+                <th className="px-4 py-2 font-medium">Periodo</th>
+                <th className="px-4 py-2 font-medium">Máx por persona</th>
+                <th className="px-4 py-2 font-medium">Severidad</th>
+                <th className="px-4 py-2 font-medium">Modificación en el periodo</th>
+                <th className="px-4 py-2 font-medium text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {caps.map((c) => {
+                const override = overrideByCap.get(c.id) ?? null;
+                return (
+                  <tr
+                    key={c.id}
+                    className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors"
+                  >
+                    <td className="px-4 py-2">
+                      {slotById[c.slot_id]?.name ?? `#${c.slot_id}`}
+                    </td>
+                    <td className="px-4 py-2">{PERIOD_LABEL[c.period]}</td>
+                    <td className="px-4 py-2">{c.max_count}</td>
+                    <td className="px-4 py-2">{SEVERITY_LABEL[c.severity]}</td>
+                    <td className="px-4 py-2">
+                      {summariseCapOverride(override)}
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <Button
+                        variant="secondary"
+                        onClick={() => setEditing(c)}
+                      >
+                        {override ? "Editar" : "Modificar"}
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {editing && (
+        <CapOverrideModal
+          cap={editing}
+          initial={overrideByCap.get(editing.id) ?? null}
+          periodId={periodId}
+          onClose={() => setEditing(null)}
+        />
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Succession override modal. Hosts the same form fields the V.2 inline
+// edit had; now in a proper Modal so the row stays compact and the
+// section table matches the layout of /admin/rules.
+// ---------------------------------------------------------------------------
+function SuccessionOverrideModal({
   rule,
   initial,
-  onCancel,
-  onSubmit,
-  submitting,
-  error,
+  periodId,
+  onClose,
 }: {
   rule: SlotSuccessionRule;
   initial: SuccessionPeriodOverride | null;
-  onCancel: () => void;
-  onSubmit: (body: SuccessionPeriodOverrideUpsert) => void;
-  submitting: boolean;
-  error: string | null;
+  periodId: number;
+  onClose: () => void;
 }) {
+  const qc = useQueryClient();
   const [disabled, setDisabled] = useState(initial?.disabled ?? false);
   const [daysAfterStr, setDaysAfterStr] = useState<string>(
     initial?.days_after_override !== null
@@ -664,42 +874,68 @@ function SuccessionOverrideForm({
     DependencySeverity | ""
   >(initial?.severity_override ?? "");
 
-  return (
-    <form
-      className="mt-3 space-y-3 border-t border-gray-100 pt-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const days = daysAfterStr.trim() === "" ? null : Number(daysAfterStr);
-        onSubmit({
-          disabled,
-          days_after_override:
-            days !== null && !Number.isNaN(days) && days >= 0 && days <= 14
-              ? days
-              : null,
-          severity_override:
-            severityOverride === "" ? null : severityOverride,
-        });
-      }}
-    >
-      <label className="flex items-start gap-2 text-sm">
-        <input
-          type="checkbox"
-          className="mt-0.5"
-          checked={disabled}
-          onChange={(e) => setDisabled(e.target.checked)}
-        />
-        <div>
-          <div className="font-medium text-gray-900">
-            Desactivar durante el periodo
-          </div>
-          <div className="text-xs text-gray-500">
-            La regla no se aplica para fechas dentro del periodo.
-          </div>
-        </div>
-      </label>
+  const upsert = useMutation({
+    mutationFn: (body: SuccessionPeriodOverrideUpsert) =>
+      api.upsertSuccessionPeriodOverride(periodId, rule.id, body),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["periodo-succession-overrides", periodId],
+      });
+      onClose();
+    },
+  });
+  const remove = useMutation({
+    mutationFn: () =>
+      api.deleteSuccessionPeriodOverride(periodId, rule.id),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["periodo-succession-overrides", periodId],
+      });
+      onClose();
+    },
+  });
 
-      {!disabled && (
-        <>
+  const title =
+    rule.days_after === 0
+      ? "Modificar incompatibilidad en el periodo"
+      : "Modificar regla de sucesión en el periodo";
+
+  return (
+    <Modal open={true} onClose={onClose} title={title}>
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const days = daysAfterStr.trim() === "" ? null : Number(daysAfterStr);
+          upsert.mutate({
+            disabled,
+            days_after_override:
+              days !== null && !Number.isNaN(days) && days >= 0 && days <= 14
+                ? days
+                : null,
+            severity_override:
+              severityOverride === "" ? null : severityOverride,
+          });
+        }}
+      >
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={disabled}
+            onChange={(e) => setDisabled(e.target.checked)}
+          />
+          <div>
+            <div className="font-medium text-gray-900">
+              Desactivar durante el periodo
+            </div>
+            <div className="text-xs text-gray-500">
+              La regla no se aplica para fechas dentro del periodo.
+            </div>
+          </div>
+        </label>
+
+        {!disabled && rule.days_after >= 1 && (
           <label className="block">
             <span className="text-sm font-medium text-gray-700">
               Días después (0–14, opcional)
@@ -714,10 +950,12 @@ function SuccessionOverrideForm({
               className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
             />
             <span className="mt-1 block text-xs text-gray-500">
-              0 = misma fecha incompatible. Vacío para mantener el valor por
-              defecto ({rule.days_after}).
+              Vacío para mantener el valor por defecto ({rule.days_after}).
             </span>
           </label>
+        )}
+
+        {!disabled && (
           <label className="block">
             <span className="text-sm font-medium text-gray-700">
               Severidad (opcional)
@@ -736,134 +974,57 @@ function SuccessionOverrideForm({
               <option value="soft">Blanda</option>
             </select>
             <span className="mt-1 block text-xs text-gray-500">
-              Pasar de Estricta a Blanda deja que el solver rompa la regla si
-              no hay alternativa (paga una penalización).
+              Pasar de Estricta a Blanda deja que el solver rompa la regla
+              si no hay alternativa (paga una penalización).
             </span>
           </label>
-        </>
-      )}
+        )}
 
-      {error && <ErrorText>{error}</ErrorText>}
-      <div className="flex justify-end gap-2">
-        <Button variant="secondary" onClick={onCancel}>
-          Cancelar
-        </Button>
-        <Button type="submit" disabled={submitting}>
-          {submitting ? "Guardando…" : "Guardar"}
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-function CapOverrideRow({
-  cap,
-  slot,
-  override,
-  periodId,
-}: {
-  cap: SlotFrequencyCap;
-  slot: Slot | null;
-  override: CapPeriodOverride | null;
-  periodId: number;
-}) {
-  const qc = useQueryClient();
-  const [editing, setEditing] = useState(false);
-
-  const upsert = useMutation({
-    mutationFn: (body: CapPeriodOverrideUpsert) =>
-      api.upsertCapPeriodOverride(periodId, cap.id, body),
-    onSuccess: () => {
-      qc.invalidateQueries({
-        queryKey: ["periodo-cap-overrides", periodId],
-      });
-      setEditing(false);
-    },
-  });
-  const remove = useMutation({
-    mutationFn: () => api.deleteCapPeriodOverride(periodId, cap.id),
-    onSuccess: () => {
-      qc.invalidateQueries({
-        queryKey: ["periodo-cap-overrides", periodId],
-      });
-      setEditing(false);
-    },
-  });
-
-  const summary = `${slot?.name ?? "?"}: máx ${cap.max_count} en ${PERIOD_LABEL[cap.period]}`;
-
-  return (
-    <li>
-      <Card>
-        <div className="p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-semibold text-gray-900">
-              {summary}
-            </span>
-            <span className="text-xs text-gray-500">
-              {SEVERITY_LABEL[cap.severity]}
-            </span>
-            {override && !override.disabled && (
-              <StatusPill tone="warning">
-                {override.max_count_override !== null
-                  ? `→ máx ${override.max_count_override}`
-                  : "Modificado"}
-              </StatusPill>
-            )}
-            {override?.disabled && (
-              <StatusPill tone="danger">Desactivado en el periodo</StatusPill>
-            )}
-            <div className="ml-auto flex gap-2">
-              {!editing && (
-                <Button variant="secondary" onClick={() => setEditing(true)}>
-                  {override ? "Editar" : "Modificar"}
-                </Button>
-              )}
-              {override && !editing && (
-                <Button
-                  variant="danger"
-                  onClick={() => {
-                    if (confirm("¿Quitar esta modificación?")) remove.mutate();
-                  }}
-                  disabled={remove.isPending}
-                >
-                  Quitar
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {editing && (
-            <CapOverrideForm
-              cap={cap}
-              initial={override}
-              onCancel={() => setEditing(false)}
-              onSubmit={(body) => upsert.mutate(body)}
-              submitting={upsert.isPending}
-              error={upsert.error ? (upsert.error as Error).message : null}
-            />
+        {upsert.isError && (
+          <ErrorText>{(upsert.error as Error).message}</ErrorText>
+        )}
+        {remove.isError && (
+          <ErrorText>{(remove.error as Error).message}</ErrorText>
+        )}
+        <div className="flex justify-end gap-2 pt-2">
+          {initial && (
+            <Button
+              variant="danger"
+              onClick={() => {
+                if (confirm("¿Quitar esta modificación?")) remove.mutate();
+              }}
+              disabled={remove.isPending}
+            >
+              Quitar modificación
+            </Button>
           )}
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={upsert.isPending}>
+            {upsert.isPending ? "Guardando…" : "Guardar"}
+          </Button>
         </div>
-      </Card>
-    </li>
+      </form>
+    </Modal>
   );
 }
 
-function CapOverrideForm({
+// ---------------------------------------------------------------------------
+// Cap override modal. Same idea as SuccessionOverrideModal; different fields.
+// ---------------------------------------------------------------------------
+function CapOverrideModal({
   cap,
   initial,
-  onCancel,
-  onSubmit,
-  submitting,
-  error,
+  periodId,
+  onClose,
 }: {
   cap: SlotFrequencyCap;
   initial: CapPeriodOverride | null;
-  onCancel: () => void;
-  onSubmit: (body: CapPeriodOverrideUpsert) => void;
-  submitting: boolean;
-  error: string | null;
+  periodId: number;
+  onClose: () => void;
 }) {
+  const qc = useQueryClient();
   const [disabled, setDisabled] = useState(initial?.disabled ?? false);
   const [maxCountStr, setMaxCountStr] = useState<string>(
     initial?.max_count_override !== null
@@ -875,88 +1036,128 @@ function CapOverrideForm({
     DependencySeverity | ""
   >(initial?.severity_override ?? "");
 
+  const upsert = useMutation({
+    mutationFn: (body: CapPeriodOverrideUpsert) =>
+      api.upsertCapPeriodOverride(periodId, cap.id, body),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["periodo-cap-overrides", periodId],
+      });
+      onClose();
+    },
+  });
+  const remove = useMutation({
+    mutationFn: () => api.deleteCapPeriodOverride(periodId, cap.id),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["periodo-cap-overrides", periodId],
+      });
+      onClose();
+    },
+  });
+
   return (
-    <form
-      className="mt-3 space-y-3 border-t border-gray-100 pt-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const mc = maxCountStr.trim() === "" ? null : Number(maxCountStr);
-        onSubmit({
-          disabled,
-          max_count_override:
-            mc !== null && !Number.isNaN(mc) && mc >= 0 ? mc : null,
-          severity_override:
-            severityOverride === "" ? null : severityOverride,
-        });
-      }}
+    <Modal
+      open={true}
+      onClose={onClose}
+      title="Modificar límite en el periodo"
     >
-      <label className="flex items-start gap-2 text-sm">
-        <input
-          type="checkbox"
-          className="mt-0.5"
-          checked={disabled}
-          onChange={(e) => setDisabled(e.target.checked)}
-        />
-        <div>
-          <div className="font-medium text-gray-900">
-            Desactivar durante el periodo
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const mc = maxCountStr.trim() === "" ? null : Number(maxCountStr);
+          upsert.mutate({
+            disabled,
+            max_count_override:
+              mc !== null && !Number.isNaN(mc) && mc >= 0 ? mc : null,
+            severity_override:
+              severityOverride === "" ? null : severityOverride,
+          });
+        }}
+      >
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={disabled}
+            onChange={(e) => setDisabled(e.target.checked)}
+          />
+          <div>
+            <div className="font-medium text-gray-900">
+              Desactivar durante el periodo
+            </div>
+            <div className="text-xs text-gray-500">
+              El límite no se aplica para fechas dentro del periodo.
+            </div>
           </div>
-          <div className="text-xs text-gray-500">
-            El límite no se aplica para fechas dentro del periodo.
-          </div>
-        </div>
-      </label>
+        </label>
 
-      {!disabled && (
-        <>
-          <label className="block">
-            <span className="text-sm font-medium text-gray-700">
-              Máximo durante el periodo (opcional)
-            </span>
-            <input
-              type="number"
-              min="0"
-              value={maxCountStr}
-              onChange={(e) => setMaxCountStr(e.target.value)}
-              placeholder={`${cap.max_count} (por defecto)`}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-            />
-            <span className="mt-1 block text-xs text-gray-500">
-              Útil para subir el tope cuando la plantilla está reducida
-              (ej. 2 guardias/mes → 5/mes en verano). Vacío mantiene el valor
-              por defecto ({cap.max_count}).
-            </span>
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium text-gray-700">
-              Severidad (opcional)
-            </span>
-            <select
-              value={severityOverride}
-              onChange={(e) =>
-                setSeverityOverride(e.target.value as DependencySeverity | "")
-              }
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm bg-white"
+        {!disabled && (
+          <>
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">
+                Máximo durante el periodo (opcional)
+              </span>
+              <input
+                type="number"
+                min="0"
+                value={maxCountStr}
+                onChange={(e) => setMaxCountStr(e.target.value)}
+                placeholder={`${cap.max_count} (por defecto)`}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              />
+              <span className="mt-1 block text-xs text-gray-500">
+                Vacío mantiene el valor por defecto ({cap.max_count}).
+              </span>
+            </label>
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">
+                Severidad (opcional)
+              </span>
+              <select
+                value={severityOverride}
+                onChange={(e) =>
+                  setSeverityOverride(e.target.value as DependencySeverity | "")
+                }
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm bg-white"
+              >
+                <option value="">
+                  Mantener {SEVERITY_LABEL[cap.severity]} (por defecto)
+                </option>
+                <option value="hard">Estricta</option>
+                <option value="soft">Blanda</option>
+              </select>
+            </label>
+          </>
+        )}
+
+        {upsert.isError && (
+          <ErrorText>{(upsert.error as Error).message}</ErrorText>
+        )}
+        {remove.isError && (
+          <ErrorText>{(remove.error as Error).message}</ErrorText>
+        )}
+        <div className="flex justify-end gap-2 pt-2">
+          {initial && (
+            <Button
+              variant="danger"
+              onClick={() => {
+                if (confirm("¿Quitar esta modificación?")) remove.mutate();
+              }}
+              disabled={remove.isPending}
             >
-              <option value="">
-                Mantener {SEVERITY_LABEL[cap.severity]} (por defecto)
-              </option>
-              <option value="hard">Estricta</option>
-              <option value="soft">Blanda</option>
-            </select>
-          </label>
-        </>
-      )}
-
-      {error && <ErrorText>{error}</ErrorText>}
-      <div className="flex justify-end gap-2">
-        <Button variant="secondary" onClick={onCancel}>
-          Cancelar
-        </Button>
-        <Button type="submit" disabled={submitting}>
-          {submitting ? "Guardando…" : "Guardar"}
-        </Button>
-      </div>
-    </form>
+              Quitar modificación
+            </Button>
+          )}
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={upsert.isPending}>
+            {upsert.isPending ? "Guardando…" : "Guardar"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }
