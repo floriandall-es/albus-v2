@@ -135,3 +135,179 @@ class SlotPeriodOverride(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+# V.2 — per-rule / per-succession / per-cap overrides. All three share
+# the same shape (period + target FK + a couple of optional override
+# columns + disabled flag). They live in their own tables rather than
+# one polymorphic table because the override columns differ per type
+# and we want sturdy CHECK constraints on each.
+
+
+class SlotRulePeriodOverride(Base):
+    """Per-(period, SlotRule) override. Most common gesture: switch
+    a rotation rule to solver mode during vacation (the rotation
+    cycle becomes meaningless when the rotation members aren't
+    around)."""
+
+    __tablename__ = "slot_rule_period_overrides"
+    __table_args__ = (
+        UniqueConstraint(
+            "period_id",
+            "rule_id",
+            name="uq_slot_rule_period_overrides_period_rule",
+        ),
+        CheckConstraint(
+            "strategy_override IS NULL OR "
+            "strategy_override IN ('solver','fixed_weekly','rotation','manual')",
+            name="ck_slot_rule_period_overrides_strategy",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    period_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("periodos_especiales.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    rule_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("slot_rules.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    strategy_override: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )
+    disabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class SlotSuccessionRulePeriodOverride(Base):
+    """Per-(period, SlotSuccessionRule) override. Lets the admin
+    relax a "X then no Y for N days" rule during vacation — shorten
+    the gap, downgrade severity, or disable entirely.
+
+    Note: same-day (`days_after = 0`) incompatibility CAN be relaxed
+    to a wider window or a non-zero gap during the periodo. The
+    semantics stay the same as the base rule's; only the value
+    changes.
+    """
+
+    __tablename__ = "slot_succession_rule_period_overrides"
+    __table_args__ = (
+        UniqueConstraint(
+            "period_id",
+            "succession_rule_id",
+            name="uq_slot_succession_rule_period_overrides_period_rule",
+        ),
+        CheckConstraint(
+            "days_after_override IS NULL "
+            "OR (days_after_override >= 0 AND days_after_override <= 14)",
+            name="ck_slot_succession_rule_period_overrides_days_after",
+        ),
+        CheckConstraint(
+            "severity_override IS NULL OR "
+            "severity_override IN ('hard','soft')",
+            name="ck_slot_succession_rule_period_overrides_severity",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    period_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("periodos_especiales.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    succession_rule_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("slot_succession_rules.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    days_after_override: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    severity_override: Mapped[str | None] = mapped_column(
+        String(8), nullable=True
+    )
+    disabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class SlotFrequencyCapPeriodOverride(Base):
+    """Per-(period, SlotFrequencyCap) override. Raise the per-window
+    max (so a "2 guardias/month" cap can become "5/month" during
+    summer), flip severity, or disable."""
+
+    __tablename__ = "slot_frequency_cap_period_overrides"
+    __table_args__ = (
+        UniqueConstraint(
+            "period_id",
+            "cap_id",
+            name="uq_slot_frequency_cap_period_overrides_period_cap",
+        ),
+        CheckConstraint(
+            "max_count_override IS NULL OR max_count_override >= 0",
+            name="ck_slot_frequency_cap_period_overrides_max_count",
+        ),
+        CheckConstraint(
+            "severity_override IS NULL OR "
+            "severity_override IN ('hard','soft')",
+            name="ck_slot_frequency_cap_period_overrides_severity",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    period_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("periodos_especiales.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    cap_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("slot_frequency_caps.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    max_count_override: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    severity_override: Mapped[str | None] = mapped_column(
+        String(8), nullable=True
+    )
+    disabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

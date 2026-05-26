@@ -97,3 +97,58 @@ class GeneratePeriodResult(BaseModel):
     period: str  # 'YYYY-MM-01'
     solver_used: str  # 'cpsat' | 'greedy'
     assignments_created: int
+
+
+# V.2 — per-rule / per-succession / per-cap overrides.
+
+RuleStrategy = Literal["solver", "fixed_weekly", "rotation", "manual"]
+Severity = Literal["hard", "soft"]
+
+
+class SlotRulePeriodOverrideUpsert(BaseModel):
+    """Set or replace the override for one (period, SlotRule) pair."""
+
+    strategy_override: RuleStrategy | None = None
+    disabled: bool = False
+
+
+class SlotRulePeriodOverrideOut(BaseModel):
+    id: int
+    period_id: int
+    rule_id: int
+    strategy_override: RuleStrategy | None
+    disabled: bool
+
+
+class SlotSuccessionRulePeriodOverrideUpsert(BaseModel):
+    """Set or replace the override for one (period, succession rule) pair."""
+
+    days_after_override: int | None = Field(default=None, ge=0, le=14)
+    severity_override: Severity | None = None
+    disabled: bool = False
+
+
+class SlotSuccessionRulePeriodOverrideOut(BaseModel):
+    id: int
+    period_id: int
+    succession_rule_id: int
+    days_after_override: int | None
+    severity_override: Severity | None
+    disabled: bool
+
+
+class SlotFrequencyCapPeriodOverrideUpsert(BaseModel):
+    """Set or replace the override for one (period, frequency cap) pair."""
+
+    max_count_override: int | None = Field(default=None, ge=0)
+    severity_override: Severity | None = None
+    disabled: bool = False
+
+
+class SlotFrequencyCapPeriodOverrideOut(BaseModel):
+    id: int
+    period_id: int
+    cap_id: int
+    max_count_override: int | None
+    severity_override: Severity | None
+    disabled: bool

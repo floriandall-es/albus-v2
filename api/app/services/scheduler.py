@@ -51,12 +51,15 @@ from app.models import (
     SlotAllowedPerson,
     SlotCategory,
     SlotFrequencyCap,
+    SlotFrequencyCapPeriodOverride,
     SlotPeriodOverride,
     SlotRule,
+    SlotRulePeriodOverride,
     SlotRuleRotationBlock,
     SlotRuleRotationMember,
     SlotRuleWeeklyPin,
     SlotSuccessionRule,
+    SlotSuccessionRulePeriodOverride,
     SlotTeamRole,
     SlotTeamRoleCategory,
 )
@@ -296,6 +299,18 @@ class _Context:
         self.overrides_by_slot_period: dict[
             tuple[int, int], SlotPeriodOverride
         ] = {}
+        # V.2: per-(rule/succession/cap, period) overrides. Same
+        # delta-style — only rows that actually differ from the
+        # default exist. Lookup is by (target_id, period_id).
+        self.rule_overrides_by_rule_period: dict[
+            tuple[int, int], SlotRulePeriodOverride
+        ] = {}
+        self.succession_overrides_by_rule_period: dict[
+            tuple[int, int], SlotSuccessionRulePeriodOverride
+        ] = {}
+        self.cap_overrides_by_cap_period: dict[
+            tuple[int, int], SlotFrequencyCapPeriodOverride
+        ] = {}
         if self.periodos:
             period_ids = [p.id for p in self.periodos]
             for o in (
@@ -304,6 +319,32 @@ class _Context:
                 .all()
             ):
                 self.overrides_by_slot_period[(o.slot_id, o.period_id)] = o
+            for o in (
+                db.query(SlotRulePeriodOverride)
+                .filter(SlotRulePeriodOverride.period_id.in_(period_ids))
+                .all()
+            ):
+                self.rule_overrides_by_rule_period[
+                    (o.rule_id, o.period_id)
+                ] = o
+            for o in (
+                db.query(SlotSuccessionRulePeriodOverride)
+                .filter(
+                    SlotSuccessionRulePeriodOverride.period_id.in_(period_ids)
+                )
+                .all()
+            ):
+                self.succession_overrides_by_rule_period[
+                    (o.succession_rule_id, o.period_id)
+                ] = o
+            for o in (
+                db.query(SlotFrequencyCapPeriodOverride)
+                .filter(
+                    SlotFrequencyCapPeriodOverride.period_id.in_(period_ids)
+                )
+                .all()
+            ):
+                self.cap_overrides_by_cap_period[(o.cap_id, o.period_id)] = o
 
         # Pre-existing published assignments BEFORE the period are needed
         # to evaluate rolling-window frequency caps at the start of the
@@ -392,6 +433,77 @@ class _Context:
             return set(ovr.allowed_category_ids_override)
         return set(self.slot_categories.get(slot_id, set()))
 
+    # ---------------------------------------------------------------
+    # V.2 effective-rule helpers. Each takes the target row + a date
+    # and returns either:
+    #   - (effective_value, False)   — the override is "active" but
+    #                                  the rule still fires; the
+    #                                  caller uses effective_value
+    #                                  in place of the default.
+    #   - (_, True)                  — the rule/cap is fully disabled
+    #                                  on this date. Caller skips
+    #                                  emitting any constraint/penalty.
+    # The wrapping is verbose but explicit; callers don't have to
+    # juggle None semantics or check `disabled` separately.
+    # ---------------------------------------------------------------
+    def effective_rule_strategy(self, rule: SlotRule, d: date) -> tuple[str, bool]:
+        """Return (strategy, disabled). When disabled, the rule's
+        weekday-bitmap match falls through to "no rule applies" —
+        same as if the admin had no rule for that weekday."""
+        pid = self.period_id_by_date.get(d)
+        if pid is None:
+            return rule.strategy, False
+        ovr = self.rule_overrides_by_rule_period.get((rule.id, pid))
+        if ovr is None:
+            return rule.strategy, False
+        if ovr.disabled:
+            return rule.strategy, True
+        if ovr.strategy_override is not None:
+            return ovr.strategy_override, False
+        return rule.strategy, False
+
+    def effective_succession_rule(
+        self, rule: SlotSuccessionRule, d: date
+    ) -> tuple[int, str, bool]:
+        """Return (days_after, severity, disabled). When disabled,
+        the rule emits nothing for date d."""
+        pid = self.period_id_by_date.get(d)
+        if pid is None:
+            return rule.days_after, rule.severity, False
+        ovr = self.succession_overrides_by_rule_period.get((rule.id, pid))
+        if ovr is None:
+            return rule.days_after, rule.severity, False
+        if ovr.disabled:
+            return rule.days_after, rule.severity, True
+        return (
+            ovr.days_after_override
+            if ovr.days_after_override is not None
+            else rule.days_after,
+            ovr.severity_override or rule.severity,
+            False,
+        )
+
+    def effective_frequency_cap(
+        self, cap: SlotFrequencyCap, d: date
+    ) -> tuple[int, str, bool]:
+        """Return (max_count, severity, disabled). When disabled, the
+        cap doesn't constrain date d."""
+        pid = self.period_id_by_date.get(d)
+        if pid is None:
+            return cap.max_count, cap.severity, False
+        ovr = self.cap_overrides_by_cap_period.get((cap.id, pid))
+        if ovr is None:
+            return cap.max_count, cap.severity, False
+        if ovr.disabled:
+            return cap.max_count, cap.severity, True
+        return (
+            ovr.max_count_override
+            if ovr.max_count_override is not None
+            else cap.max_count,
+            ovr.severity_override or cap.severity,
+            False,
+        )
+
     def prior_published_count(
         self,
         person_id: int,
@@ -428,11 +540,19 @@ class _Context:
         layer, so there's at most one match. None means the slot has no
         rule that covers this weekday — admin chose to leave that day
         uncovered.
+
+        V.2 vacation feature: if the matching rule has an active
+        period override marking it `disabled`, return None — same
+        semantics as "no rule applies." The slot falls through to
+        the no-rule branch (no demand emitted, cell stays empty).
         """
         wd = d.weekday()
         bit = 1 << wd
         for r in self.rules_by_slot.get(slot_id, ()):
             if r.days_bitmap & bit:
+                _, disabled = self.effective_rule_strategy(r, d)
+                if disabled:
+                    return None
                 return r
         return None
 
@@ -779,10 +899,15 @@ def _greedy_fallback(
 
     def _pin_persons(rule: SlotRule, d: date) -> list[int] | None:
         """Return the configured person_ids for a non-solver rule on date d,
-        or None if the rule is solver/manual (caller round-robins instead)."""
-        if rule.strategy == "fixed_weekly":
+        or None if the rule is solver/manual (caller round-robins instead).
+
+        V.2: route through effective_rule_strategy so a period override
+        that switches rotation → solver (or disables the rule) doesn't
+        emit stale pins."""
+        strategy, _ = ctx.effective_rule_strategy(rule, d)
+        if strategy == "fixed_weekly":
             return list(ctx.fixed_weekly_persons(rule, d))
-        if rule.strategy == "rotation":
+        if strategy == "rotation":
             return list(ctx.rotation_persons_for(rule, d))
         return None  # solver / manual → fall through to round-robin
 
@@ -795,11 +920,13 @@ def _greedy_fallback(
     def _slot_priority(slot: Slot, d: date) -> int:
         """Lower runs first. Pinned/rotation slots before round-robin —
         applies to both single/multiple_same AND team_composition slots
-        (sprint 16: the latter can now have a rule pinning a team)."""
+        (sprint 16: the latter can now have a rule pinning a team).
+        V.2: same effective-strategy routing as _pin_persons."""
         rule = ctx.rule_for(slot.id, d)
         if rule is None:
             return 1
-        if rule.strategy in ("fixed_weekly", "rotation"):
+        strategy, _ = ctx.effective_rule_strategy(rule, d)
+        if strategy in ("fixed_weekly", "rotation"):
             return 0
         return 1
 
@@ -823,6 +950,11 @@ def _greedy_fallback(
             rule = ctx.rule_for(slot.id, d)
             if rule is None:
                 continue
+            # V.2 vacation feature: resolve the effective strategy once
+            # per (rule, d) so every branch below sees a period
+            # override (e.g. rotation → manual during a vacation period)
+            # rather than the rule's authored value.
+            strategy, _ = ctx.effective_rule_strategy(rule, d)
 
             mode = slot.staffing_mode
             # Sprint 16: pre-compute the team pin per (slot, date). For
@@ -922,7 +1054,7 @@ def _greedy_fallback(
                         )
                     continue
 
-                if rule.strategy == "manual":
+                if strategy == "manual":
                     for _ in range(head):
                         db.add(
                             Assignment(
@@ -997,9 +1129,9 @@ def _greedy_fallback(
                 # picks cover the excess. Matches the CP-SAT
                 # graceful-degrade path.
                 team_pin: list[int] | None = None
-                if rule.strategy == "rotation":
+                if strategy == "rotation":
                     team_pin = list(ctx.rotation_persons_for(rule, d))
-                elif rule.strategy == "fixed_weekly":
+                elif strategy == "fixed_weekly":
                     team_pin = list(ctx.fixed_weekly_persons(rule, d))
                 total_slot_head = sum(max(1, r.headcount) for r in roles)
                 if team_pin and len(team_pin) < total_slot_head:
@@ -1355,7 +1487,16 @@ def _compute_team_composition_rotation_prepins(
                 flush()
                 continue
             rule = ctx.rule_for(slot.id, d)
-            if rule is None or rule.strategy != "rotation":
+            # V.2 vacation feature: a rotation rule might be flipped to
+            # solver/manual (or disabled) for date d by a periodo
+            # override — only same-team blocks under the rotation
+            # strategy qualify for the Latin-rectangle pre-pin.
+            strategy = (
+                ctx.effective_rule_strategy(rule, d)[0]
+                if rule is not None
+                else None
+            )
+            if rule is None or strategy != "rotation":
                 flush()
                 continue
             team = list(ctx.rotation_persons_for(rule, d))
@@ -1464,7 +1605,11 @@ def _solve_cpsat(
         manual rules always emit head NULL rows with "Pendiente de asignar
         manualmente".
         """
-        if rule.strategy == "manual":
+        # V.2 vacation feature: a periodo override may flip the rule's
+        # strategy (e.g. rotation → manual) for date `d`. Resolve once
+        # and use throughout this helper.
+        strategy, _ = ctx.effective_rule_strategy(rule, d)
+        if strategy == "manual":
             for _ in range(head):
                 db.add(
                     Assignment(
@@ -1479,11 +1624,11 @@ def _solve_cpsat(
                 )
             return
 
-        if rule.strategy == "rotation":
+        if strategy == "rotation":
             configured = ctx.rotation_persons_for(rule, d)
             empty_notes = "Rotación sin miembros configurados"
             ineligible_prefix = "Persona de la rotación no disponible"
-        elif rule.strategy == "fixed_weekly":
+        elif strategy == "fixed_weekly":
             configured = ctx.fixed_weekly_persons(rule, d)
             empty_notes = "Sin persona fijada para este día de la semana"
             ineligible_prefix = "Persona fija no disponible"
@@ -1511,7 +1656,7 @@ def _solve_cpsat(
         # scheduler emits one assignment per pin so all of them show
         # up in the planning grid; the headcount value just becomes
         # the lower-bound expectation, not an upper cap.
-        if len(configured) > head and rule.strategy != "fixed_weekly":
+        if len(configured) > head and strategy != "fixed_weekly":
             logger.warning(
                 "Configured team larger than headcount: slot=%s date=%s "
                 "configured=%d head=%d — taking first %d (deterministic)",
@@ -1663,6 +1808,10 @@ def _solve_cpsat(
             if rule is None:
                 # Admin chose not to cover this weekday on this slot.
                 continue
+            # V.2 vacation feature: resolve effective strategy once per
+            # (rule, d) so every branch below — both team_composition
+            # and non-team_composition — respects period overrides.
+            strategy, _ = ctx.effective_rule_strategy(rule, d)
             mode = slot.staffing_mode
             if mode == "team_composition":
                 # Sprint 16: team_composition slots are always
@@ -1747,7 +1896,7 @@ def _solve_cpsat(
                 # `team = []` below, added solver demands and the
                 # solver auto-filled the cells, defeating the whole
                 # point of choosing manual.
-                if rule.strategy == "manual":
+                if strategy == "manual":
                     for role in roles:
                         for _ in range(max(1, role.headcount)):
                             db.add(
@@ -1762,9 +1911,9 @@ def _solve_cpsat(
                                 )
                             )
                     continue
-                if rule.strategy == "rotation":
+                if strategy == "rotation":
                     team = list(ctx.rotation_persons_for(rule, d))
-                elif rule.strategy == "fixed_weekly":
+                elif strategy == "fixed_weekly":
                     team = list(ctx.fixed_weekly_persons(rule, d))
                 else:
                     team = []
@@ -1800,7 +1949,7 @@ def _solve_cpsat(
                 continue
 
             # Non-team_composition: rule.strategy dictates behaviour.
-            if rule.strategy == "solver":
+            if strategy == "solver":
                 head = (
                     1
                     if mode == "single"
@@ -2184,8 +2333,19 @@ def _solve_cpsat(
         b_role = rule.forbid_team_role_id
         # days_after=0 = same-day incompatibility (UI labels this as a
         # distinct rule type). days_after>=1 = next-N-days succession.
-        offsets = [0] if rule.days_after == 0 else range(1, rule.days_after + 1)
         for D in ctx.dates:
+            # V.2 vacation feature: resolve the effective succession
+            # config based on the TRIGGERING date D (the "after" date —
+            # where the original assignment that activates this rule
+            # lives). When a periodo overrides this rule for D's
+            # period, days_after / severity may differ from the rule's
+            # authored defaults; when disabled, skip emission entirely.
+            days_after, severity, disabled = ctx.effective_succession_rule(
+                rule, D
+            )
+            if disabled:
+                continue
+            offsets = [0] if days_after == 0 else range(1, days_after + 1)
             for offset in offsets:
                 Dp = D + timedelta(days=offset)
                 if Dp not in period_dates_set:
@@ -2204,7 +2364,7 @@ def _solve_cpsat(
                         continue
                     # If pinned on the "after" side, the "before -> after"
                     # implication collapses to "forbid b". And vice versa.
-                    if rule.severity == "hard":
+                    if severity == "hard":
                         if a_pinned:
                             for bv in b_vars:
                                 model.Add(bv == 0)
@@ -2286,6 +2446,20 @@ def _solve_cpsat(
         # person", not "max 4 Quirófano per week per person".
         role_filter = cap.team_role_id
         for anchor, days in windows:
+            # V.2 vacation feature: resolve the effective cap config
+            # using the FIRST date in the window. Simplification: if a
+            # window straddles a period boundary we still pick the
+            # period (or lack thereof) of `days[0]` and apply that
+            # config to the whole window. Windows are at most 28 days
+            # so the edge case is narrow — a cleaner per-day evaluation
+            # would require rebuilding the constraint shape, which we
+            # avoid until V.2 ships and customers ask for it.
+            window_first = days[0] if days else anchor
+            max_count, severity, disabled = ctx.effective_frequency_cap(
+                cap, window_first
+            )
+            if disabled:
+                continue
             for P in person_ids_all:
                 window_vars: list = []
                 for d_ in days:
@@ -2327,10 +2501,10 @@ def _solve_cpsat(
                 base = prior_in_period + prior_outside
                 if not window_vars and base == 0:
                     continue  # nothing to constrain
-                if cap.severity == "hard":
+                if severity == "hard":
                     if window_vars:
-                        model.Add(sum(window_vars) + base <= cap.max_count)
-                    elif base > cap.max_count:
+                        model.Add(sum(window_vars) + base <= max_count)
+                    elif base > max_count:
                         # Pre-pinned config already exceeds the cap; nothing
                         # the solver can do. Log & skip.
                         logger.warning(
@@ -2340,7 +2514,7 @@ def _solve_cpsat(
                             cap.slot_id,
                             anchor,
                             base,
-                            cap.max_count,
+                            max_count,
                         )
                 else:
                     # Soft: excess = max(0, sum + base - max_count).
@@ -2350,7 +2524,7 @@ def _solve_cpsat(
                     excess = model.NewIntVar(
                         0, max(1, bound), f"freq_excess_c{cap.id}_a{anchor}_p{P}"
                     )
-                    model.Add(excess >= sum(window_vars) + base - cap.max_count)
+                    model.Add(excess >= sum(window_vars) + base - max_count)
                     soft_obj_terms.append(cap.weight * excess)
 
     # ---- Objective: fairness (counts_for_equity, FTE-weighted). ----

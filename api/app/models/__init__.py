@@ -39,7 +39,13 @@ from app.models.conversation import (
 )
 from app.models.directory_favorite import DirectoryFavorite
 from app.models.violation_suppression import ViolationSuppression
-from app.models.periodo_especial import PeriodoEspecial, SlotPeriodOverride
+from app.models.periodo_especial import (
+    PeriodoEspecial,
+    SlotFrequencyCapPeriodOverride,
+    SlotPeriodOverride,
+    SlotRulePeriodOverride,
+    SlotSuccessionRulePeriodOverride,
+)
 
 __all__ = [
     "Hospital",
@@ -81,4 +87,7 @@ __all__ = [
     "ViolationSuppression",
     "PeriodoEspecial",
     "SlotPeriodOverride",
+    "SlotRulePeriodOverride",
+    "SlotSuccessionRulePeriodOverride",
+    "SlotFrequencyCapPeriodOverride",
 ]
