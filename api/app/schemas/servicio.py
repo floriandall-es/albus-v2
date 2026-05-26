@@ -79,6 +79,28 @@ class ServicioTimelineOut(BaseModel):
     cells: list[ServicioTimelineCellOut]
 
 
+class ServicioPersonOut(BaseModel):
+    """One person reachable from the caller's Servicio. Returned by
+    GET /api/servicios/{id}/persons; consumed by the cross-equipo
+    meeting invitee picker. Carries enough metadata to render
+    "Mara Gascón · Residentes — Cirugía Torácica · Residente" in
+    a chip without a second lookup.
+    """
+
+    person_id: int
+    person_name: str
+    person_first_name: str | None
+    person_last_name: str | None
+    person_avatar_url: str | None
+    tenant_id: int
+    tenant_name: str
+    category_name: str | None
+    # True when this person sits in the caller's OWN tenant — the
+    # picker uses it to group "Tu equipo" vs "Otros equipos del
+    # servicio" sections.
+    is_caller_tenant: bool
+
+
 class SharePolicyUpdateRequest(BaseModel):
     """Admin sets the caller equipo's exposure to the rest of the
     Servicio. Per-slot toggles for 'selected' live on the slot

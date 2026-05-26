@@ -47,6 +47,18 @@ export function MeetingDialog({
   const qc = useQueryClient();
   const groups = useQuery({ queryKey: ["groups"], queryFn: api.listGroups });
   const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
+  // Phase C.2: also fetch persons from sibling equipos in the
+  // same Servicio so the invitee picker can render them in a
+  // second section. Gated on tenant.servicio_id non-null — for
+  // legacy tenants the second section is just hidden.
+  const me = useQuery({ queryKey: ["me"], queryFn: api.me });
+  const servicioId = me.data?.current_tenant.servicio_id ?? null;
+  const callerTenantId = me.data?.current_tenant.id ?? null;
+  const servicioPersons = useQuery({
+    queryKey: ["servicio-persons", servicioId],
+    queryFn: () => api.getServicioPersons(servicioId as number),
+    enabled: servicioId !== null,
+  });
 
   const initialKind = initial?.kind ?? defaultKind;
   const [kind, setKind] = useState<"regular" | "ad_hoc">(initialKind);
@@ -106,6 +118,35 @@ export function MeetingDialog({
         || (m.person_email ?? "").toLowerCase().includes(q),
     );
   }, [team.data, personQuery]);
+  // Cross-equipo persons: every approved-equipo member of the
+  // servicio EXCEPT the caller's own tenant (those are already
+  // listed above via team.data — duplicating would confuse the
+  // search results). Grouped by tenant_name for the section
+  // sub-headers.
+  const otherEquipoPersons = useMemo(() => {
+    const all = servicioPersons.data ?? [];
+    const q = personQuery.trim().toLowerCase();
+    const filtered = all.filter((p) => {
+      if (p.is_caller_tenant) return false;
+      if (!q) return true;
+      return p.person_name.toLowerCase().includes(q);
+    });
+    // Stable order: tenant_name asc, then person_name asc — the
+    // backend already returns them this way but we re-sort
+    // defensively after the filter.
+    const byTenant = new Map<number, { name: string; people: typeof filtered }>();
+    for (const p of filtered) {
+      let entry = byTenant.get(p.tenant_id);
+      if (!entry) {
+        entry = { name: p.tenant_name, people: [] };
+        byTenant.set(p.tenant_id, entry);
+      }
+      entry.people.push(p);
+    }
+    return Array.from(byTenant.values()).sort((a, b) =>
+      a.name.localeCompare(b.name, "es"),
+    );
+  }, [servicioPersons.data, personQuery]);
 
   const togglePerson = (id: number) =>
     setPersonIds((prev) => {
@@ -160,12 +201,24 @@ export function MeetingDialog({
   });
 
   // Selected-person name lookup so the chip list reads "María García"
-  // not "Person 42" while team.data is loading or stale.
+  // not "Person 42" while team.data is loading or stale. Falls back
+  // to the servicio person list so cross-equipo invitees are also
+  // resolvable to a real name.
   const teamById = useMemo(() => {
     const m = new Map<number, TeamMember>();
     for (const t of team.data ?? []) m.set(t.person_id, t);
     return m;
   }, [team.data]);
+  const servicioPersonById = useMemo(() => {
+    const m = new Map<number, { person_name: string; tenant_name: string }>();
+    for (const p of servicioPersons.data ?? []) {
+      m.set(p.person_id, {
+        person_name: p.person_name,
+        tenant_name: p.tenant_name,
+      });
+    }
+    return m;
+  }, [servicioPersons.data]);
 
   const showKindToggle = !lockedKind && !initial;
 
@@ -372,30 +425,87 @@ export function MeetingDialog({
                 </label>
               ))}
             </div>
-            {personIds.size > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {Array.from(personIds).map((pid) => {
-                  const m = teamById.get(pid);
-                  return (
-                    <span
-                      key={pid}
-                      className="inline-flex items-center gap-1 rounded-full bg-brand-50 text-brand-800 text-[11px] px-2 py-0.5"
-                    >
-                      {m?.person_name ?? `#${pid}`}
-                      <button
-                        type="button"
-                        onClick={() => togglePerson(pid)}
-                        className="text-brand-700 hover:text-brand-900"
-                        aria-label="Quitar"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  );
-                })}
-              </div>
-            )}
           </div>
+
+          {/* Cross-equipo invitees — only rendered when this tenant
+              belongs to a Servicio AND there are other approved
+              equipos with people in it. The picker shares the
+              search input above; selections write into the same
+              personIds set (backend validates them as part of
+              the same audience). */}
+          {servicioId !== null && otherEquipoPersons.length > 0 && (
+            <div>
+              <div className="text-xs text-gray-500 mb-1">
+                Otros equipos del servicio
+              </div>
+              <div className="max-h-48 overflow-y-auto rounded-md border border-gray-200">
+                {otherEquipoPersons.map((group) => (
+                  <div key={group.name}>
+                    <div className="sticky top-0 bg-gray-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                      {group.name}
+                    </div>
+                    {group.people.map((p) => (
+                      <label
+                        key={p.person_id}
+                        className="flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-gray-50 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={personIds.has(p.person_id)}
+                          onChange={() => togglePerson(p.person_id)}
+                        />
+                        <span className="flex-1 truncate">
+                          {p.person_name}
+                        </span>
+                        {p.category_name && (
+                          <span className="text-[11px] text-gray-400 truncate">
+                            {p.category_name}
+                          </span>
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {personIds.size > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {Array.from(personIds).map((pid) => {
+                const local = teamById.get(pid);
+                const cross = servicioPersonById.get(pid);
+                const label = local?.person_name ?? cross?.person_name ?? `#${pid}`;
+                // Show the equipo badge on cross-tenant invitees so
+                // the organizer can tell at a glance which chips are
+                // "external" — matters when the picker has many
+                // selections.
+                const tenantHint =
+                  !local && cross
+                    ? cross.tenant_name
+                    : null;
+                return (
+                  <span
+                    key={pid}
+                    className="inline-flex items-center gap-1 rounded-full bg-brand-50 text-brand-800 text-[11px] px-2 py-0.5"
+                  >
+                    {label}
+                    {tenantHint && (
+                      <span className="text-brand-600">· {tenantHint}</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => togglePerson(pid)}
+                      className="text-brand-700 hover:text-brand-900"
+                      aria-label="Quitar"
+                    >
+                      ×
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          )}
           {audienceEmpty && (
             <p className="text-xs text-amber-700">
               Selecciona al menos un grupo o persona.

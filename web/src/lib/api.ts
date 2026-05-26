@@ -151,6 +151,23 @@ export type ServicioTimeline = {
   cells: ServicioTimelineCell[];
 };
 
+/** Phase C.2: one person reachable from the caller's Servicio.
+ * Returned by GET /api/servicios/{id}/persons. Consumed by the
+ * cross-equipo meeting invitee picker — `is_caller_tenant` tells
+ * the UI whether to bucket the person under "Tu equipo" or
+ * "Otros equipos del servicio". */
+export type ServicioPerson = {
+  person_id: number;
+  person_name: string;
+  person_first_name: string | null;
+  person_last_name: string | null;
+  person_avatar_url: string | null;
+  tenant_id: number;
+  tenant_name: string;
+  category_name: string | null;
+  is_caller_tenant: boolean;
+};
+
 export type HolidaySource = "national" | "regional" | "custom";
 export type Holiday = {
   id: number;
@@ -2007,6 +2024,12 @@ export const api = {
       `/api/servicios/${servicioId}/timeline?${qs.toString()}`,
     );
   },
+  /** Phase C.2: persons across every approved Equipo in a
+   * Servicio. Drives the cross-equipo meeting invitee picker.
+   * Caller's own tenant is included with is_caller_tenant=true so
+   * the UI can render two sections from one response. */
+  getServicioPersons: (servicioId: number) =>
+    request<ServicioPerson[]>(`/api/servicios/${servicioId}/persons`),
   /** Phase C.2: set the caller's own equipo share_policy. Admin-
    * only on the server. The per-slot picker (when 'selected')
    * lives on the slot itself — PATCH /api/slots/{id} accepts

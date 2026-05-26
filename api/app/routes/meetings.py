@@ -29,7 +29,7 @@ from datetime import date, datetime, timedelta
 from typing import Iterable
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, text
 
 from app.models import (
     Group,
@@ -89,9 +89,21 @@ def _validate_audience(
     group_ids: list[int],
     person_ids: list[int],
 ) -> None:
-    """422 if the audience is empty or references unknown ids in the
-    current tenant. Cross-tenant ids are caught by the RLS-scoped
-    lookups returning fewer rows than asked for."""
+    """422 if the audience is empty or references unknown ids.
+
+    Group ids stay strictly in-tenant — groups don't cross tenants
+    by definition (and Phase E drops them entirely).
+
+    Person ids may belong to any approved Equipo in the same
+    Servicio as the caller's tenant. This is what makes the
+    cross-equipo meeting invitee picker work: a residente admin
+    can invite an adjunto by their person_id, and a Comité de
+    Trasplante hosted by adjuntos can include residentes.
+
+    For tenants without a servicio_id (legacy pre-Phase-A), we
+    fall back to the strict in-tenant lookup so visibility doesn't
+    accidentally widen on rows we haven't migrated yet.
+    """
     if not include_main_team and not group_ids and not person_ids:
         raise HTTPException(
             status_code=422,
@@ -111,16 +123,37 @@ def _validate_audience(
                 detail=f"Sub-equipos desconocidos: {sorted(missing)}",
             )
     if person_ids:
-        found = (
-            ctx.db.query(Person.id)
-            .join(Membership, Membership.person_id == Person.id)
-            .filter(
-                Membership.tenant_id == ctx.tenant.id,
-                Person.id.in_(person_ids),
+        if ctx.tenant.servicio_id is not None:
+            # Servicio-aware: validate against the SECURITY DEFINER
+            # function so cross-tenant rows are visible to the check.
+            # Caller's own membership is in there too (the function
+            # returns all approved-equipo members of the servicio),
+            # so this strictly widens the in-tenant case.
+            rows = ctx.db.execute(
+                text(
+                    "SELECT DISTINCT person_id "
+                    "FROM list_servicio_persons(:sid, :ct) "
+                    "WHERE person_id = ANY(:pids)"
+                ),
+                {
+                    "sid": ctx.tenant.servicio_id,
+                    "ct": ctx.tenant.id,
+                    "pids": list(person_ids),
+                },
+            ).all()
+            found_ids = {row[0] for row in rows}
+        else:
+            # Legacy in-tenant fallback.
+            found = (
+                ctx.db.query(Person.id)
+                .join(Membership, Membership.person_id == Person.id)
+                .filter(
+                    Membership.tenant_id == ctx.tenant.id,
+                    Person.id.in_(person_ids),
+                )
+                .all()
             )
-            .all()
-        )
-        found_ids = {row[0] for row in found}
+            found_ids = {row[0] for row in found}
         missing = set(person_ids) - found_ids
         if missing:
             raise HTTPException(

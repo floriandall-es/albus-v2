@@ -36,6 +36,7 @@ from app.routes.deps import RequestContext, get_current_context
 from app.schemas.servicio import (
     EquipoOut,
     ServicioOut,
+    ServicioPersonOut,
     ServicioTimelineCellOut,
     ServicioTimelineOut,
     SharePolicyUpdateRequest,
@@ -171,6 +172,38 @@ def get_servicio_timeline(
         to_date=to,
         cells=cells,
     )
+
+
+@router.get(
+    "/servicios/{servicio_id}/persons",
+    response_model=list[ServicioPersonOut],
+)
+def list_servicio_persons(
+    servicio_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> list[ServicioPersonOut]:
+    """Persons across every approved Equipo in the Servicio. Drives
+    the cross-equipo meeting invitee picker.
+
+    Caller must belong to the servicio. Pending equipos are
+    excluded (the SECURITY DEFINER function enforces that).
+    """
+    _require_same_servicio(ctx, servicio_id)
+    rows = (
+        ctx.db.execute(
+            text(
+                "SELECT person_id, person_name, person_first_name, "
+                "person_last_name, person_avatar_url, "
+                "tenant_id, tenant_name, category_name, "
+                "is_caller_tenant "
+                "FROM list_servicio_persons(:sid, :ct)"
+            ),
+            {"sid": servicio_id, "ct": ctx.tenant.id},
+        )
+        .mappings()
+        .all()
+    )
+    return [ServicioPersonOut(**dict(r)) for r in rows]
 
 
 @router.patch(
