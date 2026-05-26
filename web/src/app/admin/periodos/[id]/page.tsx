@@ -189,8 +189,8 @@ function PeriodoEditor({ periodo }: { periodo: Periodo }) {
           <span>{dateRange}</span>
         </div>
         <p className="mt-2">
-          Ajusta abajo qué actividades se desactivan, cambian su
-          headcount o relajan sus restricciones durante este periodo.
+          Ajusta abajo qué actividades se desactivan, cambian sus
+          plazas o relajan sus restricciones durante este periodo.
           Lo que no toques mantiene su configuración por defecto.
         </p>
       </div>
@@ -311,7 +311,7 @@ function SlotOverrideRow({
             <span className="text-xs text-gray-500">
               {slot.staffing_mode === "team_composition"
                 ? `${slot.team_roles.length} roles`
-                : `headcount ${slot.headcount}`}
+                : `${slot.headcount} plaza${slot.headcount === 1 ? "" : "s"}`}
             </span>
             {isOverridden && (
               <StatusPill tone="warning">Modificado</StatusPill>
@@ -437,7 +437,7 @@ function SlotOverrideForm({
       {!dismissed && !isTeamComposition && (
         <label className="block">
           <span className="text-sm font-medium text-gray-700">
-            Headcount durante el periodo
+            Plazas durante el periodo
           </span>
           <input
             type="number"
@@ -456,10 +456,10 @@ function SlotOverrideForm({
 
       {!dismissed && isTeamComposition && (
         <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          Esta actividad usa <strong>team_composition</strong> con{" "}
-          {slot.team_roles.length} roles. Para reducir headcount en un
-          rol individual necesitamos override por rol (V.2). Si quieres
-          desactivarla entera durante el periodo, marca «No aplica» arriba.
+          Esta actividad se cubre con varios roles ({slot.team_roles.length}).
+          Para reducir plazas en un rol individual necesitamos override por
+          rol (próxima entrega). Si quieres desactivarla entera durante el
+          periodo, marca «No aplica» arriba.
         </p>
       )}
 
