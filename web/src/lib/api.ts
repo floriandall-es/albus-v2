@@ -2187,7 +2187,8 @@ export const api = {
   },
 
   // -------------------------------------------------------------
-  // Vacation V.1: periodos especiales + per-slot overrides + generate.
+  // Vacation periods: V.2.5 model — per-(period, slot) full snapshot
+  // of slot+rules config, plus succession + cap delta overrides.
   // Admin-only on every endpoint. Non-overlap of periodos per tenant
   // is enforced server-side; createPeriodo / updatePeriodo surface
   // the conflict as a 422 the caller can render verbatim.
@@ -2300,6 +2301,31 @@ export const api = {
   deleteCapPeriodOverride: (periodId: number, capId: number) =>
     request<void>(
       `/api/periodos/${periodId}/cap-overrides/${capId}`,
+      { method: "DELETE" },
+    ),
+
+  // V.2.5 — per-(period, slot) full snapshot of slot+rules config.
+  // Replaces the V.1 SlotPeriodOverride + V.2 RulePeriodOverride
+  // endpoints. The PUT payload mirrors the /api/slots PUT shape
+  // (SlotInput + rules-replace), with a `dismissed` bool at the top
+  // level. The frontend's SlotDialog produces both payloads from the
+  // same form. DELETE reverts the slot to its defaults for the period.
+  listSlotPeriodSnapshots: (periodId: number) =>
+    request<SlotPeriodSnapshot[]>(
+      `/api/periodos/${periodId}/slot-snapshots`,
+    ),
+  upsertSlotPeriodSnapshot: (
+    periodId: number,
+    slotId: number,
+    body: SlotPeriodSnapshotUpsert,
+  ) =>
+    request<SlotPeriodSnapshot>(
+      `/api/periodos/${periodId}/slot-snapshots/${slotId}`,
+      { method: "PUT", body: JSON.stringify(body) },
+    ),
+  deleteSlotPeriodSnapshot: (periodId: number, slotId: number) =>
+    request<void>(
+      `/api/periodos/${periodId}/slot-snapshots/${slotId}`,
       { method: "DELETE" },
     ),
 };
@@ -2675,4 +2701,58 @@ export type CapPeriodOverrideUpsert = {
   max_count_override?: number | null;
   severity_override?: "hard" | "soft" | null;
   disabled?: boolean;
+};
+
+// V.2.5 — per-(period, slot) full snapshot of slot+rules config.
+// Replaces SlotPeriodOverride + RulePeriodOverride above (which will
+// be dropped when the editor moves to the shared SlotDialog).
+
+/** Server response shape for a snapshot row. Mirrors `Slot` but
+ * scoped to (period_id, slot_id) and with `dismissed` at the top
+ * level — when true the slot doesn't run during the period at all.
+ * Other fields stay populated so the snapshot stays valid if admin
+ * toggles dismissed off later. */
+export type SlotPeriodSnapshot = {
+  id: number;
+  period_id: number;
+  slot_id: number;
+  dismissed: boolean;
+  start_time: string | null;
+  end_time: string | null;
+  days_applied: DaysApplied;
+  custom_days_bitmap: number | null;
+  staffing_mode: StaffingMode;
+  headcount: number;
+  post_slot_rest: boolean;
+  counts_for_equity: boolean;
+  guardia_type: string | null;
+  color: string | null;
+  team_roles: SlotTeamRole[];
+  allowed_person_ids: number[];
+  allowed_category_ids: number[];
+  rules: SlotRule[];
+  created_at: string;
+};
+
+/** Payload for PUT /api/periodos/{id}/slot-snapshots/{slot_id}.
+ * Same shape as `SlotInput` minus `name`/`department_id` (the slot
+ * keeps those across periods) plus `dismissed`. The rules list fully
+ * replaces what's in the snapshot (rules + their child rows) on each
+ * upsert. */
+export type SlotPeriodSnapshotUpsert = {
+  dismissed?: boolean;
+  start_time?: string | null;
+  end_time?: string | null;
+  days_applied: DaysApplied;
+  custom_days_bitmap?: number | null;
+  staffing_mode: StaffingMode;
+  headcount: number;
+  post_slot_rest?: boolean;
+  counts_for_equity: boolean;
+  guardia_type?: string | null;
+  color?: string | null;
+  team_roles: { role_label: string; headcount: number; category_ids: number[] }[];
+  allowed_person_ids: number[];
+  allowed_category_ids?: number[];
+  rules: SlotRuleInput[];
 };
