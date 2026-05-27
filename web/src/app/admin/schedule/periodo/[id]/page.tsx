@@ -1,16 +1,21 @@
 "use client";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useMemo } from "react";
-import { useQueries, useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Sun } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { ArrowLeft, Play, Sun } from "lucide-react";
 import {
   api,
   type Assignment,
   type Schedule,
   type ScheduleDetail,
 } from "@/lib/api";
-import { EmptyState, ErrorText } from "@/components/admin/ui";
+import { Button, EmptyState, ErrorText } from "@/components/admin/ui";
 import { ScheduleSection } from "@/components/schedule/ScheduleSection";
 import { BalanceStats } from "@/components/schedule/BalanceStats";
 import { formatPeriod } from "@/components/admin/month-picker";
@@ -35,6 +40,11 @@ import { formatPeriod } from "@/components/admin/month-picker";
 export default function PeriodoSchedulePage() {
   const params = useParams<{ id: string }>();
   const periodoId = Number(params.id);
+  const qc = useQueryClient();
+  // Surfaced when the API returns 409 (published/archived month) or
+  // any other regenerate error. Lives right under the header strip so
+  // the user can see why the click didn't do anything.
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   const periodo = useQuery({
     queryKey: ["periodo", periodoId],
@@ -136,6 +146,45 @@ export default function PeriodoSchedulePage() {
   const p = periodo.data;
   const dateRange = { from: p.start_date, to: p.end_date };
   const balanceDataReady = detailQueries.every((q) => q.data !== undefined);
+  // touchedMonths drives the confirmation copy and the list of detail
+  // caches to invalidate after a successful regenerate. Mirrors the
+  // logic in PeriodoEditor — same Spanish month labels.
+  const touchedMonthLabels = useMemo(
+    () =>
+      touchedMonths.map((period) => {
+        const d = new Date(period + "T00:00:00");
+        return d.toLocaleDateString("es-ES", {
+          month: "long",
+          year: "numeric",
+        });
+      }),
+    [touchedMonths],
+  );
+
+  // Regenerate every month the periodo touches in one solve. Same
+  // contract as the PeriodoEditor's footer button: locked + dismissed
+  // cells survive, plain manual edits get overwritten, published or
+  // archived months abort with 409.
+  const regenerate = useMutation({
+    mutationFn: () => api.generatePeriodo(p.id),
+    onSuccess: (results) => {
+      setGenerateError(null);
+      // Refresh the schedules list (new schedules may have been
+      // created for previously-empty months) AND each affected
+      // schedule's detail + violations cache so the in-page sections
+      // re-render with the new assignments.
+      qc.invalidateQueries({ queryKey: ["schedules"] });
+      for (const r of results) {
+        qc.invalidateQueries({ queryKey: ["schedule", r.schedule_id] });
+        qc.invalidateQueries({
+          queryKey: ["schedule-violations", r.schedule_id],
+        });
+      }
+    },
+    onError: (e) => {
+      setGenerateError((e as Error).message);
+    },
+  });
 
   return (
     <>
@@ -155,14 +204,43 @@ export default function PeriodoSchedulePage() {
               {formatPeriodoRangeLabel(p.start_date, p.end_date)}
             </p>
           </div>
-          <Link
-            href="/admin/schedule"
-            className="inline-flex items-center gap-1.5 rounded-lg ring-1 ring-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-50 transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Volver
-          </Link>
+          {/* Right-aligned button cluster: regenerate (primary) +
+              Volver (secondary). The confirm copy spells out the
+              preservation contract — locked cells AND "No aplica"
+              survive, manual edits without a lock do not, and
+              published/archived months will abort the operation. */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              onClick={() => {
+                if (touchedMonthLabels.length === 0) return;
+                const monthList = touchedMonthLabels.join(", ");
+                if (
+                  confirm(
+                    `Esto regenerará ${touchedMonthLabels.length} planificación${touchedMonthLabels.length === 1 ? "" : "es"} (${monthList}). Se conservan las celdas bloqueadas y las marcadas como "No aplica"; los cambios manuales sin candado se sobrescribirán. Si algún mes está publicado o archivado, la operación se detiene. ¿Continuar?`,
+                  )
+                ) {
+                  regenerate.mutate();
+                }
+              }}
+              disabled={regenerate.isPending}
+            >
+              <Play className="h-4 w-4" />
+              {regenerate.isPending ? "Regenerando…" : "Regenerar período"}
+            </Button>
+            <Link
+              href="/admin/schedule"
+              className="inline-flex items-center gap-1.5 rounded-lg ring-1 ring-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-50 transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Volver
+            </Link>
+          </div>
         </div>
+        {generateError && (
+          <div className="mt-3">
+            <ErrorText>{generateError}</ErrorText>
+          </div>
+        )}
       </div>
 
       {/* One block per touched month — either the editable ScheduleSection
