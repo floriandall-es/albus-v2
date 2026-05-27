@@ -937,6 +937,74 @@ class _Context:
                 return tr.id
         return None
 
+    def _future_substitution_opportunities(
+        self, slot: Slot, rule, candidate_pid: int, current_block_start: date
+    ) -> int:
+        """Count rotation blocks strictly AFTER ``current_block_start``
+        where (1) the natural rotation owner will be ineligible and
+        (2) ``candidate_pid`` is eligible to substitute.
+
+        Used as a tiebreak in the substitute-pick sort below. Without
+        it, when two candidates have the same total load the queue
+        order wins — which favours the candidate closest to the
+        absent person and can starve a candidate whose ONLY remaining
+        chance to sub is the current block.
+
+        Concrete Hospital La Fe case (Verano 2026): Morcillo loses
+        both his natural weekends (W2 + W8) to vacation. His only
+        substitution opportunities are W4 + W5 (he's blocked on W1,
+        W2, W8). If W5 gets handed to Fontana on tied score, Morcillo
+        is stuck at 1 weekend total — while Fontana wastes a slot
+        she could have filled later at W8 instead. Preferring the
+        candidate with fewer future opportunities at tied score
+        sends W5 to Morcillo and W8 to Fontana, balancing both at 2
+        weekends each.
+        """
+        count = 0
+        seen_blocks: set[date] = set()
+        block_dates_cur = self._block_dates_for(rule, current_block_start)
+        for d in self.dates:
+            # Only count days the rule actually governs (skip
+            # out-of-period dates where rule_for falls back to a
+            # different rule).
+            if self.rule_for(slot.id, d) is not rule:
+                continue
+            block_dates = self._block_dates_for(rule, d)
+            if not block_dates:
+                continue
+            anchor = block_dates[0]
+            if anchor in seen_blocks:
+                continue
+            seen_blocks.add(anchor)
+            # Strictly future — same-day or past blocks have already
+            # been processed (their substitutions are baked in).
+            if anchor <= current_block_start:
+                continue
+            # Identify the natural rotation owner for this block. If
+            # the natural is the candidate themselves, this block
+            # isn't a substitution opportunity for them — it's their
+            # own natural slot.
+            natural_team = self.rotation_persons_for(rule, anchor)
+            if not natural_team or candidate_pid in natural_team:
+                continue
+            # Block needs a substitute iff ANY natural team member is
+            # ineligible for ANY day of the block (matches
+            # rotation_persons_for_substituted's check).
+            natural_needs_sub = any(
+                self.eligibility_reason(npid, slot, bd, None) is not None
+                for npid in natural_team
+                for bd in block_dates
+            )
+            if not natural_needs_sub:
+                continue
+            # Candidate must be eligible for the WHOLE block.
+            if all(
+                self.eligibility_reason(candidate_pid, slot, bd, None) is None
+                for bd in block_dates
+            ):
+                count += 1
+        return count
+
     def _normal_rotation_load_for(
         self, slot: Slot, rule
     ) -> dict[int, int]:
@@ -1137,10 +1205,25 @@ class _Context:
             # 2 more weekends naturally. Adding the precomputed
             # baseline pushes them down the sort.
             normal_load = self._normal_rotation_load_for(slot, rule)
+            # Sort key:
+            #   1. Lowest (normal_load + substitution_load) — primary
+            #      balance objective.
+            #   2. FEWEST future substitution opportunities — when
+            #      scores tie, prefer the candidate whose ONLY chance
+            #      to substitute might be this very block. Without
+            #      this, the next tied candidate (lower queue idx)
+            #      grabs the sub and the "trapped" candidate ends up
+            #      under-assigned. See `_future_substitution_opportunities`
+            #      for the concrete failure mode this prevents.
+            #   3. Queue idx — deterministic last-resort tiebreak.
+            block_anchor = block_dates[0] if block_dates else d
             candidates = [
                 (
                     normal_load.get(spid, 0)
                     + self._substitution_load[(slot.id, spid)],
+                    self._future_substitution_opportunities(
+                        slot, rule, spid, block_anchor
+                    ),
                     idx,
                     spid,
                 )
@@ -1148,8 +1231,8 @@ class _Context:
                 if spid not in used and eligible_for_block(spid)
             ]
             if candidates:
-                candidates.sort()  # (load, idx, spid) tuple sort
-                picked = candidates[0][2]
+                candidates.sort()  # (load, future_ops, idx, spid)
+                picked = candidates[0][3]
                 final_team.append(picked)
                 used.add(picked)
                 substitutions[picked] = pid
