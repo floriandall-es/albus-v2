@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, func, text
+from sqlalchemy import Boolean, DateTime, Integer, String, func, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -91,6 +91,20 @@ class Person(Base):
     # values that drive every `bg-brand-*` / `text-brand-*` class.
     preferred_accent: Mapped[str] = mapped_column(
         String(16), nullable=False, server_default="teal"
+    )
+    # Migration 0079: founder gate for /api/founder/tenants. Default
+    # false on every row; flipped manually for Florian's Person via
+    # SQL after migration. Non-founder callers get 403 on the route.
+    is_founder: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false", default=False
+    )
+    # Migration 0079: bumped on every successful login (single-tenant
+    # fast path AND select-tenant exchange). Surfaced in the founder
+    # dashboard as a per-tenant rollup (MAX across the tenant's
+    # members) — used to spot inactive equipos at a glance. NULL until
+    # the user logs in for the first time post-deploy.
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

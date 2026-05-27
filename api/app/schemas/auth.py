@@ -170,6 +170,11 @@ class PersonOut(BaseModel):
     # 12 presets defined in web/src/lib/accent.ts. Default 'teal'
     # for everyone who hasn't touched the picker.
     preferred_accent: str = "teal"
+    # Migration 0079: gates the founder dashboard. False for every
+    # row by default; flipped manually via SQL for Florian's account.
+    # Frontend uses this to gate the /founder route + hide its
+    # entry point from the rest of the UI.
+    is_founder: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -419,6 +419,11 @@ export type Person = {
   /** Migration 0065: per-user accent colour key (one of
    * AccentName in @/lib/accent). Default 'teal'. */
   preferred_accent: string;
+  /** Migration 0079: gates the /founder dashboard. False for every
+   * Person by default; flipped manually for Florian's account.
+   * Frontend uses it to decide whether to render the founder route
+   * or redirect away. */
+  is_founder: boolean;
   created_at: string;
 };
 
@@ -1237,6 +1242,11 @@ export const api = {
       swap_offers_open: number;
       equipos_pending: number;
     }>("/api/admin/pendientes"),
+  /** Founder-only: cross-tenant rollup of every signed-up equipo.
+   * Backend is gated on Person.is_founder — non-founders get 403.
+   * Used by /founder. Not polled; user refreshes manually. */
+  listFounderTenants: () =>
+    request<FounderTenantSummary[]>("/api/founder/tenants"),
   /** Phase D.3: pending sibling equipos awaiting approval in the
    * caller's servicio. Admin-only. */
   listPendingEquipos: () =>
@@ -2593,6 +2603,35 @@ export type Periodo = {
   /** YYYY-MM-DD, inclusive. */
   end_date: string;
   created_at: string;
+};
+
+/** GET /api/founder/tenants — one row per signed-up equipo, with
+ * cross-tenant rollups. Backend is gated on Person.is_founder, so
+ * regular users never see this data. */
+export type FounderTenantSummary = {
+  id: number;
+  name: string;
+  slug: string;
+  /** Parent hospital name. Null on legacy standalone tenants. */
+  hospital_name: string | null;
+  /** Servicio (department) name. Null on pre-Hospital-layer tenants. */
+  servicio_name: string | null;
+  /** tenants.created_at — when the equipo signed up. */
+  signup_date: string;
+  /** ACTIVATED + non-disabled memberships only. Matches the
+   * "active roster" definition used by /admin/team. */
+  members_count: number;
+  /** Subset of members_count whose roles array includes 'admin'. */
+  admins_count: number;
+  /** MAX(persons.last_login_at) across the equipo's roster.
+   * Null = nobody has logged in yet (or pre-migration-0079 accounts
+   * that haven't logged in since). */
+  last_login_at: string | null;
+  /** MAX(schedules.published_at) for the tenant. Null = nothing
+   * published yet. */
+  last_schedule_published_at: string | null;
+  /** Live invitations: not accepted, not revoked, not expired. */
+  pending_invitations_count: number;
 };
 
 /** One element of the array returned by POST /api/periodos/{id}/generate.

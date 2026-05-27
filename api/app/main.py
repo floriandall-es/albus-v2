@@ -14,6 +14,7 @@ from app.routes import (
     availability,
     categories,
     dms,
+    founder,
     health,
     holidays,
     hospital_directory,
@@ -70,6 +71,7 @@ app.include_router(admin_dashboard.router, prefix="/api")
 app.include_router(servicios.router, prefix="/api")
 app.include_router(public_catalog.router, prefix="/api")
 app.include_router(periodos.router, prefix="/api")
+app.include_router(founder.router, prefix="/api")
 
 # Serve user-uploaded profile photos. The directory is mounted from a
 # host volume in prod (/srv/albus/avatars). We create it on startup so

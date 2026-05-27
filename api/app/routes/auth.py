@@ -449,6 +449,11 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         if not tenant or not membership:
             # Should be impossible — function guarantees the rows exist.
             raise HTTPException(status_code=500, detail="Membership lookup inconsistency")
+        # Migration 0079: bump last_login_at on every successful login.
+        # The /api/login route uses get_db (no auto-commit), so we
+        # commit explicitly to persist this single-field write.
+        person.last_login_at = datetime.now(timezone.utc)
+        db.commit()
         token = create_access_token(
             person_id=person.id, tenant_id=tenant.id, roles=membership.roles
         )
@@ -505,6 +510,12 @@ def select_tenant(payload: SelectTenantRequest, db: Session = Depends(get_db)) -
     membership = db.get(Membership, match["membership_id"])
     if not tenant or not membership:
         raise HTTPException(status_code=500, detail="Membership lookup inconsistency")
+
+    # Migration 0079: bump last_login_at on the multi-tenant exchange
+    # too — this is the moment the session becomes authenticated for
+    # real. Commit explicitly because get_db doesn't auto-commit.
+    person.last_login_at = datetime.now(timezone.utc)
+    db.commit()
 
     token = create_access_token(
         person_id=person.id, tenant_id=tenant.id, roles=membership.roles
