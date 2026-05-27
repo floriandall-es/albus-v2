@@ -953,6 +953,19 @@ class _Context:
         those days are exactly the ones the substitution code is
         about to fill, and the substitute should be priced separately
         via `_substitution_load`.
+
+        IMPORTANT: only count days where `rule` is the EFFECTIVE rule
+        per `rule_for(slot, d)`. For a periodo generate, `self.dates`
+        spans full calendar months (e.g. Jul 1 – Sep 30 for a Jul 1 –
+        Sep 22 period). The snapshot rule passed in only governs
+        in-period dates; out-of-period dates fall back to the global
+        rule (different rotation members + positions). Counting those
+        days against the snapshot's natural-load would inflate it for
+        the person whose snapshot position happens to land outside
+        the period — pushing them down the substitute-pick sort
+        unfairly. Concretely: this caused W5 + W8 substitutions to
+        prefer Morcillo / Ceron over Fontana, even though Fontana had
+        zero subs and one fewer natural in-period weekend.
         """
         key = (slot.id, rule.id)
         cached = self._normal_rotation_load_cache.get(key)
@@ -960,6 +973,8 @@ class _Context:
             return cached
         load: dict[int, int] = defaultdict(int)
         for d in self.dates:
+            if self.rule_for(slot.id, d) is not rule:
+                continue
             team = self.rotation_persons_for(rule, d)
             for pid in team:
                 if self.eligibility_reason(pid, slot, d, None) is None:
