@@ -52,11 +52,13 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     Assignment,
+    PeriodoEspecial,
     Person,
     Schedule,
     Slot,
     SlotFrequencyCap,
     SlotSuccessionRule,
+    SlotSuccessionRulePeriodExtra,
     SlotTeamRole,
 )
 from app.services.scheduler import slots_overlap_in_time
@@ -203,6 +205,51 @@ def find_violations(db: Session, schedule: Schedule) -> list[Violation]:
             for tr in db.query(SlotTeamRole).filter(SlotTeamRole.id.in_(role_ids))
         }
 
+    # Period-only succession rules (migration 0078). Loaded together
+    # with their periods so we can restrict each extra to assignments
+    # whose triggering date is inside the period. Same per-rule logic
+    # as the globals — the helper accepts an optional date filter.
+    extras = (
+        db.query(SlotSuccessionRulePeriodExtra)
+        .filter(
+            SlotSuccessionRulePeriodExtra.tenant_id == tenant_id,
+            SlotSuccessionRulePeriodExtra.applies_to == "same_person",
+        )
+        .all()
+    )
+    extras_by_period: dict[int, list[SlotSuccessionRulePeriodExtra]] = defaultdict(list)
+    for ex in extras:
+        extras_by_period[ex.period_id].append(ex)
+    period_dates: dict[int, set[date]] = {}
+    if extras_by_period:
+        periodo_rows = (
+            db.query(PeriodoEspecial)
+            .filter(
+                PeriodoEspecial.tenant_id == tenant_id,
+                PeriodoEspecial.id.in_(extras_by_period.keys()),
+            )
+            .all()
+        )
+        for p in periodo_rows:
+            ds: set[date] = set()
+            d = p.start_date
+            while d <= p.end_date:
+                ds.add(d)
+                d = d + timedelta(days=1)
+            period_dates[p.id] = ds
+    # Extras can reference their own role filters too — extend the label
+    # lookup so messages aren't blanks. Cheap: we only run the second
+    # query if a new id appeared.
+    extra_role_ids = {
+        e.after_team_role_id for e in extras if e.after_team_role_id
+    } | {
+        e.forbid_team_role_id for e in extras if e.forbid_team_role_id
+    }
+    missing = extra_role_ids - team_role_labels.keys()
+    if missing:
+        for tr in db.query(SlotTeamRole).filter(SlotTeamRole.id.in_(missing)):
+            team_role_labels[tr.id] = tr.role_label
+
     out: list[Violation] = []
     out.extend(
         _check_succession_rules(
@@ -210,6 +257,19 @@ def find_violations(db: Session, schedule: Schedule) -> list[Violation]:
             person_name_by_id, team_role_labels,
         )
     )
+    for period_id, period_extras in extras_by_period.items():
+        # Cast extras to the global rule type for the helper — the
+        # attribute surface is identical (after/forbid + role + days
+        # + severity + weight + applies_to). The cast is just for
+        # mypy; at runtime they walk the exact same code path.
+        out.extend(
+            _check_succession_rules(
+                assignments, slots,
+                period_extras,  # type: ignore[arg-type]
+                person_name_by_id, team_role_labels,
+                restrict_after_dates=period_dates.get(period_id, set()),
+            )
+        )
     out.extend(
         _check_frequency_caps(
             assignments, slots, freq_caps,
@@ -251,6 +311,7 @@ def _check_succession_rules(
     rules: list[SlotSuccessionRule],
     names: dict[int, str],
     role_labels: dict[int, str],
+    restrict_after_dates: set[date] | None = None,
 ) -> Iterable[Violation]:
     """SlotSuccessionRule covers two distinct UX concepts:
 
@@ -283,6 +344,12 @@ def _check_succession_rules(
         forbid_pool = by_slot_role.get(
             (rule.forbid_slot_id, rule.forbid_team_role_id), []
         )
+        # Period extras (migration 0078): caller passes the set of dates
+        # the rule applies to so we only flag pairs whose triggering
+        # ("after") date is inside the period. The forbid side may
+        # fall outside the period — same semantics as the solver.
+        if restrict_after_dates is not None:
+            after_pool = [a for a in after_pool if a.date in restrict_after_dates]
         if not after_pool or not forbid_pool:
             continue
 

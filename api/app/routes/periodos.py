@@ -43,6 +43,7 @@ from app.models import (
     SlotPeriodSnapshotTeamRole,
     SlotPeriodSnapshotTeamRoleCategory,
     SlotSuccessionRule,
+    SlotSuccessionRulePeriodExtra,
     SlotSuccessionRulePeriodOverride,
 )
 from app.routes.deps import RequestContext, get_current_context
@@ -55,6 +56,8 @@ from app.schemas.periodo_especial import (
     SlotFrequencyCapPeriodOverrideUpsert,
     SlotPeriodSnapshotOut,
     SlotPeriodSnapshotUpsert,
+    SlotSuccessionRulePeriodExtraIn,
+    SlotSuccessionRulePeriodExtraOut,
     SlotSuccessionRulePeriodOverrideOut,
     SlotSuccessionRulePeriodOverrideUpsert,
 )
@@ -626,6 +629,176 @@ def delete_succession_override(
         SlotSuccessionRulePeriodOverride.period_id == period_id,
         SlotSuccessionRulePeriodOverride.succession_rule_id
         == succession_rule_id,
+    ).delete(synchronize_session=False)
+    ctx.db.flush()
+
+
+# ---------------------------------------------------------------------------
+# Period-only succession rules (migration 0078)
+#
+# Complements the override CRUD above. The override edits an existing
+# global rule for the period; the extras CRUD lets the admin create
+# NEW rules that ONLY apply inside the period — covering the case
+# where no global rule exists but one is needed for the season.
+# ---------------------------------------------------------------------------
+
+
+def _validate_extra_payload(
+    ctx: RequestContext, payload: SlotSuccessionRulePeriodExtraIn
+) -> tuple[Slot, Slot]:
+    """Validate that the slot + sub-role refs in `payload` belong to
+    this tenant, and that role refs point at roles of the named slot.
+
+    Returns the two slot rows so caller doesn't re-query.
+    """
+    after_slot = (
+        ctx.db.query(Slot)
+        .filter(Slot.id == payload.after_slot_id, Slot.tenant_id == ctx.tenant.id)
+        .one_or_none()
+    )
+    forbid_slot = (
+        ctx.db.query(Slot)
+        .filter(
+            Slot.id == payload.forbid_slot_id, Slot.tenant_id == ctx.tenant.id
+        )
+        .one_or_none()
+    )
+    if after_slot is None or forbid_slot is None:
+        raise HTTPException(status_code=404, detail="Actividad no encontrada")
+    # Role-belongs-to-slot check. Done by joining SlotTeamRole rather
+    # than touching the slot relationship, so the validation is one
+    # cheap query regardless of how big the slot's team_roles list is.
+    from app.models import SlotTeamRole
+
+    for slot, role_id, side in (
+        (after_slot, payload.after_team_role_id, "después de"),
+        (forbid_slot, payload.forbid_team_role_id, "no se puede"),
+    ):
+        if role_id is None:
+            continue
+        owned = (
+            ctx.db.query(SlotTeamRole)
+            .filter(
+                SlotTeamRole.id == role_id,
+                SlotTeamRole.slot_id == slot.id,
+            )
+            .one_or_none()
+        )
+        if owned is None:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"La sub-actividad seleccionada en \"{side}\" no "
+                    f"pertenece a la actividad elegida."
+                ),
+            )
+    return after_slot, forbid_slot
+
+
+@router.get(
+    "/periodos/{period_id}/succession-extras",
+    response_model=list[SlotSuccessionRulePeriodExtraOut],
+)
+def list_succession_extras(
+    period_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> list[SlotSuccessionRulePeriodExtraOut]:
+    _require_admin(ctx)
+    _get_periodo_or_404(ctx, period_id)
+    rows = (
+        ctx.db.query(SlotSuccessionRulePeriodExtra)
+        .filter(SlotSuccessionRulePeriodExtra.period_id == period_id)
+        .order_by(SlotSuccessionRulePeriodExtra.id)
+        .all()
+    )
+    return [
+        SlotSuccessionRulePeriodExtraOut.model_validate(r, from_attributes=True)
+        for r in rows
+    ]
+
+
+@router.post(
+    "/periodos/{period_id}/succession-extras",
+    response_model=SlotSuccessionRulePeriodExtraOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_succession_extra(
+    period_id: int,
+    payload: SlotSuccessionRulePeriodExtraIn,
+    ctx: RequestContext = Depends(get_current_context),
+) -> SlotSuccessionRulePeriodExtraOut:
+    _require_admin(ctx)
+    _get_periodo_or_404(ctx, period_id)
+    _validate_extra_payload(ctx, payload)
+    row = SlotSuccessionRulePeriodExtra(
+        tenant_id=ctx.tenant.id,
+        period_id=period_id,
+        after_slot_id=payload.after_slot_id,
+        forbid_slot_id=payload.forbid_slot_id,
+        after_team_role_id=payload.after_team_role_id,
+        forbid_team_role_id=payload.forbid_team_role_id,
+        days_after=payload.days_after,
+        severity=payload.severity,
+        weight=payload.weight,
+    )
+    ctx.db.add(row)
+    ctx.db.flush()
+    return SlotSuccessionRulePeriodExtraOut.model_validate(
+        row, from_attributes=True
+    )
+
+
+@router.put(
+    "/periodos/{period_id}/succession-extras/{extra_id}",
+    response_model=SlotSuccessionRulePeriodExtraOut,
+)
+def update_succession_extra(
+    period_id: int,
+    extra_id: int,
+    payload: SlotSuccessionRulePeriodExtraIn,
+    ctx: RequestContext = Depends(get_current_context),
+) -> SlotSuccessionRulePeriodExtraOut:
+    _require_admin(ctx)
+    _get_periodo_or_404(ctx, period_id)
+    row = (
+        ctx.db.query(SlotSuccessionRulePeriodExtra)
+        .filter(
+            SlotSuccessionRulePeriodExtra.id == extra_id,
+            SlotSuccessionRulePeriodExtra.period_id == period_id,
+        )
+        .one_or_none()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Regla no encontrada")
+    _validate_extra_payload(ctx, payload)
+    row.after_slot_id = payload.after_slot_id
+    row.forbid_slot_id = payload.forbid_slot_id
+    row.after_team_role_id = payload.after_team_role_id
+    row.forbid_team_role_id = payload.forbid_team_role_id
+    row.days_after = payload.days_after
+    row.severity = payload.severity
+    row.weight = payload.weight
+    ctx.db.flush()
+    return SlotSuccessionRulePeriodExtraOut.model_validate(
+        row, from_attributes=True
+    )
+
+
+@router.delete(
+    "/periodos/{period_id}/succession-extras/{extra_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+def delete_succession_extra(
+    period_id: int,
+    extra_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> None:
+    _require_admin(ctx)
+    _get_periodo_or_404(ctx, period_id)
+    ctx.db.query(SlotSuccessionRulePeriodExtra).filter(
+        SlotSuccessionRulePeriodExtra.id == extra_id,
+        SlotSuccessionRulePeriodExtra.period_id == period_id,
     ).delete(synchronize_session=False)
     ctx.db.flush()
 

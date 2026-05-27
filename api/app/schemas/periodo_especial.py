@@ -171,6 +171,37 @@ class SlotSuccessionRulePeriodOverrideOut(BaseModel):
     disabled: bool
 
 
+# --- Period-only extras (migration 0078) ---------------------------------
+# Brand-new succession rules that exist ONLY during one periodo
+# especial. Same shape as the global SlotSuccessionRuleIn/Out — every
+# field is authored, no delta semantics. The route handler owns
+# tenant_id + period_id; the client only sends the rule body.
+
+
+class SlotSuccessionRulePeriodExtraIn(BaseModel):
+    """Body for create or full update of a period-only succession rule."""
+
+    after_slot_id: int
+    forbid_slot_id: int
+    after_team_role_id: int | None = None
+    forbid_team_role_id: int | None = None
+    days_after: int = Field(ge=0, le=14)
+    severity: Severity = "hard"
+    weight: int = Field(default=5, ge=0, le=1000)
+
+
+class SlotSuccessionRulePeriodExtraOut(BaseModel):
+    id: int
+    period_id: int
+    after_slot_id: int
+    forbid_slot_id: int
+    after_team_role_id: int | None
+    forbid_team_role_id: int | None
+    days_after: int
+    severity: Severity
+    weight: int
+
+
 class SlotFrequencyCapPeriodOverrideUpsert(BaseModel):
     """Set or replace the override for one (period, frequency cap) pair."""
 

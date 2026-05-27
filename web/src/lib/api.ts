@@ -2245,6 +2245,35 @@ export const api = {
       `/api/periodos/${periodId}/succession-overrides/${successionRuleId}`,
       { method: "DELETE" },
     ),
+  // Period-only succession rules. Complements the override endpoints
+  // above — those edit existing global rules for the period; these
+  // create brand-new rules that only fire inside the period.
+  listSuccessionPeriodExtras: (periodId: number) =>
+    request<SuccessionPeriodExtra[]>(
+      `/api/periodos/${periodId}/succession-extras`,
+    ),
+  createSuccessionPeriodExtra: (
+    periodId: number,
+    body: SuccessionPeriodExtraIn,
+  ) =>
+    request<SuccessionPeriodExtra>(
+      `/api/periodos/${periodId}/succession-extras`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  updateSuccessionPeriodExtra: (
+    periodId: number,
+    extraId: number,
+    body: SuccessionPeriodExtraIn,
+  ) =>
+    request<SuccessionPeriodExtra>(
+      `/api/periodos/${periodId}/succession-extras/${extraId}`,
+      { method: "PUT", body: JSON.stringify(body) },
+    ),
+  deleteSuccessionPeriodExtra: (periodId: number, extraId: number) =>
+    request<void>(
+      `/api/periodos/${periodId}/succession-extras/${extraId}`,
+      { method: "DELETE" },
+    ),
   listCapPeriodOverrides: (periodId: number) =>
     request<CapPeriodOverride[]>(
       `/api/periodos/${periodId}/cap-overrides`,
@@ -2600,6 +2629,32 @@ export type SuccessionPeriodOverrideUpsert = {
   days_after_override?: number | null;
   severity_override?: "hard" | "soft" | null;
   disabled?: boolean;
+};
+
+/** A brand-new succession rule that exists ONLY during one periodo
+ * especial. Covers cases the override model can't: needing a rule
+ * during the period when no global rule exists. */
+export type SuccessionPeriodExtra = {
+  id: number;
+  period_id: number;
+  after_slot_id: number;
+  forbid_slot_id: number;
+  after_team_role_id: number | null;
+  forbid_team_role_id: number | null;
+  /** 0 = same-day incompatibility, 1..14 = "after X, no Y for N days". */
+  days_after: number;
+  severity: "hard" | "soft";
+  weight: number;
+};
+
+export type SuccessionPeriodExtraIn = {
+  after_slot_id: number;
+  forbid_slot_id: number;
+  after_team_role_id?: number | null;
+  forbid_team_role_id?: number | null;
+  days_after: number;
+  severity: "hard" | "soft";
+  weight?: number;
 };
 
 export type CapPeriodOverride = {

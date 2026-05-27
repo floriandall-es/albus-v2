@@ -678,3 +678,95 @@ class SlotFrequencyCapPeriodOverride(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+# ---------------------------------------------------------------------------
+# Period-only succession rules (migration 0078)
+#
+# Complements SlotSuccessionRulePeriodOverride above. The override lets
+# the admin tweak an existing GLOBAL rule for the period (days, severity,
+# disable). This table lets the admin ADD a brand-new rule that ONLY
+# applies inside the period — for cases like "during summer, no Quirófano
+# after Guardia" when no such global rule exists.
+#
+# Schema mirrors SlotSuccessionRule one-to-one (after/forbid slot +
+# sub-role, days_after, applies_to, severity, weight) plus the period FK.
+# Same-day incompatibility (days_after=0) and multi-day succession
+# (days_after>=1) both live here — same as the global table.
+# ---------------------------------------------------------------------------
+
+
+class SlotSuccessionRulePeriodExtra(Base):
+    """A succession rule that exists ONLY during one periodo especial.
+
+    Solver + violations engine union these with the global
+    SlotSuccessionRule list whenever the triggering date lands inside
+    the extra's period. Outside the period, an extra has no effect.
+
+    No delta semantics — every field is authored. To "replace" a global
+    rule for the period the admin would disable the global one via
+    SlotSuccessionRulePeriodOverride and then create a new extra here.
+    """
+
+    __tablename__ = "slot_succession_rule_period_extras"
+    __table_args__ = (
+        CheckConstraint(
+            "days_after BETWEEN 0 AND 14",
+            name="ck_succ_extra_days_after_range",
+        ),
+        CheckConstraint(
+            "applies_to IN ('same_person','whole_team')",
+            name="ck_succ_extra_applies_to",
+        ),
+        CheckConstraint(
+            "severity IN ('hard','soft')",
+            name="ck_succ_extra_severity",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    period_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("periodos_especiales.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    after_slot_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("slots.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    forbid_slot_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("slots.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    after_team_role_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("slot_team_roles.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    forbid_team_role_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("slot_team_roles.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    days_after: Mapped[int] = mapped_column(Integer, nullable=False)
+    applies_to: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="same_person"
+    )
+    severity: Mapped[str] = mapped_column(
+        String(8), nullable=False, default="hard"
+    )
+    weight: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=5
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

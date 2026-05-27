@@ -93,6 +93,7 @@ from app.models import (
     SlotRuleRotationMember,
     SlotRuleWeeklyPin,
     SlotSuccessionRule,
+    SlotSuccessionRulePeriodExtra,
     SlotSuccessionRulePeriodOverride,
     SlotTeamRole,
     SlotTeamRoleCategory,
@@ -297,6 +298,20 @@ class _Context:
             .filter(SlotSuccessionRule.applies_to == "same_person")
             .all()
         )
+        # Period-only succession rules (migration 0078). Stored per
+        # period so the CP-SAT loop can grab the list for the period
+        # active on date D without scanning the whole table. Same
+        # shape as SlotSuccessionRule — both can flow through the
+        # same constraint emitter.
+        self.succession_period_extras_by_period: dict[
+            int, list[SlotSuccessionRulePeriodExtra]
+        ] = defaultdict(list)
+        for extra in (
+            db.query(SlotSuccessionRulePeriodExtra)
+            .filter(SlotSuccessionRulePeriodExtra.applies_to == "same_person")
+            .all()
+        ):
+            self.succession_period_extras_by_period[extra.period_id].append(extra)
         self.frequency_caps: list[SlotFrequencyCap] = (
             db.query(SlotFrequencyCap).all()
         )
@@ -3084,6 +3099,77 @@ def _solve_cpsat(
                                 )
                                 model.Add(z >= av + bv - 1)
                                 soft_obj_terms.append(rule.weight * z)
+
+    # ---- Period-only succession rules (migration 0078). --------------
+    # Same constraint logic as the global loop above, but each extra
+    # only fires when the TRIGGERING date D is inside that extra's
+    # period. Outside the period the extra contributes nothing. We
+    # walk per-period so each loop iteration's date-membership check
+    # is a single dict lookup, not a scan.
+    for period_id, extras in ctx.succession_period_extras_by_period.items():
+        for rule in extras:
+            a_slot = rule.after_slot_id
+            b_slot = rule.forbid_slot_id
+            a_role = rule.after_team_role_id
+            b_role = rule.forbid_team_role_id
+            days_after = rule.days_after
+            severity = rule.severity
+            offsets = [0] if days_after == 0 else range(1, days_after + 1)
+            for D in ctx.dates:
+                # Gating: extra applies only when D's effective period
+                # matches this extra's period_id. period_id_by_date is
+                # populated during _Context.__init__ from the same
+                # PeriodoEspecial rows the extras hang off of.
+                if ctx.period_id_by_date.get(D) != period_id:
+                    continue
+                for offset in offsets:
+                    Dp = D + timedelta(days=offset)
+                    if Dp not in period_dates_set:
+                        continue
+                    for P in person_ids_all:
+                        a_vars, a_pinned = _side_vars_and_pin(
+                            a_slot, a_role, D, P
+                        )
+                        b_vars, b_pinned = _side_vars_and_pin(
+                            b_slot, b_role, Dp, P
+                        )
+                        if (
+                            _person_admin_controlled(a_slot, D, P)
+                            and _person_admin_controlled(b_slot, Dp, P)
+                        ):
+                            continue
+                        if severity == "hard":
+                            if a_pinned:
+                                for bv in b_vars:
+                                    model.Add(bv == 0)
+                                continue
+                            if b_pinned:
+                                for av in a_vars:
+                                    model.Add(av == 0)
+                                continue
+                            if not a_vars or not b_vars:
+                                continue
+                            for av in a_vars:
+                                for bv in b_vars:
+                                    model.Add(av + bv <= 1)
+                        else:
+                            if a_pinned:
+                                for bv in b_vars:
+                                    soft_obj_terms.append(rule.weight * bv)
+                                continue
+                            if b_pinned:
+                                for av in a_vars:
+                                    soft_obj_terms.append(rule.weight * av)
+                                continue
+                            if not a_vars or not b_vars:
+                                continue
+                            for av in a_vars:
+                                for bv in b_vars:
+                                    z = model.NewBoolVar(
+                                        f"succx_r{rule.id}_{D}_{Dp}_p{P}_{id(av)}_{id(bv)}"
+                                    )
+                                    model.Add(z >= av + bv - 1)
+                                    soft_obj_terms.append(rule.weight * z)
 
     # ---- Frequency caps. ----
     # For each cap on slot S with period type T:

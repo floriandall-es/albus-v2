@@ -51,6 +51,7 @@ from app.models.periodo_especial import (
     SlotPeriodSnapshotRuleWeeklyPin,
     SlotPeriodSnapshotTeamRole,
     SlotPeriodSnapshotTeamRoleCategory,
+    SlotSuccessionRulePeriodExtra,
     SlotSuccessionRulePeriodOverride,
 )
 
@@ -103,5 +104,6 @@ __all__ = [
     "SlotPeriodSnapshotCategory",
     "SlotPeriodSnapshotAllowedPerson",
     "SlotSuccessionRulePeriodOverride",
+    "SlotSuccessionRulePeriodExtra",
     "SlotFrequencyCapPeriodOverride",
 ]

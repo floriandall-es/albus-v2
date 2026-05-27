@@ -25,6 +25,8 @@ import {
   type SlotFrequencyCap,
   type SlotPeriodSnapshot,
   type SlotSuccessionRule,
+  type SuccessionPeriodExtra,
+  type SuccessionPeriodExtraIn,
   type SuccessionPeriodOverride,
   type SuccessionPeriodOverrideUpsert,
 } from "@/lib/api";
@@ -35,6 +37,8 @@ import {
   ErrorText,
   InfoHint,
   Modal,
+  NumberField,
+  Select,
   StatusPill,
 } from "@/components/admin/ui";
 import { SlotDialog } from "@/components/admin/SlotDialog";
@@ -410,6 +414,22 @@ function ReglasTab({
       m.set(o.succession_rule_id, o);
     return m;
   }, [successionOverrides.data]);
+  // Period-only extras — brand-new rules that only fire during this
+  // period. Complement the override model above by covering cases
+  // where no global rule exists. Split into same-day vs multi-day
+  // exactly like the global rules so each section gets its own list.
+  const successionExtras = useQuery({
+    queryKey: ["periodo-succession-extras", periodo.id],
+    queryFn: () => api.listSuccessionPeriodExtras(periodo.id),
+  });
+  const sameDayExtras = useMemo(
+    () => (successionExtras.data ?? []).filter((e) => e.days_after === 0),
+    [successionExtras.data],
+  );
+  const successionPeriodExtras = useMemo(
+    () => (successionExtras.data ?? []).filter((e) => e.days_after >= 1),
+    [successionExtras.data],
+  );
 
   const caps = useQuery({
     queryKey: ["frequency-caps"],
@@ -444,6 +464,7 @@ function ReglasTab({
     <div className="space-y-6">
       <SameDayOverrideSection
         rules={incompat}
+        extras={sameDayExtras}
         loading={successionRules.isLoading}
         error={
           successionRules.isError
@@ -452,10 +473,12 @@ function ReglasTab({
         }
         overrideByRule={succOverrideByRule}
         slotById={slotById}
+        slots={slots}
         periodId={periodo.id}
       />
       <SuccessionOverrideSection
         rules={succession}
+        extras={successionPeriodExtras}
         loading={successionRules.isLoading}
         error={
           successionRules.isError
@@ -464,6 +487,7 @@ function ReglasTab({
         }
         overrideByRule={succOverrideByRule}
         slotById={slotById}
+        slots={slots}
         periodId={periodo.id}
       />
       <CapOverrideSection
@@ -528,39 +552,52 @@ function summariseCapOverride(
 // ---------------------------------------------------------------------------
 function SameDayOverrideSection({
   rules,
+  extras,
   loading,
   error,
   overrideByRule,
   slotById,
+  slots,
   periodId,
 }: {
   rules: SlotSuccessionRule[];
+  extras: SuccessionPeriodExtra[];
   loading: boolean;
   error: string | null;
   overrideByRule: Map<number, SuccessionPeriodOverride>;
   slotById: Record<number, Slot>;
+  slots: Slot[];
   periodId: number;
 }) {
   const [editing, setEditing] = useState<SlotSuccessionRule | null>(null);
+  // null = closed, "new" = create-new, extra row = edit-existing.
+  const [editingExtra, setEditingExtra] = useState<
+    SuccessionPeriodExtra | "new" | null
+  >(null);
 
   return (
     <section className="rounded-xl bg-white p-5 ring-1 ring-gray-200 shadow-soft">
-      <div className="flex items-center mb-3">
+      <div className="flex items-center justify-between mb-3 gap-3">
         <h2 className="text-lg font-semibold inline-flex items-center">
           Incompatibilidades del mismo día
           <InfoHint position="below">
             Reglas que prohíben combinar dos actividades el mismo día.
-            Aquí no creas reglas nuevas — eliges, para este periodo,
-            cuáles se desactivan o se relajan.
+            Las globales puedes desactivarlas o relajarlas; aquí también
+            puedes añadir reglas que solo apliquen durante este periodo.
           </InfoHint>
         </h2>
+        <Button onClick={() => setEditingExtra("new")}>
+          + Añadir regla del periodo
+        </Button>
       </div>
       {loading && <p className="text-sm text-gray-500">Cargando…</p>}
       {error && <ErrorText>{error}</ErrorText>}
-      {!loading && rules.length === 0 && (
-        <Empty>No hay incompatibilidades del mismo día definidas.</Empty>
+      {!loading && rules.length === 0 && extras.length === 0 && (
+        <Empty>
+          No hay incompatibilidades del mismo día. Puedes añadir una específica del periodo con el botón de arriba.
+        </Empty>
       )}
-      {rules.length > 0 && (
+      {(rules.length > 0 || extras.length > 0) && (
         <div className="overflow-hidden rounded-lg border border-gray-200">
           <table className="w-full text-sm">
             <thead className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
@@ -628,6 +665,18 @@ function SameDayOverrideSection({
                   </tr>
                 );
               })}
+              {/* Period-only extras: rendered with an amber-tinted row so
+                  they stand apart from the globals at a glance, with the
+                  "Modificación" cell carrying a "Solo en periodo" pill
+                  instead of the override summary used for globals. */}
+              {extras.map((e) => (
+                <ExtraRow
+                  key={`extra-${e.id}`}
+                  extra={e}
+                  slotById={slotById}
+                  onEdit={() => setEditingExtra(e)}
+                />
+              ))}
             </tbody>
           </table>
         </div>
@@ -641,6 +690,15 @@ function SameDayOverrideSection({
           onClose={() => setEditing(null)}
         />
       )}
+      {editingExtra && (
+        <ExtraDialog
+          mode="same-day"
+          initial={editingExtra === "new" ? null : editingExtra}
+          slots={slots}
+          periodId={periodId}
+          onClose={() => setEditingExtra(null)}
+        />
+      )}
     </section>
   );
 }
@@ -651,39 +709,51 @@ function SameDayOverrideSection({
 // ---------------------------------------------------------------------------
 function SuccessionOverrideSection({
   rules,
+  extras,
   loading,
   error,
   overrideByRule,
   slotById,
+  slots,
   periodId,
 }: {
   rules: SlotSuccessionRule[];
+  extras: SuccessionPeriodExtra[];
   loading: boolean;
   error: string | null;
   overrideByRule: Map<number, SuccessionPeriodOverride>;
   slotById: Record<number, Slot>;
+  slots: Slot[];
   periodId: number;
 }) {
   const [editing, setEditing] = useState<SlotSuccessionRule | null>(null);
+  const [editingExtra, setEditingExtra] = useState<
+    SuccessionPeriodExtra | "new" | null
+  >(null);
 
   return (
     <section className="rounded-xl bg-white p-5 ring-1 ring-gray-200 shadow-soft">
-      <div className="flex items-center mb-3">
+      <div className="flex items-center justify-between mb-3 gap-3">
         <h2 className="text-lg font-semibold inline-flex items-center">
           Sucesión entre actividades
           <InfoHint position="below">
             Reglas del tipo &quot;después de X, no Y durante N días&quot;.
-            Útil acortar el descanso obligatorio cuando la plantilla está
-            reducida, o desactivar la regla entera durante el periodo.
+            Las globales puedes desactivarlas o relajarlas; aquí también
+            puedes añadir reglas que solo apliquen durante este periodo.
           </InfoHint>
         </h2>
+        <Button onClick={() => setEditingExtra("new")}>
+          + Añadir regla del periodo
+        </Button>
       </div>
       {loading && <p className="text-sm text-gray-500">Cargando…</p>}
       {error && <ErrorText>{error}</ErrorText>}
-      {!loading && rules.length === 0 && (
-        <Empty>No hay reglas de sucesión definidas.</Empty>
+      {!loading && rules.length === 0 && extras.length === 0 && (
+        <Empty>
+          No hay reglas de sucesión. Puedes añadir una específica del periodo con el botón de arriba.
+        </Empty>
       )}
-      {rules.length > 0 && (
+      {(rules.length > 0 || extras.length > 0) && (
         <div className="overflow-hidden rounded-lg border border-gray-200">
           <table className="w-full text-sm">
             <thead className="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">
@@ -752,6 +822,20 @@ function SuccessionOverrideSection({
                   </tr>
                 );
               })}
+              {/* Period-only extras. Same columns as the globals
+                  above; the row's "Días" column comes from the
+                  extra's authored value (not "—"), and the
+                  Modificación column is replaced by a "Solo en
+                  periodo" pill. */}
+              {extras.map((e) => (
+                <ExtraRow
+                  key={`extra-${e.id}`}
+                  extra={e}
+                  slotById={slotById}
+                  onEdit={() => setEditingExtra(e)}
+                  showDaysColumn
+                />
+              ))}
             </tbody>
           </table>
         </div>
@@ -763,6 +847,15 @@ function SuccessionOverrideSection({
           initial={overrideByRule.get(editing.id) ?? null}
           periodId={periodId}
           onClose={() => setEditing(null)}
+        />
+      )}
+      {editingExtra && (
+        <ExtraDialog
+          mode="succession"
+          initial={editingExtra === "new" ? null : editingExtra}
+          slots={slots}
+          periodId={periodId}
+          onClose={() => setEditingExtra(null)}
         />
       )}
     </section>
@@ -1173,6 +1266,264 @@ function CapOverrideModal({
           </Button>
           <Button type="submit" disabled={upsert.isPending}>
             {upsert.isPending ? "Guardando…" : "Guardar"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Period-only succession rule row + dialog (migration 0078).
+//
+// Used by both SameDayOverrideSection (showDaysColumn=false) and
+// SuccessionOverrideSection (showDaysColumn=true). Visually distinct
+// from the global-rule rows so the admin can tell at a glance which
+// rules survive outside the period and which don't.
+// ---------------------------------------------------------------------------
+function ExtraRow({
+  extra,
+  slotById,
+  onEdit,
+  showDaysColumn,
+}: {
+  extra: SuccessionPeriodExtra;
+  slotById: Record<number, Slot>;
+  onEdit: () => void;
+  showDaysColumn?: boolean;
+}) {
+  const qc = useQueryClient();
+  const remove = useMutation({
+    mutationFn: () =>
+      api.deleteSuccessionPeriodExtra(extra.period_id, extra.id),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["periodo-succession-extras", extra.period_id],
+      });
+    },
+  });
+  const afterRoleLabel =
+    extra.after_team_role_id != null
+      ? slotById[extra.after_slot_id]?.team_roles.find(
+          (tr) => tr.id === extra.after_team_role_id,
+        )?.role_label
+      : null;
+  const forbidRoleLabel =
+    extra.forbid_team_role_id != null
+      ? slotById[extra.forbid_slot_id]?.team_roles.find(
+          (tr) => tr.id === extra.forbid_team_role_id,
+        )?.role_label
+      : null;
+  return (
+    <tr className="border-b border-gray-100 last:border-b-0 bg-amber-50/40 hover:bg-amber-50">
+      <td className="px-4 py-2">
+        {slotById[extra.after_slot_id]?.name ?? `#${extra.after_slot_id}`}
+        {afterRoleLabel && (
+          <span className="ml-1 text-xs text-gray-500">· {afterRoleLabel}</span>
+        )}
+      </td>
+      <td className="px-4 py-2">
+        {slotById[extra.forbid_slot_id]?.name ?? `#${extra.forbid_slot_id}`}
+        {forbidRoleLabel && (
+          <span className="ml-1 text-xs text-gray-500">· {forbidRoleLabel}</span>
+        )}
+      </td>
+      {showDaysColumn && <td className="px-4 py-2">{extra.days_after}</td>}
+      <td className="px-4 py-2">{SEVERITY_LABEL[extra.severity]}</td>
+      <td className="px-4 py-2">
+        <StatusPill tone="warning">Solo en periodo</StatusPill>
+      </td>
+      <td className="px-4 py-2 text-right space-x-2">
+        <Button variant="secondary" onClick={onEdit}>
+          Editar
+        </Button>
+        <Button
+          variant="danger"
+          onClick={() => {
+            if (confirm("¿Eliminar esta regla del periodo?")) remove.mutate();
+          }}
+          disabled={remove.isPending}
+        >
+          Eliminar
+        </Button>
+      </td>
+    </tr>
+  );
+}
+
+
+function ExtraDialog({
+  mode,
+  initial,
+  slots,
+  periodId,
+  onClose,
+}: {
+  /** "same-day" -> days_after locked to 0, no "Durante" field shown.
+   *  "succession" -> days_after editable, 1-14. */
+  mode: "same-day" | "succession";
+  initial: SuccessionPeriodExtra | null;
+  slots: Slot[];
+  periodId: number;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [afterSlotId, setAfterSlotId] = useState<number | "">(
+    initial?.after_slot_id ?? "",
+  );
+  const [forbidSlotId, setForbidSlotId] = useState<number | "">(
+    initial?.forbid_slot_id ?? "",
+  );
+  const [afterRoleId, setAfterRoleId] = useState<number | "">(
+    initial?.after_team_role_id ?? "",
+  );
+  const [forbidRoleId, setForbidRoleId] = useState<number | "">(
+    initial?.forbid_team_role_id ?? "",
+  );
+  const [daysAfter, setDaysAfter] = useState<number>(
+    initial?.days_after ?? (mode === "same-day" ? 0 : 1),
+  );
+  const [severity, setSeverity] = useState<DependencySeverity>(
+    initial?.severity ?? "hard",
+  );
+
+  const lookupSlot = (id: number | "") =>
+    id === "" ? null : slots.find((s) => s.id === id) ?? null;
+  const afterSlot = lookupSlot(afterSlotId);
+  const forbidSlot = lookupSlot(forbidSlotId);
+  const afterRoleOptions =
+    afterSlot && afterSlot.staffing_mode === "team_composition"
+      ? afterSlot.team_roles
+      : [];
+  const forbidRoleOptions =
+    forbidSlot && forbidSlot.staffing_mode === "team_composition"
+      ? forbidSlot.team_roles
+      : [];
+  const slotOptions = slots.map((s) => ({ value: s.id, label: s.name }));
+
+  const save = useMutation({
+    mutationFn: () => {
+      if (afterSlotId === "" || forbidSlotId === "") {
+        throw new Error("Selecciona las actividades");
+      }
+      const body: SuccessionPeriodExtraIn = {
+        after_slot_id: afterSlotId,
+        forbid_slot_id: forbidSlotId,
+        after_team_role_id: afterRoleId === "" ? null : afterRoleId,
+        forbid_team_role_id: forbidRoleId === "" ? null : forbidRoleId,
+        days_after: mode === "same-day" ? 0 : daysAfter,
+        severity,
+      };
+      if (initial) {
+        return api.updateSuccessionPeriodExtra(periodId, initial.id, body);
+      }
+      return api.createSuccessionPeriodExtra(periodId, body);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["periodo-succession-extras", periodId],
+      });
+      onClose();
+    },
+  });
+
+  return (
+    <Modal
+      open={true}
+      onClose={onClose}
+      title={
+        initial
+          ? "Editar regla del periodo"
+          : mode === "same-day"
+            ? "Nueva incompatibilidad del periodo"
+            : "Nueva regla de sucesión del periodo"
+      }
+    >
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save.mutate();
+        }}
+      >
+        <Select
+          label={mode === "same-day" ? "Actividad" : "Después de la actividad"}
+          value={afterSlotId}
+          onChange={(v) => {
+            const next = v === "" ? "" : Number(v);
+            if (next !== afterSlotId) setAfterRoleId("");
+            setAfterSlotId(next);
+          }}
+          options={[{ value: "", label: "—" }, ...slotOptions]}
+        />
+        {afterRoleOptions.length > 0 && (
+          <Select
+            label="Sub-actividad (opcional)"
+            value={afterRoleId}
+            onChange={(v) => setAfterRoleId(v === "" ? "" : Number(v))}
+            options={[
+              { value: "", label: "— Todos los roles —" },
+              ...afterRoleOptions.map((r) => ({
+                value: r.id,
+                label: r.role_label,
+              })),
+            ]}
+          />
+        )}
+        <Select
+          label={
+            mode === "same-day"
+              ? "No se puede combinar con"
+              : "No se puede asignar"
+          }
+          value={forbidSlotId}
+          onChange={(v) => {
+            const next = v === "" ? "" : Number(v);
+            if (next !== forbidSlotId) setForbidRoleId("");
+            setForbidSlotId(next);
+          }}
+          options={[{ value: "", label: "—" }, ...slotOptions]}
+        />
+        {forbidRoleOptions.length > 0 && (
+          <Select
+            label="Sub-actividad (opcional)"
+            value={forbidRoleId}
+            onChange={(v) => setForbidRoleId(v === "" ? "" : Number(v))}
+            options={[
+              { value: "", label: "— Todos los roles —" },
+              ...forbidRoleOptions.map((r) => ({
+                value: r.id,
+                label: r.role_label,
+              })),
+            ]}
+          />
+        )}
+        {mode === "succession" && (
+          <NumberField
+            label="Durante (días, 1-14)"
+            value={daysAfter}
+            onChange={(v) => setDaysAfter(typeof v === "number" ? v : 1)}
+            min={1}
+            max={14}
+          />
+        )}
+        <Select
+          label="Severidad"
+          value={severity}
+          onChange={(v) => setSeverity((v || "hard") as DependencySeverity)}
+          options={[
+            { value: "hard", label: SEVERITY_LABEL.hard },
+            { value: "soft", label: SEVERITY_LABEL.soft },
+          ]}
+        />
+        {save.isError && <ErrorText>{(save.error as Error).message}</ErrorText>}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={save.isPending}>
+            {save.isPending ? "Guardando…" : "Guardar"}
           </Button>
         </div>
       </form>
