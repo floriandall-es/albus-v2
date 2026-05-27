@@ -157,7 +157,6 @@ export default function SchedulesPage() {
               >
                 {generate.isPending ? "Generando…" : "Generar nueva"}
               </Button>
-              <span className="text-xs text-gray-400 self-center">o</span>
               <Button
                 variant="secondary"
                 onClick={() => setVacationOpen((v) => !v)}
