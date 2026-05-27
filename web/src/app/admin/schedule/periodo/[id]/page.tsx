@@ -141,6 +141,29 @@ export default function PeriodoSchedulePage() {
     return out;
   }, [detailQueries]);
 
+  // Split the flattened list into in-period vs out-of-period. We
+  // render two Reparto tables — the first shows the period's
+  // numbers, the second shows the leftover days that landed inside
+  // the touched months but outside the period itself (e.g. for a
+  // Jul 1 – Sept 20 period the second table covers Sept 21–30, all
+  // generated as part of the September schedule but governed by the
+  // normal config). Pre-filtering at this layer keeps BalanceStats
+  // simple — it doesn't need to know about "complement of a range".
+  const periodStart = periodo.data?.start_date ?? null;
+  const periodEnd = periodo.data?.end_date ?? null;
+  const inPeriodAssignments = useMemo(() => {
+    if (!periodStart || !periodEnd) return [] as Assignment[];
+    return allAssignments.filter(
+      (a) => a.date >= periodStart && a.date <= periodEnd,
+    );
+  }, [allAssignments, periodStart, periodEnd]);
+  const outOfPeriodAssignments = useMemo(() => {
+    if (!periodStart || !periodEnd) return [] as Assignment[];
+    return allAssignments.filter(
+      (a) => a.date < periodStart || a.date > periodEnd,
+    );
+  }, [allAssignments, periodStart, periodEnd]);
+
   // touchedMonths drives the confirmation copy and the list of detail
   // caches to invalidate after a successful regenerate. Mirrors the
   // logic in PeriodoEditor — same Spanish month labels.
@@ -258,8 +281,17 @@ export default function PeriodoSchedulePage() {
   }
 
   const p = periodo.data;
-  const dateRange = { from: p.start_date, to: p.end_date };
   const balanceDataReady = detailQueries.every((q) => q.data !== undefined);
+  // Label for the out-of-period section header — the union of the
+  // gap before the period (touched-month-start..period.start-1) and
+  // the gap after (period.end+1..touched-month-end). When the
+  // period lines up with month boundaries the union is empty and
+  // the section doesn't render at all.
+  const outOfPeriodLabel = formatOutOfPeriodLabel(
+    touchedMonths,
+    p.start_date,
+    p.end_date,
+  );
 
   return (
     <>
@@ -392,27 +424,52 @@ export default function PeriodoSchedulePage() {
         </section>
       ))}
 
-      {/* Combined Reparto-por-persona — ONE table aggregating every
-          loaded schedule's assignments across the periodo's date range.
+      {/* Combined Reparto-por-persona — split into two tables.
+          First: assignments inside the period. Second (only when
+          the period doesn't line up with month boundaries): the
+          leftover days of the touched months that fall OUTSIDE
+          the period (e.g. for a Jul 1 – Sept 20 period, Sept 21–30
+          gets its own table because those days are generated as
+          part of the September schedule but governed by the normal
+          config, not the period's snapshot).
           We wait for every detail fetch to land before rendering so
           partial counts don't briefly flash misleading numbers. */}
       {existingSchedules.length > 0 && (
-        <div className="mt-2 border-t border-gray-200 pt-6">
-          <p className="mb-2 text-xs text-gray-500">
-            Reparto agregado de los {existingSchedules.length}{" "}
-            {existingSchedules.length === 1 ? "mes generado" : "meses generados"} del período.
-          </p>
-          {balanceDataReady ? (
-            <BalanceStats
-              assignments={allAssignments}
-              holidayDates={holidayDates}
-              team={team.data ?? []}
-              dateRange={dateRange}
-              title={`Reparto por persona · ${p.name}`}
-            />
-          ) : (
-            <p className="text-sm text-gray-500">Cargando reparto…</p>
-          )}
+        <div className="mt-2 space-y-8 border-t border-gray-200 pt-6">
+          <div>
+            <p className="mb-2 text-xs text-gray-500">
+              Reparto del período (
+              {formatPeriodoRangeLabel(p.start_date, p.end_date)}
+              ). Las celdas marcadas como &quot;No aplica&quot; no cuentan.
+            </p>
+            {balanceDataReady ? (
+              <BalanceStats
+                assignments={inPeriodAssignments}
+                holidayDates={holidayDates}
+                team={team.data ?? []}
+                title={`Reparto por persona · ${p.name}`}
+              />
+            ) : (
+              <p className="text-sm text-gray-500">Cargando reparto…</p>
+            )}
+          </div>
+          {balanceDataReady
+            && outOfPeriodAssignments.length > 0
+            && outOfPeriodLabel && (
+              <div>
+                <p className="mb-2 text-xs text-gray-500">
+                  Fuera del período ({outOfPeriodLabel}). Estos días
+                  se generaron como parte de los meses tocados pero
+                  usan la configuración normal, no la del período.
+                </p>
+                <BalanceStats
+                  assignments={outOfPeriodAssignments}
+                  holidayDates={holidayDates}
+                  team={team.data ?? []}
+                  title={`Reparto por persona · fuera del período`}
+                />
+              </div>
+            )}
         </div>
       )}
 
@@ -440,6 +497,66 @@ export default function PeriodoSchedulePage() {
       )}
     </>
   );
+}
+
+// Build a label for the out-of-period days inside the touched months.
+// For a period 1 jul – 20 sept across [Jul, Aug, Sept], the touched
+// window is Jul 1 – Sept 30 and the out-of-period span is Sept 21 –
+// Sept 30 (one trailing segment). A period that starts mid-month
+// would also have a leading segment (e.g. Jul 1 – Jul 14).
+//
+// Returns null when the period covers full months exactly, signalling
+// the caller to skip rendering the second Reparto table altogether.
+function formatOutOfPeriodLabel(
+  touchedMonths: string[],
+  periodStartISO: string,
+  periodEndISO: string,
+): string | null {
+  if (touchedMonths.length === 0) return null;
+  // Touched window = first day of first touched month → last day of
+  // last touched month. Parsed in UTC to dodge DST surprises.
+  const firstMonth = parseISODate(touchedMonths[0]);
+  const lastMonthFirst = parseISODate(touchedMonths[touchedMonths.length - 1]);
+  if (!firstMonth || !lastMonthFirst) return null;
+  // Last day of last touched month: jump to next month, subtract one day.
+  const nextMonth = new Date(lastMonthFirst);
+  nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1);
+  nextMonth.setUTCDate(0);
+  const touchedStart = toISO(firstMonth);
+  const touchedEnd = toISO(nextMonth);
+
+  const segments: string[] = [];
+  if (periodStartISO > touchedStart) {
+    // Leading gap: touchedStart .. periodStart - 1 day.
+    const ps = parseISODate(periodStartISO);
+    if (ps) {
+      const beforeEnd = new Date(ps);
+      beforeEnd.setUTCDate(beforeEnd.getUTCDate() - 1);
+      segments.push(
+        formatPeriodoRangeLabel(touchedStart, toISO(beforeEnd)),
+      );
+    }
+  }
+  if (periodEndISO < touchedEnd) {
+    // Trailing gap: periodEnd + 1 day .. touchedEnd.
+    const pe = parseISODate(periodEndISO);
+    if (pe) {
+      const afterStart = new Date(pe);
+      afterStart.setUTCDate(afterStart.getUTCDate() + 1);
+      segments.push(
+        formatPeriodoRangeLabel(toISO(afterStart), touchedEnd),
+      );
+    }
+  }
+  if (segments.length === 0) return null;
+  return segments.join(" · ");
+}
+
+function toISO(d: Date): string {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 // "1 jul – 31 ago 2026" / "20 dic 2026 – 6 ene 2027". Same shape the
