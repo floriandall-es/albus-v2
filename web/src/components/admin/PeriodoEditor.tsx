@@ -12,7 +12,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Play, Trash2 } from "lucide-react";
+import { Play } from "lucide-react";
 import {
   api,
   type CapPeriodOverride,
@@ -78,17 +78,12 @@ type EditorTab = "actividades" | "reglas";
 export function PeriodoEditor({
   periodo,
   onGenerated,
-  onDeleted,
 }: {
   periodo: Periodo;
   /** Called with the generated schedules on a successful solve.
    * Parent decides what to render afterwards (collapse the card,
    * show a banner, etc.). */
   onGenerated?: (results: GeneratePeriodResult[]) => void;
-  /** Called after the periodo is deleted (admin pressed the trash
-   * button + confirmed). Parent should remove the periodo from its
-   * list and collapse the editor. */
-  onDeleted?: () => void;
 }) {
   const qc = useQueryClient();
 
@@ -141,60 +136,31 @@ export function PeriodoEditor({
     },
   });
 
-  const remove = useMutation({
-    mutationFn: () => api.deletePeriodo(periodo.id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["periodos"] });
-      onDeleted?.();
-    },
-  });
-
   // Avoid name suppression: the parent row already shows
-  // `periodo.name` and `dateRange` in its clickable header, so the
-  // editor's own header doesn't repeat them. It just carries the
-  // helper text + the Eliminar button. The three regions (header,
-  // body, footer) get distinct tints so the eye stops reading the
-  // whole modal as one blob.
+  // `periodo.name` and `dateRange` in its clickable header. The
+  // editor's own header just carries a helper-text strip so the
+  // three regions (header / body / footer) read as a distinct edit
+  // context with their own amber bookends.
+  // Editar + Eliminar live on the parent PeriodoRow header — they
+  // don't belong inside the editor frame because they apply to the
+  // periodo itself, not to its body of config.
   return (
     <div>
-      {/* Header strip: helper text + Eliminar. Warm amber tint
-          (matches the "you're editing a period config" semantics
-          carried by the same colour on the SlotDialog banner) so
-          the band reads clearly as a distinct edit-context region,
-          not as part of the white body below. items-center keeps
-          the multi-line helper text vertically centred against the
-          taller Eliminar button. */}
-      <div className="flex flex-wrap items-center gap-3 border-b-2 border-amber-200 bg-amber-50 px-4 py-3">
-        <p className="min-w-0 flex-1 text-xs text-amber-900">
+      {/* Header strip: helper text only. The amber tint matches the
+          SlotDialog banner so the band reads as "you're editing a
+          period config" — distinct from the white working area below. */}
+      <div className="border-b-2 border-amber-200 bg-amber-50 px-4 py-3">
+        <p className="text-xs text-amber-900">
           Ajusta abajo qué actividades se desactivan, cambian sus
           plazas o relajan sus restricciones durante este periodo.
           Lo que no toques mantiene su configuración por defecto.
         </p>
-        <Button
-          variant="danger"
-          onClick={() => {
-            if (
-              confirm(
-                `¿Eliminar el periodo "${periodo.name}"? Esto borra todas sus configuraciones específicas, pero las planificaciones ya generadas no se tocan.`,
-              )
-            ) {
-              remove.mutate();
-            }
-          }}
-          disabled={remove.isPending}
-        >
-          <Trash2 className="h-4 w-4" />
-          {remove.isPending ? "Eliminando…" : "Eliminar"}
-        </Button>
       </div>
 
       {/* Body: errors + tabs. White on the surrounding gray so the
           working area reads as a "page" sitting on the row. */}
       <div className="space-y-3 bg-white px-4 py-4">
         {generateError && <ErrorText>{generateError}</ErrorText>}
-        {remove.isError && (
-          <ErrorText>{(remove.error as Error).message}</ErrorText>
-        )}
         <EditorTabs periodo={periodo} slots={slots.data ?? []} />
       </div>
 

@@ -30,8 +30,10 @@ import {
   CalendarRange,
   ChevronDown,
   ChevronRight,
+  Pencil,
   Sparkles,
   Sun,
+  Trash2,
 } from "lucide-react";
 
 const STATUS_TONE = {
@@ -520,6 +522,9 @@ function PeriodoRow({
   onGenerated: (results: GeneratePeriodResult[]) => void;
   onDeleted: () => void;
 }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+
   // Pretty date range — same logic as the old /admin/periodos list.
   const start = new Date(periodo.start_date + "T00:00:00");
   const end = new Date(periodo.end_date + "T00:00:00");
@@ -538,6 +543,18 @@ function PeriodoRow({
   const days =
     Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
 
+  // Delete lives here (next to the row's name/date label) rather than
+  // inside the editor — the action operates on the periodo's identity,
+  // not its body of config, so the natural place for it is the
+  // header. onDeleted is forwarded so the parent collapses the row.
+  const remove = useMutation({
+    mutationFn: () => api.deletePeriodo(periodo.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["periodos"] });
+      onDeleted();
+    },
+  });
+
   return (
     <li>
       {/* The clickable header is the "tab" of the row. It always
@@ -546,48 +563,86 @@ function PeriodoRow({
           Expanded gets the darker amber-100 (same shade the existing
           table uses for the group header), collapsed gets amber-50
           so there's still a subtle "this one is open" cue beyond the
-          chevron direction. */}
-      <button
-        type="button"
-        onClick={onToggle}
+          chevron direction.
+          The chevron + name/date take the toggle click; the right-side
+          buttons stop propagation so they don't also expand the row. */}
+      <div
         className={
-          "flex w-full items-center gap-3 px-4 py-3 text-left transition-colors "
+          "flex w-full items-center gap-3 px-4 py-3 transition-colors "
           + (expanded
             ? "bg-amber-100 hover:bg-amber-200/70"
             : "bg-amber-50 hover:bg-amber-100/70")
         }
-        aria-expanded={expanded}
       >
-        {expanded ? (
-          <ChevronDown className="h-4 w-4 text-gray-500" />
-        ) : (
-          <ChevronRight className="h-4 w-4 text-gray-500" />
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold text-gray-900">
-            {periodo.name}
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+          aria-expanded={expanded}
+        >
+          {expanded ? (
+            <ChevronDown className="h-4 w-4 text-gray-500" />
+          ) : (
+            <ChevronRight className="h-4 w-4 text-gray-500" />
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-semibold text-gray-900">
+              {periodo.name}
+            </div>
+            <div className="mt-0.5 flex items-center gap-2 text-xs text-gray-500">
+              <CalendarRange className="h-3.5 w-3.5" />
+              <span>{dateRange}</span>
+              <span>·</span>
+              <span>
+                {days} {days === 1 ? "día" : "días"}
+              </span>
+            </div>
           </div>
-          <div className="mt-0.5 flex items-center gap-2 text-xs text-gray-500">
-            <CalendarRange className="h-3.5 w-3.5" />
-            <span>{dateRange}</span>
-            <span>·</span>
-            <span>
-              {days} {days === 1 ? "día" : "días"}
-            </span>
-          </div>
+        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => setEditing(true)}
+          >
+            <Pencil className="h-4 w-4" />
+            Editar
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              if (
+                confirm(
+                  `¿Eliminar el periodo "${periodo.name}"? Esto borra todas sus configuraciones específicas, pero las planificaciones ya generadas no se tocan.`,
+                )
+              ) {
+                remove.mutate();
+              }
+            }}
+            disabled={remove.isPending}
+          >
+            <Trash2 className="h-4 w-4" />
+            {remove.isPending ? "Eliminando…" : "Eliminar"}
+          </Button>
         </div>
-      </button>
+      </div>
+      {remove.isError && (
+        <div className="border-t border-amber-200 bg-amber-50 px-4 py-2">
+          <ErrorText>{(remove.error as Error).message}</ErrorText>
+        </div>
+      )}
       {/* PeriodoEditor lays itself out as three horizontal strips
           (header / body / footer) with their own backgrounds. We
           just give it edge-to-edge space below the header tab. */}
       {expanded && (
         <div className="border-t border-gray-200">
-          <PeriodoEditor
-            periodo={periodo}
-            onGenerated={onGenerated}
-            onDeleted={onDeleted}
-          />
+          <PeriodoEditor periodo={periodo} onGenerated={onGenerated} />
         </div>
+      )}
+      {editing && (
+        <EditPeriodoModal
+          periodo={periodo}
+          onClose={() => setEditing(false)}
+        />
       )}
     </li>
   );
@@ -677,6 +732,105 @@ function CreatePeriodoModal({
           </Button>
           <Button type="submit" disabled={!canSubmit}>
             {create.isPending ? "Creando…" : "Crear"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Edit-periodo modal — name + start/end date. Pre-filled with the
+// current values and patched via the existing PATCH /api/periodos/{id}
+// endpoint. Server enforces non-overlap with other periodos, so a
+// conflicting date range surfaces here as a 422 error.
+// ---------------------------------------------------------------------------
+function EditPeriodoModal({
+  periodo,
+  onClose,
+}: {
+  periodo: Periodo;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [name, setName] = useState(periodo.name);
+  const [startDate, setStartDate] = useState(periodo.start_date);
+  const [endDate, setEndDate] = useState(periodo.end_date);
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.updatePeriodo(periodo.id, {
+        name: name.trim(),
+        start_date: startDate,
+        end_date: endDate,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["periodos"] });
+      onClose();
+    },
+  });
+
+  const canSubmit =
+    name.trim().length > 0
+    && !!startDate
+    && !!endDate
+    && endDate >= startDate
+    && !save.isPending;
+
+  return (
+    <Modal open={true} onClose={onClose} title="Editar periodo">
+      <form
+        className="space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (canSubmit) save.mutate();
+        }}
+      >
+        <TextField
+          label="Nombre"
+          value={name}
+          onChange={setName}
+          placeholder="Verano 2026"
+          autoComplete="off"
+          required
+        />
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="text-sm font-medium text-gray-700">Desde</span>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              required
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium text-gray-700">Hasta</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              min={startDate || undefined}
+              required
+              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            />
+          </label>
+        </div>
+        <p className="text-xs text-gray-500">
+          Cambiar las fechas no toca las planificaciones ya generadas;
+          tendrás que regenerar para que se aplique el nuevo rango.
+        </p>
+        {save.isError && (
+          <ErrorText>{(save.error as Error).message}</ErrorText>
+        )}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={!canSubmit}>
+            {save.isPending ? "Guardando…" : "Guardar"}
           </Button>
         </div>
       </form>
