@@ -921,10 +921,11 @@ class _Context:
             return base_team, {}
         team_idx = positions_sorted.index(team_pos)
 
-        # Candidate substitutes in priority order: members of position
-        # team_idx+1, then +2, …, wrapping around. Within a position,
-        # preserve the rotation's authored member order (members are
-        # pre-sorted by (position, id) when loaded into ctx).
+        # Candidate substitutes start in priority order: members of
+        # position team_idx+1, then +2, …, wrapping around. Within a
+        # position, preserve the rotation's authored member order
+        # (members are pre-sorted by (position, id) when loaded into
+        # ctx).
         p_count = len(positions_sorted)
         substitute_queue: list[int] = []
         for offset in range(1, p_count):
@@ -932,6 +933,18 @@ class _Context:
             for m in members:
                 if m.position == next_pos:
                     substitute_queue.append(m.person_id)
+        # Rotate the queue by calendar date so consecutive absent days
+        # pick different substitutes. Without this rotation, the first
+        # eligible position always wins — A on vacation for a week
+        # would land every single one of A's days on B, while C never
+        # substitutes. Anchoring on d.toordinal() makes the offset
+        # advance by 1 per day so substitutes alternate naturally:
+        # 3 candidates → B, C, D, B, C, D…; 2 candidates → B, C, B, C.
+        if substitute_queue:
+            rot = d.toordinal() % len(substitute_queue)
+            substitute_queue = (
+                substitute_queue[rot:] + substitute_queue[:rot]
+            )
 
         final_team: list[int] = []
         substitutions: dict[int, int] = {}
