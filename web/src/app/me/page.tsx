@@ -7,6 +7,7 @@ import {
   ArrowRight,
   CalendarDays,
   CalendarOff,
+  Inbox,
   Settings,
 } from "lucide-react";
 import {
@@ -16,6 +17,7 @@ import {
   type MeetingInstance,
 } from "@/lib/api";
 import { Card } from "@/components/admin/ui";
+import { PendientesCard } from "@/components/PendientesCard";
 import { ShiftSection } from "@/components/me/shift-list";
 import { RequestCoverageModal } from "@/components/me/request-coverage-modal";
 import { todayIso, tomorrowIso } from "@/lib/dates";
@@ -115,6 +117,19 @@ export default function MeHome() {
     queryFn: () =>
       api.listMeetingInstances(todayIsoStr, tomorrowIsoStr),
   });
+
+  // Data feeding the Pendientes panel — three counts surfacing items
+  // that need the user's attention. Each list is fetched here and
+  // counted client-side so we don't need a dedicated
+  // /api/me/pendientes endpoint (yet).
+  const openSwapOffers = useQuery({
+    queryKey: ["me-swap-offers-open"],
+    queryFn: () => api.listSwapOffers({ status: "open" }),
+  });
+  const myAvailability = useQuery({
+    queryKey: ["me-availability-requests"],
+    queryFn: api.listMyAvailabilityRequests,
+  });
   const meetingsByDate = useMemo(() => {
     const map = new Map<string, MeetingInstance[]>();
     for (const m of meetings.data ?? []) {
@@ -128,6 +143,59 @@ export default function MeHome() {
     }
     return map;
   }, [meetings.data]);
+
+  // Pendientes counts. Three buckets:
+  //   1. Cambios por responder: open offers from OTHERS (not from
+  //      me), where I haven't already responded with an active
+  //      response. The list endpoint already filters by audience
+  //      so every offer I see is one I'd be allowed to respond to.
+  //   2. Respuestas a tus cambios: MY open offers where at least
+  //      one response is in "pending" — i.e. someone submitted a
+  //      response I still need to accept or decline.
+  //   3. Bloqueos en revisión: my own availability requests still
+  //      in "pending" status. Informational rather than actionable
+  //      (the admin actions them) — exposed so the member can see
+  //      at a glance that their vacation is still waiting.
+  const pendientesCounts = useMemo(() => {
+    const meId = me.data?.person.id;
+    const offers = openSwapOffers.data ?? [];
+    let toRespond = 0;
+    let myWithResponses = 0;
+    if (meId != null) {
+      for (const o of offers) {
+        if (o.requested_by_person_id === meId) {
+          // My own offer. Count if any response is awaiting my
+          // decision (status "pending").
+          if (o.responses.some((r) => r.status === "pending")) {
+            myWithResponses += 1;
+          }
+        } else {
+          // Someone else's offer. Count if I haven't already
+          // responded with a still-live response (pending or
+          // accepted). Withdrawn / declined leaves the door open
+          // to re-respond if the requester is still waiting.
+          const myActive = o.responses.find(
+            (r) =>
+              r.responder_person_id === meId
+              && (r.status === "pending" || r.status === "accepted"),
+          );
+          if (!myActive) toRespond += 1;
+        }
+      }
+    }
+    const bloqueosPending = (myAvailability.data ?? []).filter(
+      (b) => b.status === "pending",
+    ).length;
+    return {
+      toRespond,
+      myWithResponses,
+      bloqueosPending,
+    };
+  }, [me.data, openSwapOffers.data, myAvailability.data]);
+  const totalPendientes =
+    pendientesCounts.toRespond
+    + pendientesCounts.myWithResponses
+    + pendientesCounts.bloqueosPending;
 
   if (me.isLoading) {
     return <p className="text-sm text-gray-500">Cargando…</p>;
@@ -213,6 +281,50 @@ export default function MeHome() {
               .
             </div>
           </Card>
+        </section>
+      )}
+
+      {/* Pendientes — only shown when something needs the user's
+          attention. Mirrors the admin Inicio's Pendientes block:
+          one PendientesCard per category, each deep-linking to the
+          page that actions the items. */}
+      {totalPendientes > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+            Pendientes
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {pendientesCounts.toRespond > 0 && (
+              <PendientesCard
+                icon={<Inbox className="h-5 w-5" />}
+                count={pendientesCounts.toRespond}
+                label="Cambios por responder"
+                sublabel="Compañeros piden cobertura para sus turnos"
+                href="/me/swaps"
+                tone="sky"
+              />
+            )}
+            {pendientesCounts.myWithResponses > 0 && (
+              <PendientesCard
+                icon={<ArrowLeftRight className="h-5 w-5" />}
+                count={pendientesCounts.myWithResponses}
+                label="Respuestas a tus cambios"
+                sublabel="Alguien quiere cubrir tu turno"
+                href="/me/swaps"
+                tone="violet"
+              />
+            )}
+            {pendientesCounts.bloqueosPending > 0 && (
+              <PendientesCard
+                icon={<CalendarOff className="h-5 w-5" />}
+                count={pendientesCounts.bloqueosPending}
+                label="Bloqueos en revisión"
+                sublabel="Esperando aprobación del administrador"
+                href="/me/bloqueos"
+                tone="amber"
+              />
+            )}
+          </div>
         </section>
       )}
 

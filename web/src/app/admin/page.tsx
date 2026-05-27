@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { api, personFirstName } from "@/lib/api";
 import { Card } from "@/components/admin/ui";
+import { PendientesCard } from "@/components/PendientesCard";
 import { formatPeriod } from "@/components/admin/month-picker";
 import {
   ProductTour,
@@ -510,79 +511,6 @@ function StepCard({
         </Link>
       </div>
     </Card>
-  );
-}
-
-function PendientesCard({
-  icon,
-  count,
-  label,
-  sublabel,
-  href,
-  tone,
-}: {
-  icon: React.ReactNode;
-  count: number;
-  label: string;
-  sublabel: string;
-  href: string;
-  /** Colour family for the icon chip + count pill. Each
-   * category uses a distinct tone so the eye can sort them at
-   * a glance without reading. */
-  tone: "amber" | "violet" | "sky" | "emerald";
-}) {
-  const toneClasses = {
-    amber: {
-      chip: "bg-amber-100 text-amber-700 group-hover:bg-amber-200",
-      pill: "bg-amber-600",
-    },
-    violet: {
-      chip: "bg-violet-100 text-violet-700 group-hover:bg-violet-200",
-      pill: "bg-violet-600",
-    },
-    sky: {
-      chip: "bg-sky-100 text-sky-700 group-hover:bg-sky-200",
-      pill: "bg-sky-600",
-    },
-    emerald: {
-      chip: "bg-emerald-100 text-emerald-700 group-hover:bg-emerald-200",
-      pill: "bg-emerald-600",
-    },
-  }[tone];
-  return (
-    <Link href={href} className="block group">
-      <Card>
-        <div className="p-4 flex items-center gap-3 hover:bg-gray-50 transition-colors rounded-xl">
-          <span
-            className={
-              "inline-flex h-9 w-9 items-center justify-center rounded-lg shrink-0 transition-colors "
-              + toneClasses.chip
-            }
-          >
-            {icon}
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-baseline gap-2">
-              <span
-                className={
-                  "inline-flex min-w-[1.5rem] justify-center rounded-full px-2 py-0.5 text-xs font-semibold leading-tight text-white "
-                  + toneClasses.pill
-                }
-              >
-                {count}
-              </span>
-              <span className="truncate text-sm font-semibold text-gray-900">
-                {label}
-              </span>
-            </div>
-            <div className="mt-0.5 text-xs text-gray-500 truncate">
-              {sublabel}
-            </div>
-          </div>
-          <ArrowRight className="h-3.5 w-3.5 text-gray-400 shrink-0 group-hover:text-gray-600" />
-        </div>
-      </Card>
-    </Link>
   );
 }
 
