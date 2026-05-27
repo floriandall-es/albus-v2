@@ -172,14 +172,20 @@ export default function SchedulesPage() {
               vacation button used to be tempting because everything
               sat on one flat row. */}
           <div className="grid gap-3 p-4 sm:grid-cols-2">
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+            {/* Both tiles are flex columns so the action row at the
+                bottom (input+button on the left, button on the right)
+                gets mt-auto and the two buttons land on the same
+                horizontal baseline. Grid items default to stretch
+                so both tiles share the same height regardless of how
+                much copy each one carries. */}
+            <div className="flex flex-col rounded-lg border border-gray-200 bg-gray-50 p-3">
               <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                 Un mes
               </div>
               <p className="mb-3 text-xs text-gray-500">
                 Elige mes y pulsa Generar para crear el borrador.
               </p>
-              <div className="flex flex-wrap items-end gap-2">
+              <div className="mt-auto flex flex-wrap items-end gap-2">
                 <div className="w-64">
                   <MonthPicker label="Mes" value={period} onChange={setPeriod} />
                 </div>
@@ -191,7 +197,7 @@ export default function SchedulesPage() {
                 </Button>
               </div>
             </div>
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <div className="flex flex-col rounded-lg border border-amber-200 bg-amber-50 p-3">
               <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-amber-900/70">
                 Periodo especial
               </div>
@@ -199,13 +205,15 @@ export default function SchedulesPage() {
                 Vacaciones, Navidad, etc. con configuración propia.
                 Se generan varias planificaciones de golpe.
               </p>
-              <Button
-                variant="secondary"
-                onClick={() => setVacationOpen((v) => !v)}
-              >
-                <Sun className="h-4 w-4" />
-                Generar planificación de vacaciones
-              </Button>
+              <div className="mt-auto">
+                <Button
+                  variant="secondary"
+                  onClick={() => setVacationOpen((v) => !v)}
+                >
+                  <Sun className="h-4 w-4" />
+                  Generar planificación de vacaciones
+                </Button>
+              </div>
             </div>
           </div>
           {generate.isError && (
