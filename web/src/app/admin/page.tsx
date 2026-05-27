@@ -150,14 +150,9 @@ const TOUR_STEPS: TourStep[] = [
       + "explante e implante) con estadísticas por cirujano.",
     placement: "right",
   },
-  {
-    tourId: "nav-directorio",
-    title: "Directorio del hospital",
-    body:
-      "Listado de contactos de otros servicios del hospital. Cada "
-      + "persona decide qué datos comparte.",
-    placement: "right",
-  },
+  // (Directorio step removed — the entry no longer lives in the
+  // admin sidebar. It's a pure-personal surface reached via the
+  // Admin/Personal toggle.)
 
   // ---------- Configuración ----------
   {

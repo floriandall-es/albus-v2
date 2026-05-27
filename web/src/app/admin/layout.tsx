@@ -7,7 +7,6 @@ import {
   AlertCircle,
   ArrowLeftRight,
   BarChart3,
-  Building2,
   CalendarDays,
   CalendarOff,
   Clock,
@@ -15,7 +14,6 @@ import {
   Home,
   LogOut,
   MessageSquare,
-  Network,
   PartyPopper,
   Settings,
   Share2,
@@ -38,10 +36,10 @@ type NavSection = {
 /** Tour-anchor map for the /admin product tour. Every sidebar
  * destination the tour explains has an entry here; the value
  * lands as `data-tour-id="..."` on the matching <Link>. Module-
- * gated items (Trasplantes, Directorio) are present in the map
- * too — their <Link> doesn't render when the tenant hasn't
- * opted in, so the tour drops those steps automatically via its
- * "missing anchor = skip" rule. */
+ * gated items (Trasplantes) are present in the map too — their
+ * <Link> doesn't render when the tenant hasn't opted in, so the
+ * tour drops those steps automatically via its "missing anchor =
+ * skip" rule. */
 const TOUR_ID_BY_HREF: Record<string, string | undefined> = {
   "/admin": "nav-inicio",
   "/admin/schedule": "nav-planificacion",
@@ -51,7 +49,6 @@ const TOUR_ID_BY_HREF: Record<string, string | undefined> = {
   "/admin/reuniones": "nav-reuniones",
   "/admin/incidents": "nav-incidencias",
   "/admin/trasplantes": "nav-trasplantes",
-  "/me/directorio": "nav-directorio",
   "/admin/team": "nav-equipo",
   "/admin/categories": "nav-categorias",
   "/admin/slots": "nav-actividades",
@@ -72,16 +69,14 @@ const NAV: NavSection[] = [
       { href: "/admin/reuniones", label: "Reuniones", icon: MessageSquare },
       { href: "/admin/incidents", label: "Incidencias", icon: AlertCircle },
       { href: "/admin/trasplantes", label: "Trasplantes", icon: Heart },
-      // Phase C.2: cross-equipo Servicio view. The page lives under
-      // /me/servicio so both members and admins can read it — only
-      // the share-policy radio inside the page is admin-gated. Same
-      // pattern as the Directorio entry, which is also shared
-      // between admin and member sidebars.
-      { href: "/me/servicio", label: "Servicio", icon: Network },
-      // Sprint 28: cross-tenant hospital directory. Hidden when
-      // the current tenant has no parent hospital (standalone).
-      // Links to the member-side route — same page either way.
-      { href: "/me/directorio", label: "Directorio", icon: Building2 },
+      // Servicio (cross-equipo vista conjunta) and Directorio (cross-
+      // tenant hospital directory) used to live here pointing at their
+      // /me/* routes, but clicking them from the admin sidebar
+      // surprise-jumped the user into the personal view. They're
+      // pure-personal surfaces — admins still reach them via the
+      // Admin/Personal toggle at the top of the sidebar. The admin
+      // editing surface for the share policy stays under
+      // Configuración → Compartir.
     ],
   },
   {
@@ -240,26 +235,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
                     ) {
                       return false;
                     }
-                    // Directory only when the tenant has a parent
-                    // hospital — the page would render an empty
-                    // state otherwise, no point linking to it.
-                    if (
-                      item.href === "/me/directorio"
-                      && me.data?.current_tenant.hospital_id == null
-                    ) {
-                      return false;
-                    }
-                    // Servicio only when the tenant has been linked
-                    // to one (Phase A backfill, or new signup). The
-                    // page itself shows a placeholder for the null
-                    // case but the nav entry is wasted screen
-                    // estate when there's no servicio behind it.
-                    if (
-                      item.href === "/me/servicio"
-                      && me.data?.current_tenant.servicio_id == null
-                    ) {
-                      return false;
-                    }
+                    // (Directorio/Servicio used to be gated here when
+                    // their links lived in the admin sidebar; they
+                    // moved to personal-only after the cross-view
+                    // jump confused admins.)
                     // Same servicio gate for the share-policy
                     // setting — pointless when this equipo has no
                     // siblings to share with.
