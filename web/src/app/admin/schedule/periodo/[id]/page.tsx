@@ -396,9 +396,35 @@ export default function PeriodoSchedulePage() {
       {monthRows.map(({ period, schedule }) => (
         <section key={period} className="mb-10">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold text-gray-900 capitalize">
-              {formatPeriod(period)}
-            </h2>
+            <div className="flex min-w-0 items-center gap-2">
+              <h2 className="text-lg font-semibold text-gray-900 capitalize">
+                {formatPeriod(period)}
+              </h2>
+              {/* Equilibrada / Simplificada pill — matches the single
+                  month page's header so the admin can tell at a glance
+                  which months fell back to the greedy solver. The
+                  fallback signals an over-constrained config + means
+                  the reparto for that month may be uneven. */}
+              {schedule?.solver_used && (
+                <span
+                  className={
+                    "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide "
+                    + (schedule.solver_used === "cpsat"
+                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                      : "bg-amber-50 text-amber-800 border border-amber-200")
+                  }
+                  title={
+                    schedule.solver_used === "cpsat"
+                      ? "Equilibrada: equidad, descansos y reglas cruzadas aplicadas."
+                      : "Simplificada (respaldo): no se pudo equilibrar con todas las reglas activas — la planificación es válida pero el reparto puede ser desigual."
+                  }
+                >
+                  {schedule.solver_used === "cpsat"
+                    ? "Equilibrada"
+                    : "Simplificada"}
+                </span>
+              )}
+            </div>
             {schedule && (
               <Link
                 href={`/admin/schedule/${schedule.id}`}
