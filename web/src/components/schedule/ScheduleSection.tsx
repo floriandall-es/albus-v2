@@ -931,10 +931,10 @@ function PeriodoBanner({ periodos }: { periodos: Periodo[] }) {
               Las actividades y reglas pueden estar modificadas en esas
               fechas.{" "}
               <Link
-                href={`/admin/periodos/${periodos[0].id}`}
+                href={`/admin/schedule/periodo/${periodos[0].id}`}
                 className="underline-offset-2 hover:underline"
               >
-                Editar reglas →
+                Ver período completo →
               </Link>
             </span>
           ) : (
@@ -944,7 +944,7 @@ function PeriodoBanner({ periodos }: { periodos: Periodo[] }) {
                 <span key={p.id}>
                   {i > 0 ? ", " : ""}
                   <Link
-                    href={`/admin/periodos/${p.id}`}
+                    href={`/admin/schedule/periodo/${p.id}`}
                     className="font-medium underline-offset-2 hover:underline"
                   >
                     {p.name}
