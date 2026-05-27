@@ -3,24 +3,28 @@ import { AlertTriangle } from "lucide-react";
 import { Button, Modal } from "@/components/admin/ui";
 
 /**
- * Shown right after a generate completes when the CP-SAT solver
- * couldn't equilibrate the problem and fell back to the greedy
- * solver. The schedule it produced IS valid (every hard rule is
- * still satisfied) but the reparto across people may be uneven and
- * soft rules may have been broken — the admin should know.
+ * Shown after a generate when the CP-SAT path failed to equilibrate
+ * and the API fell back to the greedy generator. The pill in the
+ * header has always called this "Simplificada" — same word here,
+ * accessible to a non-technical jefe de servicio. We do NOT say
+ * "solver" anywhere in the UI.
+ *
+ * Important honesty caveat: the greedy fallback respects eligibility,
+ * availability blocks, pre-pins and locked cells, but it does NOT
+ * guarantee every cross-slot rule (succession, same-day
+ * incompatibility, frequency caps) is satisfied. The earlier draft of
+ * this modal said "cumple todas las reglas estrictas" which is wrong
+ * — the violations panel routinely flags conflicts after a fallback.
+ * The copy here points the admin at the conflicts list and asks them
+ * to review.
  *
  * Common root causes the suggestion list addresses:
  *
- *  1. Too many activities + roles vs. headcount — the model has more
- *     fixed cells than it can fairly distribute.
- *  2. Too few eligible people for the slot's allow-list / categoría
- *     filter.
- *  3. Too many cross-slot rules (succession + same-day) interacting,
- *     especially when severities are all "Estricta".
- *  4. Per-window frequency caps that are tight relative to the
- *     number of available days.
- *  5. Rotation orders that force the same person onto consecutive
- *     blocks because the rotation list is shorter than the period.
+ *  1. Too many activities + roles vs. headcount.
+ *  2. Too few eligible people for the slot's allow-list / categoría.
+ *  3. Too many cross-slot rules interacting at "Estricta".
+ *  4. Per-window frequency caps that are tight relative to days.
+ *  5. Rotation orders shorter than the period.
  *
  * Period-level callers pass the labels of the months that fell back;
  * month-level callers pass a one-element list. The body adapts copy
@@ -41,7 +45,7 @@ export function SolverFallbackModal({
     <Modal
       open={true}
       onClose={onClose}
-      title="Generada con el solver simplificado"
+      title="Planificación generada con limitaciones"
     >
       <div className="space-y-4">
         <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
@@ -49,25 +53,26 @@ export function SolverFallbackModal({
           <div className="text-sm text-amber-900">
             <p className="font-medium">
               {isPlural
-                ? `Se ha usado el solver simplificado en: ${monthLabel}.`
-                : `Se ha usado el solver simplificado en ${monthLabel}.`}
+                ? `Hemos generado la planificación de ${monthLabel}, pero no hemos podido aplicar todas las reglas a la vez.`
+                : `Hemos generado la planificación de ${monthLabel}, pero no hemos podido aplicar todas las reglas a la vez.`}
             </p>
             <p className="mt-1 text-amber-900/85">
-              La planificación es válida — cumple todas las reglas
-              estrictas. Pero el reparto entre personas puede ser
-              desigual y algunas reglas blandas pueden haberse roto.
+              Es posible que algunas reglas no se hayan cumplido y que
+              el reparto entre personas no sea equilibrado. Revisa los
+              conflictos detectados que aparezcan en cada mes y ajusta
+              a mano lo que haga falta.
             </p>
           </div>
         </div>
         <div className="text-sm text-gray-700">
           <p className="font-medium text-gray-900">
-            ¿Qué ha pasado?
+            ¿Por qué ha pasado?
           </p>
           <p className="mt-1">
-            El solver equilibrado no pudo encontrar una solución que
-            equilibrara el reparto dentro del tiempo asignado. Suele
-            indicar que el problema está demasiado restringido para
-            la plantilla disponible.
+            Suele indicar que hay demasiadas reglas activas o muy poca
+            plantilla disponible para cumplirlas todas. La planificación
+            se ha generado igualmente, pero algunas restricciones han
+            tenido que saltarse para asignar a todo el mundo.
           </p>
         </div>
         <div className="text-sm text-gray-700">
@@ -82,14 +87,13 @@ export function SolverFallbackModal({
             </li>
             <li>
               <strong>Amplía el equipo autorizado</strong> de las
-              actividades con pocas personas (allow-list o
-              restricción por categoría).
+              actividades con pocas personas (en la actividad, en
+              &quot;Equipo autorizado&quot; o &quot;Categorías&quot;).
             </li>
             <li>
               <strong>Relaja reglas estrictas</strong>: pasa a
               &quot;Blanda&quot; las reglas de sucesión o
-              incompatibilidad que no sean obligatorias. El solver
-              puede romperlas si no hay alternativa.
+              incompatibilidad que no sean obligatorias.
             </li>
             <li>
               <strong>Sube los límites de frecuencia</strong> (p. ej.
@@ -98,13 +102,13 @@ export function SolverFallbackModal({
             <li>
               <strong>Revisa las rotaciones</strong>: si la lista de
               rotación es más corta que el periodo, alguna persona
-              repetirá. Añade gente a la rotación o usa otro tipo de
+              repetirá. Añade gente a la rotación o cambia el tipo de
               regla.
             </li>
             <li>
               <strong>En un periodo especial</strong>, usa la pestaña
               &quot;Reglas&quot; para desactivar o aflojar reglas
-              durante el periodo sin cambiarlas globalmente.
+              solo durante el periodo, sin cambiarlas globalmente.
             </li>
           </ul>
         </div>

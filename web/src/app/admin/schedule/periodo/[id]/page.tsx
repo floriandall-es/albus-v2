@@ -478,8 +478,8 @@ export default function PeriodoSchedulePage() {
                   }
                   title={
                     schedule.solver_used === "cpsat"
-                      ? "Equilibrada: equidad, descansos y reglas cruzadas aplicadas."
-                      : "Simplificada (respaldo): no se pudo equilibrar con todas las reglas activas — la planificación es válida pero el reparto puede ser desigual."
+                      ? "Equilibrada: se han aplicado todas las reglas y equilibrado el reparto."
+                      : "Simplificada: no se han podido aplicar todas las reglas a la vez. Revisa los conflictos detectados y ajusta a mano si hace falta."
                   }
                 >
                   {schedule.solver_used === "cpsat"
