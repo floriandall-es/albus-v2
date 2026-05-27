@@ -730,7 +730,7 @@ export function SlotDialog(props: SlotDialogProps) {
         </div>
         {staffingMode === "multiple_same" && (
           <TextField
-            label="Personas por turno"
+            label="Plazas"
             hint="Cuántas personas están de turno a la vez para esta actividad. Ej: planta con 3 enfermeras simultáneas en cada turno → 3."
             type="number"
             value={headcount}
@@ -760,7 +760,7 @@ export function SlotDialog(props: SlotDialogProps) {
                     onChange={(v) => updateTeamRole(i, { role_label: v })}
                   />
                   <TextField
-                    label="Personas por turno"
+                    label="Plazas"
                     hint="Personas de este rol simultáneamente en cada turno. Ej: quirófano con 2 cirujanos a la vez → 2."
                     type="number"
                     value={String(r.headcount)}
