@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
   useMutation,
@@ -18,6 +18,7 @@ import {
 import { Button, EmptyState, ErrorText } from "@/components/admin/ui";
 import { ScheduleSection } from "@/components/schedule/ScheduleSection";
 import { BalanceStats } from "@/components/schedule/BalanceStats";
+import { NotifyConfirmModal } from "@/components/schedule/NotifyConfirmModal";
 import { formatPeriod } from "@/components/admin/month-picker";
 
 /**
@@ -40,11 +41,19 @@ import { formatPeriod } from "@/components/admin/month-picker";
 export default function PeriodoSchedulePage() {
   const params = useParams<{ id: string }>();
   const periodoId = Number(params.id);
+  const router = useRouter();
   const qc = useQueryClient();
   // Surfaced when the API returns 409 (published/archived month) or
-  // any other regenerate error. Lives right under the header strip so
-  // the user can see why the click didn't do anything.
-  const [generateError, setGenerateError] = useState<string | null>(null);
+  // any other regenerate / publish / delete error. Lives right under
+  // the header strip so the user can see why the click didn't do
+  // anything.
+  const [actionError, setActionError] = useState<string | null>(null);
+  // Which lifecycle action (if any) is in the notify-members modal.
+  // Currently only "publish" — Eliminar uses a plain confirm() because
+  // it's not a member-visible state change.
+  const [confirmingAction, setConfirmingAction] = useState<
+    "publish" | null
+  >(null);
 
   const periodo = useQuery({
     queryKey: ["periodo", periodoId],
@@ -160,7 +169,7 @@ export default function PeriodoSchedulePage() {
   const regenerate = useMutation({
     mutationFn: () => api.generatePeriodo(periodoId),
     onSuccess: (results) => {
-      setGenerateError(null);
+      setActionError(null);
       // Refresh the schedules list (new schedules may have been
       // created for previously-empty months) AND each affected
       // schedule's detail + violations cache so the in-page sections
@@ -174,7 +183,66 @@ export default function PeriodoSchedulePage() {
       }
     },
     onError: (e) => {
-      setGenerateError((e as Error).message);
+      setActionError((e as Error).message);
+    },
+  });
+
+  // Drafts in the period are the only schedules Publicar / Eliminar
+  // can act on. Published or archived months are left untouched — the
+  // single-month page makes the same call (its Publicar/Eliminar
+  // buttons only show when status === "draft"). Computed BEFORE the
+  // early returns to keep hook order stable.
+  const draftSchedules = useMemo(
+    () => existingSchedules.filter((s) => s.status === "draft"),
+    [existingSchedules],
+  );
+
+  // Publish every draft in the period sequentially. Sequential so a
+  // mid-loop failure surfaces a coherent error (rather than half the
+  // months silently emailing the team) and so we don't fan out N
+  // parallel notification roundtrips. notifyMembers is forwarded to
+  // each call — one email per published month, same as the single-
+  // month flow.
+  const publishMany = useMutation({
+    mutationFn: async (notifyMembers: boolean) => {
+      const ids: number[] = [];
+      for (const sched of draftSchedules) {
+        await api.publishSchedule(sched.id, notifyMembers);
+        ids.push(sched.id);
+      }
+      return ids;
+    },
+    onSuccess: (ids) => {
+      setActionError(null);
+      qc.invalidateQueries({ queryKey: ["schedules"] });
+      for (const id of ids) {
+        qc.invalidateQueries({ queryKey: ["schedule", id] });
+      }
+    },
+    onError: (e) => {
+      setActionError((e as Error).message);
+    },
+  });
+
+  // Delete every draft in the period. Like publishMany, runs
+  // sequentially so a mid-loop failure leaves the rest intact and
+  // surfaces a sensible error. On full success, bounce back to
+  // /admin/schedule — the page itself is no longer meaningful once
+  // every month is gone, but the periodo config (name, dates,
+  // snapshots) survives so the user can regenerate later.
+  const removeMany = useMutation({
+    mutationFn: async () => {
+      for (const sched of draftSchedules) {
+        await api.deleteSchedule(sched.id);
+      }
+    },
+    onSuccess: () => {
+      setActionError(null);
+      qc.invalidateQueries({ queryKey: ["schedules"] });
+      router.replace("/admin/schedule");
+    },
+    onError: (e) => {
+      setActionError((e as Error).message);
     },
   });
 
@@ -211,13 +279,15 @@ export default function PeriodoSchedulePage() {
               {formatPeriodoRangeLabel(p.start_date, p.end_date)}
             </p>
           </div>
-          {/* Right-aligned button cluster: regenerate (primary) +
-              Volver (secondary). The confirm copy spells out the
-              preservation contract — locked cells AND "No aplica"
-              survive, manual edits without a lock do not, and
-              published/archived months will abort the operation. */}
+          {/* Right-aligned button cluster: lifecycle actions on the
+              left (Regenerar / Publicar / Eliminar — fan out across
+              every draft month), Volver on the right.
+              Publicar + Eliminar mirror the single-month page's
+              buttons but they only show when the period has at
+              least one draft to act on. */}
           <div className="flex flex-wrap items-center gap-2">
             <Button
+              variant="secondary"
               onClick={() => {
                 if (touchedMonthLabels.length === 0) return;
                 const monthList = touchedMonthLabels.join(", ");
@@ -234,6 +304,38 @@ export default function PeriodoSchedulePage() {
               <Play className="h-4 w-4" />
               {regenerate.isPending ? "Regenerando…" : "Regenerar período"}
             </Button>
+            {draftSchedules.length > 0 && (
+              <Button
+                onClick={() => setConfirmingAction("publish")}
+                disabled={publishMany.isPending}
+              >
+                {publishMany.isPending ? "Publicando…" : "Publicar período"}
+              </Button>
+            )}
+            {draftSchedules.length > 0 && (
+              <Button
+                variant="danger"
+                onClick={() => {
+                  const labels = draftSchedules.map((s) => {
+                    const d = new Date(s.period + "T00:00:00");
+                    return d.toLocaleDateString("es-ES", {
+                      month: "long",
+                      year: "numeric",
+                    });
+                  });
+                  if (
+                    confirm(
+                      `¿Eliminar el borrador de ${draftSchedules.length} planificación${draftSchedules.length === 1 ? "" : "es"} (${labels.join(", ")})? Esta acción no se puede deshacer.`,
+                    )
+                  ) {
+                    removeMany.mutate();
+                  }
+                }}
+                disabled={removeMany.isPending}
+              >
+                {removeMany.isPending ? "Eliminando…" : "Eliminar período"}
+              </Button>
+            )}
             <Link
               href="/admin/schedule"
               className="inline-flex items-center gap-1.5 rounded-lg ring-1 ring-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-50 transition-colors"
@@ -243,9 +345,9 @@ export default function PeriodoSchedulePage() {
             </Link>
           </div>
         </div>
-        {generateError && (
+        {actionError && (
           <div className="mt-3">
-            <ErrorText>{generateError}</ErrorText>
+            <ErrorText>{actionError}</ErrorText>
           </div>
         )}
       </div>
@@ -312,6 +414,29 @@ export default function PeriodoSchedulePage() {
             <p className="text-sm text-gray-500">Cargando reparto…</p>
           )}
         </div>
+      )}
+
+      {/* Publish-confirm modal — same dialog as the single-month
+          page (extracted to NotifyConfirmModal). Talks in plural
+          because the period publishes N months in one go. */}
+      {confirmingAction === "publish" && (
+        <NotifyConfirmModal
+          title="Publicar período"
+          description={
+            draftSchedules.length === 1
+              ? "La planificación quedará visible para todos los miembros del equipo en \"Mis turnos\"."
+              : `Las ${draftSchedules.length} planificaciones del período quedarán visibles para todos los miembros del equipo en "Mis turnos".`
+          }
+          confirmLabel="Publicar"
+          notifyLabel="Avisar por email a los miembros del equipo"
+          onClose={() => setConfirmingAction(null)}
+          onConfirm={(notify) => {
+            publishMany.mutate(notify, {
+              onSuccess: () => setConfirmingAction(null),
+            });
+          }}
+          isPending={publishMany.isPending}
+        />
       )}
     </>
   );
