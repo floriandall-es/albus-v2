@@ -55,10 +55,35 @@ const STATUS_SUBTITLE: Record<string, string> = {
   archived: "ya no visible para el equipo",
 };
 
+// "15 jul – 31 ago 2026" / "20 dic 2026 – 6 ene 2027". Same shape
+// the PeriodoEditor + PeriodoRow use; lifted here so the
+// existing-planificaciones section can label group headers.
+function formatPeriodoRange(p: Periodo): string {
+  const start = new Date(p.start_date + "T00:00:00");
+  const end = new Date(p.end_date + "T00:00:00");
+  const sameYear = start.getFullYear() === end.getFullYear();
+  const startLabel = start.toLocaleDateString("es-ES", {
+    day: "numeric",
+    month: "short",
+    year: sameYear ? undefined : "numeric",
+  });
+  const endLabel = end.toLocaleDateString("es-ES", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  return `${startLabel} – ${endLabel}`;
+}
+
 export default function SchedulesPage() {
   const router = useRouter();
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ["schedules"], queryFn: api.listSchedules });
+  // Loaded here (in addition to inside VacationCard, which uses the
+  // same query key so the cache is shared) because the existing-
+  // planificaciones table also needs the periodo list to group
+  // months that belong to a vacation period.
+  const periodos = useQuery({ queryKey: ["periodos"], queryFn: api.listPeriodos });
   const today = new Date();
   const defaultPeriod = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
   const [period, setPeriod] = useState<string>(defaultPeriod);
@@ -228,51 +253,110 @@ export default function SchedulesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {list.data.map((s: Schedule) => {
-                  const open = () => router.push(`/admin/schedule/${s.id}`);
-                  return (
-                    <tr
-                      key={s.id}
-                      onClick={open}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          open();
-                        }
-                      }}
-                      role="link"
-                      tabIndex={0}
-                      aria-label={`Abrir planificación de ${formatPeriod(s.period)}`}
-                      className="cursor-pointer hover:bg-brand-50/40 focus:bg-brand-50/40 focus:outline-none transition-colors"
-                    >
-                      <td className="px-4 py-3 font-medium text-gray-900">
-                        {formatPeriod(s.period)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex items-center gap-2">
-                          <StatusPill
-                            tone={
-                              STATUS_TONE[s.status as keyof typeof STATUS_TONE]
-                              ?? "neutral"
-                            }
+                {(() => {
+                  // Insert a "section header" row above each consecutive
+                  // run of schedules that belong to the same periodo.
+                  // A schedule belongs to a periodo when the periodo's
+                  // [start_date, end_date] range overlaps the month
+                  // [s.period, s.period + 1 month). Periodos are
+                  // tenant-scoped non-overlapping (DB exclusion
+                  // constraint), so at most one match per schedule.
+                  const periodoFor = (s: Schedule): Periodo | null => {
+                    if (!periodos.data) return null;
+                    const ms = new Date(s.period + "T00:00:00");
+                    const me = new Date(ms);
+                    me.setMonth(me.getMonth() + 1);
+                    for (const p of periodos.data) {
+                      const ps = new Date(p.start_date + "T00:00:00");
+                      const pe = new Date(p.end_date + "T00:00:00");
+                      if (ps < me && pe >= ms) return p;
+                    }
+                    return null;
+                  };
+                  const rows: React.ReactNode[] = [];
+                  let lastPeriodoId: number | null = null;
+                  for (const s of list.data) {
+                    const periodo = periodoFor(s);
+                    if (periodo && periodo.id !== lastPeriodoId) {
+                      rows.push(
+                        <tr
+                          key={`periodo-${periodo.id}`}
+                          className="bg-brand-50/60"
+                        >
+                          <td
+                            colSpan={3}
+                            className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-brand-800"
                           >
-                            {STATUS_LABEL[s.status] ?? s.status}
-                          </StatusPill>
-                          {STATUS_SUBTITLE[s.status] && (
-                            <span className="text-xs text-gray-500">
-                              {STATUS_SUBTITLE[s.status]}
+                            <span className="inline-flex items-center gap-2">
+                              <Sun className="h-3.5 w-3.5" />
+                              <span>{periodo.name}</span>
+                              <span className="font-normal text-brand-700/70">
+                                · {formatPeriodoRange(periodo)}
+                              </span>
                             </span>
-                          )}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-600">
-                        {s.generated_at
-                          ? new Date(s.generated_at).toLocaleString()
-                          : "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
+                          </td>
+                        </tr>,
+                      );
+                      lastPeriodoId = periodo.id;
+                    } else if (!periodo) {
+                      lastPeriodoId = null;
+                    }
+                    const open = () => router.push(`/admin/schedule/${s.id}`);
+                    rows.push(
+                      <tr
+                        key={s.id}
+                        onClick={open}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            open();
+                          }
+                        }}
+                        role="link"
+                        tabIndex={0}
+                        aria-label={`Abrir planificación de ${formatPeriod(s.period)}`}
+                        className={
+                          "cursor-pointer focus:outline-none transition-colors "
+                          + (periodo
+                            ? "bg-brand-50/20 hover:bg-brand-50/50 focus:bg-brand-50/50"
+                            : "hover:bg-brand-50/40 focus:bg-brand-50/40")
+                        }
+                      >
+                        <td
+                          className={
+                            "px-4 py-3 font-medium text-gray-900 "
+                            + (periodo ? "pl-9" : "")
+                          }
+                        >
+                          {formatPeriod(s.period)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center gap-2">
+                            <StatusPill
+                              tone={
+                                STATUS_TONE[s.status as keyof typeof STATUS_TONE]
+                                ?? "neutral"
+                              }
+                            >
+                              {STATUS_LABEL[s.status] ?? s.status}
+                            </StatusPill>
+                            {STATUS_SUBTITLE[s.status] && (
+                              <span className="text-xs text-gray-500">
+                                {STATUS_SUBTITLE[s.status]}
+                              </span>
+                            )}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">
+                          {s.generated_at
+                            ? new Date(s.generated_at).toLocaleString()
+                            : "—"}
+                        </td>
+                      </tr>,
+                    );
+                  }
+                  return rows;
+                })()}
               </tbody>
             </table>
           </Card>
