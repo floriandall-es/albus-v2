@@ -575,6 +575,23 @@ function SameDayOverrideSection({
             <tbody>
               {rules.map((r) => {
                 const override = overrideByRule.get(r.id) ?? null;
+                // Sub-actividad labels — same lookup /admin/rules
+                // does. Without these the row collapses two distinct
+                // rules ("Trasplante · Implante 1" vs "Trasplante ·
+                // Implante 2") into the same display name and the
+                // admin can't tell them apart.
+                const afterRoleLabel =
+                  r.after_team_role_id != null
+                    ? slotById[r.after_slot_id]?.team_roles.find(
+                        (tr) => tr.id === r.after_team_role_id,
+                      )?.role_label
+                    : null;
+                const forbidRoleLabel =
+                  r.forbid_team_role_id != null
+                    ? slotById[r.forbid_slot_id]?.team_roles.find(
+                        (tr) => tr.id === r.forbid_team_role_id,
+                      )?.role_label
+                    : null;
                 return (
                   <tr
                     key={r.id}
@@ -582,9 +599,19 @@ function SameDayOverrideSection({
                   >
                     <td className="px-4 py-2">
                       {slotById[r.after_slot_id]?.name ?? `#${r.after_slot_id}`}
+                      {afterRoleLabel && (
+                        <span className="ml-1 text-xs text-gray-500">
+                          · {afterRoleLabel}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-2">
                       {slotById[r.forbid_slot_id]?.name ?? `#${r.forbid_slot_id}`}
+                      {forbidRoleLabel && (
+                        <span className="ml-1 text-xs text-gray-500">
+                          · {forbidRoleLabel}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-2">{SEVERITY_LABEL[r.severity]}</td>
                     <td className="px-4 py-2">
@@ -672,6 +699,22 @@ function SuccessionOverrideSection({
             <tbody>
               {rules.map((r) => {
                 const override = overrideByRule.get(r.id) ?? null;
+                // Sub-actividad labels — same lookup /admin/rules
+                // does. Without these the row hides the difference
+                // between rules that share a slot but target
+                // different sub-actividades.
+                const afterRoleLabel =
+                  r.after_team_role_id != null
+                    ? slotById[r.after_slot_id]?.team_roles.find(
+                        (tr) => tr.id === r.after_team_role_id,
+                      )?.role_label
+                    : null;
+                const forbidRoleLabel =
+                  r.forbid_team_role_id != null
+                    ? slotById[r.forbid_slot_id]?.team_roles.find(
+                        (tr) => tr.id === r.forbid_team_role_id,
+                      )?.role_label
+                    : null;
                 return (
                   <tr
                     key={r.id}
@@ -679,9 +722,19 @@ function SuccessionOverrideSection({
                   >
                     <td className="px-4 py-2">
                       {slotById[r.after_slot_id]?.name ?? `#${r.after_slot_id}`}
+                      {afterRoleLabel && (
+                        <span className="ml-1 text-xs text-gray-500">
+                          · {afterRoleLabel}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-2">
                       {slotById[r.forbid_slot_id]?.name ?? `#${r.forbid_slot_id}`}
+                      {forbidRoleLabel && (
+                        <span className="ml-1 text-xs text-gray-500">
+                          · {forbidRoleLabel}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-2">{r.days_after}</td>
                     <td className="px-4 py-2">{SEVERITY_LABEL[r.severity]}</td>
