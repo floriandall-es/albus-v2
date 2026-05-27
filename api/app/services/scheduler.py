@@ -869,6 +869,34 @@ class _Context:
         team = self.rotation_persons_for(rule, d)
         return team[0] if team else None
 
+    def default_role_id_for_snapshot_role(
+        self, slot_id: int, role_label: str
+    ) -> int | None:
+        """Map a SlotPeriodSnapshotTeamRole's label to the equivalent
+        default `SlotTeamRole.id` on the same slot, or None when the
+        snapshot adds a role that doesn't exist on the default slot.
+
+        Assignment.team_role_id FKs slot_team_roles. The snapshot has
+        its own SlotPeriodSnapshotTeamRole table — those ids would
+        fail the FK constraint. But the typical snapshot keeps the
+        slot's role structure (same labels: "Cirujano 1", "Cirujano 2",
+        etc.) and only modifies things like headcount or category
+        restrictions. In that case we can resolve the snapshot role
+        back to a real slot_team_roles row and write it on the
+        Assignment, so the planning grid groups by sub-slot correctly.
+
+        When the snapshot adds a brand-new role (label not in the
+        default slot), this returns None and the caller falls back to
+        NULL + "Role: <label>" in notes.
+        """
+        if not role_label:
+            return None
+        target = role_label.strip().lower()
+        for tr in self.team_roles_by_slot.get(slot_id, []):
+            if tr.role_label.strip().lower() == target:
+                return tr.id
+        return None
+
     def _block_dates_for(self, rule, d: date) -> list[date]:
         """All calendar dates in the SAME rotation block as `d`.
 
@@ -1547,20 +1575,38 @@ def _greedy_fallback(
                 # V.2.5: when the roles came from a snapshot they
                 # belong to a different table than slot_team_roles.
                 # Assignment.team_role_id points at slot_team_roles.id
-                # so we can't store the snapshot role id there; we
-                # stuff the role label in notes instead and write
-                # team_role_id=NULL. See V.2.5 limitation in the
-                # module docstring (TODO: polymorphic role FK).
-                role_id_for_assignment = (
-                    lambda r: None
-                    if isinstance(r, SlotPeriodSnapshotTeamRole)
-                    else r.id
-                )
-                role_note = (
-                    lambda r: f"Role: {r.role_label}"
-                    if isinstance(r, SlotPeriodSnapshotTeamRole)
-                    else None
-                )
+                # so a snapshot role id would fail the FK. The typical
+                # case (snapshot keeps the slot's role structure) is
+                # resolved by matching role_label to the default slot's
+                # team_roles via `default_role_id_for_snapshot_role`,
+                # so Assignment.team_role_id carries a real FK and the
+                # planning grid groups by sub-slot correctly. When the
+                # snapshot adds a NEW role (label not in defaults) the
+                # mapping returns None and we fall back to NULL +
+                # "Role: <label>" in notes so the cell still renders.
+                def role_id_for_assignment(r):
+                    if not isinstance(r, SlotPeriodSnapshotTeamRole):
+                        return r.id
+                    return ctx.default_role_id_for_snapshot_role(
+                        slot.id, r.role_label
+                    )
+
+                def role_note(r):
+                    if not isinstance(r, SlotPeriodSnapshotTeamRole):
+                        return None
+                    # If we resolved the snapshot label to a default
+                    # role, the team_role_id is set and the grid
+                    # already knows the sub-slot — no note needed.
+                    if (
+                        ctx.default_role_id_for_snapshot_role(
+                            slot.id, r.role_label
+                        )
+                        is not None
+                    ):
+                        return None
+                    # New role added inside the snapshot — keep the
+                    # label in notes so the grid can still display it.
+                    return f"Role: {r.role_label}"
                 # Sprint 16: when a rule pins a team for this date,
                 # restrict the candidate pool to those people. Otherwise
                 # (rule.strategy == "solver" or "manual") fall back to
@@ -2410,9 +2456,22 @@ def _solve_cpsat(
                         is_snap = isinstance(
                             role, SlotPeriodSnapshotTeamRole
                         )
+                        # Resolve snapshot role → default SlotTeamRole.id
+                        # by label so the assignment carries a valid FK
+                        # and the planning grid groups by sub-slot. The
+                        # mapping returns None when the snapshot adds a
+                        # brand-new role; in that case we fall back to
+                        # NULL team_role_id + "Role: <label>" in notes.
+                        mapped_role_id: int | None
+                        if is_snap:
+                            mapped_role_id = ctx.default_role_id_for_snapshot_role(
+                                slot.id, role.role_label
+                            )
+                        else:
+                            mapped_role_id = role.id
                         for _ in range(max(1, role.headcount)):
                             note = "Pendiente de asignar manualmente"
-                            if is_snap:
+                            if is_snap and mapped_role_id is None:
                                 note = f"Role: {role.role_label} — {note}"
                             db.add(
                                 Assignment(
@@ -2421,7 +2480,7 @@ def _solve_cpsat(
                                     slot_id=slot.id,
                                     date=d,
                                     person_id=None,
-                                    team_role_id=None if is_snap else role.id,
+                                    team_role_id=mapped_role_id,
                                     notes=note,
                                 )
                             )
@@ -3256,12 +3315,27 @@ def _solve_cpsat(
         locks_here = locked_by_key.get((d, slot_id, role_id), [])
         # V.2.5: dispatch based on whether the role came from a
         # snapshot. Assignment.team_role_id FKs slot_team_roles, so
-        # snapshot roles get None + role-label stuffed in notes.
+        # we try to map snapshot role label → default SlotTeamRole.id
+        # so the planning grid groups assignments by sub-slot. If the
+        # snapshot added a brand-new role (no default with the same
+        # label), fall back to NULL team_role_id + role-label in
+        # notes so the cell still has a sub-slot identity.
         role_obj = role_obj_by_demand.get((d, slot_id, role_id))
         is_snap_role = isinstance(role_obj, SlotPeriodSnapshotTeamRole)
-        db_role_id: int | None = None if is_snap_role else role_id
+        db_role_id: int | None
+        if is_snap_role:
+            db_role_id = ctx.default_role_id_for_snapshot_role(
+                slot_id, role_obj.role_label
+            )
+        else:
+            db_role_id = role_id
+        # Only stuff the label in notes when we couldn't resolve a
+        # default role id — otherwise the grid already groups by the
+        # FK and the note would be redundant.
         role_label_prefix = (
-            f"Role: {role_obj.role_label}" if is_snap_role else None
+            f"Role: {role_obj.role_label}"
+            if is_snap_role and db_role_id is None
+            else None
         )
 
         def _combine_notes(base: str | None) -> str | None:
