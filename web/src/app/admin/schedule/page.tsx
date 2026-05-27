@@ -166,22 +166,39 @@ export default function SchedulesPage() {
           Crear una nueva planificación
         </h2>
         <Card>
-          <div className="p-4">
-            <p className="text-xs text-gray-500 mb-3">
-              Elige un mes y pulsa Generar para crear el borrador del mes.
-              Para vacaciones o periodos largos con configuración propia,
-              usa la opción de la derecha.
-            </p>
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="w-72">
-                <MonthPicker label="Mes" value={period} onChange={setPeriod} />
+          {/* Two distinct tiles so the month picker is visibly
+              attached to the "Generar mes" button, not to the
+              vacation flow. Picking a month and then clicking the
+              vacation button used to be tempting because everything
+              sat on one flat row. */}
+          <div className="grid gap-3 p-4 sm:grid-cols-2">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                Un mes
               </div>
-              <Button
-                onClick={() => generate.mutate()}
-                disabled={generate.isPending}
-              >
-                {generate.isPending ? "Generando…" : "Generar mes"}
-              </Button>
+              <p className="mb-3 text-xs text-gray-500">
+                Elige mes y pulsa Generar para crear el borrador.
+              </p>
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="w-64">
+                  <MonthPicker label="Mes" value={period} onChange={setPeriod} />
+                </div>
+                <Button
+                  onClick={() => generate.mutate()}
+                  disabled={generate.isPending}
+                >
+                  {generate.isPending ? "Generando…" : "Generar mes"}
+                </Button>
+              </div>
+            </div>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-amber-900/70">
+                Periodo especial
+              </div>
+              <p className="mb-3 text-xs text-amber-900/80">
+                Vacaciones, Navidad, etc. con configuración propia.
+                Se generan varias planificaciones de golpe.
+              </p>
               <Button
                 variant="secondary"
                 onClick={() => setVacationOpen((v) => !v)}
@@ -281,16 +298,16 @@ export default function SchedulesPage() {
                       rows.push(
                         <tr
                           key={`periodo-${periodo.id}`}
-                          className="bg-brand-50/60"
+                          className="border-l-4 border-amber-400 bg-amber-100"
                         >
                           <td
                             colSpan={3}
-                            className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-brand-800"
+                            className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-amber-900"
                           >
                             <span className="inline-flex items-center gap-2">
                               <Sun className="h-3.5 w-3.5" />
                               <span>{periodo.name}</span>
-                              <span className="font-normal text-brand-700/70">
+                              <span className="font-normal text-amber-900/70">
                                 · {formatPeriodoRange(periodo)}
                               </span>
                             </span>
@@ -318,7 +335,11 @@ export default function SchedulesPage() {
                         className={
                           "cursor-pointer focus:outline-none transition-colors "
                           + (periodo
-                            ? "bg-brand-50/20 hover:bg-brand-50/50 focus:bg-brand-50/50"
+                            // Visible amber fill + thick left-edge
+                            // accent in the same colour as the
+                            // header row. Reads as a continuous
+                            // "this belongs to Verano 2026" band.
+                            ? "border-l-4 border-amber-400 bg-amber-50 hover:bg-amber-100/80 focus:bg-amber-100/80"
                             : "hover:bg-brand-50/40 focus:bg-brand-50/40")
                         }
                       >
