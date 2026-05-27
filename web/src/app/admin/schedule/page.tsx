@@ -25,6 +25,7 @@ import {
 } from "@/components/admin/month-picker";
 import { PeriodoEditor } from "@/components/admin/PeriodoEditor";
 import {
+  ArrowRight,
   CalendarDays,
   CalendarRange,
   ChevronDown,
@@ -312,13 +313,31 @@ export default function SchedulesPage() {
                             colSpan={3}
                             className="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-amber-900"
                           >
-                            <span className="inline-flex items-center gap-2">
-                              <Sun className="h-3.5 w-3.5" />
-                              <span>{periodo.name}</span>
-                              <span className="font-normal text-amber-900/70">
-                                · {formatPeriodoRange(periodo)}
+                            {/* Header content + a right-side
+                                "Ver período completo" link that opens
+                                a single page stacking every month of
+                                the periodo. Click is contained to the
+                                Link — clicks on the surrounding row
+                                don't navigate (the row carries no
+                                onClick of its own, unlike the month
+                                rows below). */}
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="inline-flex items-center gap-2">
+                                <Sun className="h-3.5 w-3.5" />
+                                <span>{periodo.name}</span>
+                                <span className="font-normal text-amber-900/70">
+                                  · {formatPeriodoRange(periodo)}
+                                </span>
                               </span>
-                            </span>
+                              <Link
+                                href={`/admin/schedule/periodo/${periodo.id}`}
+                                className="inline-flex items-center gap-1 rounded-md ring-1 ring-amber-300 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-900 hover:bg-amber-50 transition-colors normal-case"
+                                title={`Abrir todos los meses de ${periodo.name} en una sola página`}
+                              >
+                                <span>Ver período completo</span>
+                                <ArrowRight className="h-3.5 w-3.5" />
+                              </Link>
+                            </div>
                           </td>
                         </tr>,
                       );
