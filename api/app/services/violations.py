@@ -297,9 +297,28 @@ def _check_succession_rules(
                 for f in forbid_by_date.get(target_date, []):
                     if rule.applies_to == "same_person" and a.person_id != f.person_id:
                         continue
-                    # Avoid emitting the same pair twice when slots are
-                    # reversed and days_after=0 (a→f and f→a both fire).
-                    if rule.days_after == 0 and a.id >= f.id:
+                    # Self-referential same-day rule (after_slot ==
+                    # forbid_slot, days_after=0): after_pool and
+                    # forbid_pool are the SAME list, so iterating both
+                    # would emit each (a, f) pair twice (once as a→f
+                    # and once as f→a). Skip the higher-id side.
+                    #
+                    # Cross-slot rules (the normal case) don't need
+                    # this — `a` always comes from `after_slot` and
+                    # `f` from `forbid_slot`, so each pair shows up
+                    # exactly once. Earlier versions applied the
+                    # id-ordering check unconditionally, which
+                    # silently dropped same-day cross-slot conflicts
+                    # whenever the assignment ids happened to land
+                    # in the "wrong" order (e.g. rotation pre-pinning
+                    # made the Consulta row's id higher than the
+                    # Quirófano row's id, hiding Consulta+Quirófano).
+                    if (
+                        rule.days_after == 0
+                        and rule.after_slot_id == rule.forbid_slot_id
+                        and rule.after_team_role_id == rule.forbid_team_role_id
+                        and a.id >= f.id
+                    ):
                         continue
                     msg = _format_succession_message(
                         rule, a, f, slots, names, role_labels
