@@ -45,7 +45,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
@@ -166,6 +166,46 @@ class SlotPeriodSnapshot(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
+    # ORM relationships used by the upsert route + Pydantic
+    # serializer in app/routes/periodos.py. Cascade is "save-update,
+    # merge" only — the actual ON DELETE CASCADE happens at the DB
+    # level via the ForeignKey definitions above, and the upsert
+    # path deletes the snapshot row directly (which CASCADEs all
+    # children in one statement). Setting delete-orphan here would
+    # be redundant and could conflict with that bulk-delete.
+    rules: Mapped[list["SlotPeriodSnapshotRule"]] = relationship(
+        "SlotPeriodSnapshotRule",
+        primaryjoin=(
+            "SlotPeriodSnapshot.id == SlotPeriodSnapshotRule.snapshot_id"
+        ),
+        foreign_keys="SlotPeriodSnapshotRule.snapshot_id",
+        lazy="selectin",
+    )
+    team_roles: Mapped[list["SlotPeriodSnapshotTeamRole"]] = relationship(
+        "SlotPeriodSnapshotTeamRole",
+        primaryjoin=(
+            "SlotPeriodSnapshot.id == SlotPeriodSnapshotTeamRole.snapshot_id"
+        ),
+        foreign_keys="SlotPeriodSnapshotTeamRole.snapshot_id",
+        lazy="selectin",
+    )
+    categories: Mapped[list["SlotPeriodSnapshotCategory"]] = relationship(
+        "SlotPeriodSnapshotCategory",
+        primaryjoin=(
+            "SlotPeriodSnapshot.id == SlotPeriodSnapshotCategory.snapshot_id"
+        ),
+        foreign_keys="SlotPeriodSnapshotCategory.snapshot_id",
+        lazy="selectin",
+    )
+    allowed_persons: Mapped[list["SlotPeriodSnapshotAllowedPerson"]] = relationship(
+        "SlotPeriodSnapshotAllowedPerson",
+        primaryjoin=(
+            "SlotPeriodSnapshot.id == SlotPeriodSnapshotAllowedPerson.snapshot_id"
+        ),
+        foreign_keys="SlotPeriodSnapshotAllowedPerson.snapshot_id",
+        lazy="selectin",
+    )
+
 
 class SlotPeriodSnapshotRule(Base):
     """Mirrors SlotRule for a snapshot. The snapshot can have a
@@ -216,6 +256,31 @@ class SlotPeriodSnapshotRule(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    weekly_pins: Mapped[list["SlotPeriodSnapshotRuleWeeklyPin"]] = relationship(
+        "SlotPeriodSnapshotRuleWeeklyPin",
+        primaryjoin=(
+            "SlotPeriodSnapshotRule.id == SlotPeriodSnapshotRuleWeeklyPin.snapshot_rule_id"
+        ),
+        foreign_keys="SlotPeriodSnapshotRuleWeeklyPin.snapshot_rule_id",
+        lazy="selectin",
+    )
+    rotation_blocks: Mapped[list["SlotPeriodSnapshotRuleRotationBlock"]] = relationship(
+        "SlotPeriodSnapshotRuleRotationBlock",
+        primaryjoin=(
+            "SlotPeriodSnapshotRule.id == SlotPeriodSnapshotRuleRotationBlock.snapshot_rule_id"
+        ),
+        foreign_keys="SlotPeriodSnapshotRuleRotationBlock.snapshot_rule_id",
+        lazy="selectin",
+    )
+    rotation_members: Mapped[list["SlotPeriodSnapshotRuleRotationMember"]] = relationship(
+        "SlotPeriodSnapshotRuleRotationMember",
+        primaryjoin=(
+            "SlotPeriodSnapshotRule.id == SlotPeriodSnapshotRuleRotationMember.snapshot_rule_id"
+        ),
+        foreign_keys="SlotPeriodSnapshotRuleRotationMember.snapshot_rule_id",
+        lazy="selectin",
     )
 
 
@@ -369,6 +434,15 @@ class SlotPeriodSnapshotTeamRole(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    categories: Mapped[list["SlotPeriodSnapshotTeamRoleCategory"]] = relationship(
+        "SlotPeriodSnapshotTeamRoleCategory",
+        primaryjoin=(
+            "SlotPeriodSnapshotTeamRole.id == SlotPeriodSnapshotTeamRoleCategory.snapshot_team_role_id"
+        ),
+        foreign_keys="SlotPeriodSnapshotTeamRoleCategory.snapshot_team_role_id",
+        lazy="selectin",
     )
 
 
