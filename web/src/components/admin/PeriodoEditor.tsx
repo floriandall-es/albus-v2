@@ -1,13 +1,18 @@
 "use client";
-import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+// Shared periodo-especial editor body.
+//
+// Rendered inline inside /admin/schedule's vacation card. Owns the
+// Actividades + Reglas tabs, the Generate button + touched-months
+// confirm, and the Eliminar action. The parent decides what to do
+// after a successful generate (typically: collapse the surrounding
+// card + show a banner above the existing-planificaciones table).
 import { useMemo, useState } from "react";
 import {
   useMutation,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { ArrowLeft, CalendarRange, Play, Sparkles } from "lucide-react";
+import { CalendarRange, Play, Trash2 } from "lucide-react";
 import {
   api,
   type CapPeriodOverride,
@@ -30,7 +35,6 @@ import {
   ErrorText,
   InfoHint,
   Modal,
-  PageHeader,
   StatusPill,
 } from "@/components/admin/ui";
 import { SlotDialog } from "@/components/admin/SlotDialog";
@@ -52,7 +56,7 @@ const PERIOD_LABEL: Record<FrequencyPeriod, string> = {
 type EditorTab = "actividades" | "reglas";
 
 /**
- * /admin/periodos/[id] — periodo editor.
+ * Periodo-especial editor body.
  *
  * Tabs:
  *   - Actividades: per-(period, slot) snapshot of the full slot+rules
@@ -61,50 +65,36 @@ type EditorTab = "actividades" | "reglas";
  *   - Reglas: per-(period, succession/cap) delta overrides (those
  *     rules are tenant-scoped, so a delta model still fits).
  *
- * Generate button at the top fires the multi-month CP-SAT solve for
- * every full month touched by the periodo's date range.
+ * The "Generar período" button at the bottom fires the multi-month
+ * CP-SAT solve for every full month touched by the periodo's date
+ * range. On success the parent's `onGenerated` callback fires —
+ * /admin/schedule uses it to collapse the surrounding card and show
+ * a success banner above its existing-planificaciones table.
  */
-export default function PeriodoEditorPage() {
-  const params = useParams<{ id: string }>();
-  const periodId = Number(params.id);
-  const router = useRouter();
-
-  const periodo = useQuery({
-    queryKey: ["periodo", periodId],
-    queryFn: () => api.getPeriodo(periodId),
-  });
-
-  if (periodo.isLoading) {
-    return <p className="text-sm text-gray-500">Cargando…</p>;
-  }
-  if (periodo.isError || !periodo.data) {
-    return (
-      <>
-        <PageHeader title="Periodo" />
-        <ErrorText>No se pudo cargar el periodo.</ErrorText>
-        <div className="mt-4">
-          <Button variant="secondary" onClick={() => router.push("/admin/periodos")}>
-            <ArrowLeft className="h-4 w-4" />
-            Volver
-          </Button>
-        </div>
-      </>
-    );
-  }
-
-  return <PeriodoEditor periodo={periodo.data} />;
-}
-
-function PeriodoEditor({ periodo }: { periodo: Periodo }) {
+export function PeriodoEditor({
+  periodo,
+  onGenerated,
+  onDeleted,
+}: {
+  periodo: Periodo;
+  /** Called with the generated schedules on a successful solve.
+   * Parent decides what to render afterwards (collapse the card,
+   * show a banner, etc.). */
+  onGenerated?: (results: GeneratePeriodResult[]) => void;
+  /** Called after the periodo is deleted (admin pressed the trash
+   * button + confirmed). Parent should remove the periodo from its
+   * list and collapse the editor. */
+  onDeleted?: () => void;
+}) {
   const qc = useQueryClient();
-  const router = useRouter();
 
   const slots = useQuery({
     queryKey: ["slots"],
     queryFn: () => api.listSlots(),
   });
 
-  // Pretty date range header.
+  // Pretty date range — "15 jul – 31 ago 2026" or "20 dic 2026 –
+  // 6 ene 2027" when the range crosses a year.
   const start = new Date(periodo.start_date + "T00:00:00");
   const end = new Date(periodo.end_date + "T00:00:00");
   const sameYear = start.getFullYear() === end.getFullYear();
@@ -120,10 +110,9 @@ function PeriodoEditor({ periodo }: { periodo: Periodo }) {
   });
   const dateRange = `${startLabel} – ${endLabel}`;
 
-  // Touched months — Mara should see what "Generar" is about to do
-  // before pressing the button. Matches the server-side logic in
-  // generate_period: every (year, month) covered by [start, end]
-  // inclusive.
+  // Touched months — admin should see what "Generar" is about to do
+  // before pressing the button. Matches generate_period server-side:
+  // every (year, month) covered by [start, end] inclusive.
   const touchedMonths = useMemo(() => {
     const s = new Date(periodo.start_date + "T00:00:00");
     const e = new Date(periodo.end_date + "T00:00:00");
@@ -151,111 +140,91 @@ function PeriodoEditor({ periodo }: { periodo: Periodo }) {
     return out;
   }, [periodo.start_date, periodo.end_date]);
 
-  const [generateResult, setGenerateResult] = useState<
-    GeneratePeriodResult[] | null
-  >(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
 
   const generate = useMutation({
     mutationFn: () => api.generatePeriodo(periodo.id),
     onSuccess: (result) => {
-      setGenerateResult(result);
       setGenerateError(null);
       qc.invalidateQueries({ queryKey: ["schedules"] });
+      onGenerated?.(result);
     },
     onError: (e) => {
       setGenerateError((e as Error).message);
-      setGenerateResult(null);
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: () => api.deletePeriodo(periodo.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["periodos"] });
+      onDeleted?.();
     },
   });
 
   return (
-    <>
-      <PageHeader
-        title={periodo.name}
-        action={
-          <div className="flex gap-2">
-            <Button
-              variant="secondary"
-              onClick={() => router.push("/admin/periodos")}
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Volver
-            </Button>
-            <Button
-              onClick={() => {
-                if (
-                  confirm(
-                    `Esto generará ${touchedMonths.length} planificación${touchedMonths.length === 1 ? "" : "es"} (${touchedMonths.map((t) => t.label).join(", ")}). Si ya existen borradores, se sobrescribirán; las celdas bloqueadas se conservan. Planificaciones publicadas o archivadas detienen la operación. ¿Continuar?`,
-                  )
-                ) {
-                  generate.mutate();
-                }
-              }}
-              disabled={generate.isPending}
-            >
-              <Play className="h-4 w-4" />
-              {generate.isPending ? "Generando…" : "Generar período"}
-            </Button>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 text-sm text-gray-700">
+            <CalendarRange className="h-4 w-4 text-gray-500" />
+            <span className="font-medium text-gray-900">{periodo.name}</span>
+            <span className="text-gray-500">· {dateRange}</span>
           </div>
-        }
-      />
-
-      <div className="-mt-4 mb-6 max-w-2xl text-sm text-gray-600">
-        <div className="flex items-center gap-2">
-          <CalendarRange className="h-4 w-4 text-gray-500" />
-          <span>{dateRange}</span>
+          <p className="mt-1 text-xs text-gray-500">
+            Ajusta abajo qué actividades se desactivan, cambian sus
+            plazas o relajan sus restricciones durante este periodo.
+            Lo que no toques mantiene su configuración por defecto.
+          </p>
         </div>
-        <p className="mt-2">
-          Ajusta abajo qué actividades se desactivan, cambian sus
-          plazas o relajan sus restricciones durante este periodo.
-          Lo que no toques mantiene su configuración por defecto.
-        </p>
+        <Button
+          variant="danger"
+          onClick={() => {
+            if (
+              confirm(
+                `¿Eliminar el periodo "${periodo.name}"? Esto borra todas sus configuraciones específicas, pero las planificaciones ya generadas no se tocan.`,
+              )
+            ) {
+              remove.mutate();
+            }
+          }}
+          disabled={remove.isPending}
+        >
+          <Trash2 className="h-4 w-4" />
+          {remove.isPending ? "Eliminando…" : "Eliminar"}
+        </Button>
       </div>
 
-      {generateError && (
-        <Card>
-          <div className="p-4">
-            <ErrorText>{generateError}</ErrorText>
-          </div>
-        </Card>
-      )}
-
-      {generateResult && (
-        <Card>
-          <div className="p-4">
-            <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-emerald-700">
-              <Sparkles className="h-4 w-4" />
-              Generación completada
-            </div>
-            <ul className="space-y-1 text-sm">
-              {generateResult.map((r) => (
-                <li key={r.schedule_id} className="flex items-center gap-3">
-                  <span className="min-w-0 flex-1">
-                    {new Date(r.period + "T00:00:00").toLocaleDateString("es-ES", {
-                      month: "long",
-                      year: "numeric",
-                    })}
-                  </span>
-                  <span className="text-xs text-gray-500">
-                    {r.assignments_created} asignaciones · solver:{" "}
-                    {r.solver_used}
-                  </span>
-                  <Link
-                    href={`/admin/schedule/${r.schedule_id}`}
-                    className="text-brand-700 underline-offset-2 hover:underline"
-                  >
-                    Abrir
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </Card>
+      {generateError && <ErrorText>{generateError}</ErrorText>}
+      {remove.isError && (
+        <ErrorText>{(remove.error as Error).message}</ErrorText>
       )}
 
       <EditorTabs periodo={periodo} slots={slots.data ?? []} />
-    </>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-4">
+        <p className="text-xs text-gray-500">
+          Generará {touchedMonths.length}{" "}
+          {touchedMonths.length === 1 ? "planificación" : "planificaciones"}:{" "}
+          {touchedMonths.map((t) => t.label).join(", ")}.
+        </p>
+        <Button
+          onClick={() => {
+            if (
+              confirm(
+                `Esto generará ${touchedMonths.length} planificación${touchedMonths.length === 1 ? "" : "es"} (${touchedMonths.map((t) => t.label).join(", ")}). Si ya existen borradores, se sobrescribirán; las celdas bloqueadas se conservan. Planificaciones publicadas o archivadas detienen la operación. ¿Continuar?`,
+              )
+            ) {
+              generate.mutate();
+            }
+          }}
+          disabled={generate.isPending}
+        >
+          <Play className="h-4 w-4" />
+          {generate.isPending ? "Generando…" : "Generar período"}
+        </Button>
+      </div>
+    </div>
   );
 }
 

@@ -20,7 +20,6 @@ import {
   Settings,
   Share2,
   Sparkles,
-  Sun,
   Tag,
   Users,
   type LucideIcon,
@@ -98,11 +97,11 @@ const NAV: NavSection[] = [
       { href: "/admin/slots", label: "Actividades", icon: Clock },
       { href: "/admin/rules", label: "Reglas", icon: Sparkles },
       { href: "/admin/holidays", label: "Festivos", icon: PartyPopper },
-      // Vacation V.1: periodos especiales — date ranges where slots/
-      // rules look different (summer with reduced Quirófano, etc.).
-      // Editor is admin-only; the generated schedules show up under
-      // Operativa → Planificación like any other month.
-      { href: "/admin/periodos", label: "Periodos", icon: Sun },
+      // Periodos especiales (vacation/Christmas date ranges with their
+      // own slot/rule config) live inline on Operativa → Planificación
+      // now — there's a "Generar planificación de vacaciones" button
+      // on that page that opens a periodos card. The dedicated
+      // /admin/periodos route was deleted with V.2.5.
       // Phase C.2: admin-only — what THIS equipo exposes to its
       // siblings in the servicio. The read-only "Vista conjunta"
       // lives under Operativa → Servicio (shared with members);

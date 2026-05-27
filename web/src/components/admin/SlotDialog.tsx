@@ -4,10 +4,11 @@
 // places:
 //
 //  - /admin/slots             default slot CRUD (mode='default').
-//  - /admin/periodos/[id]     per-(period, slot) snapshot
-//                             (mode='period-snapshot') — admin
-//                             redefines the slot for the period
-//                             without touching the default config.
+//  - /admin/schedule          per-(period, slot) snapshot inside
+//                             the vacation card (mode='period-
+//                             snapshot') — admin redefines the slot
+//                             for the period without touching the
+//                             default config.
 //
 // The visual language is identical in both modes so admins don't have
 // to learn a second form for vacation periods. The mode discriminator
