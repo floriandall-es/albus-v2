@@ -83,6 +83,16 @@ docker compose -f infra/docker-compose.prod.yml logs caddy | grep -i certificate
 
 ## 3. Routine deploy
 
+### 0. Before you start (run on your local Mac, not the VPS)
+
+Confirm every local commit has been pushed to GitHub. A partial push lands a half-applied feature batch on the VPS — e.g. models drop a symbol but the route that imports it stays behind, and the API container crashes at import time.
+
+```bash
+git log @{u}..HEAD --oneline   # must be empty before you ssh to the VPS
+```
+
+If anything prints, `git push` first. Only then proceed to the VPS steps below.
+
 ```bash
 cd /srv/albus/repo
 git pull --ff-only
