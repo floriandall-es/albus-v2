@@ -355,11 +355,14 @@ function VacationCard({
                 onDeleted={() => onExpand(null)}
               />
             ))}
+            {/* Action row, not a periodo. Slight gray fill +
+                top border emphasis sets it apart from the list
+                items above. */}
             <li>
               <button
                 type="button"
                 onClick={onCreate}
-                className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm text-brand-700 hover:bg-brand-50/50 transition-colors"
+                className="flex w-full items-center gap-2 border-t-2 border-gray-200 bg-gray-50 px-4 py-3 text-left text-sm text-brand-700 hover:bg-gray-100 transition-colors"
               >
                 <Sun className="h-4 w-4" />
                 <span className="font-medium">+ Nuevo periodo</span>
@@ -405,10 +408,18 @@ function PeriodoRow({
 
   return (
     <li>
+      {/* The clickable header is the "tab" of the row. When expanded
+          it gets a brand-tinted background so the eye anchors to it
+          as the active periodo; collapsed rows stay white. */}
       <button
         type="button"
         onClick={onToggle}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-gray-50/60 transition-colors"
+        className={
+          "flex w-full items-center gap-3 px-4 py-3 text-left transition-colors "
+          + (expanded
+            ? "bg-brand-50/60 hover:bg-brand-50/80"
+            : "hover:bg-gray-50/60")
+        }
         aria-expanded={expanded}
       >
         {expanded ? (
@@ -430,8 +441,11 @@ function PeriodoRow({
           </div>
         </div>
       </button>
+      {/* PeriodoEditor lays itself out as three horizontal strips
+          (header / body / footer) with their own backgrounds. We
+          just give it edge-to-edge space below the header tab. */}
       {expanded && (
-        <div className="border-t border-gray-100 bg-gray-50/40 px-4 py-4">
+        <div className="border-t border-gray-200">
           <PeriodoEditor
             periodo={periodo}
             onGenerated={onGenerated}

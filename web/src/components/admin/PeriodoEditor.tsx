@@ -12,7 +12,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { CalendarRange, Play, Trash2 } from "lucide-react";
+import { Play, Trash2 } from "lucide-react";
 import {
   api,
   type CapPeriodOverride,
@@ -93,23 +93,6 @@ export function PeriodoEditor({
     queryFn: () => api.listSlots(),
   });
 
-  // Pretty date range — "15 jul – 31 ago 2026" or "20 dic 2026 –
-  // 6 ene 2027" when the range crosses a year.
-  const start = new Date(periodo.start_date + "T00:00:00");
-  const end = new Date(periodo.end_date + "T00:00:00");
-  const sameYear = start.getFullYear() === end.getFullYear();
-  const startLabel = start.toLocaleDateString("es-ES", {
-    day: "numeric",
-    month: "short",
-    year: sameYear ? undefined : "numeric",
-  });
-  const endLabel = end.toLocaleDateString("es-ES", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-  const dateRange = `${startLabel} – ${endLabel}`;
-
   // Touched months — admin should see what "Generar" is about to do
   // before pressing the button. Matches generate_period server-side:
   // every (year, month) covered by [start, end] inclusive.
@@ -162,21 +145,22 @@ export function PeriodoEditor({
     },
   });
 
+  // Avoid name suppression: the parent row already shows
+  // `periodo.name` and `dateRange` in its clickable header, so the
+  // editor's own header doesn't repeat them. It just carries the
+  // helper text + the Eliminar button. The three regions (header,
+  // body, footer) get distinct tints so the eye stops reading the
+  // whole modal as one blob.
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 text-sm text-gray-700">
-            <CalendarRange className="h-4 w-4 text-gray-500" />
-            <span className="font-medium text-gray-900">{periodo.name}</span>
-            <span className="text-gray-500">· {dateRange}</span>
-          </div>
-          <p className="mt-1 text-xs text-gray-500">
-            Ajusta abajo qué actividades se desactivan, cambian sus
-            plazas o relajan sus restricciones durante este periodo.
-            Lo que no toques mantiene su configuración por defecto.
-          </p>
-        </div>
+    <div>
+      {/* Header strip: helper text + Eliminar. Slightly darker tint
+          than the body so it reads as a distinct top region. */}
+      <div className="flex flex-wrap items-start gap-3 border-b border-gray-200 bg-gray-100/70 px-4 py-3">
+        <p className="min-w-0 flex-1 text-xs text-gray-600">
+          Ajusta abajo qué actividades se desactivan, cambian sus
+          plazas o relajan sus restricciones durante este periodo.
+          Lo que no toques mantiene su configuración por defecto.
+        </p>
         <Button
           variant="danger"
           onClick={() => {
@@ -195,15 +179,20 @@ export function PeriodoEditor({
         </Button>
       </div>
 
-      {generateError && <ErrorText>{generateError}</ErrorText>}
-      {remove.isError && (
-        <ErrorText>{(remove.error as Error).message}</ErrorText>
-      )}
+      {/* Body: errors + tabs. White on the surrounding gray so the
+          working area reads as a "page" sitting on the row. */}
+      <div className="space-y-3 bg-white px-4 py-4">
+        {generateError && <ErrorText>{generateError}</ErrorText>}
+        {remove.isError && (
+          <ErrorText>{(remove.error as Error).message}</ErrorText>
+        )}
+        <EditorTabs periodo={periodo} slots={slots.data ?? []} />
+      </div>
 
-      <EditorTabs periodo={periodo} slots={slots.data ?? []} />
-
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-4">
-        <p className="text-xs text-gray-500">
+      {/* Footer strip: months-to-touch hint + Generate button.
+          Same tint as the header so it visually closes the section. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-gray-100/70 px-4 py-3">
+        <p className="text-xs text-gray-600">
           Generará {touchedMonths.length}{" "}
           {touchedMonths.length === 1 ? "planificación" : "planificaciones"}:{" "}
           {touchedMonths.map((t) => t.label).join(", ")}.
