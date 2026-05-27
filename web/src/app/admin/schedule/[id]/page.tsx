@@ -1,7 +1,9 @@
 "use client";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button, ErrorText } from "@/components/admin/ui";
 import { BalanceStats } from "@/components/schedule/BalanceStats";
@@ -206,6 +208,20 @@ export default function ScheduleDetailPage() {
           >
             {downloadPdf.isPending ? "Generando PDF…" : "Descargar PDF"}
           </Button>
+          {/* Mirror of the Volver button on the period view. Always
+              points back to /admin/schedule (the planificación list).
+              Period-aware "back" — sending the user to the periodo
+              page when they came in via "Abrir mes individual" —
+              would need referrer/history sniffing; the list is the
+              one parent every entry point converges on, so we
+              standardise on that. */}
+          <Link
+            href="/admin/schedule"
+            className="inline-flex items-center gap-1.5 rounded-lg ring-1 ring-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50 transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Volver
+          </Link>
         </div>
       </div>
       {actionError && (
