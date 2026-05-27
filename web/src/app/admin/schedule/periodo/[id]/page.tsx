@@ -49,10 +49,12 @@ export default function PeriodoSchedulePage() {
   // anything.
   const [actionError, setActionError] = useState<string | null>(null);
   // Which lifecycle action (if any) is in the notify-members modal.
-  // Currently only "publish" — Eliminar uses a plain confirm() because
-  // it's not a member-visible state change.
+  // Eliminar uses a plain confirm() because it's not a member-visible
+  // state change. Publish + Reopen both flip member visibility so
+  // they share the same notify-by-email dialog the single-month page
+  // uses.
   const [confirmingAction, setConfirmingAction] = useState<
-    "publish" | null
+    "publish" | "reopen" | null
   >(null);
 
   const periodo = useQuery({
@@ -219,6 +221,14 @@ export default function PeriodoSchedulePage() {
     () => existingSchedules.filter((s) => s.status === "draft"),
     [existingSchedules],
   );
+  // Published months drive the Reabrir button. The single-month page
+  // makes the same split (Reabrir / Archivar only show when status
+  // === "published"); the period version fans out across every
+  // published month in the period.
+  const publishedSchedules = useMemo(
+    () => existingSchedules.filter((s) => s.status === "published"),
+    [existingSchedules],
+  );
 
   // Publish every draft in the period sequentially. Sequential so a
   // mid-loop failure surfaces a coherent error (rather than half the
@@ -263,6 +273,33 @@ export default function PeriodoSchedulePage() {
       setActionError(null);
       qc.invalidateQueries({ queryKey: ["schedules"] });
       router.replace("/admin/schedule");
+    },
+    onError: (e) => {
+      setActionError((e as Error).message);
+    },
+  });
+
+  // Reopen every published month in the period — the inverse of
+  // publishMany. Each call walks the single-month reopen path on
+  // the API (cancels pending shift swaps, hides from "Mis turnos"
+  // until republished, stamps reopened_at). Sequential for the same
+  // reasons as publishMany; notify forwards to each call so the
+  // admin gets one email per reopened month if they opted in.
+  const reopenMany = useMutation({
+    mutationFn: async (notifyMembers: boolean) => {
+      const ids: number[] = [];
+      for (const sched of publishedSchedules) {
+        await api.reopenSchedule(sched.id, notifyMembers);
+        ids.push(sched.id);
+      }
+      return ids;
+    },
+    onSuccess: (ids) => {
+      setActionError(null);
+      qc.invalidateQueries({ queryKey: ["schedules"] });
+      for (const id of ids) {
+        qc.invalidateQueries({ queryKey: ["schedule", id] });
+      }
     },
     onError: (e) => {
       setActionError((e as Error).message);
@@ -342,6 +379,15 @@ export default function PeriodoSchedulePage() {
                 disabled={publishMany.isPending}
               >
                 {publishMany.isPending ? "Publicando…" : "Publicar período"}
+              </Button>
+            )}
+            {publishedSchedules.length > 0 && (
+              <Button
+                variant="secondary"
+                onClick={() => setConfirmingAction("reopen")}
+                disabled={reopenMany.isPending}
+              >
+                {reopenMany.isPending ? "Reabriendo…" : "Reabrir período"}
               </Button>
             )}
             {draftSchedules.length > 0 && (
@@ -519,6 +565,29 @@ export default function PeriodoSchedulePage() {
             });
           }}
           isPending={publishMany.isPending}
+        />
+      )}
+      {/* Reopen-confirm modal — inverse of publish. Same notify-by-
+          email opt-in; description warns the admin that pending shift
+          swaps will be cancelled and the months go back to draft so
+          they're hidden from "Mis turnos" until republished. */}
+      {confirmingAction === "reopen" && (
+        <NotifyConfirmModal
+          title="Reabrir período"
+          description={
+            publishedSchedules.length === 1
+              ? "Volver a borrador para hacer cambios. Los cambios de turno pendientes se cancelarán y la planificación dejará de estar visible en \"Mis turnos\" hasta volver a publicarla."
+              : `Las ${publishedSchedules.length} planificaciones del período volverán a borrador. Los cambios de turno pendientes se cancelarán y dejarán de estar visibles en "Mis turnos" hasta volver a publicarlas.`
+          }
+          confirmLabel="Reabrir"
+          notifyLabel="Avisar por email a los miembros del equipo"
+          onClose={() => setConfirmingAction(null)}
+          onConfirm={(notify) => {
+            reopenMany.mutate(notify, {
+              onSuccess: () => setConfirmingAction(null),
+            });
+          }}
+          isPending={reopenMany.isPending}
         />
       )}
     </>
