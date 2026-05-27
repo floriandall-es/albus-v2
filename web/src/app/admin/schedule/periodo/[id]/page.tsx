@@ -132,23 +132,11 @@ export default function PeriodoSchedulePage() {
     return out;
   }, [detailQueries]);
 
-  if (periodo.isLoading) {
-    return <p className="text-sm text-gray-500">Cargando…</p>;
-  }
-  if (periodo.isError || !periodo.data) {
-    return (
-      <ErrorText>
-        {(periodo.error as Error)?.message ?? "Periodo no encontrado"}
-      </ErrorText>
-    );
-  }
-
-  const p = periodo.data;
-  const dateRange = { from: p.start_date, to: p.end_date };
-  const balanceDataReady = detailQueries.every((q) => q.data !== undefined);
   // touchedMonths drives the confirmation copy and the list of detail
   // caches to invalidate after a successful regenerate. Mirrors the
   // logic in PeriodoEditor — same Spanish month labels.
+  // Computed BEFORE the early returns below so the hook count stays
+  // constant across renders (react-hooks/rules-of-hooks).
   const touchedMonthLabels = useMemo(
     () =>
       touchedMonths.map((period) => {
@@ -165,8 +153,12 @@ export default function PeriodoSchedulePage() {
   // contract as the PeriodoEditor's footer button: locked + dismissed
   // cells survive, plain manual edits get overwritten, published or
   // archived months abort with 409.
+  // Defined BEFORE the early returns so the hook order is stable
+  // across renders. Uses `periodoId` from the route (always defined)
+  // rather than `periodo.data.id` so it doesn't depend on the fetch
+  // having resolved.
   const regenerate = useMutation({
-    mutationFn: () => api.generatePeriodo(p.id),
+    mutationFn: () => api.generatePeriodo(periodoId),
     onSuccess: (results) => {
       setGenerateError(null);
       // Refresh the schedules list (new schedules may have been
@@ -185,6 +177,21 @@ export default function PeriodoSchedulePage() {
       setGenerateError((e as Error).message);
     },
   });
+
+  if (periodo.isLoading) {
+    return <p className="text-sm text-gray-500">Cargando…</p>;
+  }
+  if (periodo.isError || !periodo.data) {
+    return (
+      <ErrorText>
+        {(periodo.error as Error)?.message ?? "Periodo no encontrado"}
+      </ErrorText>
+    );
+  }
+
+  const p = periodo.data;
+  const dateRange = { from: p.start_date, to: p.end_date };
+  const balanceDataReady = detailQueries.every((q) => q.data !== undefined);
 
   return (
     <>
