@@ -155,7 +155,7 @@ export default function SchedulesPage() {
                 onClick={() => generate.mutate()}
                 disabled={generate.isPending}
               >
-                {generate.isPending ? "Generando…" : "Generar nueva"}
+                {generate.isPending ? "Generando…" : "Generar mes"}
               </Button>
               <Button
                 variant="secondary"
