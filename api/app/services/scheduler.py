@@ -869,6 +869,35 @@ class _Context:
         team = self.rotation_persons_for(rule, d)
         return team[0] if team else None
 
+    def _block_dates_for(self, rule, d: date) -> list[date]:
+        """All calendar dates in the SAME rotation block as `d`.
+
+        A block's bitmap names the weekdays it covers (e.g. V-S-D =
+        0b1110000). Within d's Monday-week, we materialise every date
+        whose weekday is set in the block. So for a V-S-D block on
+        d=Sat 4 Jul 2026 this returns [Fri 3 Jul, Sat 4 Jul, Sun 5 Jul].
+
+        Block-level substitution uses this to keep a multi-day block
+        on the SAME person: either the rotation target for the whole
+        block, or one substitute for the whole block — never a split.
+        """
+        blocks = self._rotation_blocks_for(rule)
+        if not blocks:
+            return [d]
+        wd = d.weekday()
+        bit = 1 << wd
+        target_block = next(
+            (b for b in blocks if b.days_bitmap & bit), None
+        )
+        if target_block is None:
+            return [d]
+        monday = d - timedelta(days=d.weekday())
+        return [
+            monday + timedelta(days=wd_i)
+            for wd_i in range(7)
+            if target_block.days_bitmap & (1 << wd_i)
+        ]
+
     def rotation_persons_for_substituted(
         self, rule, d: date, slot: Slot
     ) -> tuple[list[int], dict[int, int]]:
@@ -882,18 +911,28 @@ class _Context:
         person on the rotation; the rest of the year the cell stays
         Sin cubrir and the admin reassigns by hand").
 
+        Substitution is **block-level**: when the rotation block spans
+        multiple days (e.g. V-S-D as one weekend block), we check the
+        primary's eligibility across EVERY day in the block. If they're
+        absent on any single day, we swap the whole block to one
+        substitute who's eligible for all of it. This preserves the
+        "one person owns the block" property that the admin configured
+        — a substitution must keep the block whole, not split it
+        Fri+Sat=primary / Sun=sub.
+
         The rotation pointer does NOT permanently advance. The absent
         person resumes their normal turn the next time the rotation
-        lands on their position — substitution is a one-day patch, not
-        a re-anchoring.
+        lands on their position — substitution is a one-block patch,
+        not a re-anchoring.
 
         Returns (team, substitutions) where `substitutions[sub_pid] =
         absent_pid` for each entry that was filled by a substitute.
         Callers use this to annotate the Assignment row so admins see
         WHY the substitute is covering (e.g. "Sustituye en rotación
-        por ausencia"). If no eligible substitute exists, the absent
-        person is left in `team` and the downstream eligibility check
-        emits the usual Sin-cubrir cell.
+        por ausencia"). If no eligible substitute exists for the
+        block, the primary is left in `team` and the downstream
+        eligibility check emits the usual Sin-cubrir cell for the
+        specific dates they're absent.
         """
         base_team = self.rotation_persons_for(rule, d)
         if not base_team:
@@ -921,6 +960,11 @@ class _Context:
             return base_team, {}
         team_idx = positions_sorted.index(team_pos)
 
+        # All dates that belong to the same rotation block as `d`.
+        # Substitution decisions are evaluated against the whole block
+        # so a V-S-D block stays on one person.
+        block_dates = self._block_dates_for(rule, d)
+
         # Candidate substitutes start in priority order: members of
         # position team_idx+1, then +2, …, wrapping around. Within a
         # position, preserve the rotation's authored member order
@@ -933,34 +977,43 @@ class _Context:
             for m in members:
                 if m.position == next_pos:
                     substitute_queue.append(m.person_id)
-        # Rotate the queue by calendar date so consecutive absent days
-        # pick different substitutes. Without this rotation, the first
-        # eligible position always wins — A on vacation for a week
-        # would land every single one of A's days on B, while C never
-        # substitutes. Anchoring on d.toordinal() makes the offset
-        # advance by 1 per day so substitutes alternate naturally:
-        # 3 candidates → B, C, D, B, C, D…; 2 candidates → B, C, B, C.
-        if substitute_queue:
-            rot = d.toordinal() % len(substitute_queue)
+        # Rotate the queue by the block's FIRST date so:
+        #   - the same substitute is picked for every day of the block
+        #     (each call to this method during the block sees the same
+        #     rotated queue),
+        #   - consecutive blocks (e.g. weekly V-S-D shifts across a
+        #     vacation period) still rotate among the remaining
+        #     candidates rather than always landing on the first.
+        if substitute_queue and block_dates:
+            rot = block_dates[0].toordinal() % len(substitute_queue)
             substitute_queue = (
                 substitute_queue[rot:] + substitute_queue[:rot]
+            )
+
+        def eligible_for_block(pid: int) -> bool:
+            """True iff `pid` can cover every date in the block."""
+            return all(
+                self.eligibility_reason(pid, slot, bd, None) is None
+                for bd in block_dates
             )
 
         final_team: list[int] = []
         substitutions: dict[int, int] = {}
         used: set[int] = set()
         for pid in base_team:
-            reason = self.eligibility_reason(pid, slot, d, None)
-            if reason is None:
+            # Block-level eligibility check: the primary keeps the
+            # block iff they're available for EVERY day of it.
+            # Otherwise we swap the whole block to a substitute.
+            if eligible_for_block(pid):
                 final_team.append(pid)
                 used.add(pid)
                 continue
-            # Find first eligible substitute not already in the team.
+            # Find first substitute eligible for the WHOLE block.
             picked: int | None = None
             for spid in substitute_queue:
                 if spid in used:
                     continue
-                if self.eligibility_reason(spid, slot, d, None) is None:
+                if eligible_for_block(spid):
                     picked = spid
                     break
             if picked is not None:
@@ -968,9 +1021,10 @@ class _Context:
                 used.add(picked)
                 substitutions[picked] = pid
             else:
-                # No eligible substitute — leave the absent person in
-                # the team. Downstream eligibility check emits the
-                # regular Sin-cubrir cell with its existing note.
+                # No substitute eligible for the entire block — leave
+                # the primary in the team. Downstream eligibility check
+                # emits the regular Sin-cubrir cell for each day the
+                # primary is absent.
                 final_team.append(pid)
         return final_team, substitutions
 
