@@ -9,6 +9,7 @@ import { Button, ErrorText } from "@/components/admin/ui";
 import { BalanceStats } from "@/components/schedule/BalanceStats";
 import { NotifyConfirmModal } from "@/components/schedule/NotifyConfirmModal";
 import { ScheduleSection } from "@/components/schedule/ScheduleSection";
+import { SolverFallbackModal } from "@/components/schedule/SolverFallbackModal";
 import { formatPeriod } from "@/components/admin/month-picker";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -48,6 +49,12 @@ export default function ScheduleDetailPage() {
   // notify-members modal. Null when no modal is open.
   const [confirmingAction, setConfirmingAction] = useState<
     "publish" | "reopen" | null
+  >(null);
+  // Affected-months list for the solver-fallback explainer. Set on a
+  // greedy fallback after regenerate; cleared when the admin dismisses.
+  // The single-month page always has at most one entry.
+  const [solverFallbackMonths, setSolverFallbackMonths] = useState<
+    string[] | null
   >(null);
 
   const detail = useQuery({
@@ -98,6 +105,9 @@ export default function ScheduleDetailPage() {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["schedules"] });
       router.replace(`/admin/schedule/${data.id}`);
+      if (data.solver_used === "greedy") {
+        setSolverFallbackMonths([formatPeriod(data.period)]);
+      }
     },
   });
   const remove = useMutation({
@@ -314,6 +324,12 @@ export default function ScheduleDetailPage() {
             });
           }}
           isPending={reopen.isPending}
+        />
+      )}
+      {solverFallbackMonths && (
+        <SolverFallbackModal
+          affectedMonths={solverFallbackMonths}
+          onClose={() => setSolverFallbackMonths(null)}
         />
       )}
     </>

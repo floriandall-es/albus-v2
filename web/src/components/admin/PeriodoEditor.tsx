@@ -42,6 +42,7 @@ import {
   StatusPill,
 } from "@/components/admin/ui";
 import { SlotDialog } from "@/components/admin/SlotDialog";
+import { SolverFallbackModal } from "@/components/schedule/SolverFallbackModal";
 
 // Label maps mirroring /admin/rules — keep the wording consistent
 // across the two surfaces so the admin doesn't have to re-learn.
@@ -123,6 +124,13 @@ export function PeriodoEditor({
   }, [periodo.start_date, periodo.end_date]);
 
   const [generateError, setGenerateError] = useState<string | null>(null);
+  // Solver-fallback explainer. Set when any of the touched months
+  // fell back to greedy; cleared when the admin dismisses. The list
+  // is the labels of just the fallback months, not every touched
+  // month — admins want to know which one needs attention.
+  const [solverFallbackMonths, setSolverFallbackMonths] = useState<
+    string[] | null
+  >(null);
 
   const generate = useMutation({
     mutationFn: () => api.generatePeriodo(periodo.id),
@@ -130,6 +138,16 @@ export function PeriodoEditor({
       setGenerateError(null);
       qc.invalidateQueries({ queryKey: ["schedules"] });
       onGenerated?.(result);
+      const fallback = result
+        .filter((r) => r.solver_used === "greedy")
+        .map((r) => {
+          const d = new Date(r.period + "T00:00:00");
+          return d.toLocaleDateString("es-ES", {
+            month: "long",
+            year: "numeric",
+          });
+        });
+      if (fallback.length > 0) setSolverFallbackMonths(fallback);
     },
     onError: (e) => {
       setGenerateError((e as Error).message);
@@ -190,6 +208,12 @@ export function PeriodoEditor({
           {generate.isPending ? "Generando…" : "Generar período"}
         </Button>
       </div>
+      {solverFallbackMonths && (
+        <SolverFallbackModal
+          affectedMonths={solverFallbackMonths}
+          onClose={() => setSolverFallbackMonths(null)}
+        />
+      )}
     </div>
   );
 }

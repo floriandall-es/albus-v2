@@ -19,6 +19,7 @@ import { Button, EmptyState, ErrorText } from "@/components/admin/ui";
 import { ScheduleSection } from "@/components/schedule/ScheduleSection";
 import { BalanceStats } from "@/components/schedule/BalanceStats";
 import { NotifyConfirmModal } from "@/components/schedule/NotifyConfirmModal";
+import { SolverFallbackModal } from "@/components/schedule/SolverFallbackModal";
 import { formatPeriod } from "@/components/admin/month-picker";
 
 /**
@@ -55,6 +56,12 @@ export default function PeriodoSchedulePage() {
   // uses.
   const [confirmingAction, setConfirmingAction] = useState<
     "publish" | "reopen" | null
+  >(null);
+  // Solver-fallback explainer for the period regenerate path. The
+  // list holds Spanish month labels of just the months that fell
+  // back, not every touched month.
+  const [solverFallbackMonths, setSolverFallbackMonths] = useState<
+    string[] | null
   >(null);
 
   const periodo = useQuery({
@@ -206,6 +213,16 @@ export default function PeriodoSchedulePage() {
           queryKey: ["schedule-violations", r.schedule_id],
         });
       }
+      const fallback = results
+        .filter((r) => r.solver_used === "greedy")
+        .map((r) => {
+          const d = new Date(r.period + "T00:00:00");
+          return d.toLocaleDateString("es-ES", {
+            month: "long",
+            year: "numeric",
+          });
+        });
+      if (fallback.length > 0) setSolverFallbackMonths(fallback);
     },
     onError: (e) => {
       setActionError((e as Error).message);
@@ -588,6 +605,12 @@ export default function PeriodoSchedulePage() {
             });
           }}
           isPending={reopenMany.isPending}
+        />
+      )}
+      {solverFallbackMonths && (
+        <SolverFallbackModal
+          affectedMonths={solverFallbackMonths}
+          onClose={() => setSolverFallbackMonths(null)}
         />
       )}
     </>

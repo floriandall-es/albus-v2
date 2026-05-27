@@ -24,6 +24,7 @@ import {
   formatPeriod,
 } from "@/components/admin/month-picker";
 import { PeriodoEditor } from "@/components/admin/PeriodoEditor";
+import { SolverFallbackModal } from "@/components/schedule/SolverFallbackModal";
 import {
   ArrowRight,
   CalendarDays,
@@ -106,12 +107,29 @@ export default function SchedulesPage() {
     periodoName: string;
     results: GeneratePeriodResult[];
   } | null>(null);
+  // When the CP-SAT solver couldn't equilibrate and the API fell back
+  // to greedy we open a modal explaining what happened + listing the
+  // affected month(s). The pending navigation is captured here so the
+  // user reads the modal first; on close we jump to the schedule.
+  const [solverFallback, setSolverFallback] = useState<{
+    affectedMonths: string[];
+    navigateTo: string | null;
+  } | null>(null);
 
   const generate = useMutation({
     mutationFn: () => api.generateSchedule(period),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["schedules"] });
-      router.push(`/admin/schedule/${data.id}`);
+      if (data.solver_used === "greedy") {
+        // Hold the navigation in the fallback modal — user dismisses
+        // it, then we route to the schedule.
+        setSolverFallback({
+          affectedMonths: [formatPeriod(data.period)],
+          navigateTo: `/admin/schedule/${data.id}`,
+        });
+      } else {
+        router.push(`/admin/schedule/${data.id}`);
+      }
     },
   });
 
@@ -423,6 +441,16 @@ export default function SchedulesPage() {
               // immediately configure it.
               setExpandedPeriodId(createdId);
             }
+          }}
+        />
+      )}
+      {solverFallback && (
+        <SolverFallbackModal
+          affectedMonths={solverFallback.affectedMonths}
+          onClose={() => {
+            const nav = solverFallback.navigateTo;
+            setSolverFallback(null);
+            if (nav) router.push(nav);
           }}
         />
       )}
