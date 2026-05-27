@@ -205,6 +205,21 @@ class _Context:
         self.tenant_id = tenant_id
         self.period = period
 
+        # V.2.5 periodo rotation substitution: running counters so the
+        # substitute picker balances the extra-work load across the
+        # eligible rotation members. The cache pins one substitute
+        # decision per (slot, rule, block) so every call inside the
+        # same block returns the same person — both the greedy and
+        # CP-SAT paths consult this helper per (slot, date) and we
+        # must NOT pick a different sub on day 2 of a 3-day block.
+        # Both dicts live on _Context because the context is built
+        # fresh per generate_schedule / generate_period invocation;
+        # there's no cross-run state to worry about.
+        self._substitution_load: dict[tuple[int, int], int] = defaultdict(int)
+        self._substitution_cache: dict[
+            tuple[int, int, date], tuple[list[int], dict[int, int]]
+        ] = {}
+
         self.memberships: list[Membership] = db.query(Membership).all()
         self.member_by_person_id: dict[int, Membership] = {
             m.person_id: m for m in self.memberships
@@ -993,11 +1008,25 @@ class _Context:
         # so a V-S-D block stays on one person.
         block_dates = self._block_dates_for(rule, d)
 
-        # Candidate substitutes start in priority order: members of
-        # position team_idx+1, then +2, …, wrapping around. Within a
-        # position, preserve the rotation's authored member order
-        # (members are pre-sorted by (position, id) when loaded into
-        # ctx).
+        # The substitution decision for this (slot, rule, block) is
+        # cached so every call across the block — there's one per day,
+        # potentially from both greedy and CP-SAT paths — returns the
+        # same substitute. Without the cache we'd both (a) re-sort by
+        # the live load mid-block (different substitute on day 2 than
+        # day 1) and (b) double-count the load per emission.
+        cache_key = (
+            slot.id,
+            rule.id,
+            block_dates[0] if block_dates else d,
+        )
+        cached = self._substitution_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        # Candidate substitutes: members of every other position
+        # (skipping the absent primary's position). Order is by
+        # rotation position (team_idx+1, team_idx+2, …) — used as
+        # a stable tiebreaker; the actual pick is by load.
         p_count = len(positions_sorted)
         substitute_queue: list[int] = []
         for offset in range(1, p_count):
@@ -1005,18 +1034,6 @@ class _Context:
             for m in members:
                 if m.position == next_pos:
                     substitute_queue.append(m.person_id)
-        # Rotate the queue by the block's FIRST date so:
-        #   - the same substitute is picked for every day of the block
-        #     (each call to this method during the block sees the same
-        #     rotated queue),
-        #   - consecutive blocks (e.g. weekly V-S-D shifts across a
-        #     vacation period) still rotate among the remaining
-        #     candidates rather than always landing on the first.
-        if substitute_queue and block_dates:
-            rot = block_dates[0].toordinal() % len(substitute_queue)
-            substitute_queue = (
-                substitute_queue[rot:] + substitute_queue[:rot]
-            )
 
         def eligible_for_block(pid: int) -> bool:
             """True iff `pid` can cover every date in the block."""
@@ -1036,25 +1053,42 @@ class _Context:
                 final_team.append(pid)
                 used.add(pid)
                 continue
-            # Find first substitute eligible for the WHOLE block.
-            picked: int | None = None
-            for spid in substitute_queue:
-                if spid in used:
-                    continue
-                if eligible_for_block(spid):
-                    picked = spid
-                    break
-            if picked is not None:
+            # Pick the eligible substitute with the LOWEST running
+            # substitution load on this slot. Tiebreak by the
+            # original rotation position order so the choice stays
+            # deterministic when several candidates have the same
+            # load (typical at the start of the period before any
+            # subs have fired).
+            candidates = [
+                (
+                    self._substitution_load[(slot.id, spid)],
+                    idx,
+                    spid,
+                )
+                for idx, spid in enumerate(substitute_queue)
+                if spid not in used and eligible_for_block(spid)
+            ]
+            if candidates:
+                candidates.sort()  # (load, idx, spid) tuple sort
+                picked = candidates[0][2]
                 final_team.append(picked)
                 used.add(picked)
                 substitutions[picked] = pid
+                # Each substitute covers every day of the block. The
+                # counter is bumped by len(block_dates) so a 3-day V-S-D
+                # weekend is correctly priced at 3 days against future
+                # substitution picks for this slot.
+                self._substitution_load[(slot.id, picked)] += len(block_dates)
             else:
                 # No substitute eligible for the entire block — leave
                 # the primary in the team. Downstream eligibility check
                 # emits the regular Sin-cubrir cell for each day the
                 # primary is absent.
                 final_team.append(pid)
-        return final_team, substitutions
+
+        result = (final_team, substitutions)
+        self._substitution_cache[cache_key] = result
+        return result
 
     def team_block_rank_for(self, rule, d: date) -> int:
         """Return how many blocks of the SAME rotation team have
