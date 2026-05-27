@@ -57,8 +57,10 @@ from app.models import (
     Schedule,
     Slot,
     SlotFrequencyCap,
+    SlotFrequencyCapPeriodOverride,
     SlotSuccessionRule,
     SlotSuccessionRulePeriodExtra,
+    SlotSuccessionRulePeriodOverride,
     SlotTeamRole,
 )
 from app.services.scheduler import slots_overlap_in_time
@@ -205,10 +207,18 @@ def find_violations(db: Session, schedule: Schedule) -> list[Violation]:
             for tr in db.query(SlotTeamRole).filter(SlotTeamRole.id.in_(role_ids))
         }
 
-    # Period-only succession rules (migration 0078). Loaded together
-    # with their periods so we can restrict each extra to assignments
-    # whose triggering date is inside the period. Same per-rule logic
-    # as the globals — the helper accepts an optional date filter.
+    # Period-only succession rules (migration 0078) + per-period
+    # overrides on existing global rules + per-period overrides on
+    # frequency caps. Loaded together with each periodo's date range
+    # so the helpers can:
+    #   1. Restrict extras to assignments whose trigger date sits
+    #      inside the period (handled by `restrict_after_dates`).
+    #   2. Resolve the effective version of a GLOBAL rule per assignment
+    #      date (handled by `period_id_by_date` + `succ_overrides` /
+    #      `cap_overrides`). Without this the violations engine flags
+    #      conflicts even when the admin has disabled or relaxed the
+    #      rule for the period — the scheduler respects the override
+    #      but the violations panel stayed loud.
     extras = (
         db.query(SlotSuccessionRulePeriodExtra)
         .filter(
@@ -220,13 +230,39 @@ def find_violations(db: Session, schedule: Schedule) -> list[Violation]:
     extras_by_period: dict[int, list[SlotSuccessionRulePeriodExtra]] = defaultdict(list)
     for ex in extras:
         extras_by_period[ex.period_id].append(ex)
+    succ_overrides = (
+        db.query(SlotSuccessionRulePeriodOverride)
+        .filter(SlotSuccessionRulePeriodOverride.tenant_id == tenant_id)
+        .all()
+    )
+    succ_overrides_by_rule_period: dict[
+        tuple[int, int], SlotSuccessionRulePeriodOverride
+    ] = {
+        (o.succession_rule_id, o.period_id): o for o in succ_overrides
+    }
+    cap_overrides = (
+        db.query(SlotFrequencyCapPeriodOverride)
+        .filter(SlotFrequencyCapPeriodOverride.tenant_id == tenant_id)
+        .all()
+    )
+    cap_overrides_by_cap_period: dict[
+        tuple[int, int], SlotFrequencyCapPeriodOverride
+    ] = {(o.cap_id, o.period_id): o for o in cap_overrides}
+    # Load every periodo that any extra/override references so we can
+    # build the date sets + a per-date period lookup in one pass.
+    periodo_ids: set[int] = (
+        set(extras_by_period.keys())
+        | {o.period_id for o in succ_overrides}
+        | {o.period_id for o in cap_overrides}
+    )
     period_dates: dict[int, set[date]] = {}
-    if extras_by_period:
+    period_id_by_date: dict[date, int] = {}
+    if periodo_ids:
         periodo_rows = (
             db.query(PeriodoEspecial)
             .filter(
                 PeriodoEspecial.tenant_id == tenant_id,
-                PeriodoEspecial.id.in_(extras_by_period.keys()),
+                PeriodoEspecial.id.in_(periodo_ids),
             )
             .all()
         )
@@ -235,6 +271,10 @@ def find_violations(db: Session, schedule: Schedule) -> list[Violation]:
             d = p.start_date
             while d <= p.end_date:
                 ds.add(d)
+                # Periodos can't overlap (DB exclusion constraint in
+                # migration 0075), so the per-date lookup is well-
+                # defined — no need to worry about which periodo wins.
+                period_id_by_date[d] = p.id
                 d = d + timedelta(days=1)
             period_dates[p.id] = ds
     # Extras can reference their own role filters too — extend the label
@@ -255,6 +295,8 @@ def find_violations(db: Session, schedule: Schedule) -> list[Violation]:
         _check_succession_rules(
             assignments, slots, succession_rules,
             person_name_by_id, team_role_labels,
+            period_id_by_date=period_id_by_date,
+            succ_overrides=succ_overrides_by_rule_period,
         )
     )
     for period_id, period_extras in extras_by_period.items():
@@ -262,6 +304,8 @@ def find_violations(db: Session, schedule: Schedule) -> list[Violation]:
         # attribute surface is identical (after/forbid + role + days
         # + severity + weight + applies_to). The cast is just for
         # mypy; at runtime they walk the exact same code path.
+        # Extras don't get overrides — they're standalone period
+        # rules — so we pass empty maps.
         out.extend(
             _check_succession_rules(
                 assignments, slots,
@@ -274,6 +318,8 @@ def find_violations(db: Session, schedule: Schedule) -> list[Violation]:
         _check_frequency_caps(
             assignments, slots, freq_caps,
             person_name_by_id, team_role_labels,
+            period_id_by_date=period_id_by_date,
+            cap_overrides=cap_overrides_by_cap_period,
         )
     )
     out.extend(
@@ -312,6 +358,10 @@ def _check_succession_rules(
     names: dict[int, str],
     role_labels: dict[int, str],
     restrict_after_dates: set[date] | None = None,
+    period_id_by_date: dict[date, int] | None = None,
+    succ_overrides: dict[
+        tuple[int, int], SlotSuccessionRulePeriodOverride
+    ] | None = None,
 ) -> Iterable[Violation]:
     """SlotSuccessionRule covers two distinct UX concepts:
 
@@ -333,11 +383,6 @@ def _check_succession_rules(
             by_slot_role[(a.slot_id, a.team_role_id)].append(a)
 
     for rule in rules:
-        offsets = (
-            [0]
-            if rule.days_after == 0
-            else list(range(1, rule.days_after + 1))
-        )
         after_pool = by_slot_role.get(
             (rule.after_slot_id, rule.after_team_role_id), []
         )
@@ -359,6 +404,20 @@ def _check_succession_rules(
             forbid_by_date[f.date].append(f)
 
         for a in after_pool:
+            # Resolve the EFFECTIVE rule for the triggering date.
+            # Mirror of the scheduler's effective_succession_rule:
+            # when a periodo covers a.date and a SlotSuccessionRule
+            # PeriodOverride exists, the rule's days_after / severity
+            # may differ from its authored defaults (and the override
+            # can disable the rule outright). Without this, the
+            # violations engine stays loud about pairs the scheduler
+            # was free to place.
+            eff_days, eff_severity, eff_disabled = _effective_succession(
+                rule, a.date, period_id_by_date, succ_overrides,
+            )
+            if eff_disabled:
+                continue
+            offsets = [0] if eff_days == 0 else range(1, eff_days + 1)
             for offset in offsets:
                 target_date = a.date + timedelta(days=offset)
                 for f in forbid_by_date.get(target_date, []):
@@ -380,6 +439,12 @@ def _check_succession_rules(
                     # in the "wrong" order (e.g. rotation pre-pinning
                     # made the Consulta row's id higher than the
                     # Quirófano row's id, hiding Consulta+Quirófano).
+                    #
+                    # NB the dedupe condition uses the AUTHORED
+                    # days_after (rule.days_after), not the effective
+                    # value. The self-referential property is a fact
+                    # about the rule's identity, not its current
+                    # parameters.
                     if (
                         rule.days_after == 0
                         and rule.after_slot_id == rule.forbid_slot_id
@@ -391,6 +456,10 @@ def _check_succession_rules(
                         rule, a, f, slots, names, role_labels
                     )
                     yield Violation(
+                        # Kind comes from the AUTHORED days_after —
+                        # the same-day vs succession distinction is
+                        # part of the rule's identity, not its
+                        # current parameters.
                         kind=(
                             "incompatibility"
                             if rule.days_after == 0
@@ -412,8 +481,41 @@ def _check_succession_rules(
                             ),
                         ],
                         rule_id=rule.id,
-                        severity=rule.severity,
+                        severity=eff_severity,
                     )
+
+
+def _effective_succession(
+    rule: SlotSuccessionRule,
+    d: date,
+    period_id_by_date: dict[date, int] | None,
+    overrides: dict[
+        tuple[int, int], SlotSuccessionRulePeriodOverride
+    ] | None,
+) -> tuple[int, str, bool]:
+    """Return (days_after, severity, disabled) for `rule` evaluated on
+    date `d`. Outside any periodo (or when no override applies), the
+    rule's authored fields win. Same resolution the scheduler does in
+    `_Context.effective_succession_rule` — they MUST agree so the
+    violations panel matches what the solver allowed.
+    """
+    if period_id_by_date is None or overrides is None:
+        return rule.days_after, rule.severity, False
+    pid = period_id_by_date.get(d)
+    if pid is None:
+        return rule.days_after, rule.severity, False
+    ovr = overrides.get((rule.id, pid))
+    if ovr is None:
+        return rule.days_after, rule.severity, False
+    if ovr.disabled:
+        return rule.days_after, rule.severity, True
+    return (
+        ovr.days_after_override
+        if ovr.days_after_override is not None
+        else rule.days_after,
+        ovr.severity_override or rule.severity,
+        False,
+    )
 
 
 def _format_succession_message(
@@ -443,6 +545,10 @@ def _check_frequency_caps(
     caps: list[SlotFrequencyCap],
     names: dict[int, str],
     role_labels: dict[int, str],
+    period_id_by_date: dict[date, int] | None = None,
+    cap_overrides: dict[
+        tuple[int, int], SlotFrequencyCapPeriodOverride
+    ] | None = None,
 ) -> Iterable[Violation]:
     """Count assignments per (person, slot, optional role) over each
     cap's window. If the count exceeds `max_count`, emit one violation
@@ -452,6 +558,12 @@ def _check_frequency_caps(
     A rolling_28 cap whose window starts before the schedule's first
     day undercounts by the assignments that pre-date the schedule.
     Cross-month back-fill is out of scope for v1.
+
+    Period overrides (V.2): the effective cap config is resolved per
+    window using the window's FIRST date — same simplification the
+    scheduler uses. If the cap is disabled for that period, skip the
+    window. Otherwise compare against the effective max_count and
+    emit using the effective severity.
     """
     for cap in caps:
         # Filter to assignments of this slot (and role, if set).
@@ -471,8 +583,10 @@ def _check_frequency_caps(
 
         for pid, items in by_person.items():
             items.sort(key=lambda x: x.date)
-            offenders = _windows_over_cap(items, cap)
-            for window_items in offenders:
+            offenders = _windows_over_cap(
+                items, cap, period_id_by_date, cap_overrides,
+            )
+            for window_items, eff_severity in offenders:
                 yield Violation(
                     kind="frequency",
                     message=_format_freq_message(
@@ -488,14 +602,49 @@ def _check_frequency_caps(
                         for a in window_items
                     ],
                     rule_id=cap.id,
-                    severity=cap.severity,
+                    severity=eff_severity,
                 )
 
 
+def _effective_freq_cap(
+    cap: SlotFrequencyCap,
+    d: date,
+    period_id_by_date: dict[date, int] | None,
+    overrides: dict[
+        tuple[int, int], SlotFrequencyCapPeriodOverride
+    ] | None,
+) -> tuple[int, str, bool]:
+    """Same shape as `_effective_succession` but for caps. Mirrors the
+    scheduler's `effective_frequency_cap`. Caller resolves once per
+    window using the window's first day."""
+    if period_id_by_date is None or overrides is None:
+        return cap.max_count, cap.severity, False
+    pid = period_id_by_date.get(d)
+    if pid is None:
+        return cap.max_count, cap.severity, False
+    ovr = overrides.get((cap.id, pid))
+    if ovr is None:
+        return cap.max_count, cap.severity, False
+    if ovr.disabled:
+        return cap.max_count, cap.severity, True
+    return (
+        ovr.max_count_override
+        if ovr.max_count_override is not None
+        else cap.max_count,
+        ovr.severity_override or cap.severity,
+        False,
+    )
+
+
 def _windows_over_cap(
-    items: list[Assignment], cap: SlotFrequencyCap
-) -> list[list[Assignment]]:
-    """Return one window per offending span.
+    items: list[Assignment],
+    cap: SlotFrequencyCap,
+    period_id_by_date: dict[date, int] | None = None,
+    overrides: dict[
+        tuple[int, int], SlotFrequencyCapPeriodOverride
+    ] | None = None,
+) -> list[tuple[list[Assignment], str]]:
+    """Return one (window, effective_severity) per offending span.
 
     For rolling windows: sliding N-day window anchored on each
     assignment date; emit the window if count > max. De-duplicate
@@ -504,22 +653,35 @@ def _windows_over_cap(
 
     For iso_week / calendar_month: bucket by week or month; emit
     each bucket where count > max.
+
+    The effective cap config is resolved per window via the window's
+    FIRST date (same simplification the scheduler uses). When the
+    cap is disabled for that period we skip the window; otherwise we
+    compare against the overridden max_count and emit using the
+    overridden severity. Windows that straddle a period boundary use
+    the first-day's config for the entire window — narrow edge case
+    since rolling windows are at most 28 days.
     """
     if cap.period.startswith("rolling_"):
         n_days = int(cap.period.split("_")[1])
-        out: list[list[Assignment]] = []
+        out: list[tuple[list[Assignment], str]] = []
         seen_keys: set[tuple[int, ...]] = set()
         for i, anchor in enumerate(items):
             window_start = anchor.date - timedelta(days=n_days - 1)
             window = [
                 x for x in items if window_start <= x.date <= anchor.date
             ]
-            if len(window) > cap.max_count:
+            eff_max, eff_severity, eff_disabled = _effective_freq_cap(
+                cap, window_start, period_id_by_date, overrides,
+            )
+            if eff_disabled:
+                continue
+            if len(window) > eff_max:
                 key = tuple(sorted(x.id for x in window))
                 if key in seen_keys:
                     continue
                 seen_keys.add(key)
-                out.append(window)
+                out.append((window, eff_severity))
         return out
     # iso_week / calendar_month: simple bucketed counting.
     buckets: dict[tuple[int, int], list[Assignment]] = defaultdict(list)
@@ -532,7 +694,20 @@ def _windows_over_cap(
             buckets[(a.date.year, a.date.month)].append(a)
     else:
         return []
-    return [bucket for bucket in buckets.values() if len(bucket) > cap.max_count]
+    out2: list[tuple[list[Assignment], str]] = []
+    for bucket in buckets.values():
+        if not bucket:
+            continue
+        # Per-window cap resolution — same first-day rule.
+        first_day = min(b.date for b in bucket)
+        eff_max, eff_severity, eff_disabled = _effective_freq_cap(
+            cap, first_day, period_id_by_date, overrides,
+        )
+        if eff_disabled:
+            continue
+        if len(bucket) > eff_max:
+            out2.append((bucket, eff_severity))
+    return out2
 
 
 def _format_freq_message(
