@@ -206,18 +206,28 @@ class _Context:
         self.period = period
 
         # V.2.5 periodo rotation substitution: running counters so the
-        # substitute picker balances the extra-work load across the
-        # eligible rotation members. The cache pins one substitute
-        # decision per (slot, rule, block) so every call inside the
-        # same block returns the same person — both the greedy and
-        # CP-SAT paths consult this helper per (slot, date) and we
-        # must NOT pick a different sub on day 2 of a 3-day block.
-        # Both dicts live on _Context because the context is built
-        # fresh per generate_schedule / generate_period invocation;
-        # there's no cross-run state to worry about.
+        # substitute picker balances the TOTAL V-S-D load (normal
+        # rotation + substitutions) across the eligible rotation
+        # members. The substitution cache pins one substitute decision
+        # per (slot, rule, block) so every call inside the same block
+        # returns the same person — both the greedy and CP-SAT paths
+        # consult this helper per (slot, date) and we must NOT pick a
+        # different sub on day 2 of a 3-day block.
+        # The normal-load cache pre-computes (per slot+rule) how many
+        # rotation days each person will OWN through the period — the
+        # baseline against which substitutions get balanced. Without it
+        # someone with 2 normal weekends in the period (e.g. when the
+        # rotation cycles through everyone once and starts wrapping)
+        # would still be picked for substitutions because their running
+        # substitution count is 0. Both dicts live on _Context because
+        # the context is built fresh per generate_schedule /
+        # generate_period invocation.
         self._substitution_load: dict[tuple[int, int], int] = defaultdict(int)
         self._substitution_cache: dict[
             tuple[int, int, date], tuple[list[int], dict[int, int]]
+        ] = {}
+        self._normal_rotation_load_cache: dict[
+            tuple[int, int], dict[int, int]
         ] = {}
 
         self.memberships: list[Membership] = db.query(Membership).all()
@@ -912,6 +922,36 @@ class _Context:
                 return tr.id
         return None
 
+    def _normal_rotation_load_for(
+        self, slot: Slot, rule
+    ) -> dict[int, int]:
+        """Per-person count of days they'll own via the NORMAL rotation
+        across the whole generation window, minus the days they're
+        absent. The baseline against which substitution picks get
+        balanced.
+
+        Lazily computed once per (slot, rule) and cached on _Context.
+        Walks `self.dates`, asks `rotation_persons_for(rule, d)` who's
+        normally on for that day, and counts each eligible person.
+        Days where the rotation's normal target is on availability
+        block are correctly NOT counted toward their normal load —
+        those days are exactly the ones the substitution code is
+        about to fill, and the substitute should be priced separately
+        via `_substitution_load`.
+        """
+        key = (slot.id, rule.id)
+        cached = self._normal_rotation_load_cache.get(key)
+        if cached is not None:
+            return cached
+        load: dict[int, int] = defaultdict(int)
+        for d in self.dates:
+            team = self.rotation_persons_for(rule, d)
+            for pid in team:
+                if self.eligibility_reason(pid, slot, d, None) is None:
+                    load[pid] += 1
+        self._normal_rotation_load_cache[key] = dict(load)
+        return load
+
     def _block_dates_for(self, rule, d: date) -> list[date]:
         """All calendar dates in the SAME rotation block as `d`.
 
@@ -1053,15 +1093,24 @@ class _Context:
                 final_team.append(pid)
                 used.add(pid)
                 continue
-            # Pick the eligible substitute with the LOWEST running
-            # substitution load on this slot. Tiebreak by the
-            # original rotation position order so the choice stays
-            # deterministic when several candidates have the same
-            # load (typical at the start of the period before any
-            # subs have fired).
+            # Pick the eligible substitute with the LOWEST TOTAL load
+            # (normal rotation days already owed in the period +
+            # substitutions performed so far) on this slot. Tiebreak
+            # by the original rotation position order so the choice
+            # stays deterministic when several candidates tie.
+            #
+            # Without the normal-rotation baseline, a person who has
+            # 2 normal weekends in the period (e.g. when rotation
+            # cycles through everyone once and starts wrapping inside
+            # the period) gets picked for substitutions because their
+            # SUB count is 0 — even though they're about to land on
+            # 2 more weekends naturally. Adding the precomputed
+            # baseline pushes them down the sort.
+            normal_load = self._normal_rotation_load_for(slot, rule)
             candidates = [
                 (
-                    self._substitution_load[(slot.id, spid)],
+                    normal_load.get(spid, 0)
+                    + self._substitution_load[(slot.id, spid)],
                     idx,
                     spid,
                 )
