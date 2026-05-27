@@ -869,6 +869,98 @@ class _Context:
         team = self.rotation_persons_for(rule, d)
         return team[0] if team else None
 
+    def rotation_persons_for_substituted(
+        self, rule, d: date, slot: Slot
+    ) -> tuple[list[int], dict[int, int]]:
+        """Rotation team for `d`, with absent members substituted by the
+        next eligible rotation member (by sorted position).
+
+        Substitution only fires when `rule` is a SlotPeriodSnapshotRule
+        — i.e. we're inside an active periodo. Outside periodos the
+        absent person's slot stays empty as before; this matches the
+        admin's mental model ("during vacations Trivu picks the next
+        person on the rotation; the rest of the year the cell stays
+        Sin cubrir and the admin reassigns by hand").
+
+        The rotation pointer does NOT permanently advance. The absent
+        person resumes their normal turn the next time the rotation
+        lands on their position — substitution is a one-day patch, not
+        a re-anchoring.
+
+        Returns (team, substitutions) where `substitutions[sub_pid] =
+        absent_pid` for each entry that was filled by a substitute.
+        Callers use this to annotate the Assignment row so admins see
+        WHY the substitute is covering (e.g. "Sustituye en rotación
+        por ausencia"). If no eligible substitute exists, the absent
+        person is left in `team` and the downstream eligibility check
+        emits the usual Sin-cubrir cell.
+        """
+        base_team = self.rotation_persons_for(rule, d)
+        if not base_team:
+            return base_team, {}
+        # Substitution only applies inside an active periodo, which is
+        # exactly when rule_for() returns a snapshot rule. Outside,
+        # keep historic behaviour.
+        if not isinstance(rule, SlotPeriodSnapshotRule):
+            return base_team, {}
+
+        members = self._rotation_members_for(rule)
+        if not members:
+            return base_team, {}
+        positions_sorted = sorted({m.position for m in members})
+        if not positions_sorted:
+            return base_team, {}
+        # The whole base_team shares a single position (the one the
+        # rotation math picked for d). Recover that position from the
+        # first base_team member's row.
+        team_pos = next(
+            (m.position for m in members if m.person_id == base_team[0]),
+            None,
+        )
+        if team_pos is None:
+            return base_team, {}
+        team_idx = positions_sorted.index(team_pos)
+
+        # Candidate substitutes in priority order: members of position
+        # team_idx+1, then +2, …, wrapping around. Within a position,
+        # preserve the rotation's authored member order (members are
+        # pre-sorted by (position, id) when loaded into ctx).
+        p_count = len(positions_sorted)
+        substitute_queue: list[int] = []
+        for offset in range(1, p_count):
+            next_pos = positions_sorted[(team_idx + offset) % p_count]
+            for m in members:
+                if m.position == next_pos:
+                    substitute_queue.append(m.person_id)
+
+        final_team: list[int] = []
+        substitutions: dict[int, int] = {}
+        used: set[int] = set()
+        for pid in base_team:
+            reason = self.eligibility_reason(pid, slot, d, None)
+            if reason is None:
+                final_team.append(pid)
+                used.add(pid)
+                continue
+            # Find first eligible substitute not already in the team.
+            picked: int | None = None
+            for spid in substitute_queue:
+                if spid in used:
+                    continue
+                if self.eligibility_reason(spid, slot, d, None) is None:
+                    picked = spid
+                    break
+            if picked is not None:
+                final_team.append(picked)
+                used.add(picked)
+                substitutions[picked] = pid
+            else:
+                # No eligible substitute — leave the absent person in
+                # the team. Downstream eligibility check emits the
+                # regular Sin-cubrir cell with its existing note.
+                final_team.append(pid)
+        return final_team, substitutions
+
     def team_block_rank_for(self, rule, d: date) -> int:
         """Return how many blocks of the SAME rotation team have
         elapsed since anchor_date, up to (and including) the block
@@ -1208,8 +1300,22 @@ def _greedy_fallback(
             # restricted candidate pool when the team_composition branch
             # runs below, and a per-role least-used bias produces a
             # Latin-square-ish rotation across consecutive days.
+            #
+            # V.2.5 periodo rotation substitution: when the active rule
+            # is a snapshot rotation rule (i.e. we're inside an active
+            # periodo), call the substituted variant so an absent
+            # rotation member gets covered by the next eligible position
+            # for that day. Outside periodos `pinned_substitutions`
+            # stays empty and behavior is unchanged.
+            pinned_substitutions: dict[int, int] = {}
             if mode == "team_composition":
                 pinned = None
+            elif strategy == "rotation" and isinstance(
+                rule, SlotPeriodSnapshotRule
+            ):
+                pinned, pinned_substitutions = (
+                    ctx.rotation_persons_for_substituted(rule, d, slot)
+                )
             else:
                 pinned = _pin_persons(rule, d)
 
@@ -1273,6 +1379,15 @@ def _greedy_fallback(
                         # priority slots later in this day) can see the
                         # pinned person is occupied.
                         record_assignment(cand, slot, d)
+                        # V.2.5 periodo rotation substitution: when this
+                        # candidate covers for an absent rotation member,
+                        # surface that on the assignment so admins see
+                        # WHY it's not the usual rotation person.
+                        sub_note = (
+                            "Sustituye en rotación por ausencia"
+                            if cand in pinned_substitutions
+                            else None
+                        )
                         db.add(
                             Assignment(
                                 tenant_id=ctx.tenant_id,
@@ -1281,6 +1396,7 @@ def _greedy_fallback(
                                 date=d,
                                 person_id=cand,
                                 team_role_id=None,
+                                notes=sub_note,
                             )
                         )
                         emitted += 1
@@ -1391,7 +1507,18 @@ def _greedy_fallback(
                 # graceful-degrade path.
                 team_pin: list[int] | None = None
                 if strategy == "rotation":
-                    team_pin = list(ctx.rotation_persons_for(rule, d))
+                    # V.2.5 periodo rotation substitution: inside an
+                    # active periodo, swap absent rotation members for
+                    # next-eligible substitutes so the CP-SAT team-pin
+                    # pool actually has someone available. Outside the
+                    # periodo (regular SlotRule) the substituted variant
+                    # is a no-op and returns the historic team.
+                    if isinstance(rule, SlotPeriodSnapshotRule):
+                        team_pin, _ = ctx.rotation_persons_for_substituted(
+                            rule, d, slot
+                        )
+                    else:
+                        team_pin = list(ctx.rotation_persons_for(rule, d))
                 elif strategy == "fixed_weekly":
                     team_pin = list(ctx.fixed_weekly_persons(rule, d))
                 total_slot_head = sum(max(1, r.headcount) for r in roles)
@@ -1907,8 +2034,18 @@ def _solve_cpsat(
                 )
             return
 
+        # V.2.5 periodo rotation substitution: inside a periodo, swap
+        # absent rotation members for the next eligible position before
+        # we emit. Outside periodos `subs` is empty and `configured`
+        # matches the historic team list.
+        subs: dict[int, int] = {}
         if strategy == "rotation":
-            configured = ctx.rotation_persons_for(rule, d)
+            if isinstance(rule, SlotPeriodSnapshotRule):
+                configured, subs = ctx.rotation_persons_for_substituted(
+                    rule, d, slot
+                )
+            else:
+                configured = ctx.rotation_persons_for(rule, d)
             empty_notes = "Rotación sin miembros configurados"
             ineligible_prefix = "Persona de la rotación no disponible"
         elif strategy == "fixed_weekly":
@@ -1965,6 +2102,9 @@ def _solve_cpsat(
                 else:
                     person_id = cand
                     emitted_persons.add(cand)
+                    # V.2.5 periodo rotation substitution annotation.
+                    if cand in subs:
+                        notes = "Sustituye en rotación por ausencia"
             db.add(
                 Assignment(
                     tenant_id=ctx.tenant_id,
@@ -2220,7 +2360,15 @@ def _solve_cpsat(
                             )
                     continue
                 if strategy == "rotation":
-                    team = list(ctx.rotation_persons_for(rule, d))
+                    # V.2.5 periodo rotation substitution (same shape
+                    # as the parallel team_pin path above for greedy /
+                    # CP-SAT single-mode rotation).
+                    if isinstance(rule, SlotPeriodSnapshotRule):
+                        team, _ = ctx.rotation_persons_for_substituted(
+                            rule, d, slot
+                        )
+                    else:
+                        team = list(ctx.rotation_persons_for(rule, d))
                 elif strategy == "fixed_weekly":
                     team = list(ctx.fixed_weekly_persons(rule, d))
                 else:
