@@ -9,7 +9,12 @@ Hard constraints (model rejects any solution that breaks them):
 - For each (date, slot, team_role): exactly `headcount` people are picked,
   or fewer if there aren't enough eligible candidates (the gap becomes
   person_id=NULL "Sin cubrir" rows).
-- A person works at most one slot per date.
+- A person can't be in two slots whose time windows overlap on the
+  same calendar day (the Sprint 14 fix replaced the old "at most one
+  slot per date" rule, which wrongly forbade non-overlapping shifts
+  like consulta 08–14 + guardia 14–08(+1d) on the same date). Cross-
+  slot same-day constraints that DON'T involve time overlap are
+  expressed via SlotSuccessionRule(days_after=0).
 - Eligibility filters (the model only creates an x-variable when ALL hold):
   membership is active (disabled_at IS NULL), slot allow-list (if any
   rows in slot_allowed_persons), team-role categories, approved

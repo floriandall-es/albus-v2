@@ -782,13 +782,36 @@ function SameDaySection({
               </tr>
             </thead>
             <tbody>
-              {sameDay.map((r) => (
+              {sameDay.map((r) => {
+                const afterRoleLabel =
+                  r.after_team_role_id != null
+                    ? slotById[r.after_slot_id]?.team_roles.find(
+                        (tr) => tr.id === r.after_team_role_id,
+                      )?.role_label
+                    : null;
+                const forbidRoleLabel =
+                  r.forbid_team_role_id != null
+                    ? slotById[r.forbid_slot_id]?.team_roles.find(
+                        (tr) => tr.id === r.forbid_team_role_id,
+                      )?.role_label
+                    : null;
+                return (
                 <tr key={r.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors">
                   <td className="px-4 py-2">
                     {slotById[r.after_slot_id]?.name ?? `#${r.after_slot_id}`}
+                    {afterRoleLabel && (
+                      <span className="ml-1 text-xs text-gray-500">
+                        · {afterRoleLabel}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-2">
                     {slotById[r.forbid_slot_id]?.name ?? `#${r.forbid_slot_id}`}
+                    {forbidRoleLabel && (
+                      <span className="ml-1 text-xs text-gray-500">
+                        · {forbidRoleLabel}
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-2">{SEVERITY_LABEL[r.severity]}</td>
                   <td className="px-4 py-2 text-gray-600">
@@ -809,7 +832,8 @@ function SameDaySection({
                     </Button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -843,10 +867,22 @@ function SameDayDialog({
   const [forbidSlotId, setForbidSlotId] = useState<number | "">(
     initial?.forbid_slot_id ?? "",
   );
+  // Optional sub-role filters (mirror SuccessionDialog). NULL/""
+  // means "todos los roles". Editable only on create — the update
+  // path keeps the original role pair.
+  const [afterRoleId, setAfterRoleId] = useState<number | "">(
+    initial?.after_team_role_id ?? "",
+  );
+  const [forbidRoleId, setForbidRoleId] = useState<number | "">(
+    initial?.forbid_team_role_id ?? "",
+  );
   const [severity, setSeverity] = useState<DependencySeverity>(
     initial?.severity ?? "hard",
   );
   const [weight, setWeight] = useState<number>(initial?.weight ?? 5);
+
+  const slotById = (id: number | "") =>
+    id === "" ? null : slots.find((s) => s.id === id) ?? null;
 
   const save = useMutation({
     mutationFn: () => {
@@ -866,6 +902,8 @@ function SameDayDialog({
       return api.createSuccessionRule({
         after_slot_id: afterSlotId,
         forbid_slot_id: forbidSlotId,
+        after_team_role_id: afterRoleId === "" ? null : afterRoleId,
+        forbid_team_role_id: forbidRoleId === "" ? null : forbidRoleId,
         days_after: 0,
         applies_to: "same_person",
         severity,
@@ -879,6 +917,19 @@ function SameDayDialog({
   });
 
   const slotOptions = slots.map((s) => ({ value: s.id, label: s.name }));
+
+  // Build sub-role options for each side. Only relevant when the
+  // slot is team_composition AND has roles defined.
+  const afterSlot = slotById(afterSlotId);
+  const forbidSlot = slotById(forbidSlotId);
+  const afterRoleOptions =
+    afterSlot && afterSlot.staffing_mode === "team_composition"
+      ? afterSlot.team_roles
+      : [];
+  const forbidRoleOptions =
+    forbidSlot && forbidSlot.staffing_mode === "team_composition"
+      ? forbidSlot.team_roles
+      : [];
 
   return (
     <Modal
@@ -900,21 +951,59 @@ function SameDayDialog({
         <Select
           label="Actividad"
           value={afterSlotId}
-          onChange={(v) => setAfterSlotId(v === "" ? "" : Number(v))}
+          onChange={(v) => {
+            const next = v === "" ? "" : Number(v);
+            // Reset sub-role when the slot changes — the role id
+            // wouldn't belong to the new slot.
+            if (next !== afterSlotId) setAfterRoleId("");
+            setAfterSlotId(next);
+          }}
           options={[
             { value: "", label: "Selecciona una actividad" },
             ...slotOptions,
           ]}
         />
+        {afterRoleOptions.length > 0 && (
+          <Select
+            label="Sub-actividad (opcional)"
+            value={afterRoleId}
+            onChange={(v) => setAfterRoleId(v === "" ? "" : Number(v))}
+            options={[
+              { value: "", label: "— Todos los roles —" },
+              ...afterRoleOptions.map((r) => ({
+                value: r.id,
+                label: r.role_label,
+              })),
+            ]}
+          />
+        )}
         <Select
           label="No se puede combinar con"
           value={forbidSlotId}
-          onChange={(v) => setForbidSlotId(v === "" ? "" : Number(v))}
+          onChange={(v) => {
+            const next = v === "" ? "" : Number(v);
+            if (next !== forbidSlotId) setForbidRoleId("");
+            setForbidSlotId(next);
+          }}
           options={[
             { value: "", label: "Selecciona una actividad" },
             ...slotOptions,
           ]}
         />
+        {forbidRoleOptions.length > 0 && (
+          <Select
+            label="Sub-actividad (opcional)"
+            value={forbidRoleId}
+            onChange={(v) => setForbidRoleId(v === "" ? "" : Number(v))}
+            options={[
+              { value: "", label: "— Todos los roles —" },
+              ...forbidRoleOptions.map((r) => ({
+                value: r.id,
+                label: r.role_label,
+              })),
+            ]}
+          />
+        )}
         <Select
           label="Severidad"
           value={severity}
