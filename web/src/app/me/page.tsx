@@ -9,6 +9,7 @@ import {
   CalendarOff,
   Inbox,
   Settings,
+  Users,
 } from "lucide-react";
 import {
   api,
@@ -118,10 +119,10 @@ export default function MeHome() {
       api.listMeetingInstances(todayIsoStr, tomorrowIsoStr),
   });
 
-  // Data feeding the Pendientes panel — three counts surfacing items
-  // that need the user's attention. Each list is fetched here and
-  // counted client-side so we don't need a dedicated
-  // /api/me/pendientes endpoint (yet).
+  // Data feeding the Pendientes panel — counts of items that need
+  // the user's attention. Each list is fetched here and counted
+  // client-side so we don't need a dedicated /api/me/pendientes
+  // endpoint (yet).
   const openSwapOffers = useQuery({
     queryKey: ["me-swap-offers-open"],
     queryFn: () => api.listSwapOffers({ status: "open" }),
@@ -129,6 +130,40 @@ export default function MeHome() {
   const myAvailability = useQuery({
     queryKey: ["me-availability-requests"],
     queryFn: api.listMyAvailabilityRequests,
+  });
+  // Upcoming meetings beyond the today+tomorrow agenda — surfaces
+  // invites the member would otherwise miss because they're outside
+  // the agenda window. Range = day-after-tomorrow through 30 days
+  // out; the meeting endpoint is already audience-scoped server-
+  // side so every row that comes back is one the member is invited
+  // to.
+  const upcomingMeetingsFromIso = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 2);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dd}`;
+  }, []);
+  const upcomingMeetingsToIso = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dd}`;
+  }, []);
+  const upcomingMeetings = useQuery({
+    queryKey: [
+      "me-upcoming-meetings",
+      upcomingMeetingsFromIso,
+      upcomingMeetingsToIso,
+    ],
+    queryFn: () =>
+      api.listMeetingInstances(
+        upcomingMeetingsFromIso,
+        upcomingMeetingsToIso,
+      ),
   });
   const meetingsByDate = useMemo(() => {
     const map = new Map<string, MeetingInstance[]>();
@@ -186,16 +221,24 @@ export default function MeHome() {
     const bloqueosPending = (myAvailability.data ?? []).filter(
       (b) => b.status === "pending",
     ).length;
+    const upcomingMeetingsCount = (upcomingMeetings.data ?? []).length;
     return {
       toRespond,
       myWithResponses,
       bloqueosPending,
+      upcomingMeetingsCount,
     };
-  }, [me.data, openSwapOffers.data, myAvailability.data]);
+  }, [
+    me.data,
+    openSwapOffers.data,
+    myAvailability.data,
+    upcomingMeetings.data,
+  ]);
   const totalPendientes =
     pendientesCounts.toRespond
     + pendientesCounts.myWithResponses
-    + pendientesCounts.bloqueosPending;
+    + pendientesCounts.bloqueosPending
+    + pendientesCounts.upcomingMeetingsCount;
 
   if (me.isLoading) {
     return <p className="text-sm text-gray-500">Cargando…</p>;
@@ -322,6 +365,16 @@ export default function MeHome() {
                 sublabel="Esperando aprobación del administrador"
                 href="/me/bloqueos"
                 tone="amber"
+              />
+            )}
+            {pendientesCounts.upcomingMeetingsCount > 0 && (
+              <PendientesCard
+                icon={<Users className="h-5 w-5" />}
+                count={pendientesCounts.upcomingMeetingsCount}
+                label="Próximas reuniones"
+                sublabel="A las que estás invitado en los próximos 30 días"
+                href="/me/reuniones"
+                tone="emerald"
               />
             )}
           </div>
