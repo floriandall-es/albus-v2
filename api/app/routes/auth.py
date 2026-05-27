@@ -454,6 +454,16 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         # commit explicitly to persist this single-field write.
         person.last_login_at = datetime.now(timezone.utc)
         db.commit()
+        # `SET LOCAL app.tenant_id` is scoped to the txn we just
+        # committed — without re-setting it, the AuthResponse
+        # serializer expires + lazy-loads membership.roles under no
+        # tenant context, RLS hides the row, and SQLAlchemy raises
+        # ObjectDeletedError. Mirrors the post-commit refresh dance
+        # in signup() above.
+        set_tenant(db, tenant.id)
+        db.refresh(tenant)
+        db.refresh(person)
+        db.refresh(membership)
         token = create_access_token(
             person_id=person.id, tenant_id=tenant.id, roles=membership.roles
         )
@@ -516,6 +526,16 @@ def select_tenant(payload: SelectTenantRequest, db: Session = Depends(get_db)) -
     # real. Commit explicitly because get_db doesn't auto-commit.
     person.last_login_at = datetime.now(timezone.utc)
     db.commit()
+    # `SET LOCAL app.tenant_id` is scoped to the txn we just
+    # committed — without re-setting it, the AuthResponse
+    # serializer expires + lazy-loads membership.roles under no
+    # tenant context, RLS hides the row, and SQLAlchemy raises
+    # ObjectDeletedError. Mirrors the post-commit refresh dance
+    # in signup() above.
+    set_tenant(db, tenant.id)
+    db.refresh(tenant)
+    db.refresh(person)
+    db.refresh(membership)
 
     token = create_access_token(
         person_id=person.id, tenant_id=tenant.id, roles=membership.roles
