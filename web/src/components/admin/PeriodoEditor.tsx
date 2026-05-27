@@ -153,10 +153,15 @@ export function PeriodoEditor({
   // whole modal as one blob.
   return (
     <div>
-      {/* Header strip: helper text + Eliminar. Slightly darker tint
-          than the body so it reads as a distinct top region. */}
-      <div className="flex flex-wrap items-start gap-3 border-b border-gray-200 bg-gray-100/70 px-4 py-3">
-        <p className="min-w-0 flex-1 text-xs text-gray-600">
+      {/* Header strip: helper text + Eliminar. Warm amber tint
+          (matches the "you're editing a period config" semantics
+          carried by the same colour on the SlotDialog banner) so
+          the band reads clearly as a distinct edit-context region,
+          not as part of the white body below. items-center keeps
+          the multi-line helper text vertically centred against the
+          taller Eliminar button. */}
+      <div className="flex flex-wrap items-center gap-3 border-b-2 border-amber-200 bg-amber-50 px-4 py-3">
+        <p className="min-w-0 flex-1 text-xs text-amber-900">
           Ajusta abajo qué actividades se desactivan, cambian sus
           plazas o relajan sus restricciones durante este periodo.
           Lo que no toques mantiene su configuración por defecto.
@@ -190,9 +195,11 @@ export function PeriodoEditor({
       </div>
 
       {/* Footer strip: months-to-touch hint + Generate button.
-          Same tint as the header so it visually closes the section. */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-gray-100/70 px-4 py-3">
-        <p className="text-xs text-gray-600">
+          Matching amber tint to the header band so they bookend the
+          working area as one cohesive "you are editing this period"
+          frame. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t-2 border-amber-200 bg-amber-50 px-4 py-3">
+        <p className="text-xs text-amber-900">
           Generará {touchedMonths.length}{" "}
           {touchedMonths.length === 1 ? "planificación" : "planificaciones"}:{" "}
           {touchedMonths.map((t) => t.label).join(", ")}.

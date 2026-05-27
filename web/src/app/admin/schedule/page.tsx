@@ -493,15 +493,15 @@ function PeriodoRow({
   return (
     <li>
       {/* The clickable header is the "tab" of the row. When expanded
-          it gets a brand-tinted background so the eye anchors to it
-          as the active periodo; collapsed rows stay white. */}
+          it gets a fully-saturated brand tint so the eye anchors to
+          it as the active periodo; collapsed rows stay white. */}
       <button
         type="button"
         onClick={onToggle}
         className={
           "flex w-full items-center gap-3 px-4 py-3 text-left transition-colors "
           + (expanded
-            ? "bg-brand-50/60 hover:bg-brand-50/80"
+            ? "bg-brand-100 hover:bg-brand-200/80"
             : "hover:bg-gray-50/60")
         }
         aria-expanded={expanded}
