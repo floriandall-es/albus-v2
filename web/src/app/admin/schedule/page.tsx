@@ -522,15 +522,17 @@ function PeriodoRow({
   return (
     <li>
       {/* The clickable header is the "tab" of the row. When expanded
-          it gets a fully-saturated brand tint so the eye anchors to
-          it as the active periodo; collapsed rows stay white. */}
+          it gets the same darker amber tint the existing-planning
+          table uses for the periodo group header — so a Verano-2026
+          periodo reads consistently here AND down in the existing-
+          planificaciones listing. Collapsed rows stay white. */}
       <button
         type="button"
         onClick={onToggle}
         className={
           "flex w-full items-center gap-3 px-4 py-3 text-left transition-colors "
           + (expanded
-            ? "bg-brand-100 hover:bg-brand-200/80"
+            ? "bg-amber-100 hover:bg-amber-200/70"
             : "hover:bg-gray-50/60")
         }
         aria-expanded={expanded}
