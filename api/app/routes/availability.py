@@ -512,19 +512,16 @@ def create_my_request(
     payload: AvailabilityRequestCreate,
     ctx: RequestContext = Depends(get_current_context),
 ) -> AvailabilityBlockOut:
-    # Migration 0083: optional reviewer routing. When the member
-    # picks an admin from the servicio-wide picker, we validate the
-    # choice against the same `list_servicio_persons` SECURITY
-    # DEFINER function that powers cross-equipo meeting invites —
-    # this guarantees the chosen admin is (a) in an approved equipo
-    # of the same servicio and (b) actually carries the 'admin'
-    # role on that membership. NULL passes through unchanged
-    # (legacy behaviour: any admin in own tenant can review).
-    reviewer_membership_id: int | None = None
-    if payload.reviewer_membership_id is not None:
-        reviewer_membership_id = _validate_servicio_admin(
-            ctx, payload.reviewer_membership_id
-        )
+    # Migration 0083: required reviewer routing. Members must pick
+    # exactly which admin reviews their bloqueo — no more "any admin
+    # of the tenant" path on new requests. Validated against the
+    # servicio-wide admin list so we can't accept a stale or out-of-
+    # servicio membership id. (Pre-0083 rows still have NULL in the
+    # column and follow legacy semantics; that's only a read-side
+    # concern.)
+    reviewer_membership_id = _validate_servicio_admin(
+        ctx, payload.reviewer_membership_id
+    )
     block = AvailabilityBlock(
         tenant_id=ctx.tenant.id,
         person_id=ctx.person.id,

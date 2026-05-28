@@ -65,12 +65,13 @@ class AvailabilityRequestCreate(BaseModel):
     end_date: date
     block_type: BlockType
     notes: str | None = Field(default=None, max_length=2000)
-    # Migration 0083. Optional — when set, the bloqueo locks to this
-    # admin and only they can approve/deny. Validated at the route
-    # layer to make sure the chosen membership is actually an admin
-    # in an approved equipo within the same servicio. NULL ⇒ legacy
-    # behaviour (any admin of the requester's own tenant).
-    reviewer_membership_id: int | None = None
+    # Migration 0083. Required — members must explicitly pick which
+    # admin reviews their bloqueo. Validated at the route layer to
+    # make sure the chosen membership is actually an admin in an
+    # approved equipo within the same servicio. (Pre-0083 rows in
+    # the DB still have NULL here and follow legacy "any admin of
+    # own tenant" semantics — we just don't allow NEW NULL writes.)
+    reviewer_membership_id: int
 
     @model_validator(mode="after")
     def _check_dates(self) -> "AvailabilityRequestCreate":

@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
@@ -146,17 +146,31 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
   const [end, setEnd] = useState("");
   const [type, setType] = useState<AvailabilityBlockType>("vacation");
   const [notes, setNotes] = useState("");
-  // Migration 0083. Optional servicio-wide reviewer routing.
-  // Empty string = "no pick" (legacy: any admin of own equipo).
-  // A membership id locks the request to that specific admin.
+  // Migration 0083. Required servicio-wide reviewer routing —
+  // every new bloqueo must name a specific admin who will review it.
+  // Empty string means "not yet picked" (initial render before the
+  // picker loads, or a deliberately cleared selection); save is
+  // gated on a non-empty value below.
   const [reviewerMembershipId, setReviewerMembershipId] = useState<string>("");
-  // Picker source. Cached for the modal's lifetime; the dropdown
-  // hides if the response has ≤1 admin (a single-admin tenant
-  // doesn't need a picker — the legacy flow is fine).
+  // Picker source. Cached for the modal's lifetime.
   const admins = useQuery({
     queryKey: ["my-servicio-admins"],
     queryFn: api.listMyServicioAdmins,
   });
+  // Auto-default to the first admin (which is sorted to be from
+  // the user's own equipo) as soon as the picker resolves — so the
+  // common case is one click ("Enviar") rather than two. Only fires
+  // when the field is still empty so the user's manual selection
+  // isn't overwritten by a refetch.
+  useEffect(() => {
+    if (
+      admins.data
+      && admins.data.length > 0
+      && reviewerMembershipId === ""
+    ) {
+      setReviewerMembershipId(String(admins.data[0].membership_id));
+    }
+  }, [admins.data, reviewerMembershipId]);
   const save = useMutation({
     mutationFn: () =>
       api.createMyAvailabilityRequest({
@@ -164,9 +178,7 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
         end_date: end,
         block_type: type,
         notes: notes || null,
-        reviewer_membership_id: reviewerMembershipId
-          ? Number(reviewerMembershipId)
-          : null,
+        reviewer_membership_id: Number(reviewerMembershipId),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-availability"] });
@@ -218,13 +230,12 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
               <option value="other">Otro</option>
             </select>
           </label>
-          {/* Reviewer picker (migration 0083). Shown whenever the
-              servicio-admins endpoint returns ≥1 option — so even a
-              tenant with a single admin sees the dropdown (member
-              can still lock the request to that admin specifically
-              vs the legacy "any admin" default). Hidden entirely
-              only when the picker source has 0 rows, which would
-              mean a misconfigured tenant — no admins exist at all. */}
+          {/* Reviewer picker (migration 0083). Required — the
+              member must always pick one specific admin who will
+              review the request. The dropdown auto-selects the
+              first option (their own equipo's first admin) on
+              load, so a one-admin tenant is still a single-click
+              flow. */}
           {admins.data && admins.data.length > 0 && (
             <label className="block">
               <span className="text-sm font-medium text-gray-700">
@@ -233,11 +244,9 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
               <select
                 value={reviewerMembershipId}
                 onChange={(e) => setReviewerMembershipId(e.target.value)}
+                required
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm bg-white"
               >
-                <option value="">
-                  Cualquier admin de mi equipo
-                </option>
                 {adminGroups.map((g) => (
                   <optgroup key={g.label} label={g.label}>
                     {g.admins.map((a) => (
@@ -281,7 +290,11 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
             </button>
             <button
               type="submit"
-              disabled={save.isPending}
+              // Required reviewer (migration 0083). Don't let the
+              // form submit before the picker query has resolved AND
+              // a specific admin is selected — otherwise the
+              // request would 422 server-side.
+              disabled={save.isPending || !reviewerMembershipId}
               className="rounded-md bg-gray-900 px-3 py-1.5 text-sm text-white hover:bg-gray-700 disabled:opacity-50"
             >
               {save.isPending ? "Enviando…" : "Enviar"}

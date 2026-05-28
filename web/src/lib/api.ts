@@ -2020,12 +2020,11 @@ export const api = {
     end_date: string;
     block_type: AvailabilityBlockType;
     notes?: string | null;
-    /** Migration 0083. Optional admin pick — when set, the bloqueo
-     * locks to this membership (only they can approve/deny). May
-     * point to an admin in a sibling equipo within the same
-     * servicio. Omit/null = legacy behaviour (any admin of own
-     * tenant). */
-    reviewer_membership_id?: number | null;
+    /** Migration 0083. Required — the chosen admin who will
+     * review this bloqueo. Must reference a membership returned
+     * by listMyServicioAdmins(). Backend 422s on missing/invalid
+     * values. */
+    reviewer_membership_id: number;
   }) =>
     request<AvailabilityBlock>("/api/me/availability-requests", {
       method: "POST",
