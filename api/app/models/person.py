@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, func, text
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, func, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -104,6 +104,37 @@ class Person(Base):
     # members) — used to spot inactive equipos at a glance. NULL until
     # the user logs in for the first time post-deploy.
     last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # ---------------------------------------------------------------
+    # Per-person billing (migration 0080). Only populated when the
+    # person's tenant is on `billing_model='members_pay'` AND they
+    # opted into a personal subscription via the post-invite "Probar
+    # 30 días gratis" CTA.
+    #
+    # `subscription_status` defaults to 'never_subscribed' for every
+    # row including new signups — that's the "paper-only" state.
+    # Admin can still create the Person + assign them to shifts; the
+    # person just can't log into the app. Transitions to 'trialing'
+    # when they start a trial, then 'active' / 'past_due' / etc.
+    # following Stripe. Under team_pays the person stays
+    # 'never_subscribed' here — their access is inherited from
+    # tenants.subscription_status (see billing service
+    # `has_app_access`).
+    # ---------------------------------------------------------------
+    stripe_customer_id: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    stripe_subscription_id: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    subscription_status: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="never_subscribed",
+        server_default="never_subscribed",
+    )
+    trial_end_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(

@@ -54,6 +54,7 @@ from app.models.periodo_especial import (
     SlotSuccessionRulePeriodExtra,
     SlotSuccessionRulePeriodOverride,
 )
+from app.models.stripe_event import StripeEvent
 
 __all__ = [
     "Hospital",
@@ -106,4 +107,5 @@ __all__ = [
     "SlotSuccessionRulePeriodOverride",
     "SlotSuccessionRulePeriodExtra",
     "SlotFrequencyCapPeriodOverride",
+    "StripeEvent",
 ]

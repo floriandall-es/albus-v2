@@ -1,6 +1,14 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -116,4 +124,46 @@ class Tenant(Base):
     )
     setup_subteams_completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    # ---------------------------------------------------------------
+    # Billing (migration 0080). See docs/billing-plan.md.
+    #
+    # The admin's Stripe Customer + Subscription, plus a flag for
+    # which billing model the equipo runs on. The Subscription has
+    # one or two Items depending on `billing_model`:
+    #   - members_pay: 1 item (price_admin × 1)
+    #   - team_pays:   2 items (price_admin × 1 + price_member × N)
+    # N tracks active+activated members; reconciled by the billing
+    # service on membership changes.
+    #
+    # `subscription_status` is NULL for tenants created before
+    # billing went live; the grandfather migration flips them to
+    # 'active' with a far-future `trial_end_at`.
+    # ---------------------------------------------------------------
+    stripe_customer_id: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    stripe_subscription_id: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    subscription_status: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    trial_end_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    billing_email: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # NIF / CIF for the Spanish IVA invoice. Collected via Stripe
+    # Customer Portal at first card entry; we mirror it here for
+    # convenience (e.g. showing it on /admin/billing without a
+    # round-trip to Stripe).
+    billing_tax_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 'members_pay' (default) or 'team_pays'. Picked at admin signup;
+    # switchable from /admin/billing. CHECK enforced in the
+    # migration.
+    billing_model: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="members_pay",
+        server_default="members_pay",
     )
