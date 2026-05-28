@@ -10,6 +10,7 @@ import {
   Building2,
   CalendarDays,
   CalendarOff,
+  CreditCard,
   Home,
   LogOut,
   Menu,
@@ -23,6 +24,7 @@ import { api, getToken, personFullName } from "@/lib/api";
 import { Avatar } from "@/components/schedule/planning-grid";
 import { useLogout } from "@/lib/use-logout";
 import { EmailVerifyBanner } from "@/components/email-verify-banner";
+import { BillingBanner } from "@/components/billing-banner";
 import { ViewSwitcher } from "@/components/view-switcher";
 import { InstallButton } from "@/components/pwa/install-button";
 
@@ -47,6 +49,11 @@ const NAV: { href: string; label: string; icon: LucideIcon }[] = [
   // directory — DMs only work between members of the same hospital.
   { href: "/me/mensajes", label: "Mensajes", icon: MessageCircle },
   { href: "/me/settings", label: "Mi cuenta", icon: Settings },
+  // Migration 0080 / docs/billing-plan.md. Personal billing page —
+  // active under members_pay (the member subscribes themselves);
+  // shows a "your team pays" notice under team_pays. Always visible
+  // in the nav so the member can find it either way.
+  { href: "/me/billing", label: "Facturación", icon: CreditCard },
 ];
 
 export default function MeLayout({ children }: { children: ReactNode }) {
@@ -332,6 +339,7 @@ export default function MeLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
         <EmailVerifyBanner />
+        <BillingBanner />
         {/* Tighter horizontal padding on mobile (where 8px·2 =
             16px is plenty) and the existing p-8 on md+. Also
             p-4 vertical on mobile so the page header doesn't

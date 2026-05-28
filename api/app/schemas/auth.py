@@ -137,6 +137,15 @@ class TenantOut(BaseModel):
     setup_team_completed_at: datetime | None = None
     setup_subteams_completed_at: datetime | None = None
 
+    # Migration 0080 / docs/billing-plan.md. `billing_model` drives
+    # the onboarding picker default + the /admin/billing toggle.
+    # `subscription_status` drives every banner / paywall the
+    # frontend renders — null on tenants that haven't been
+    # grandfathered or signed up post-billing yet.
+    billing_model: str = "members_pay"
+    subscription_status: str | None = None
+    trial_end_at: datetime | None = None
+
     model_config = {"from_attributes": True}
 
 
@@ -175,6 +184,12 @@ class PersonOut(BaseModel):
     # Frontend uses this to gate the /founder route + hide its
     # entry point from the rest of the UI.
     is_founder: bool = False
+    # Migration 0080: per-person subscription state, used under
+    # `members_pay` billing. Default 'never_subscribed' for existing
+    # rows; flipped to 'active' for alpha pilots by migration 0081.
+    # The frontend reads this on /me/billing + the billing banner.
+    subscription_status: str = "never_subscribed"
+    trial_end_at: datetime | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

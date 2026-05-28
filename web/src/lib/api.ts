@@ -94,6 +94,63 @@ export type Tenant = {
   setup_rules_completed_at: string | null;
   setup_team_completed_at: string | null;
   setup_subteams_completed_at: string | null;
+  // Migration 0080 / docs/billing-plan.md. Defaults to 'members_pay'
+  // for tenants created pre-billing. `subscription_status` is null
+  // until the tenant goes through signup post-billing OR the
+  // grandfather migration flips them to 'active'.
+  billing_model: "members_pay" | "team_pays";
+  subscription_status:
+    | "trialing"
+    | "active"
+    | "past_due"
+    | "unpaid"
+    | "canceled"
+    | null;
+  trial_end_at: string | null;
+};
+
+/** Migration 0080. Returned by GET /api/billing/summary — drives
+ * the /admin/billing page (plan card, seat breakdown, status,
+ * Portal button). */
+export type BillingSummary = {
+  billing_model: "members_pay" | "team_pays";
+  subscription_status:
+    | "trialing"
+    | "active"
+    | "past_due"
+    | "unpaid"
+    | "canceled"
+    | null;
+  trial_end_at: string | null;
+  /** True when the tenant has a Stripe Customer row. Frontend
+   * uses this to decide whether to render the "Gestionar
+   * facturación" button (no customer → grandfathered / never-
+   * checked-out tenant, nothing for the Portal to manage). */
+  has_stripe_customer: boolean;
+  /** Active (non-disabled) memberships. Under team_pays this
+   * drives the "1 admin × 29,90 € + N members × 4,90 €"
+   * breakdown. */
+  seats_total: number;
+  seats_subscribed: number;
+  seats_trialing: number;
+  /** never_subscribed + canceled — they exist on the team but
+   * don't have app access (still get printed schedules). */
+  seats_paper: number;
+};
+
+/** Migration 0080. Returned by GET /api/billing/me — drives the
+ * /me/billing page. Under team_pays the personal flow is
+ * disabled; the page just shows "Tu equipo paga tu suscripción". */
+export type MyBilling = {
+  tenant_billing_model: "members_pay" | "team_pays";
+  subscription_status:
+    | "never_subscribed"
+    | "trialing"
+    | "active"
+    | "past_due"
+    | "canceled";
+  trial_end_at: string | null;
+  has_stripe_customer: boolean;
 };
 
 export type SetupArea = "activities" | "rules" | "team" | "subteams";
@@ -431,6 +488,20 @@ export type Person = {
    * Frontend uses it to decide whether to render the founder route
    * or redirect away. */
   is_founder: boolean;
+  /** Migration 0080: personal subscription state, used under
+   * `members_pay` billing. Default 'never_subscribed' for fresh
+   * rows; alpha pilots were flipped to 'active' by 0081. The
+   * billing banner reads this for non-admin users on members_pay
+   * tenants. */
+  subscription_status:
+    | "never_subscribed"
+    | "trialing"
+    | "active"
+    | "past_due"
+    | "canceled";
+  /** ISO timestamp. Null when no trial has been started.
+   * Drives the trial-countdown banner. */
+  trial_end_at: string | null;
   created_at: string;
 };
 
@@ -890,6 +961,20 @@ export type TeamMember = {
    * schedules pendientes like any other member; this flag just
    * drives the "Pendiente" badge in the admin team list. */
   is_pending: boolean;
+  /** Migration 0080. Mirrors `persons.subscription_status`. Under
+   * `team_pays` the per-person value is informational (admin pays
+   * for everyone via the tenant sub). Under `members_pay` it
+   * decides whether the member can open the app at all. The
+   * /admin/team chip column reads this. */
+  subscription_status:
+    | "never_subscribed"
+    | "trialing"
+    | "active"
+    | "past_due"
+    | "canceled";
+  /** ISO timestamp. Null when no trial has ever started. Surfaces
+   * in the chip tooltip while trialing. */
+  trial_end_at: string | null;
   created_at: string;
 };
 
@@ -1537,6 +1622,34 @@ export const api = {
       `/api/invitations/by-token/${encodeURIComponent(token)}/accept`,
       { method: "POST", body: JSON.stringify(body) },
     ),
+
+  // Billing (migration 0080 / docs/billing-plan.md).
+  // Called from /onboarding/done (initial pick) and /admin/billing
+  // (post-signup switch). Admin-only on the backend.
+  updateBillingModel: (billing_model: "members_pay" | "team_pays") =>
+    request<{ billing_model: "members_pay" | "team_pays" }>(
+      "/api/billing/model",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ billing_model }),
+      },
+    ),
+  // /admin/billing summary. Admin-only — drives the plan card,
+  // seat breakdown, status banner, and Customer Portal button.
+  getBillingSummary: () =>
+    request<BillingSummary>("/api/billing/summary"),
+  // Opens a one-shot Stripe Customer Portal session for the
+  // tenant. Returns the URL the frontend redirects to; Stripe
+  // sends the user back to /admin/billing afterwards. 409 if the
+  // tenant has no Stripe Customer yet (grandfathered / never-
+  // checked-out trial).
+  openBillingPortal: () =>
+    request<{ url: string }>("/api/billing/portal", { method: "POST" }),
+  // /me/billing payload. Any role; reports the person's own
+  // subscription state in the current tenant context.
+  getMyBilling: () => request<MyBilling>("/api/billing/me"),
+  openMyBillingPortal: () =>
+    request<{ url: string }>("/api/billing/me/portal", { method: "POST" }),
 
   // Onboarding
   completeOnboarding: () =>

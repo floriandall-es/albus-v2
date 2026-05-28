@@ -30,6 +30,16 @@ class TeamMemberOut(BaseModel):
     # drives the "Pendiente" pill on the admin team list and
     # silences routine email notifications.
     is_pending: bool = False
+    # Migration 0080. Mirrors `persons.subscription_status` — one of
+    # 'never_subscribed' / 'trialing' / 'active' / 'past_due' /
+    # 'canceled'. Under `team_pays` the tenant covers everyone and
+    # the per-person value is whatever the grandfather/auto-flow set
+    # (typically 'active' for grandfathered teams). The /admin/team
+    # chip column reads this to render the subscription state pill.
+    subscription_status: str = "never_subscribed"
+    # Null when no trial has ever started. Used by the chip tooltip
+    # to show "Prueba termina el {date}" while trialing.
+    trial_end_at: datetime | None = None
     created_at: datetime
 
 

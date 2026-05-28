@@ -83,6 +83,73 @@ function TeamAvatar({
   );
 }
 
+/** Migration 0080. Subscription state chip rendered in the team
+ * list. Colour-coded per docs/billing-plan.md chunk 12:
+ *
+ *   🟢 Activo  — paying, in trial, or covered by team_pays
+ *   🟡 Prueba  — personal trial running under members_pay
+ *   ⚪ En papel — never_subscribed or canceled (admin still plans
+ *                 them but they don't see the app)
+ *
+ * Tooltip surfaces the trial end date when present so the admin
+ * can see "ends Aug 12" without clicking through. The chip stays
+ * out of the way under team_pays (almost everyone shows the same
+ * green pill) — admins who want the per-person view sort the
+ * column. */
+function SubscriptionChip({
+  status,
+  trialEndAt,
+}: {
+  status: TeamMember["subscription_status"];
+  trialEndAt: string | null;
+}) {
+  const trialDate = trialEndAt
+    ? new Date(trialEndAt).toLocaleDateString("es-ES", {
+        day: "numeric",
+        month: "short",
+      })
+    : null;
+  if (status === "active" || status === "past_due") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-emerald-200"
+        title={
+          status === "past_due"
+            ? "Suscripción activa pero con pago atrasado."
+            : "Suscripción activa."
+        }
+      >
+        <span aria-hidden>●</span> Activo
+      </span>
+    );
+  }
+  if (status === "trialing") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-amber-200"
+        title={trialDate ? `Prueba termina el ${trialDate}` : "Periodo de prueba"}
+      >
+        <span aria-hidden>●</span> Prueba
+      </span>
+    );
+  }
+  // never_subscribed + canceled — both surface as "En papel" because
+  // the admin's mental model is "do they see the app or not", not
+  // "have they ever subscribed". Tooltip distinguishes the two.
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600 ring-1 ring-gray-200"
+      title={
+        status === "canceled"
+          ? "Canceló su suscripción. Sigue en la planificación pero no abre la app."
+          : "No tiene cuenta en la app. Recibe la planificación en papel."
+      }
+    >
+      <span aria-hidden>○</span> En papel
+    </span>
+  );
+}
+
 export default function TeamPage() {
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
@@ -141,6 +208,11 @@ export default function TeamPage() {
                 <th className="px-4 py-2 font-medium">Email</th>
                 <th className="px-4 py-2 font-medium">Categoría</th>
                 <th className="px-4 py-2 font-medium">FTE</th>
+                {/* Migration 0080. Per-member subscription chip — what
+                    state is their personal app access in. Under team_pays
+                    every active member shows 🟢 Activo because the tenant
+                    sub covers them; under members_pay it varies. */}
+                <th className="px-4 py-2 font-medium">Suscripción</th>
                 <th className="px-4 py-2 font-medium text-right">Acciones</th>
               </tr>
             </thead>
@@ -205,6 +277,12 @@ export default function TeamPage() {
                   </td>
                   <td className="px-4 py-2">{m.category_name ?? "—"}</td>
                   <td className="px-4 py-2">{m.fte_pct}%</td>
+                  <td className="px-4 py-2">
+                    <SubscriptionChip
+                      status={m.subscription_status}
+                      trialEndAt={m.trial_end_at}
+                    />
+                  </td>
                   <td className="px-4 py-2">
                     <div className="flex justify-end gap-2 whitespace-nowrap">
                       {m.is_pending && !isDisabled && (

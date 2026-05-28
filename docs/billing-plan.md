@@ -27,8 +27,45 @@ below supersede earlier drafts. Specifically:
   members both at €0). Migration sets their subscription_status to
   `active` and a far-future trial_end_at.
 
-Next session picks up at **"Implementation chunks"** below. Step 1
-is the migration; nothing else has been started.
+Next session picks up at **"Implementation chunks"** below.
+
+**Progress as of 2026-05-28 (this conversation):**
+- ✅ Chunk 2: migration 0080_billing (tenants + persons billing
+  columns, stripe_events idempotency table, partial unique
+  indexes on Stripe IDs).
+- ✅ Chunk 3: `app/services/stripe_client.py` — customer +
+  subscription + portal + webhook helpers.
+- ✅ Chunk 4: `app/routes/stripe_webhook.py` — sig verify,
+  idempotency, dispatch on `customer.subscription.*`.
+- ✅ Chunk 5: trial-horizon enforcement on the three generate
+  endpoints via `can_generate_for()`.
+- ✅ Chunk 6: hard-gate at request time via
+  `require_active_subscription` dependency (402 on lapsed).
+- ✅ Chunk 7: onboarding picker + `PATCH /api/billing/model`.
+- ✅ Chunk 9: `/admin/billing` page + `GET /api/billing/summary` +
+  `POST /api/billing/portal`.
+- ✅ Chunk 10: `/me/billing` page + `GET /api/billing/me` +
+  `POST /api/billing/me/portal`.
+- ✅ Chunk 11: cross-shell `<BillingBanner />` (trial countdown,
+  past_due, unpaid, canceled).
+- ✅ Chunk 12: `/admin/team` subscription chips (🟢 Activo /
+  🟡 Prueba / ⚪ En papel) + sortable column.
+- ✅ Chunk 13: migration 0081_grandfather_alpha — flips every
+  existing tenant + member to `active` + far-future trial_end,
+  billing_model=team_pays. Runs once on prod when we deploy
+  this branch; the cutoff is "NOW()" at migration time.
+- ✅ Chunk 15: landing pricing card update — "Opcional" framing,
+  team_pays callout below the cards.
+
+**Still TODO before going live:**
+- Chunk 1: Stripe Dashboard setup (manual, no code).
+- Chunk 8: member invite flow — "Probar 30 días gratis" choice
+  on `/invitations/by-token/...` accept page.
+- Chunk 14: nine email templates (trial-ending × 3, trial-ended,
+  payment-failed, sub-canceled, member trial-ending × 3, plus
+  the "team switched models" system email).
+- Chunk 16: RUNBOOK addendum (Stripe keys location, test card
+  numbers, replay-webhook command, manual grandfather).
 
 ## GTM shape
 

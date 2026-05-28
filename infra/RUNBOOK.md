@@ -235,3 +235,85 @@ If the rollback also requires a DB schema downgrade:
 ```bash
 docker compose -f infra/docker-compose.prod.yml exec api alembic downgrade -1
 ```
+
+## 8. Billing (Stripe)
+
+See `docs/billing-plan.md` for the model + pricing. This section
+is operational — keys, payment-flow debugging, manual recovery.
+
+### Keys + secrets
+
+All four live in `/srv/albus/.env`. Restart `api` after rotating
+any of them so the new value picks up.
+
+```env
+STRIPE_SECRET_KEY=sk_live_xxx          # Stripe Dashboard → Developers → API keys
+STRIPE_WEBHOOK_SECRET=whsec_xxx        # Stripe Dashboard → Developers → Webhooks → our endpoint
+STRIPE_PRICE_ADMIN=price_xxx           # Recurring price €29.90 / month
+STRIPE_PRICE_MEMBER=price_xxx          # Recurring price €4.90 / month
+```
+
+Use the Stripe **test** keys against the dev VPS / staging branch
+and **live** keys only on `main`. Mixing them confuses the
+webhook signature check and breaks every subscription event.
+
+### Test card numbers (test mode only)
+
+- `4242 4242 4242 4242` — succeeds
+- `4000 0000 0000 9995` — declined (insufficient funds)
+- `4000 0025 0000 3155` — requires 3DS authentication
+- `4000 0000 0000 0341` — succeeds at first, then disputes
+- Any future expiry, any 3-digit CVC, any postal code
+
+### Replaying a webhook locally
+
+1. Find the `evt_xxx` ID in `stripe_events` for the event you
+   want to replay, or hunt it down in the Stripe Dashboard
+   (Developers → Events).
+2. `stripe events resend evt_xxx --webhook-endpoint we_xxx`
+   from a shell with the Stripe CLI logged in.
+3. Idempotency: the handler short-circuits on a duplicate
+   `event_id`. To force re-processing, first
+   `DELETE FROM stripe_events WHERE event_id = 'evt_xxx';`.
+
+### Manually grandfathering a tenant
+
+If a customer needs to be marked "active, free" outside the
+normal Stripe flow (alpha pilot exception, comp account, etc.):
+
+```sql
+-- Replace 123 with the tenant id.
+UPDATE tenants
+   SET subscription_status = 'active',
+       trial_end_at        = '2099-12-31 00:00:00+00',
+       billing_model       = 'team_pays'
+ WHERE id = 123;
+
+UPDATE persons p
+   SET subscription_status = 'active',
+       trial_end_at        = '2099-12-31 00:00:00+00'
+  FROM memberships m
+ WHERE m.person_id = p.id
+   AND m.tenant_id = 123;
+```
+
+The `'2099-12-31 00:00:00+00'` sentinel is what migration 0081
+uses for alpha pilots; reusing it keeps the data uniform and
+makes future downgrades easier.
+
+### Common failure modes
+
+- **"402 — Tu suscripción no está activa"** on every write
+  endpoint: the tenant lapsed (`unpaid` / `canceled`). Check
+  `subscription_status` in the DB and `stripe_events` for the
+  most recent `customer.subscription.updated` event. The admin
+  fixes it themselves from `/admin/billing` → Customer Portal.
+
+- **Webhook 400s with "Invalid signature"**: `STRIPE_WEBHOOK_SECRET`
+  doesn't match the endpoint the event came from. Most common
+  cause: pointing live webhooks at a dev VPS or vice versa.
+
+- **"No hay cuenta de facturación todavía"** on the Portal
+  button: the tenant/person has no `stripe_customer_id`. Either
+  they're grandfathered (expected — button stays disabled), or
+  the first subscription flow hasn't been kicked off yet.

@@ -1,5 +1,5 @@
 "use client";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, ChevronDown, ChevronRight } from "lucide-react";
@@ -13,12 +13,42 @@ import { Button } from "@/components/admin/ui";
 import { StepNav } from "../_nav";
 import { StepHeader } from "../_step-header";
 
+type BillingModel = "members_pay" | "team_pays";
+
 export default function DoneStep() {
   const router = useRouter();
   const qc = useQueryClient();
+  const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   const cats = useQuery({ queryKey: ["categories"], queryFn: api.listCategories });
   const slots = useQuery({ queryKey: ["slots"], queryFn: () => api.listSlots() });
   const invs = useQuery({ queryKey: ["invitations"], queryFn: api.listInvitations });
+
+  // Billing model — the chief picks here at the end of onboarding.
+  // Default 'members_pay' (less commitment). Persisted to the
+  // backend on every change so reload-mid-onboarding doesn't drop
+  // the choice; the switch can also be flipped later from
+  // /admin/billing. See docs/billing-plan.md, chunk 7.
+  const [billingModel, setBillingModel] = useState<BillingModel>(
+    "members_pay",
+  );
+  // Hydrate from the server's current value once /me resolves so
+  // someone reloading this page sees their saved pick selected.
+  useEffect(() => {
+    if (me.data?.current_tenant.billing_model) {
+      setBillingModel(me.data.current_tenant.billing_model);
+    }
+  }, [me.data?.current_tenant.billing_model]);
+  const setBillingModelMut = useMutation({
+    mutationFn: (m: BillingModel) => api.updateBillingModel(m),
+    // Invalidate /me so the new value flows everywhere (admin
+    // sidebar, billing page, etc.) without a hard refresh.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["me"] }),
+  });
+  const pickBilling = (m: BillingModel) => {
+    if (m === billingModel) return;
+    setBillingModel(m);
+    setBillingModelMut.mutate(m);
+  };
 
   const finish = useMutation({
     mutationFn: () => api.completeOnboarding(),
@@ -67,6 +97,35 @@ export default function DoneStep() {
           <InvitesDetail items={invs.data ?? []} />
         </ExpandableSummaryRow>
       </ul>
+
+      {/* Billing model picker. Defaults to members_pay (less
+          commitment); switchable later from /admin/billing. */}
+      <div className="rounded-md border bg-white p-4 mb-6">
+        <h3 className="text-sm font-semibold text-gray-900">
+          ¿Cómo se paga Trivu para este equipo?
+        </h3>
+        <p className="mt-1 text-xs text-gray-500">
+          Puedes cambiarlo cuando quieras desde Facturación.
+        </p>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+          <BillingOption
+            selected={billingModel === "members_pay"}
+            onSelect={() => pickBilling("members_pay")}
+            title="Cada miembro decide"
+            price="29,90 €/mes"
+            body="Tú pagas tu cuenta. Cada compañero elige si quiere acceso al móvil por 4,90 € — o sigue con el papel."
+            badge="Más flexible"
+          />
+          <BillingOption
+            selected={billingModel === "team_pays"}
+            onSelect={() => pickBilling("team_pays")}
+            title="El equipo paga por todos"
+            price="29,90 € + 4,90 €/miembro"
+            body="Una sola factura para el servicio. Todos los miembros tienen acceso desde que se les invita."
+            badge="Una factura"
+          />
+        </div>
+      </div>
 
       <p className="text-sm text-gray-600 mb-6">
         Puedes seguir editando todo desde la sección de administración. Cuando estés
@@ -195,6 +254,55 @@ function InvitesDetail({ items }: { items: Invitation[] }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/** Radio-style card for the billing-model picker. Active state
+ * uses the brand ring so it reads as "selected" without a literal
+ * radio dot (the card itself IS the radio). */
+function BillingOption({
+  selected,
+  onSelect,
+  title,
+  price,
+  body,
+  badge,
+}: {
+  selected: boolean;
+  onSelect: () => void;
+  title: string;
+  price: string;
+  body: string;
+  badge: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={selected}
+      className={
+        "text-left rounded-md border p-3 transition-colors "
+        + (selected
+          ? "border-brand-500 ring-2 ring-brand-500/30 bg-brand-50/40"
+          : "border-gray-200 hover:bg-gray-50")
+      }
+    >
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-semibold text-gray-900">{title}</span>
+        <span
+          className={
+            "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider "
+            + (selected
+              ? "bg-brand-600 text-white"
+              : "bg-gray-100 text-gray-600")
+          }
+        >
+          {badge}
+        </span>
+      </div>
+      <div className="mt-1 text-xs font-medium text-gray-700">{price}</div>
+      <p className="mt-2 text-xs leading-snug text-gray-600">{body}</p>
+    </button>
   );
 }
 

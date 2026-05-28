@@ -34,6 +34,8 @@ def _serialize(
         fte_pct=m.fte_pct,
         disabled_at=m.disabled_at,
         is_pending=person.hashed_password is None,
+        subscription_status=person.subscription_status,
+        trial_end_at=person.trial_end_at,
         created_at=m.created_at,
     )
 

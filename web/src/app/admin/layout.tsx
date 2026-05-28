@@ -10,6 +10,7 @@ import {
   CalendarDays,
   CalendarOff,
   Clock,
+  CreditCard,
   Heart,
   Home,
   LogOut,
@@ -25,6 +26,7 @@ import {
 import { api, getToken } from "@/lib/api";
 import { useLogout } from "@/lib/use-logout";
 import { EmailVerifyBanner } from "@/components/email-verify-banner";
+import { BillingBanner } from "@/components/billing-banner";
 import { ViewSwitcher } from "@/components/view-switcher";
 import { InstallButton } from "@/components/pwa/install-button";
 
@@ -109,6 +111,12 @@ const NAV: NavSection[] = [
     title: "Cuenta",
     items: [
       { href: "/admin/settings", label: "Mi cuenta", icon: Settings },
+      // Migration 0080 / docs/billing-plan.md. Admin-only billing
+      // surface: plan summary, seat breakdown, Stripe Portal,
+      // billing-model toggle. Renders for every admin even when
+      // the tenant is grandfathered — the page itself handles the
+      // "no Stripe Customer yet" state by hiding the Portal button.
+      { href: "/admin/billing", label: "Facturación", icon: CreditCard },
     ],
   },
 ];
@@ -330,6 +338,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           See https://defensivecss.dev/tip/flexbox-min-content-size/ */}
       <div className="flex-1 flex flex-col min-w-0">
         <EmailVerifyBanner />
+        <BillingBanner />
         <main className="flex-1 p-8">{children}</main>
       </div>
     </div>

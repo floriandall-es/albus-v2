@@ -297,7 +297,7 @@ const COPY = {
           name: "Miembro",
           price: "4,90 €",
           cadence: "/mes",
-          tagline: "Quien recibe sus turnos en el móvil",
+          tagline: "Opcional · cada miembro decide",
           features: [
             "Tus turnos en el móvil, con avisos",
             "Cambios e intercambios con compañeros",
@@ -305,10 +305,12 @@ const COPY = {
             "Directorio del hospital + WhatsApp",
             "Exportar a Google y Apple Calendar",
           ],
-          cta: "Pídeselo a tu jefe",
+          cta: "Cuando quieras probarlo, 30 días gratis",
         },
       ],
       finePrint: "Sin contrato anual. Cancela cuando quieras.",
+      callout:
+        "¿Servicio con presupuesto? El equipo puede pagar todo de una sola factura: 29,90 € + 4,90 € por miembro activo. Configurable desde la cuenta del admin.",
     },
     faq: {
       title: "Preguntas frecuentes",
@@ -586,7 +588,7 @@ const COPY = {
           name: "Member",
           price: "€4.90",
           cadence: "/mo",
-          tagline: "Whoever receives their shifts on their phone",
+          tagline: "Optional · each member decides",
           features: [
             "Your shifts on your phone, with reminders",
             "Swaps and coverage with colleagues",
@@ -594,10 +596,12 @@ const COPY = {
             "Hospital directory + WhatsApp",
             "Export to Google and Apple Calendar",
           ],
-          cta: "Ask your chief for access",
+          cta: "Try it free for 30 days when you want",
         },
       ],
       finePrint: "No annual contract. Cancel anytime.",
+      callout:
+        "Budget-backed department? The team can pay everything on a single invoice: €29.90 + €4.90 per active member. Configurable from the admin's account.",
     },
     faq: {
       title: "Frequently asked",
@@ -1089,6 +1093,9 @@ export default function LandingPage() {
           <p className="mt-6 text-center text-xs text-gray-500">
             {c.pricing.finePrint}
           </p>
+          <div className="mx-auto mt-6 max-w-2xl rounded-xl border border-gray-200 bg-white/60 px-5 py-4 text-center text-sm leading-relaxed text-gray-600">
+            {c.pricing.callout}
+          </div>
         </div>
       </section>
 
