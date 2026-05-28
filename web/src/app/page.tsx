@@ -331,10 +331,6 @@ const COPY = {
           a: "Cada equipo tiene su propio espacio aislado — nadie ve datos de otro equipo. Conexiones cifradas, contraseñas encriptadas y cumplimiento RGPD. Sin rastreadores, sin publicidad, sin terceros.",
         },
         {
-          q: "¿Se integra con los sistemas del hospital?",
-          a: "Hoy no de forma directa. Trivu genera PDFs imprimibles del cuadrante y cada miembro puede exportar sus turnos a su calendario (Google, Apple, Outlook). Una integración con los HCIS está en el horizonte.",
-        },
-        {
           q: "¿Y si tengo varios equipos en el mismo servicio?",
           a: "Cada equipo lleva su planificación de forma independiente, pero pueden coordinarse: reuniones compartidas, directorio común y, si quieren, visibilidad mutua de los cuadrantes publicados.",
         },
@@ -623,10 +619,6 @@ const COPY = {
         {
           q: "Is my data secure?",
           a: "Each team has its own isolated space — nobody sees data from another team. Encrypted connections, encrypted passwords, GDPR-compliant. No trackers, no ads, no third parties.",
-        },
-        {
-          q: "Does it integrate with hospital systems?",
-          a: "Not directly today. Trivu generates printable PDFs of the rota and each member can export their shifts to their calendar (Google, Apple, Outlook). HCIS integration is on the horizon.",
         },
         {
           q: "What if I have several teams in the same department?",
