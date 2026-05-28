@@ -807,9 +807,13 @@ export default function LandingPage() {
         <div className="relative mx-auto max-w-6xl px-4 sm:px-6 pt-8 sm:pt-20 pb-12 sm:pb-16">
           <div className="grid gap-8 sm:gap-12 lg:grid-cols-[1.05fr_1fr] lg:items-center">
             <div className="min-w-0">
-              <h1 className="text-[2rem] sm:text-5xl lg:text-6xl font-semibold tracking-tight text-gray-900 leading-[1.1] sm:leading-[1.05] break-words">
-                {c.hero.title}{" "}
-                <span className="bg-gradient-to-r from-brand-700 to-brand-500 bg-clip-text text-transparent">
+              <h1 className="text-[1.75rem] sm:text-5xl lg:text-6xl font-semibold tracking-tight text-gray-900 leading-[1.15] sm:leading-[1.05] break-words">
+                {/* On mobile the two halves stack on their own
+                    lines so the title can't overflow the viewport;
+                    on sm and up they flow inline next to each
+                    other with the gradient accent. */}
+                <span className="block sm:inline">{c.hero.title}</span>{" "}
+                <span className="block sm:inline bg-gradient-to-r from-brand-700 to-brand-500 bg-clip-text text-transparent">
                   {c.hero.titleAccent}
                 </span>
               </h1>
