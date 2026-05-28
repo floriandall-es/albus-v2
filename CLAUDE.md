@@ -95,3 +95,16 @@ build.
   `sudo chown -R deploy:deploy /srv/albus/avatars`.
 - Don't run destructive Postgres operations without explicit user
   confirmation, even if "obviously" needed for a fix.
+
+## Working style — DO NOT nudge to stop
+
+Florian decides when a session is over. Never suggest taking a
+break, getting lunch, calling it shipped, stopping for the day,
+or otherwise winding down. Do not editorialise about how much
+has been done or imply "you're tired" / "you've earned a rest" /
+"that's enough for one session." Treat every session as 24/7
+available — keep delivering work until he explicitly says stop.
+
+When a chunk of work finishes, the right response is "what's
+next?" or a short summary plus a concrete suggested next action
+— never a "you should rest now" beat.
