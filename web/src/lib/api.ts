@@ -381,6 +381,38 @@ export type StatsOverviewResponse = {
   monthly: StatsMonthlyRow[];
 };
 
+// --- /api/stats/calendar — Commit 3 of the stats overhaul ---
+// Per-(person, day) shift counts + bloqueo overlay for the GitHub-
+// style heat map. Sparse: only days with non-zero activity OR an
+// active bloqueo show up as entries.
+
+export type CalendarPersonOut = {
+  id: number;
+  name: string;
+  avatar_url: string | null;
+  category_name: string | null;
+};
+
+export type CalendarEntry = {
+  person_id: number;
+  date: string;  // YYYY-MM-DD
+  shifts: number;
+  /** One of vacation / sick / training / personal / other when the
+   * day overlaps an approved availability_block; null otherwise. */
+  bloqueo_type: string | null;
+};
+
+export type StatsCalendarResponse = {
+  from_date: string;
+  to_date: string;
+  /** Holiday dates in the range. Frontend uses these to overlay
+   * a subtle background tint on holiday cells regardless of
+   * shifts or bloqueos. */
+  holidays: string[];
+  persons: CalendarPersonOut[];
+  entries: CalendarEntry[];
+};
+
 // Sanitized public read-only absence row used by the planning grid's
 // Libre row. Backed by /api/availability/team-absences.
 export type TeamAbsence = {
@@ -1888,6 +1920,18 @@ export const api = {
     qs.set("to", params.to);
     return request<StatsOverviewResponse>(
       `/api/stats/overview?${qs.toString()}`,
+    );
+  },
+  /** Commit 3 of the stats overhaul. Per-(person, day) shift counts +
+   * bloqueo overlay for the calendar heat map. Sparse payload (only
+   * days with activity), so a 100-person year-view is still ~1.5 MB
+   * gzipped — fine for an admin-only surface. */
+  statsCalendar: (params: { from: string; to: string }) => {
+    const qs = new URLSearchParams();
+    qs.set("from", params.from);
+    qs.set("to", params.to);
+    return request<StatsCalendarResponse>(
+      `/api/stats/calendar?${qs.toString()}`,
     );
   },
   /** Same shape as statsAssignments but scoped to the caller. No

@@ -130,3 +130,54 @@ class StatsOverviewResponse(BaseModel):
     kpis: KpiBlock
     workload: list[WorkloadRow]
     monthly: list[MonthlyRow]
+
+
+# ---------------------------------------------------------------------------
+# /api/stats/calendar — Commit 3 of the stats overhaul
+# ---------------------------------------------------------------------------
+#
+# Per-(person, day) shift counts + bloqueo overlay for the calendar
+# heat map. Designed to be SPARSE so a 100-person year-view doesn't
+# blow up: only days where the person worked OR had a bloqueo appear.
+#
+# Entries can carry either or both signals on the same day. A clinician
+# pulling a Sunday on-call shift in the middle of a sick-leave week
+# would show up with shifts=1 + bloqueo_type='sick' (the planning
+# committed them despite the block — visible anomaly).
+
+
+class CalendarPersonOut(BaseModel):
+    """Identity row for the calendar Y-axis. All non-disabled
+    memberships in the tenant, regardless of whether they have any
+    activity in the range — empty rows still tell the jefe
+    something ("Pérez took the whole month off")."""
+
+    id: int
+    name: str
+    avatar_url: str | None = None
+    category_name: str | None = None
+
+
+class CalendarEntry(BaseModel):
+    """One non-zero day for a single person. Sparse — days with no
+    shifts AND no bloqueo are omitted entirely."""
+
+    person_id: int
+    date: date
+    # 0 when the day is purely a bloqueo; otherwise the count of
+    # Assignment rows for this person on this date.
+    shifts: int
+    # One of 'vacation' / 'sick' / 'training' / 'personal' / 'other',
+    # or null when the day has no approved bloqueo overlap. Mirrors
+    # availability_blocks.block_type values.
+    bloqueo_type: str | None = None
+
+
+class StatsCalendarResponse(BaseModel):
+    from_date: date
+    to_date: date
+    # Holidays in the range — the frontend uses these to overlay a
+    # subtle background on holiday cells regardless of activity.
+    holidays: list[date]
+    persons: list[CalendarPersonOut]
+    entries: list[CalendarEntry]

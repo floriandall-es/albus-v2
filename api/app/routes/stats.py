@@ -42,8 +42,11 @@ from app.models import (
 )
 from app.routes.deps import RequestContext, get_current_context
 from app.schemas.stats import (
+    CalendarEntry,
+    CalendarPersonOut,
     KpiBlock,
     MonthlyRow,
+    StatsCalendarResponse,
     StatsOverviewResponse,
     StatsResponse,
     StatsRow,
@@ -438,6 +441,136 @@ def stats_overview(
         ),
         workload=workload,
         monthly=monthly,
+    )
+
+
+# ---------------------------------------------------------------------------
+# /stats/calendar — per-(person, day) heat map source data.
+# ---------------------------------------------------------------------------
+
+
+@router.get("/stats/calendar", response_model=StatsCalendarResponse)
+def stats_calendar(
+    from_: date = Query(..., alias="from"),
+    to: date = Query(...),
+    ctx: RequestContext = Depends(get_current_context),
+) -> StatsCalendarResponse:
+    """Per-(person, day) shift + bloqueo overlay for the calendar
+    heat map on /admin/stats.
+
+    Payload is intentionally sparse: only days where a person worked
+    OR had an approved bloqueo show up as entries. A 100-person
+    year-view with average activity sends ~30k entries (~1.5 MB
+    gzipped), which is fine for an admin-only surface. Reading the
+    chart is O(entries) lookups into a Map; rendering uses
+    overflow-x-auto so the 365-cell row stays browsable.
+
+    Persons: every non-disabled membership, including those with
+    zero activity in the range — an empty row in the heat map IS
+    information ("Pérez took the whole quarter off, was that on
+    purpose?").
+    """
+    _require_admin(ctx)
+    if to < from_:
+        raise HTTPException(status_code=400, detail="'to' debe ser >= 'from'")
+
+    # Persons (whole team — sorted by category then name so the
+    # heat map's Y-axis reads like the /admin/team list).
+    member_rows = (
+        ctx.db.query(Membership, Person, Category)
+        .join(Person, Person.id == Membership.person_id)
+        .outerjoin(Category, Category.id == Membership.category_id)
+        .filter(Membership.disabled_at.is_(None))
+        .order_by(Category.name.asc(), Person.name.asc())
+        .all()
+    )
+    persons = [
+        CalendarPersonOut(
+            id=p.id,
+            name=p.name,
+            avatar_url=p.avatar_url,
+            category_name=c.name if c else None,
+        )
+        for _m, p, c in member_rows
+    ]
+
+    holidays = [
+        h.date
+        for h in ctx.db.query(Holiday)
+        .filter(Holiday.date.between(from_, to))
+        .all()
+    ]
+
+    # Assignments — published + archived, with a person assigned.
+    # Uncovered (person_id IS NULL) rows are deliberately excluded;
+    # they're surfaced in the coverage trend on the same page.
+    assignment_rows = (
+        ctx.db.query(Assignment)
+        .join(Schedule, Schedule.id == Assignment.schedule_id)
+        .filter(
+            Schedule.status.in_(["published", "archived"]),
+            Assignment.date.between(from_, to),
+            Assignment.person_id.isnot(None),
+        )
+        .all()
+    )
+
+    # (person_id, date) -> entry. Dict lookups keep the merge O(1).
+    by_key: dict[tuple[int, date], CalendarEntry] = {}
+    for a in assignment_rows:
+        if a.person_id is None:  # narrowed by the SQL filter, but be defensive
+            continue
+        key = (a.person_id, a.date)
+        existing = by_key.get(key)
+        if existing is not None:
+            existing.shifts += 1
+        else:
+            by_key[key] = CalendarEntry(
+                person_id=a.person_id,
+                date=a.date,
+                shifts=1,
+                bloqueo_type=None,
+            )
+
+    # Bloqueos — expand to per-day overlap with the range. Same
+    # overlap math as the overview endpoint; reused so the two
+    # surfaces never disagree about whether a Monday "counts."
+    blocks = (
+        ctx.db.query(AvailabilityBlock)
+        .filter(
+            AvailabilityBlock.status == "approved",
+            AvailabilityBlock.start_date <= to,
+            AvailabilityBlock.end_date >= from_,
+        )
+        .all()
+    )
+    for b in blocks:
+        cur = max(b.start_date, from_)
+        last = min(b.end_date, to)
+        while cur <= last:
+            key = (b.person_id, cur)
+            existing = by_key.get(key)
+            if existing is not None:
+                # Person worked AND had a bloqueo overlap — visible
+                # anomaly. Last-write-wins on the type if the person
+                # somehow has two overlapping approved blocks (rare;
+                # we don't currently dedupe at the data layer).
+                existing.bloqueo_type = b.block_type
+            else:
+                by_key[key] = CalendarEntry(
+                    person_id=b.person_id,
+                    date=cur,
+                    shifts=0,
+                    bloqueo_type=b.block_type,
+                )
+            cur += timedelta(days=1)
+
+    return StatsCalendarResponse(
+        from_date=from_,
+        to_date=to,
+        holidays=holidays,
+        persons=persons,
+        entries=list(by_key.values()),
     )
 
 

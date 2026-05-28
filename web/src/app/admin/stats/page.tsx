@@ -20,6 +20,9 @@ import {
 import {
   api,
   personLastName,
+  type CalendarEntry,
+  type CalendarPersonOut,
+  type StatsCalendarResponse,
   type StatsMonthlyRow,
   type StatsKpis,
   type StatsRow,
@@ -100,6 +103,15 @@ export default function StatsPage() {
   const ov = useQuery({
     queryKey: ["stats-overview", fromDate, toDate],
     queryFn: () => api.statsOverview({ from: fromDate, to: toDate }),
+  });
+  // Commit 3 — calendar heat map. Fetched lazily under its own
+  // query so the dashboard top half paints first; the heat map
+  // lives further down the page and an admin who only cares
+  // about KPIs doesn't pay the cost of the sparse day-grid
+  // payload while scrolling.
+  const cal = useQuery({
+    queryKey: ["stats-calendar", fromDate, toDate],
+    queryFn: () => api.statsCalendar({ from: fromDate, to: toDate }),
   });
   // Per-user accent: swap the default teal slot in the fallback
   // palette for the caller's pick.
@@ -301,6 +313,20 @@ export default function StatsPage() {
           <MonthlyTrendsPanel monthly={ov.data.monthly} accent={palette[0]} />
         </div>
       )}
+
+      {/* Calendar heat map (Commit 3). Sits between the dashboard
+          and the per-slot detail. Scales naturally — each person
+          is one ~16px row, so a 100-member team is a 1600px-tall
+          scrollable panel. Hidden when there's literally nothing
+          to plot in the range. */}
+      {cal.data
+        && (cal.data.entries.length > 0 || cal.data.persons.length > 0) && (
+          <CalendarHeatmap
+            data={cal.data}
+            accent={palette[0]}
+            onPersonClick={setSelectedPersonId}
+          />
+        )}
 
       {/* Per-person side panel (Commit 2 drill-down). Renders when
           selectedPersonId is set; otherwise nothing. Reads the
@@ -1755,4 +1781,388 @@ function PanelStat({
       )}
     </div>
   );
+}
+
+
+// ---------------------------------------------------------------------------
+// Commit 3 — calendar heat map (GitHub-style per-person row of day cells).
+// ---------------------------------------------------------------------------
+
+type HeatmapMode = "shifts" | "weekends" | "bloqueos";
+
+/** Color for a single cell given the active mode + the day's data.
+ *
+ * Returns a Tailwind-friendly hex (so we can interpolate intensities)
+ * plus an a11y label for the tooltip. Empty cells (no shifts, no
+ * bloqueo) get a neutral gray so the grid still has structure.
+ */
+function cellColor(
+  mode: HeatmapMode,
+  entry: CalendarEntry | undefined,
+  isWeekendOrHoliday: boolean,
+  accent: string,
+): { fill: string; ring?: string } {
+  // Empty fallback.
+  const empty = { fill: "#f3f4f6" };
+
+  if (mode === "shifts") {
+    if (!entry || entry.shifts === 0) return empty;
+    // Intensity scale: 1 shift = 35%, 2 = 65%, 3+ = 100%.
+    const t = Math.min(1, 0.35 + (entry.shifts - 1) * 0.3);
+    return { fill: tintAccent(accent, t) };
+  }
+
+  if (mode === "weekends") {
+    if (!entry || entry.shifts === 0 || !isWeekendOrHoliday) return empty;
+    const t = Math.min(1, 0.5 + (entry.shifts - 1) * 0.25);
+    return { fill: tintAccent("#f59e0b", t) };
+  }
+
+  // mode === "bloqueos"
+  if (!entry || !entry.bloqueo_type) return empty;
+  const palette: Record<string, string> = {
+    vacation: "#f59e0b",   // amber — peak summer reading
+    sick: "#f43f5e",       // rose — read as concerning
+    training: "#6366f1",   // indigo — neutral planned
+    personal: "#94a3b8",   // slate — discreet
+    other: "#cbd5e1",      // lighter slate — fallback
+  };
+  return { fill: palette[entry.bloqueo_type] ?? palette.other };
+}
+
+/** Lighten the accent color toward white by (1 - t). t=1 returns
+ * the unmodified accent; t=0 returns near-white. Same formula as
+ * the shadeStops helper used for per-slot bars. */
+function tintAccent(hex: string, t: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const rr = Math.round(255 - (255 - r) * t);
+  const gg = Math.round(255 - (255 - g) * t);
+  const bb = Math.round(255 - (255 - b) * t);
+  return `#${rr.toString(16).padStart(2, "0")}${gg.toString(16).padStart(2, "0")}${bb.toString(16).padStart(2, "0")}`;
+}
+
+const ES_MONTHS_SHORT = [
+  "ene", "feb", "mar", "abr", "may", "jun",
+  "jul", "ago", "sep", "oct", "nov", "dic",
+];
+
+function daysBetween(from: string, to: string): Date[] {
+  const out: Date[] = [];
+  const start = new Date(from + "T00:00:00Z");
+  const end = new Date(to + "T00:00:00Z");
+  const cur = new Date(start);
+  while (cur <= end) {
+    out.push(new Date(cur));
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return out;
+}
+
+function isoFromDate(d: Date): string {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+}
+
+/** Calendar heat map. One row per person, one column per day in the
+ * selected range. Color encodes the active mode (shifts / weekends /
+ * bloqueos). Horizontally scrollable so a full-year × 100-person view
+ * stays usable; person column is sticky so the Y-axis labels don't
+ * scroll out of view. */
+function CalendarHeatmap({
+  data,
+  accent,
+  onPersonClick,
+}: {
+  data: StatsCalendarResponse;
+  accent: string;
+  onPersonClick?: (personId: number) => void;
+}) {
+  const [mode, setMode] = useState<HeatmapMode>("shifts");
+
+  const days = useMemo(
+    () => daysBetween(data.from_date, data.to_date),
+    [data.from_date, data.to_date],
+  );
+
+  const holidayDates = useMemo(
+    () => new Set(data.holidays),
+    [data.holidays],
+  );
+
+  // Lookup map keyed on `${person_id}|${YYYY-MM-DD}` so the row
+  // render is O(days) per person. At 100 people × 365 days = 36k
+  // lookups, all cheap.
+  const lookup = useMemo(() => {
+    const m = new Map<string, CalendarEntry>();
+    for (const e of data.entries) {
+      m.set(`${e.person_id}|${e.date}`, e);
+    }
+    return m;
+  }, [data.entries]);
+
+  // Pre-compute month labels for the top axis. Each month gets one
+  // sticky pill above its first cell; the cells span the rest of
+  // the row. Day-1 is the cleanest anchor and keeps spacing even.
+  const monthLabels = useMemo(() => {
+    const out: { iso: string; label: string }[] = [];
+    for (const d of days) {
+      if (d.getUTCDate() === 1) {
+        out.push({
+          iso: isoFromDate(d),
+          label: `${ES_MONTHS_SHORT[d.getUTCMonth()]} ${d.getUTCFullYear()}`,
+        });
+      }
+    }
+    return out;
+  }, [days]);
+
+  // Per-person totals for the right-hand annotation. Computed in
+  // the mode dimension so the column header makes sense.
+  const totals = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const e of data.entries) {
+      const day = e.date;
+      const d = new Date(day + "T00:00:00Z");
+      const isHoliday = holidayDates.has(day);
+      const isWeekend = d.getUTCDay() === 0 || d.getUTCDay() === 6;
+      let value = 0;
+      if (mode === "shifts") {
+        value = e.shifts;
+      } else if (mode === "weekends") {
+        value = e.shifts > 0 && (isWeekend || isHoliday) ? e.shifts : 0;
+      } else {
+        value = e.bloqueo_type ? 1 : 0;
+      }
+      if (value > 0) {
+        m.set(e.person_id, (m.get(e.person_id) ?? 0) + value);
+      }
+    }
+    return m;
+  }, [data.entries, mode, holidayDates]);
+
+  const CELL_W = 12;
+  const CELL_H = 14;
+  const CELL_GAP = 2;
+
+  return (
+    <Card>
+      <div className="p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-800">
+              Mapa de actividad
+            </h2>
+            <p className="mt-0.5 text-xs text-gray-500">
+              Cada celda es un día. Color = intensidad. Pasa el ratón
+              por cualquier celda para ver el detalle. Haz clic en
+              un nombre para abrir su panel.
+            </p>
+          </div>
+          {/* Mode toggle — three pills. Pill style copied from the
+              categoría filter chips for visual consistency. */}
+          <div className="flex flex-wrap gap-1.5">
+            <HeatmapModeChip active={mode === "shifts"} onClick={() => setMode("shifts")}>
+              Turnos
+            </HeatmapModeChip>
+            <HeatmapModeChip active={mode === "weekends"} onClick={() => setMode("weekends")}>
+              Fines y festivos
+            </HeatmapModeChip>
+            <HeatmapModeChip active={mode === "bloqueos"} onClick={() => setMode("bloqueos")}>
+              Bloqueos
+            </HeatmapModeChip>
+          </div>
+        </div>
+
+        {data.persons.length === 0 ? (
+          <p className="mt-4 text-xs text-gray-500">
+            No hay miembros activos en el equipo.
+          </p>
+        ) : (
+          <div className="mt-3 overflow-x-auto">
+            <div
+              className="relative"
+              style={{
+                minWidth: 220 + days.length * (CELL_W + CELL_GAP),
+              }}
+            >
+              {/* Top axis — month labels. Positioned absolutely so
+                  they line up with their first cell. */}
+              <div
+                className="relative h-5"
+                style={{
+                  marginLeft: 220,
+                  width: days.length * (CELL_W + CELL_GAP),
+                }}
+              >
+                {monthLabels.map((m) => {
+                  const idx = days.findIndex((d) => isoFromDate(d) === m.iso);
+                  if (idx < 0) return null;
+                  return (
+                    <div
+                      key={m.iso}
+                      className="absolute top-0 text-[10px] font-medium uppercase tracking-wider text-gray-500"
+                      style={{ left: idx * (CELL_W + CELL_GAP) }}
+                    >
+                      {m.label}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Rows */}
+              {data.persons.map((p) => {
+                const rowTotal = totals.get(p.id) ?? 0;
+                return (
+                  <div key={p.id} className="flex items-center">
+                    {/* Sticky person column */}
+                    <button
+                      type="button"
+                      onClick={() => onPersonClick?.(p.id)}
+                      className="sticky left-0 z-10 flex w-[220px] shrink-0 items-center justify-between gap-2 bg-white pr-3 text-left text-xs hover:text-brand-700"
+                      style={{ height: CELL_H + CELL_GAP }}
+                      title={p.category_name ?? ""}
+                    >
+                      <span className="truncate font-medium text-gray-800 hover:underline">
+                        {personLastName({ name: p.name })}
+                      </span>
+                      <span className="tabular-nums text-[10px] text-gray-500">
+                        {rowTotal || ""}
+                      </span>
+                    </button>
+                    {/* Day cells */}
+                    <div className="flex" style={{ gap: CELL_GAP }}>
+                      {days.map((d) => {
+                        const iso = isoFromDate(d);
+                        const entry = lookup.get(`${p.id}|${iso}`);
+                        const isHoliday = holidayDates.has(iso);
+                        const isWeekend = d.getUTCDay() === 0 || d.getUTCDay() === 6;
+                        const wOrH = isWeekend || isHoliday;
+                        const color = cellColor(mode, entry, wOrH, accent);
+                        const tooltip = makeTooltip(p, iso, entry, isHoliday, isWeekend);
+                        return (
+                          <div
+                            key={iso}
+                            title={tooltip}
+                            className={
+                              wOrH
+                                ? "ring-1 ring-inset ring-gray-200"
+                                : ""
+                            }
+                            style={{
+                              width: CELL_W,
+                              height: CELL_H,
+                              backgroundColor: color.fill,
+                              borderRadius: 2,
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Legend strip — varies by mode. */}
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-[10px] text-gray-500">
+          {mode === "shifts" && (
+            <>
+              <LegendSwatch color={tintAccent(accent, 0.35)} label="1 turno" />
+              <LegendSwatch color={tintAccent(accent, 0.65)} label="2 turnos" />
+              <LegendSwatch color={tintAccent(accent, 1.0)} label="3+ turnos" />
+              <span>· Borde gris = fin de semana o festivo</span>
+            </>
+          )}
+          {mode === "weekends" && (
+            <>
+              <LegendSwatch color={tintAccent("#f59e0b", 0.5)} label="Fin/festivo trabajado" />
+              <LegendSwatch color={tintAccent("#f59e0b", 1.0)} label="Múltiples turnos" />
+            </>
+          )}
+          {mode === "bloqueos" && (
+            <>
+              <LegendSwatch color="#f59e0b" label="Vacaciones" />
+              <LegendSwatch color="#f43f5e" label="Enfermedad" />
+              <LegendSwatch color="#6366f1" label="Formación" />
+              <LegendSwatch color="#94a3b8" label="Personal" />
+              <LegendSwatch color="#cbd5e1" label="Otros" />
+            </>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function HeatmapModeChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={
+        "rounded-full border px-3 py-1 text-xs font-medium transition-colors "
+        + (active
+          ? "border-brand-600 bg-brand-600 text-white hover:bg-brand-700"
+          : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50")
+      }
+    >
+      {children}
+    </button>
+  );
+}
+
+function LegendSwatch({ color, label }: { color: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span
+        className="inline-block h-3 w-3 rounded-sm ring-1 ring-inset ring-gray-300/40"
+        style={{ backgroundColor: color }}
+      />
+      <span>{label}</span>
+    </span>
+  );
+}
+
+const BLOQUEO_LABEL: Record<string, string> = {
+  vacation: "vacaciones",
+  sick: "enfermedad",
+  training: "formación",
+  personal: "personal",
+  other: "otros",
+};
+
+function makeTooltip(
+  p: CalendarPersonOut,
+  iso: string,
+  entry: CalendarEntry | undefined,
+  isHoliday: boolean,
+  isWeekend: boolean,
+): string {
+  const lines: string[] = [
+    `${personLastName({ name: p.name })} · ${iso}`,
+  ];
+  if (entry?.shifts) {
+    lines.push(`${entry.shifts} turno${entry.shifts === 1 ? "" : "s"}`);
+  }
+  if (entry?.bloqueo_type) {
+    lines.push(`Bloqueo: ${BLOQUEO_LABEL[entry.bloqueo_type] ?? entry.bloqueo_type}`);
+  }
+  if (isHoliday) lines.push("Festivo");
+  else if (isWeekend) lines.push("Fin de semana");
+  if (!entry?.shifts && !entry?.bloqueo_type && !isHoliday && !isWeekend) {
+    lines.push("Sin actividad");
+  }
+  return lines.join("\n");
 }
