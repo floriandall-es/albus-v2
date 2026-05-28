@@ -1163,19 +1163,25 @@ function ShiftListView({
   canRequestCoverage: boolean;
 }) {
   const todayIso = useMemo(() => getTodayIso(), []);
-
-  // Sort by date, then slot, then person name so the entries inside
-  // each section read predictably regardless of insertion order.
-  const sorted = useMemo(
-    () =>
-      [...assignments].sort((a, b) => {
-        if (a.date !== b.date) return a.date.localeCompare(b.date);
-        const bySlot = a.slot_name.localeCompare(b.slot_name);
-        if (bySlot !== 0) return bySlot;
-        return (a.person_name ?? "").localeCompare(b.person_name ?? "");
-      }),
-    [assignments],
-  );
+  // Filter + sort by date, then slot, then person name so the
+  // entries inside each section read predictably regardless of
+  // insertion order. Sin-cubrir rows (person_id === null) are
+  // hidden in Equipo and Servicio scopes — the Lista is a "who's
+  // working" feed, and unassigned cells add noise without telling
+  // the user anything they can act on. The Tabla view still shows
+  // them (in rose) since the admin context matters there.
+  const sorted = useMemo(() => {
+    const hideUnassigned = scope === "team" || scope === "servicio";
+    const filtered = hideUnassigned
+      ? assignments.filter((a) => a.person_id !== null)
+      : assignments;
+    return [...filtered].sort((a, b) => {
+      if (a.date !== b.date) return a.date.localeCompare(b.date);
+      const bySlot = a.slot_name.localeCompare(b.slot_name);
+      if (bySlot !== 0) return bySlot;
+      return (a.person_name ?? "").localeCompare(b.person_name ?? "");
+    });
+  }, [assignments, scope]);
 
   if (sorted.length === 0) {
     return (
