@@ -707,7 +707,7 @@ export default function LandingPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(0);
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-brand-50/40 via-white to-gray-50 text-gray-900">
+    <main className="min-h-screen overflow-x-hidden bg-gradient-to-b from-brand-50/40 via-white to-gray-50 text-gray-900">
       {/* -----------------------------------------------------------
           Nav
           ----------------------------------------------------------- */}
@@ -804,16 +804,16 @@ export default function LandingPage() {
           className="pointer-events-none absolute -bottom-40 -left-40 h-[360px] w-[360px] rounded-full bg-brand-100/40 blur-3xl"
           aria-hidden
         />
-        <div className="relative mx-auto max-w-6xl px-4 sm:px-6 pt-12 sm:pt-20 pb-16">
-          <div className="grid gap-12 lg:grid-cols-[1.05fr_1fr] lg:items-center">
-            <div>
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-gray-900 leading-[1.05]">
+        <div className="relative mx-auto max-w-6xl px-4 sm:px-6 pt-8 sm:pt-20 pb-12 sm:pb-16">
+          <div className="grid gap-8 sm:gap-12 lg:grid-cols-[1.05fr_1fr] lg:items-center">
+            <div className="min-w-0">
+              <h1 className="text-[2rem] sm:text-5xl lg:text-6xl font-semibold tracking-tight text-gray-900 leading-[1.1] sm:leading-[1.05] break-words">
                 {c.hero.title}{" "}
                 <span className="bg-gradient-to-r from-brand-700 to-brand-500 bg-clip-text text-transparent">
                   {c.hero.titleAccent}
                 </span>
               </h1>
-              <p className="mt-5 text-lg sm:text-xl text-gray-600 leading-relaxed max-w-xl">
+              <p className="mt-4 sm:mt-5 text-base sm:text-xl text-gray-600 leading-relaxed max-w-xl">
                 {c.hero.subtitle}
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-3">
