@@ -99,9 +99,9 @@ const COPY = {
           { kind: "bad", text: "Vacaciones cruzadas descubiertas en agosto" },
           {
             kind: "bad",
-            text: "Cambios entre compañeros pasan por tu teléfono",
+            text: "Cada cambio se cierra entre llamadas y WhatsApps",
           },
-          { kind: "bad", text: "Sin idea de quién está de guardia hoy" },
+          { kind: "bad", text: "Sin vista clara de quién hace qué turno cuándo" },
         ],
       },
       after: {
@@ -111,11 +111,11 @@ const COPY = {
           { kind: "good", text: "Cuadrante generado en menos de un minuto" },
           {
             kind: "good",
-            text: "Violaciones detectadas antes de publicar",
+            text: "Conflictos detectados antes de publicar",
           },
           { kind: "good", text: "Reparto equilibrado entre todos" },
           { kind: "good", text: "Cambios y coberturas fluyen entre el equipo" },
-          { kind: "good", text: "Quién está de guardia, visible en el móvil" },
+          { kind: "good", text: "Todos los turnos del equipo, en el móvil" },
         ],
       },
     },
@@ -126,27 +126,27 @@ const COPY = {
       steps: [
         {
           eyebrow: "Paso 1",
-          title: "Configura tu equipo",
+          title: "Se configura el equipo",
           body:
-            "Carga al equipo, las actividades (Guardia, Consulta, Quirófano…) y las reglas que de verdad importan en tu servicio. Un solo lugar, una sola vez.",
+            "Personas, actividades y las reglas que de verdad importan en el servicio. Un solo lugar, una sola vez. A partir de ahí, cada nuevo mes parte de la misma base.",
         },
         {
           eyebrow: "Paso 2",
-          title: "Genera el cuadrante",
+          title: "Se genera el cuadrante",
           body:
-            "Un clic. El solver matemático construye el mes respetando reglas duras y equilibrando el reparto. Si una restricción no encaja, te dice qué pasa y propone aflojarla.",
+            "Un clic. El solver construye el mes respetando reglas duras y equilibrando el reparto. Si una restricción no encaja, lo dice y propone aflojarla.",
         },
         {
           eyebrow: "Paso 3",
-          title: "Publica al equipo",
+          title: "Se publica al equipo",
           body:
-            "Cuando estés conforme, publica. Cada miembro recibe un correo y ve sus turnos en la app, con avisos antes de las guardias.",
+            "Al publicar, cada miembro recibe un correo y ve sus turnos en la app — con avisos antes de cada guardia y exportables al calendario del móvil.",
         },
         {
           eyebrow: "Paso 4",
-          title: "Tú solo apruebas excepciones",
+          title: "Lo demás fluye solo",
           body:
-            "Coberturas, intercambios y vacaciones los gestiona el equipo entre sí. Tú apruebas lo que requiere tu firma — y se acabó.",
+            "Coberturas, intercambios y vacaciones los gestiona el equipo entre sí. Cuando hace falta una aprobación, es un toque. El resto, sin intervención.",
         },
       ],
     },
@@ -394,8 +394,8 @@ const COPY = {
           { kind: "bad", text: "Saturday afternoon rebuilding the rota" },
           { kind: "bad", text: "Three on-call conflicts nobody spotted" },
           { kind: "bad", text: "Overlapping vacations discovered in August" },
-          { kind: "bad", text: "Every shift swap runs through your phone" },
-          { kind: "bad", text: "No idea who's on call today" },
+          { kind: "bad", text: "Every swap ends in calls and WhatsApps" },
+          { kind: "bad", text: "No clear view of who's on what shift, when" },
         ],
       },
       after: {
@@ -403,13 +403,13 @@ const COPY = {
         sublabel: "Mathematical solver",
         points: [
           { kind: "good", text: "Rota generated in under a minute" },
-          { kind: "good", text: "Violations caught before publishing" },
+          { kind: "good", text: "Conflicts caught before publishing" },
           { kind: "good", text: "Workload balanced across the team" },
           {
             kind: "good",
             text: "Swaps and coverage flow between colleagues",
           },
-          { kind: "good", text: "Who's on call, visible on the phone" },
+          { kind: "good", text: "Every team shift, visible on the phone" },
         ],
       },
     },
@@ -420,27 +420,27 @@ const COPY = {
       steps: [
         {
           eyebrow: "Step 1",
-          title: "Set up your team",
+          title: "The team is set up",
           body:
-            "Load your team, your activities (on-call, clinic, OR…) and the rules that actually matter in your department. One place, one time.",
+            "People, activities, and the rules that actually matter in the department. One place, one time. From then on every new month starts from the same baseline.",
         },
         {
           eyebrow: "Step 2",
-          title: "Generate the rota",
+          title: "The rota is generated",
           body:
-            "One click. The mathematical solver builds the month respecting hard rules and balancing the load. If a constraint can't be met, it tells you why and suggests how to relax it.",
+            "One click. The solver builds the month respecting hard rules and balancing the load. If a constraint can't be met, it explains why and suggests how to relax it.",
         },
         {
           eyebrow: "Step 3",
-          title: "Publish to the team",
+          title: "It's published to the team",
           body:
-            "When you're happy, publish. Each member receives an email and sees their shifts in the app, with reminders before on-calls.",
+            "Once published, each member receives an email and sees their shifts in the app — with reminders before each on-call and exports to their phone calendar.",
         },
         {
           eyebrow: "Step 4",
-          title: "You only approve exceptions",
+          title: "The rest flows on its own",
           body:
-            "Coverage, swaps and vacations the team handles among themselves. You approve what truly needs your signature — that's it.",
+            "Coverage, swaps and vacations the team handles among themselves. When an approval is needed, it's one tap. The rest, hands-off.",
         },
       ],
     },
