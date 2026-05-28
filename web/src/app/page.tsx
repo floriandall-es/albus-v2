@@ -75,7 +75,6 @@ const COPY = {
       faq: "Preguntas",
     },
     hero: {
-      pilotBadge: "Hecho con cirujanos en activo y sus equipos",
       title: "El cuadrante del mes,",
       titleAccent: "hecho.",
       subtitle:
@@ -259,8 +258,8 @@ const COPY = {
       columns: [
         {
           icon: "hospital" as const,
-          heading: "Hecho con cirujanos en activo",
-          body: "Diseñado junto a cirujanos y sus equipos. Cada función pasa por una semana real de uso clínico antes de salir a más servicios — nada de pizarras y teoría.",
+          heading: "Pensado para servicios quirúrgicos",
+          body: "Guardias, rotaciones, equipos por día, vacaciones cruzadas, sub-equipos de residentes. Las reglas reales de un servicio quirúrgico — no un calendario genérico al que le pones nombres encima.",
         },
         {
           icon: "sparkles" as const,
@@ -368,7 +367,6 @@ const COPY = {
       faq: "FAQ",
     },
     hero: {
-      pilotBadge: "Built with practicing surgeons and their teams",
       title: "The monthly rota,",
       titleAccent: "done.",
       subtitle:
@@ -549,8 +547,8 @@ const COPY = {
       columns: [
         {
           icon: "hospital" as const,
-          heading: "Built with practicing surgeons",
-          body: "Designed alongside surgeons and their teams. Every feature goes through a real clinical week before it ships to other departments — no whiteboards and theory.",
+          heading: "Built for surgical services",
+          body: "On-calls, rotations, team-per-day, overlapping vacations, resident subteams. The actual rules a surgical service runs on — not a generic calendar with names slapped on top.",
         },
         {
           icon: "sparkles" as const,
@@ -809,13 +807,7 @@ export default function LandingPage() {
         <div className="relative mx-auto max-w-6xl px-4 sm:px-6 pt-12 sm:pt-20 pb-16">
           <div className="grid gap-12 lg:grid-cols-[1.05fr_1fr] lg:items-center">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 ring-1 ring-brand-200 shadow-soft">
-                <Hospital className="h-3.5 w-3.5 text-brand-700" />
-                <span className="text-[11px] sm:text-xs font-medium tracking-wide text-brand-800">
-                  {c.hero.pilotBadge}
-                </span>
-              </div>
-              <h1 className="mt-5 text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-gray-900 leading-[1.05]">
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-gray-900 leading-[1.05]">
                 {c.hero.title}{" "}
                 <span className="bg-gradient-to-r from-brand-700 to-brand-500 bg-clip-text text-transparent">
                   {c.hero.titleAccent}
