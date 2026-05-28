@@ -68,19 +68,38 @@ Next session picks up at **"Implementation chunks"** below.
   `app/services/email_templates.py` — admin trial-ending,
   trial-ended, payment-failed, sub-canceled; member trial-ending,
   trial-ended, payment-failed; system mail for the members→team
-  flip. Templates are wired into the send infrastructure but the
-  triggers (a scheduler tick that looks for members in the
-  ending-trial windows + webhook handlers that fire the
-  payment-failed mail) still need to be hooked up.
+  flip.
+- ✅ Chunk 14 triggers wired:
+  - Migration 0082 adds `billing_emails_sent` for idempotency.
+  - `app/services/billing_emails.py` carries `try_send()` +
+    per-event dispatch helpers + a daily APScheduler tick.
+  - Daily tick (09:00 Europe/Madrid) sweeps for trialing
+    accounts ending in 7/3/1 days and fires the right
+    template.
+  - Stripe webhook handler captures the old subscription
+    status BEFORE updating the row, then dispatches
+    trial-ended / payment-failed / subscription-canceled
+    emails on the matching transition.
+- ✅ Chunk 12 seat reconciliation:
+  - `reconcile_team_pays_seats(tenant, db)` in
+    `app/services/billing.py` pushes the current active-member
+    count to Stripe whenever it changes. No-op for
+    grandfathered / non-team_pays tenants.
+  - Called from POST /api/team/invite, PUT /api/team/{id}
+    (only on disabled-flag flips), and the bulk-commit
+    endpoint (once after the batch).
 
 **Still TODO before going live:**
 - Chunk 1: Stripe Dashboard setup (manual, no code) — create
   the two recurring prices, the webhook endpoint, paste IDs
-  into `/srv/albus/.env`.
-- Wire the new email templates into actual triggers: a daily
-  scheduler tick for trial-ending nudges + the webhook
-  dispatch table for failed-payment / canceled events. The
-  copy is the slow part; wiring is mechanical.
+  into `/srv/albus/.env`. ← **DONE** as of 2026-05-28 deploy.
+
+The remaining production work is lazy Stripe Customer creation
+(when a grandfathered or freshly-signed-up admin first clicks
+"Gestionar facturación"), and the actual member-switched-to-
+team_pays fan-out (fires only when admin flips the toggle
+from members_pay to team_pays — needs a hook in
+`PATCH /api/billing/model`).
 
 ## GTM shape
 

@@ -47,7 +47,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db.session import AdminSessionLocal
 from app.models import Person, StripeEvent, Tenant
-from app.services import stripe_client
+from app.services import billing_emails, stripe_client
 
 
 logger = logging.getLogger("app.billing.webhook")
@@ -205,10 +205,16 @@ def _handle_subscription_state(db, sub: dict[str, Any]) -> None:
                 "Subscription %s tenant_id=%s not found", sub_id, tenant_id_str
             )
             return
+        # Capture the prior status BEFORE we mutate the row so we
+        # can fire the right lifecycle email on the transition. We
+        # use the old status, not the old trial_end, because all
+        # the interesting events are status flips.
+        old_status = tenant.subscription_status
         tenant.stripe_subscription_id = sub_id
         tenant.subscription_status = new_status
         tenant.trial_end_at = trial_end_at
         db.flush()
+        _fire_admin_transition_emails(db, tenant, old_status, new_status)
         return
 
     if kind == "person":
@@ -224,10 +230,72 @@ def _handle_subscription_state(db, sub: dict[str, Any]) -> None:
                 "Subscription %s person_id=%s not found", sub_id, person_id_str
             )
             return
+        old_status = person.subscription_status
         person.stripe_subscription_id = sub_id
         person.subscription_status = new_status
         person.trial_end_at = trial_end_at
         db.flush()
+        # Person subs are members_pay only; find their tenant via
+        # the metadata.tenant_id we stamp at sub creation, then fire
+        # the right lifecycle email.
+        member_tenant_id_str = metadata.get("tenant_id")
+        if member_tenant_id_str:
+            member_tenant = db.execute(
+                select(Tenant).where(Tenant.id == int(member_tenant_id_str))
+            ).scalar_one_or_none()
+            if member_tenant is not None:
+                _fire_member_transition_emails(
+                    db, member_tenant, person, old_status, new_status
+                )
         return
 
     logger.warning("Subscription %s has unknown metadata.kind=%r", sub_id, kind)
+
+
+# ---------------------------------------------------------------------------
+# Lifecycle email triggers (chunk 14 follow-up)
+# ---------------------------------------------------------------------------
+
+
+def _fire_admin_transition_emails(
+    db,
+    tenant: Tenant,
+    old_status: str | None,
+    new_status: str | None,
+) -> None:
+    """Detect interesting status transitions on a tenant sub and
+    fire the matching lifecycle email. Each helper is idempotent
+    via billing_emails_sent so a re-delivered webhook can't
+    double-send.
+
+    Transitions covered:
+      - trialing → past_due   = trial ended (no payment method)
+      - active   → past_due   = a renewal charge failed
+      - anything → canceled   = subscription canceled (admin
+                                  action OR all retries exhausted)
+    """
+    if old_status == new_status:
+        return
+    if old_status == "trialing" and new_status == "past_due":
+        billing_emails.fire_admin_trial_ended(db, tenant)
+    elif old_status == "active" and new_status == "past_due":
+        billing_emails.fire_admin_payment_failed(db, tenant)
+    elif new_status == "canceled":
+        billing_emails.fire_admin_subscription_canceled(db, tenant)
+
+
+def _fire_member_transition_emails(
+    db,
+    tenant: Tenant,
+    person: Person,
+    old_status: str | None,
+    new_status: str | None,
+) -> None:
+    """Same shape as the admin helper, for a member's personal
+    subscription under members_pay."""
+    if old_status == new_status:
+        return
+    if old_status == "trialing" and new_status == "past_due":
+        billing_emails.fire_member_trial_ended(db, tenant, person)
+    elif old_status == "active" and new_status == "past_due":
+        billing_emails.fire_member_payment_failed(db, tenant, person)

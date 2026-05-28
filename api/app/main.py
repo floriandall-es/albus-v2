@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
+from app.services.billing_emails import tick as billing_emails_tick
 from app.services.meeting_reminders import tick as meeting_reminders_tick
 from app.routes import (
     admin_dashboard,
@@ -126,6 +127,24 @@ def _start_background_jobs() -> None:
         # Tolerate jobs that overlap a tick by up to 5 min before
         # APScheduler logs a warning.
         misfire_grace_time=300,
+        max_instances=1,
+    )
+    # Migration 0082: daily billing-email tick. Fires trial-ending
+    # nudges (days 7/3/1 before trial_end_at) to admins (any model)
+    # and members (members_pay). Runs at 09:00 Europe/Madrid — early
+    # enough that a Spanish inbox sees it during the morning round,
+    # late enough to skip workers on the night shift.
+    # Idempotency via the billing_emails_sent table; the same tick
+    # firing twice in one day cannot double-send. See
+    # app/services/billing_emails.py.
+    _scheduler.add_job(
+        billing_emails_tick,
+        trigger="cron",
+        hour=9,
+        minute=0,
+        id="billing_emails",
+        coalesce=True,
+        misfire_grace_time=3600,
         max_instances=1,
     )
     _scheduler.start()
