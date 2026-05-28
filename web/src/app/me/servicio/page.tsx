@@ -13,6 +13,7 @@ import {
   formatPeriod,
   isoFromMonthYear,
 } from "@/components/admin/month-picker";
+import { Avatar } from "@/components/schedule/planning-grid";
 
 /**
  * /me/servicio — read-only Vista conjunta del servicio (Phase C.2).
@@ -538,18 +539,34 @@ function BandRows({
                   }
                 >
                   {empty ? (
-                    <span className="text-[11px] text-gray-300">—</span>
+                    <span className="text-gray-300">—</span>
                   ) : (
                     cellsForDay.map((c) => (
                       <div
                         key={c.assignment_id}
-                        className="truncate text-[11px] leading-snug text-gray-800"
+                        className="leading-snug"
                       >
                         {c.person_name ? (
-                          personLastName({
-                            name: c.person_name,
-                            last_name: c.person_last_name,
-                          })
+                          // Avatar + last name, same chrome as
+                          // PlanningGrid's person cells. ServicioTimeline
+                          // doesn't ship person_avatar_url today, so
+                          // Avatar always renders the colored-initial
+                          // fallback — which matches what /me/turnos
+                          // shows for any user without an uploaded
+                          // photo, so the visuals stay consistent.
+                          <span className="inline-flex items-center gap-1.5 max-w-full">
+                            <Avatar
+                              name={c.person_name}
+                              mine={false}
+                              imageUrl={null}
+                            />
+                            <span className="text-gray-800">
+                              {personLastName({
+                                name: c.person_name,
+                                last_name: c.person_last_name,
+                              })}
+                            </span>
+                          </span>
                         ) : (
                           <span className="text-rose-700 font-medium">
                             Sin cubrir
