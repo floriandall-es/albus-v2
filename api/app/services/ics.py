@@ -80,9 +80,17 @@ def _render_event(
     ev: IcsEvent, *, host: str, tz: ZoneInfo, stamp: str
 ) -> list[str]:
     uid = f"assignment-{ev.assignment_id}@{host}"
-    summary = ev.slot_name
+    # Role first, slot second when both are present. Calendar apps
+    # truncate long titles (especially in the month view: Apple
+    # Calendar shows ~10 chars, Google ~15) — leading with the role
+    # ("Cirujano principal · Quirófano") means the discriminating
+    # bit survives the cut. The slot alone is usually less useful
+    # to a clinician glancing at the day ("Quirófano" tells them
+    # nothing about WHAT they're doing on it).
     if ev.role_label:
-        summary = f"{summary} · {ev.role_label}"
+        summary = f"{ev.role_label} · {ev.slot_name}"
+    else:
+        summary = ev.slot_name
 
     lines = [
         "BEGIN:VEVENT",
