@@ -105,7 +105,7 @@ const COPY = {
       },
       after: {
         badge: "Con Trivu",
-        sublabel: "Solver matemático",
+        sublabel: "Trivu",
         points: [
           { kind: "good", text: "Planificación generada en menos de un minuto" },
           {
@@ -133,7 +133,7 @@ const COPY = {
           eyebrow: "Paso 2",
           title: "Se genera la planificación",
           body:
-            "Un clic. El solver construye el mes respetando reglas duras y equilibrando el reparto. Si una restricción no encaja, lo dice y propone aflojarla.",
+            "Un clic. Trivu construye el mes respetando todas las reglas y equilibrando el reparto. Si una restricción no encaja, lo dice y propone aflojarla.",
         },
         {
           eyebrow: "Paso 3",
@@ -264,7 +264,7 @@ const COPY = {
         {
           icon: "sparkles" as const,
           heading: "Reparto matemáticamente justo",
-          body: "La planificación no se genera por azar. Un solver matemático respeta tus reglas y reparte la carga de forma óptima entre las personas del equipo.",
+          body: "La planificación no se genera por azar. Trivu respeta tus reglas y reparte la carga de forma óptima entre las personas del equipo.",
         },
         {
           icon: "shield" as const,
@@ -394,7 +394,7 @@ const COPY = {
       },
       after: {
         badge: "With Trivu",
-        sublabel: "Mathematical solver",
+        sublabel: "Trivu",
         points: [
           { kind: "good", text: "Rota generated in under a minute" },
           { kind: "good", text: "Conflicts caught before publishing" },
@@ -422,7 +422,7 @@ const COPY = {
           eyebrow: "Step 2",
           title: "The rota is generated",
           body:
-            "One click. The solver builds the month respecting hard rules and balancing the load. If a constraint can't be met, it explains why and suggests how to relax it.",
+            "One click. Trivu builds the month respecting every rule and balancing the load. If a constraint can't be met, it explains why and suggests how to relax it.",
         },
         {
           eyebrow: "Step 3",
@@ -553,7 +553,7 @@ const COPY = {
         {
           icon: "sparkles" as const,
           heading: "Mathematically fair distribution",
-          body: "The rota isn't built by chance. A mathematical solver respects your rules and balances the load optimally across the people in your team.",
+          body: "The rota isn't built by chance. Trivu respects your rules and balances the load optimally across the people in your team.",
         },
         {
           icon: "shield" as const,
