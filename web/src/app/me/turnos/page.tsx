@@ -321,38 +321,41 @@ export default function TurnosPage() {
   // Cross-equipo Servicio timeline. Only fires when scope === "servicio"
   // AND the caller's tenant actually belongs to a Servicio (rare not
   // to in production, but we guard so single-tenant deployments don't
-  // hit a useless 404). Date bounds mirror the selected schedule's
-  // month so the sibling grids align with the user's own grid.
+  // hit a useless 404). Date bounds mirror the active Rango — 3d /
+  // Semana / Mes — so the sibling grids cover exactly the same window
+  // the user's own grid is showing. When Rango = Mes there's no
+  // today-anchored range, so we fall back to the schedule's month.
   const servicioId = me.data?.current_tenant.servicio_id ?? null;
-  const servicioFromIso = detail.data
-    ? `${detail.data.period.slice(0, 7)}-01`
-    : null;
-  const servicioToIso = useMemo(() => {
+  const servicioBounds = useMemo(() => {
+    const r = computeDateRange(range, getTodayIso());
+    if (r) return r;
     if (!detail.data) return null;
     const period = detail.data.period;
     const y = Number(period.slice(0, 4));
     const m = Number(period.slice(5, 7));
     const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
-    return `${period.slice(0, 7)}-${String(last).padStart(2, "0")}`;
-  }, [detail.data]);
+    return {
+      from: `${period.slice(0, 7)}-01`,
+      to: `${period.slice(0, 7)}-${String(last).padStart(2, "0")}`,
+    };
+  }, [range, detail.data]);
   const servicioTimeline = useQuery({
     queryKey: [
       "servicio-timeline",
       servicioId,
-      servicioFromIso,
-      servicioToIso,
+      servicioBounds?.from,
+      servicioBounds?.to,
     ],
     queryFn: () =>
       api.getServicioTimeline(
         servicioId as number,
-        servicioFromIso as string,
-        servicioToIso as string,
+        servicioBounds!.from,
+        servicioBounds!.to,
       ),
     enabled:
       scope === "servicio"
       && servicioId !== null
-      && servicioFromIso !== null
-      && servicioToIso !== null,
+      && servicioBounds !== null,
   });
 
   // ALL hooks must run on every render (Rules of Hooks), so the
@@ -677,8 +680,15 @@ export default function TurnosPage() {
                     // as a column, so off days appear as empty cells
                     // next to working days. Equipo + Tabla keeps the
                     // legacy derivation (dates come from assignments).
+                    // Servicio + Tabla forces dates too so the user's
+                    // own grid lines up column-for-column with the
+                    // sibling grids below — otherwise an asymmetric
+                    // assignment pattern across teams would yield
+                    // mismatched date columns.
                     forceDates={
-                      scope === "mine" ? allDatesInRange : undefined
+                      scope === "mine" || scope === "servicio"
+                        ? allDatesInRange
+                        : undefined
                     }
                   />
                 </>
@@ -698,6 +708,7 @@ export default function TurnosPage() {
                   cells={servicioTimeline.data?.cells ?? []}
                   callerTenantId={me.data?.current_tenant.id ?? null}
                   holidayDates={holidayDates}
+                  forceDates={allDatesInRange}
                   loading={servicioTimeline.isLoading}
                 />
               )}
@@ -833,11 +844,18 @@ function SiblingGrids({
   cells,
   callerTenantId,
   holidayDates,
+  forceDates,
   loading,
 }: {
   cells: ServicioTimelineCell[];
   callerTenantId: number | null;
   holidayDates: Set<string>;
+  /** Every YYYY-MM-DD the parent's grid is rendering, in order. We
+   * force the same date columns on every sibling grid so all the
+   * tables line up vertically — otherwise an asymmetric assignment
+   * pattern across tenants would yield mismatched columns and the
+   * eye couldn't easily compare days across teams. */
+  forceDates: string[];
   loading: boolean;
 }) {
   // Group cells by sibling tenant (excluding the caller's own).
@@ -892,6 +910,7 @@ function SiblingGrids({
           <PlanningGrid
             assignments={g.assignments}
             holidayDates={holidayDates}
+            forceDates={forceDates}
             // No highlightPersonId — the caller doesn't belong to
             // this sibling team. No onCellClick — read-only. No
             // absences / meetings — Phase C.2 timeline doesn't
