@@ -85,11 +85,6 @@ const COPY = {
       mockHeader: "Planificación · Junio",
       mockBalanced: "Equilibrada",
       mockPublished: "Publicada",
-      kpi: [
-        { value: "9 h", label: "que recuperas cada mes" },
-        { value: "100 %", label: "de las reglas, respetadas" },
-        { value: "30 d", label: "de prueba gratis" },
-      ],
     },
     beforeAfter: {
       title: "Antes de Trivu, después de Trivu.",
@@ -387,11 +382,6 @@ const COPY = {
       mockHeader: "Schedule · June",
       mockBalanced: "Balanced",
       mockPublished: "Published",
-      kpi: [
-        { value: "9 h", label: "you reclaim each month" },
-        { value: "100%", label: "of rules, respected" },
-        { value: "30 d", label: "free trial" },
-      ],
     },
     beforeAfter: {
       title: "Before Trivu, after Trivu.",
@@ -834,8 +824,7 @@ export default function LandingPage() {
                 </span>
               </div>
               <h1 className="mt-5 text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-gray-900 leading-[1.05]">
-                {c.hero.title}
-                <br />
+                {c.hero.title}{" "}
                 <span className="bg-gradient-to-r from-brand-700 to-brand-500 bg-clip-text text-transparent">
                   {c.hero.titleAccent}
                 </span>
@@ -859,19 +848,6 @@ export default function LandingPage() {
                   <ArrowDown className="h-4 w-4" />
                 </a>
               </div>
-              {/* KPI strip — three numbers framing the value prop. */}
-              <dl className="mt-10 grid grid-cols-3 gap-4 sm:gap-6 max-w-md">
-                {c.hero.kpi.map((k) => (
-                  <div key={k.label} className="border-l-2 border-brand-300 pl-3">
-                    <dt className="text-2xl sm:text-3xl font-semibold text-gray-900">
-                      {k.value}
-                    </dt>
-                    <dd className="mt-1 text-[11px] sm:text-xs text-gray-500 leading-snug">
-                      {k.label}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
             </div>
             <HeroMockup
               label={c.hero.mockHeader}
@@ -1285,7 +1261,7 @@ function HeroMockup({
         { kind: "person", initials: P.FO },
         { kind: "person", initials: P.SA, mine: true },
         { kind: "person", initials: P.MO },
-        { kind: "gap" },
+        { kind: "person", initials: P.CE },
         { kind: "person", initials: P.ES },
         { kind: "off" },
         { kind: "off" },
