@@ -288,20 +288,29 @@ export function PlanningGrid({
 
             return (
               <Fragment key={`section-${sectIdx}`}>
-                {/* Band header — sticky-left so it stays glued to the
-                    leading edge when the user scrolls horizontally,
-                    just like the row labels. Stretches the full table
-                    width via colSpan. */}
+                {/* Band header. The TD paints the colored band across
+                    the full table width via colspan; an INNER sticky
+                    div holds the label so it stays glued to the left
+                    viewport edge when the user scrolls horizontally.
+                    Doing the sticky on the TD itself doesn't work —
+                    `position: sticky` on a colspan'd <td> is unreliable
+                    across browsers (the background stays but the inline
+                    content scrolls with the table). The inner-div
+                    pattern sidesteps that — the div picks up the
+                    nearest scrolling ancestor (the outer overflow-x-auto
+                    div) and sticks to its left edge correctly. */}
                 {section.label !== null && (
                   <tr>
                     <td
                       colSpan={dates.length + 1}
                       className={
-                        "sticky left-0 bg-brand-50/60 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-brand-800 border-b border-brand-100 "
+                        "bg-brand-50/60 p-0 border-b border-brand-100 "
                         + (sectIdx > 0 ? "border-t-4 border-t-gray-100" : "")
                       }
                     >
-                      {section.label}
+                      <div className="sticky left-0 inline-flex items-center px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-brand-800">
+                        {section.label}
+                      </div>
                     </td>
                   </tr>
                 )}
