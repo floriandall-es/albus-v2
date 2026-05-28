@@ -371,7 +371,7 @@ function ConfirmSwitchModal({
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-base font-semibold text-gray-900">
-          Cambiar a "Cada miembro decide"
+          Cambiar a «Cada miembro decide»
         </h3>
         <p className="mt-2 text-sm text-gray-600">
           Tu equipo ya no tendrá la suscripción cubierta. Cada miembro
