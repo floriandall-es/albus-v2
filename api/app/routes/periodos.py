@@ -495,7 +495,17 @@ def generate_periodo(
     abort the operation with 409 — caller has to archive/delete
     them first."""
     _require_admin(ctx)
-    _get_periodo_or_404(ctx, period_id)
+    periodo = _get_periodo_or_404(ctx, period_id)
+
+    # Billing gate (migration 0080). The trial horizon check is
+    # against periodo.end_date (not start_date) so a trial admin
+    # creating a Verano period Jul-Sep in May gets blocked because
+    # Sep is past the horizon (May + 2 = July). Hard-gates unpaid /
+    # canceled tenants outright.
+    from app.services.billing import can_generate_for
+    ok, reason = can_generate_for(ctx.tenant, periodo.end_date)
+    if not ok:
+        raise HTTPException(status_code=403, detail=reason)
     try:
         schedules = scheduler.generate_period(
             ctx.db,

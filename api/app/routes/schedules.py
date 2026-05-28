@@ -38,6 +38,7 @@ from app.schemas.schedule import (
     ViolationSuppressRequest,
 )
 from app.services import scheduler
+from app.services.billing import can_generate_for
 from app.services.scheduler import _Context, is_eligible
 from app.services.violations import (
     find_violations as _find_violations,
@@ -420,6 +421,19 @@ def generate(
 ) -> ScheduleDetail:
     _require_admin(ctx)
     period = date(payload.period.year, payload.period.month, 1)
+
+    # Billing gate (migration 0080). Hard-blocks unpaid / canceled
+    # tenants; trial-blocks generation beyond current month + 2.
+    # We check against the LAST day of the target month so a trial
+    # admin in May trying to generate August (period=2026-08-01)
+    # gets blocked because 2026-08-31 > horizon (2026-07-31).
+    import calendar as _cal
+    last_day = _cal.monthrange(period.year, period.month)[1]
+    ok, reason = can_generate_for(
+        ctx.tenant, date(period.year, period.month, last_day)
+    )
+    if not ok:
+        raise HTTPException(status_code=403, detail=reason)
 
     existing = (
         ctx.db.query(Schedule)
