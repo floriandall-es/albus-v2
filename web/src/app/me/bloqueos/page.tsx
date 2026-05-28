@@ -218,12 +218,14 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
               <option value="other">Otro</option>
             </select>
           </label>
-          {/* Reviewer picker (migration 0083). Hidden when there's
-              only one admin in the picker — at that scale the
-              dropdown is noise, the request lands with that admin
-              regardless. Shown with optgroups when there are
-              cross-equipo siblings in the same servicio. */}
-          {admins.data && admins.data.length > 1 && (
+          {/* Reviewer picker (migration 0083). Shown whenever the
+              servicio-admins endpoint returns ≥1 option — so even a
+              tenant with a single admin sees the dropdown (member
+              can still lock the request to that admin specifically
+              vs the legacy "any admin" default). Hidden entirely
+              only when the picker source has 0 rows, which would
+              mean a misconfigured tenant — no admins exist at all. */}
+          {admins.data && admins.data.length > 0 && (
             <label className="block">
               <span className="text-sm font-medium text-gray-700">
                 Enviar a
