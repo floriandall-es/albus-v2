@@ -5,9 +5,15 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   api,
   type Assignment,
+  type MeetingInstance,
+  type MeResponse,
   type ServicioTimelineCell,
+  type TeamAbsence,
 } from "@/lib/api";
-import { PlanningGrid } from "@/components/schedule/planning-grid";
+import {
+  PlanningGrid,
+  type PlanningGridSection,
+} from "@/components/schedule/planning-grid";
 import { formatPeriod } from "@/components/admin/month-picker";
 import { Button, EmptyState, ErrorText } from "@/components/admin/ui";
 import {
@@ -631,6 +637,25 @@ export default function TurnosPage() {
                 canRequestCoverage={true}
               />
             )
+          ) : scope === "servicio" ? (
+            // Servicio scope renders ONE big sectioned grid: the
+            // user's own team's band first, then one band per
+            // sibling Equipo that shares its planning. All bands
+            // share a single set of date columns, so horizontal
+            // scroll moves every team in lockstep and the eye can
+            // compare days across teams.
+            <ServicioSectionedGrid
+              me={me.data!}
+              visibleAssignments={visibleAssignments}
+              myPersonId={myPersonId}
+              absencesData={absences.data}
+              meetingsData={meetingInstances.data}
+              servicioCells={servicioTimeline.data?.cells ?? []}
+              servicioLoading={servicioTimeline.isLoading}
+              holidayDates={holidayDates}
+              forceDates={allDatesInRange}
+              onSwapTarget={setSwapTarget}
+            />
           ) : (
             <>
               {visibleAssignments.length === 0 && (
@@ -639,77 +664,30 @@ export default function TurnosPage() {
                 </div>
               )}
               {visibleAssignments.length > 0 && (
-                <>
-                  {/* Header above the user's own team's grid is
-                      only useful in Servicio scope (otherwise the
-                      page title already tells the user whose
-                      schedule they're looking at). */}
-                  {scope === "servicio" && me.data && (
-                    <h2 className="mb-2 mt-1 text-sm font-semibold text-gray-700">
-                      {me.data.current_tenant.name}
-                      <span className="ml-2 rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-brand-800">
-                        Tu equipo
-                      </span>
-                    </h2>
-                  )}
-                  <PlanningGrid
-                    assignments={visibleAssignments}
-                    holidayDates={holidayDates}
-                    highlightPersonId={myPersonId}
-                    onCellClick={(a) => setSwapTarget(a)}
-                    cellIsClickable={(a) =>
-                      a.person_id === myPersonId
-                      && !a.locked_at
-                    }
-                    // Libre + Reuniones rows are derived from team-wide
-                    // data; they only make sense when the grid IS the
-                    // user's team (Equipo or Servicio). Scope=mine is a
-                    // personal summary so we skip them to keep the
-                    // focus on "what I'm doing".
-                    absences={
-                      scope === "team" || scope === "servicio"
-                        ? absences.data
-                        : undefined
-                    }
-                    meetings={
-                      scope === "team" || scope === "servicio"
-                        ? meetingInstances.data
-                        : undefined
-                    }
-                    // Mis + Tabla: force every date in the active Rango
-                    // as a column, so off days appear as empty cells
-                    // next to working days. Equipo + Tabla keeps the
-                    // legacy derivation (dates come from assignments).
-                    // Servicio + Tabla forces dates too so the user's
-                    // own grid lines up column-for-column with the
-                    // sibling grids below — otherwise an asymmetric
-                    // assignment pattern across teams would yield
-                    // mismatched date columns.
-                    forceDates={
-                      scope === "mine" || scope === "servicio"
-                        ? allDatesInRange
-                        : undefined
-                    }
-                  />
-                </>
-              )}
-
-              {/* Sibling Equipo grids — only in Servicio scope. One
-                  PlanningGrid per sibling that shares planning, in
-                  alphabetical order. Each ServicioTimelineCell is
-                  upcast to an Assignment with default values for the
-                  fields the cross-tenant endpoint doesn't carry
-                  (team_role_*, notes, locked_at, dismissed_at,
-                  swap_offer_id, person_avatar_url). The grid is
-                  read-only — no onCellClick — because the user has no
-                  authority over a sibling team's planning. */}
-              {scope === "servicio" && (
-                <SiblingGrids
-                  cells={servicioTimeline.data?.cells ?? []}
-                  callerTenantId={me.data?.current_tenant.id ?? null}
+                <PlanningGrid
+                  assignments={visibleAssignments}
                   holidayDates={holidayDates}
-                  forceDates={allDatesInRange}
-                  loading={servicioTimeline.isLoading}
+                  highlightPersonId={myPersonId}
+                  onCellClick={(a) => setSwapTarget(a)}
+                  cellIsClickable={(a) =>
+                    a.person_id === myPersonId
+                    && !a.locked_at
+                  }
+                  // Libre + Reuniones rows are derived from team-wide
+                  // data; they only make sense in Equipo scope.
+                  // Scope=mine is a personal summary so we skip them
+                  // to keep the focus on "what I'm doing".
+                  absences={scope === "team" ? absences.data : undefined}
+                  meetings={
+                    scope === "team" ? meetingInstances.data : undefined
+                  }
+                  // Mis + Tabla: force every date in the active Rango
+                  // as a column, so off days appear as empty cells
+                  // next to working days. Equipo + Tabla keeps the
+                  // legacy derivation (dates come from assignments).
+                  forceDates={
+                    scope === "mine" ? allDatesInRange : undefined
+                  }
                 />
               )}
             </>
@@ -840,85 +818,128 @@ function cellToAssignment(
   };
 }
 
-function SiblingGrids({
-  cells,
-  callerTenantId,
+/** Combines the user's own team's planning + every sibling team's
+ * shared planning into ONE big sectioned PlanningGrid. Each team
+ * becomes a section with its own band header; all sections share
+ * the same date columns so horizontal scroll moves the whole grid
+ * in lockstep and column widths line up across teams.
+ *
+ * Why one big grid instead of N separate tables (which is what we
+ * had before): an HTML <table> sizes its columns to its own cell
+ * content, so N tables with the same date axis still end up with
+ * mismatched widths if one team has long names + another has short
+ * names. One table eliminates that entirely. */
+function ServicioSectionedGrid({
+  me,
+  visibleAssignments,
+  myPersonId,
+  absencesData,
+  meetingsData,
+  servicioCells,
+  servicioLoading,
   holidayDates,
   forceDates,
-  loading,
+  onSwapTarget,
 }: {
-  cells: ServicioTimelineCell[];
-  callerTenantId: number | null;
+  me: MeResponse;
+  visibleAssignments: Assignment[];
+  myPersonId: number;
+  absencesData: TeamAbsence[] | undefined;
+  meetingsData: MeetingInstance[] | undefined;
+  servicioCells: ServicioTimelineCell[];
+  servicioLoading: boolean;
   holidayDates: Set<string>;
-  /** Every YYYY-MM-DD the parent's grid is rendering, in order. We
-   * force the same date columns on every sibling grid so all the
-   * tables line up vertically — otherwise an asymmetric assignment
-   * pattern across tenants would yield mismatched columns and the
-   * eye couldn't easily compare days across teams. */
   forceDates: string[];
-  loading: boolean;
+  onSwapTarget: (a: Assignment) => void;
 }) {
-  // Group cells by sibling tenant (excluding the caller's own).
-  const groups = useMemo(() => {
-    type Group = {
-      tenant_id: number;
-      tenant_name: string;
-      assignments: Assignment[];
-    };
-    const map = new Map<number, Group>();
-    for (const c of cells) {
+  const callerTenantId = me.current_tenant.id;
+  const callerTenantName = me.current_tenant.name;
+
+  // Build the section list: caller's own team first (with full
+  // chrome — highlight, swap onClick, Libre + Reuniones), then one
+  // section per sibling team that shares planning, alphabetised.
+  // Sibling sections are read-only; PlanningGrid skips Libre +
+  // Reuniones for those because absences/meetings are undefined.
+  const sections = useMemo<PlanningGridSection[]>(() => {
+    const out: PlanningGridSection[] = [];
+    out.push({
+      label: (
+        <span className="inline-flex items-center gap-2">
+          <span className="normal-case text-sm font-semibold text-gray-800 tracking-normal">
+            {callerTenantName}
+          </span>
+          <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-brand-800">
+            Tu equipo
+          </span>
+        </span>
+      ),
+      assignments: visibleAssignments,
+      absences: absencesData,
+      meetings: meetingsData,
+      highlightPersonId: myPersonId,
+      onCellClick: onSwapTarget,
+      cellIsClickable: (a: Assignment) =>
+        a.person_id === myPersonId && !a.locked_at,
+    });
+
+    // Group sibling cells by tenant.
+    const siblingMap = new Map<
+      number,
+      { tenant_name: string; assignments: Assignment[] }
+    >();
+    for (const c of servicioCells) {
       if (c.tenant_id === callerTenantId) continue;
-      let g = map.get(c.tenant_id);
+      let g = siblingMap.get(c.tenant_id);
       if (!g) {
-        g = {
-          tenant_id: c.tenant_id,
-          tenant_name: c.tenant_name,
-          assignments: [],
-        };
-        map.set(c.tenant_id, g);
+        g = { tenant_name: c.tenant_name, assignments: [] };
+        siblingMap.set(c.tenant_id, g);
       }
       g.assignments.push(cellToAssignment(c, c.schedule_id));
     }
-    return Array.from(map.values()).sort((a, b) =>
-      a.tenant_name.localeCompare(b.tenant_name, "es"),
+    const siblings = Array.from(siblingMap.entries()).sort((a, b) =>
+      a[1].tenant_name.localeCompare(b[1].tenant_name, "es"),
     );
-  }, [cells, callerTenantId]);
-
-  if (loading) {
-    return (
-      <p className="mt-6 text-sm text-gray-500">
-        Cargando otros equipos del servicio…
-      </p>
-    );
-  }
-  if (groups.length === 0) {
-    return (
-      <div className="mt-6 rounded-xl bg-white p-6 ring-1 ring-gray-200 shadow-soft text-sm text-gray-600">
-        Ningún otro equipo del servicio comparte planificación en este
-        mes. Cada equipo controla qué comparte desde
-        Configuración → Compartir.
-      </div>
-    );
-  }
-  return (
-    <div className="mt-6 space-y-6">
-      {groups.map((g) => (
-        <div key={g.tenant_id}>
-          <h2 className="mb-2 text-sm font-semibold text-gray-700">
+    for (const [, g] of siblings) {
+      out.push({
+        label: (
+          <span className="normal-case text-sm font-semibold text-gray-800 tracking-normal">
             {g.tenant_name}
-          </h2>
-          <PlanningGrid
-            assignments={g.assignments}
-            holidayDates={holidayDates}
-            forceDates={forceDates}
-            // No highlightPersonId — the caller doesn't belong to
-            // this sibling team. No onCellClick — read-only. No
-            // absences / meetings — Phase C.2 timeline doesn't
-            // surface them cross-tenant.
-          />
-        </div>
-      ))}
-    </div>
+          </span>
+        ),
+        assignments: g.assignments,
+        // No highlight / onCellClick / absences / meetings — caller
+        // isn't a member of this team and the cross-tenant timeline
+        // doesn't carry their Libre + Reuniones data.
+      });
+    }
+    return out;
+  }, [
+    callerTenantId,
+    callerTenantName,
+    visibleAssignments,
+    absencesData,
+    meetingsData,
+    servicioCells,
+    myPersonId,
+    onSwapTarget,
+  ]);
+
+  // Surface a non-blocking loading note above the grid while the
+  // servicio timeline is in flight — the user's own band renders
+  // immediately because it's already loaded.
+  return (
+    <>
+      {servicioLoading && (
+        <p className="mb-2 text-xs text-gray-500">
+          Cargando otros equipos del servicio…
+        </p>
+      )}
+      <PlanningGrid
+        sections={sections}
+        holidayDates={holidayDates}
+        forceDates={forceDates}
+      />
+    </>
   );
 }
 

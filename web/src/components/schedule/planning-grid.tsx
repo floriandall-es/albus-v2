@@ -1,5 +1,5 @@
 "use client";
-import { useMemo } from "react";
+import { Fragment, useMemo, type ReactNode } from "react";
 import {
   avatarSrc,
   personLastName,
@@ -11,13 +11,51 @@ import {
 // Shared planning grid: slot rows × date columns. Used by:
 // - admin schedule detail (interactive — cells open the editor on click)
 // - team-member "Mis turnos" view (read-only)
+// - /me/turnos Servicio scope (multi-section, one band per Equipo)
 //
 // `highlightPersonId` tints cells where that person appears, so a user
 // looking at the full team grid can find their own shifts at a glance.
 
-export type PlanningGridProps = {
+/** One band of the grid. The grid renders ONE shared set of date
+ * columns and one band per section, each with its own slot rows and
+ * (optional) Reuniones + Libre rows. The single-section call sites
+ * (/admin/schedule, /me/turnos Mis/Equipo, /lead/planificacion) use
+ * the legacy top-level props; the multi-section call site (/me/turnos
+ * Servicio scope) passes `sections` instead and gets one big table
+ * where every band shares column widths and horizontal scroll. */
+export type PlanningGridSection = {
+  /** Sticky band header rendered above this section's slot rows. Pass
+   * null to suppress (the legacy single-section path uses null because
+   * the page title already names the team). */
+  label: ReactNode | null;
   assignments: Assignment[];
-  holidayDates: Set<string>;
+  /** Approved availability blocks for THIS section's team. When set,
+   * a Libre row renders at the bottom of the section's band. */
+  absences?: TeamAbsence[];
+  /** Meeting occurrences for THIS section's team. When set, a
+   * Reuniones row renders between the slot rows and the Libre row. */
+  meetings?: MeetingInstance[];
+  /** Person to highlight in this section's cells (used by /me/turnos
+   * for the user's own team — sibling teams pass null because the
+   * caller isn't a member). */
+  highlightPersonId?: number | null;
+  /** Click handler for slot cells in this section. Read-only sections
+   * (sibling teams in Servicio scope) leave this undefined. */
+  onCellClick?: (a: Assignment) => void;
+  cellIsClickable?: (a: Assignment) => boolean;
+  /** Admin-only click handler for the Libre row. Same per-section
+   * gating as onCellClick. */
+  onAbsenceCellClick?: (date: string) => void;
+};
+
+export type PlanningGridProps = {
+  // -----------------------------------------------------------------
+  // Legacy single-section props. Kept so existing call sites (admin
+  // schedule detail, /me/turnos Mis + Equipo, /lead/planificacion)
+  // don't need to change. When `sections` is provided these are
+  // ignored.
+  // -----------------------------------------------------------------
+  assignments?: Assignment[];
   onCellClick?: (a: Assignment) => void;
   /** Only invoke onCellClick when this returns true. Defaults to true
    * for all cells when onCellClick is provided. Useful for read-only-ish
@@ -35,6 +73,25 @@ export type PlanningGridProps = {
    * read-only views and the published/archived schedule view leave
    * this undefined and the Libre row stays non-interactive. */
   onAbsenceCellClick?: (date: string) => void;
+  /** Meeting occurrences (ad-hoc + expanded regular templates) the
+   * caller is allowed to see. When provided, a "Reuniones" row appears
+   * above Libre with one chip per meeting per date. Meetings outside
+   * the grid's date range are silently ignored. */
+  meetings?: MeetingInstance[];
+
+  // -----------------------------------------------------------------
+  // Multi-section variant. When provided, the grid renders one band
+  // per section sharing a single set of date columns — so column
+  // widths line up across sections and horizontal scroll moves every
+  // band in lockstep. The legacy single-section props above are
+  // ignored when this is set.
+  // -----------------------------------------------------------------
+  sections?: PlanningGridSection[];
+
+  // -----------------------------------------------------------------
+  // Always-global props
+  // -----------------------------------------------------------------
+  holidayDates: Set<string>;
   /** Admin-only. When provided, "—" cells (cells with no Assignment
    * row at all — typically legacy migrated data where the cell
    * disappeared) become clickable. The caller decides what to do
@@ -48,11 +105,6 @@ export type PlanningGridProps = {
     team_role_label: string | null;
     date: string;
   }) => void;
-  /** Meeting occurrences (ad-hoc + expanded regular templates) the
-   * caller is allowed to see. When provided, a "Reuniones" row appears
-   * above Libre with one chip per meeting per date. Meetings outside
-   * the grid's date range are silently ignored. */
-  meetings?: MeetingInstance[];
   /** Assignment ids that participate in at least one rule violation.
    * Cells matching one of these get a small rose-coloured corner
    * marker so the admin can spot the conflicts on the grid. Tooltip
@@ -63,84 +115,77 @@ export type PlanningGridProps = {
    * grid renders exactly these dates as columns (sorted ascending)
    * instead of deriving them from the assignment set. Used by the
    * /me/turnos personal table so off days appear as empty columns
-   * next to working days. Slot rows still come from `assignments`
-   * — so an empty `assignments` plus `forceDates` produces an
-   * empty grid (no rows). */
+   * next to working days, and by Servicio scope so all bands share
+   * the same windows regardless of which team has assignments. */
   forceDates?: string[];
 };
 
 export function PlanningGrid({
   assignments,
-  holidayDates,
   onCellClick,
   cellIsClickable,
   highlightPersonId = null,
   absences,
   onAbsenceCellClick,
-  onEmptyCellClick,
   meetings,
+  sections,
+  holidayDates,
+  onEmptyCellClick,
   flaggedAssignmentIds,
   forceDates,
 }: PlanningGridProps) {
-  const grid = useMemo(
-    () => buildGrid(assignments, forceDates),
-    [assignments, forceDates],
-  );
-  const interactive = !!onCellClick;
-
-  // Group meetings by date so each grid column knows which to show.
-  // Sort within a date by start_time for a stable order.
-  const meetingsByDate = useMemo(() => {
-    if (!meetings) return null;
-    const map = new Map<string, MeetingInstance[]>();
-    for (const m of meetings) {
-      const list = map.get(m.date) ?? [];
-      list.push(m);
-      map.set(m.date, list);
-    }
-    for (const list of map.values()) {
-      list.sort((a, b) => a.start_time.localeCompare(b.start_time));
-    }
-    return map;
-  }, [meetings]);
-
-  // Expand each absence range into a per-date list of absent persons.
-  // Same person can appear in multiple blocks; dedupe by person_id.
-  const absencesByDate = useMemo(() => {
-    if (!absences) return null;
-    const result = new Map<
-      string,
+  // Normalize: explicit sections, or wrap the legacy props as one
+  // anonymous section. The legacy path keeps every existing call
+  // site working without any change.
+  const resolvedSections = useMemo<PlanningGridSection[]>(() => {
+    if (sections) return sections;
+    return [
       {
-        person_id: number;
-        person_name: string;
-        person_last_name: string | null;
-        person_avatar_url: string | null;
-        block_type: string;
-      }[]
-    >();
-    for (const d of grid.dates) {
-      const items: typeof result extends Map<string, infer V> ? V : never = [];
-      const seen = new Set<number>();
-      for (const a of absences) {
-        if (a.start_date <= d && d <= a.end_date) {
-          if (seen.has(a.person_id)) continue;
-          seen.add(a.person_id);
-          items.push({
-            person_id: a.person_id,
-            person_name: a.person_name,
-            person_last_name: a.person_last_name,
-            person_avatar_url: a.person_avatar_url,
-            block_type: a.block_type,
-          });
-        }
-      }
-      items.sort((x, y) => x.person_name.localeCompare(y.person_name));
-      result.set(d, items);
-    }
-    return result;
-  }, [absences, grid.dates]);
+        label: null,
+        assignments: assignments ?? [],
+        absences,
+        meetings,
+        highlightPersonId,
+        onCellClick,
+        cellIsClickable,
+        onAbsenceCellClick,
+      },
+    ];
+  }, [
+    sections,
+    assignments,
+    absences,
+    meetings,
+    highlightPersonId,
+    onCellClick,
+    cellIsClickable,
+    onAbsenceCellClick,
+  ]);
 
-  if (grid.slotRows.length === 0) {
+  // Unified date axis — the whole point of multi-section mode: all
+  // bands share these exact column widths and scroll together.
+  const dates = useMemo(() => {
+    if (forceDates) return Array.from(new Set(forceDates)).sort();
+    const all = new Set<string>();
+    for (const s of resolvedSections) {
+      for (const a of s.assignments) all.add(a.date);
+    }
+    return Array.from(all).sort();
+  }, [resolvedSections, forceDates]);
+
+  // Per-section grid built against the shared dates axis. Calling
+  // buildGrid with the shared dates guarantees every section's row
+  // map has the same date keyspace.
+  const sectionGrids = useMemo(
+    () => resolvedSections.map((s) => buildGrid(s.assignments, dates)),
+    [resolvedSections, dates],
+  );
+
+  const totalRows = sectionGrids.reduce(
+    (sum, g) => sum + g.slotRows.length,
+    0,
+  );
+  if (totalRows === 0) {
     return (
       <p className="text-sm text-gray-500">
         Esta planificación no tiene asignaciones.
@@ -152,15 +197,14 @@ export function PlanningGrid({
 
   return (
     <div className="overflow-x-auto rounded-xl bg-white shadow-soft ring-1 ring-gray-200">
-      {/* `border-separate border-spacing-0` is what makes
-          `sticky` actually work on the first column. Tailwind
-          preflight sets tables to `border-collapse: collapse`,
-          which prevents browsers from honouring
-          `position: sticky` on td/th — the activities column
-          would silently scroll out of view as the admin moved
-          horizontally through a month. Separate borders + zero
-          spacing keeps the visual flat-grid layout while letting
-          the sticky-left cells stay pinned. */}
+      {/* `border-separate border-spacing-0` is what makes `sticky`
+          actually work on the first column. Tailwind preflight sets
+          tables to `border-collapse: collapse`, which prevents
+          browsers from honouring `position: sticky` on td/th — the
+          activities column would silently scroll out of view as the
+          user moved horizontally through a month. Separate borders +
+          zero spacing keeps the visual flat-grid layout while
+          letting the sticky-left cells stay pinned. */}
       <table className="text-xs border-separate border-spacing-0">
         <thead className="bg-gray-50">
           <tr>
@@ -172,7 +216,7 @@ export function PlanningGrid({
             <th className="sticky left-0 bg-gray-50 z-10 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 border-b border-r border-gray-200 whitespace-nowrap">
               Turno
             </th>
-            {grid.dates.map((d) => {
+            {dates.map((d) => {
               const isHoliday = holidayDates.has(d);
               const dt = new Date(d);
               const wd = dt.getDay();
@@ -226,290 +270,415 @@ export function PlanningGrid({
           </tr>
         </thead>
         <tbody>
-          {grid.slotRows.map((row, rowIdx) => (
-            <tr
-              key={`${row.slot_id}|${row.team_role_label ?? ""}`}
-              className={rowIdx % 2 === 1 ? "bg-gray-50/40" : ""}
-            >
-              <td
-                className={
-                  "sticky left-0 z-10 px-3 py-2 border-r border-gray-200 font-medium text-gray-800 "
-                  + (rowIdx % 2 === 1 ? "bg-gray-50/90" : "bg-white")
-                }
-              >
-                <span className="flex items-center gap-2">
-                  {row.color && (
-                    <span
-                      className="h-2 w-2 rounded-full shrink-0"
-                      style={{ backgroundColor: row.color }}
-                    />
-                  )}
-                  <span className="flex flex-col leading-tight">
-                    <span className="whitespace-nowrap">
-                      {row.display_name}
-                    </span>
-                    {row.team_role_label && (
-                      <span className="whitespace-nowrap text-xs font-normal text-gray-500">
-                        {row.team_role_label}
-                      </span>
-                    )}
-                  </span>
-                </span>
-              </td>
-              {grid.dates.map((d) => {
-                const cell = row.cells[d] ?? [];
-                // Sprint 28: a cell is "dismissed" if the admin marked
-                // this (slot, date) as "No aplica". The dismissal
-                // cascades so every row in the cell shares the flag.
-                const isDismissed =
-                  cell.length > 0
-                  && cell.every((a) => a.dismissed_at !== null);
-                // Member views (highlightPersonId set on /me/turnos)
-                // collapse dismissed → "this day doesn't apply" so the
-                // grid stays uncluttered. Members don't need to see the
-                // admin's override marker; they just need to know "no
-                // shift for me today" — same outcome as a weekday the
-                // slot doesn't run. Admin views keep the explicit
-                // strikethrough "No aplica" pill so the override is
-                // visible and clickable to revert.
-                const memberView = highlightPersonId !== null;
-                const isDismissedAdminPill = isDismissed && !memberView;
-                const isDismissedAsEmpty = isDismissed && memberView;
-                const empty =
-                  !isDismissed
-                  && (cell.length === 0
-                    || cell.every((a) => a.person_id === null));
-                const hasMe =
-                  highlightPersonId !== null
-                  && cell.some((a) => a.person_id === highlightPersonId);
-                const isToday = d === today;
-                // Weekend + holiday column tint. Applies only when no
-                // stronger state owns the background — sin cubrir
-                // (rose), my shift (brand-50), today (brand-50/30)
-                // and dismissed (gray-100) stay as the dominant
-                // signal. The weekend / holiday colours match the
-                // header pills so the column reads as one band.
-                const wd = new Date(d).getDay();
-                const isWeekend = wd === 0 || wd === 6;
-                const isHoliday = holidayDates.has(d);
-                // True when any assignment in this cell shows up in a
-                // rule violation — drives a rose ring around the cell
-                // so the admin can spot conflicts at a glance.
-                const isFlagged =
-                  flaggedAssignmentIds
-                  && cell.some((a) => flaggedAssignmentIds.has(a.id));
-                return (
-                  <td
-                    key={d}
-                    className={
-                      "align-top px-1.5 py-2 border-b border-gray-100 "
-                      + (isFlagged ? "ring-2 ring-inset ring-rose-400 " : "")
-                      + (isDismissedAdminPill
-                        ? "bg-gray-100"
-                        : empty || isDismissedAsEmpty
-                          ? "bg-rose-50/70"
-                          : hasMe
-                            ? "bg-brand-50/70"
-                            : isToday
-                              ? "bg-brand-50/30"
-                              : isHoliday
-                                ? "bg-amber-50"
-                                : isWeekend
-                                  ? "bg-slate-100"
-                                  : "")
-                    }
+          {resolvedSections.map((section, sectIdx) => {
+            const grid = sectionGrids[sectIdx];
+            const sectionInteractive = !!section.onCellClick;
+            const sectionHighlight = section.highlightPersonId ?? null;
+
+            // Per-section meetings + absences maps. Plain function
+            // calls (not useMemo — hooks can't run inside .map). The
+            // data sets are small enough that per-render recomputation
+            // is cheap.
+            const meetingsByDate = section.meetings
+              ? buildMeetingsByDate(section.meetings)
+              : null;
+            const absencesByDate = section.absences
+              ? buildAbsencesByDate(section.absences, dates)
+              : null;
+
+            return (
+              <Fragment key={`section-${sectIdx}`}>
+                {/* Band header — sticky-left so it stays glued to the
+                    leading edge when the user scrolls horizontally,
+                    just like the row labels. Stretches the full table
+                    width via colSpan. */}
+                {section.label !== null && (
+                  <tr>
+                    <td
+                      colSpan={dates.length + 1}
+                      className={
+                        "sticky left-0 bg-brand-50/60 px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-brand-800 border-b border-brand-100 "
+                        + (sectIdx > 0 ? "border-t-4 border-t-gray-100" : "")
+                      }
+                    >
+                      {section.label}
+                    </td>
+                  </tr>
+                )}
+                {grid.slotRows.map((row, rowIdx) => (
+                  <tr
+                    key={`${sectIdx}|${row.slot_id}|${row.team_role_label ?? ""}`}
+                    className={rowIdx % 2 === 1 ? "bg-gray-50/40" : ""}
                   >
-                    {isDismissedAdminPill ? (
-                      // Render ONE "No aplica" pill regardless of how
-                      // many sibling rows the dismissal cascaded to.
-                      // The admin can click any of them to re-apply.
-                      (() => {
-                        const a = cell[0];
-                        const content = (
-                          <span className="inline-flex items-center gap-1 text-[11px] text-gray-500 italic line-through">
-                            No aplica
-                          </span>
-                        );
-                        return onCellClick ? (
-                          <button
-                            type="button"
-                            onClick={() => onCellClick(a)}
-                            className="block w-full text-left hover:bg-gray-200/60 rounded px-0.5"
-                          >
-                            {content}
-                          </button>
-                        ) : (
-                          content
-                        );
-                      })()
-                    ) : isDismissedAsEmpty || cell.length === 0 ? (
-                      // Empty cells: a "—" placeholder normally. If
-                      // the admin view is editable AND the caller
-                      // wired onEmptyCellClick, the placeholder
-                      // becomes a clickable button so the admin can
-                      // backfill the missing Assignment row (legacy
-                      // import bug: some cells came over without
-                      // assignment rows at all and end up here).
-                      // isDismissedAsEmpty cells stay inert — that's
-                      // the member-view collapse, not real emptiness.
-                      cell.length === 0 && onEmptyCellClick ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            onEmptyCellClick({
-                              slot_id: row.slot_id,
-                              team_role_id: row.team_role_id,
-                              slot_name: row.slot_name,
-                              team_role_label: row.team_role_label,
-                              date: d,
-                            })
-                          }
-                          className="block w-full text-left text-[11px] text-gray-300 hover:text-rose-700 hover:bg-rose-100/60 rounded px-0.5"
-                          title="Crear celda Sin cubrir"
-                        >
-                          —
-                        </button>
-                      ) : (
-                        <span className="text-[11px] text-gray-300">—</span>
-                      )
-                    ) : (
-                      cell.map((a) => {
-                        const isMe =
-                          highlightPersonId !== null
-                          && a.person_id === highlightPersonId;
-                        // When the user view sets a highlight, dim every
-                        // OTHER assignment so own shifts pop. No effect
-                        // on the admin grid (no highlight set there).
-                        const dim =
-                          highlightPersonId !== null
-                          && !isMe
-                          && a.person_id !== null;
-                        const content = (
+                    <td
+                      className={
+                        "sticky left-0 z-10 px-3 py-2 border-r border-gray-200 font-medium text-gray-800 "
+                        + (rowIdx % 2 === 1 ? "bg-gray-50/90" : "bg-white")
+                      }
+                    >
+                      <span className="flex items-center gap-2">
+                        {row.color && (
                           <span
-                            className={
-                              "inline-flex items-center gap-1.5 max-w-full "
-                              + (dim ? "opacity-60" : "")
-                            }
-                          >
-                            {a.person_id !== null && a.person_name && (
-                              <Avatar
-                                name={a.person_name}
-                                mine={isMe}
-                                imageUrl={a.person_avatar_url}
-                              />
-                            )}
-                            {/* Lock icon is admin-only. Members
-                                don't need to know an admin
-                                pinned the shift — the lock's
-                                visible behaviour for them is
-                                "the swap modal doesn't open",
-                                which the cellIsClickable prop
-                                already enforces. highlightPersonId
-                                is set on /me views and unset on
-                                /admin views — same discriminator
-                                used by the dismissed-cell render. */}
-                            {a.locked_at && highlightPersonId === null && (
-                              <LockIcon className="h-3 w-3 text-amber-600 shrink-0" />
-                            )}
-                            {a.swap_offer_id != null && (
-                              <SwapIcon className="h-3 w-3 text-sky-600 shrink-0" />
-                            )}
-                              {a.person_id === null ? (
-                                <span className="text-rose-700 font-medium">
-                                  Sin cubrir
-                                </span>
-                              ) : (
-                                // Sprint 16: the role label moved to
-                                // the left-column row header; cells
-                                // only show the person now.
-                                // Sprint 18: render the last name in
-                                // the tight grid cells — falls back
-                                // to the legacy full name when the
-                                // person hasn't filled in the split.
-                                <span
-                                  className={
-                                    isMe
-                                      ? "font-semibold text-brand-700"
-                                      : "text-gray-800"
-                                  }
-                                >
-                                  {personLastName({
-                                    name: a.person_name ?? "",
-                                    last_name: a.person_last_name,
-                                  })}
-                                </span>
-                              )}
+                            className="h-2 w-2 rounded-full shrink-0"
+                            style={{ backgroundColor: row.color }}
+                          />
+                        )}
+                        <span className="flex flex-col leading-tight">
+                          <span className="whitespace-nowrap">
+                            {row.display_name}
+                          </span>
+                          {row.team_role_label && (
+                            <span className="whitespace-nowrap text-xs font-normal text-gray-500">
+                              {row.team_role_label}
                             </span>
-                          );
-                          const clickable =
-                            interactive
-                            && (cellIsClickable
-                              ? cellIsClickable(a)
-                              : true);
-                          const swapTooltip = a.swap_offer_id != null
-                            ? "Turno modificado por un cambio entre miembros"
-                            : null;
-                          const tooltip = [
-                            isMe && clickable
-                              ? "Haz clic para pedir cobertura para este turno"
-                              : null,
-                            swapTooltip,
-                            a.notes,
-                          ]
-                            .filter(Boolean)
-                            .join(" · ");
-                          if (clickable) {
-                            return (
+                          )}
+                        </span>
+                      </span>
+                    </td>
+                    {dates.map((d) => {
+                      const cell = row.cells[d] ?? [];
+                      // Sprint 28: a cell is "dismissed" if the admin
+                      // marked this (slot, date) as "No aplica". The
+                      // dismissal cascades so every row in the cell
+                      // shares the flag.
+                      const isDismissed =
+                        cell.length > 0
+                        && cell.every((a) => a.dismissed_at !== null);
+                      // Member views (sectionHighlight set on /me
+                      // /turnos) collapse dismissed → "this day
+                      // doesn't apply" so the grid stays uncluttered.
+                      // Members don't need to see the admin's override
+                      // marker; they just need to know "no shift for
+                      // me today" — same outcome as a weekday the
+                      // slot doesn't run. Admin views keep the
+                      // explicit strikethrough "No aplica" pill so
+                      // the override is visible and clickable to
+                      // revert.
+                      const memberView = sectionHighlight !== null;
+                      const isDismissedAdminPill =
+                        isDismissed && !memberView;
+                      const isDismissedAsEmpty = isDismissed && memberView;
+                      const empty =
+                        !isDismissed
+                        && (cell.length === 0
+                          || cell.every((a) => a.person_id === null));
+                      const hasMe =
+                        sectionHighlight !== null
+                        && cell.some(
+                          (a) => a.person_id === sectionHighlight,
+                        );
+                      const isToday = d === today;
+                      const wd = new Date(d).getDay();
+                      const isWeekend = wd === 0 || wd === 6;
+                      const isHoliday = holidayDates.has(d);
+                      const isFlagged =
+                        flaggedAssignmentIds
+                        && cell.some((a) =>
+                          flaggedAssignmentIds.has(a.id),
+                        );
+                      return (
+                        <td
+                          key={d}
+                          className={
+                            "align-top px-1.5 py-2 border-b border-gray-100 "
+                            + (isFlagged
+                              ? "ring-2 ring-inset ring-rose-400 "
+                              : "")
+                            + (isDismissedAdminPill
+                              ? "bg-gray-100"
+                              : empty || isDismissedAsEmpty
+                                ? "bg-rose-50/70"
+                                : hasMe
+                                  ? "bg-brand-50/70"
+                                  : isToday
+                                    ? "bg-brand-50/30"
+                                    : isHoliday
+                                      ? "bg-amber-50"
+                                      : isWeekend
+                                        ? "bg-slate-100"
+                                        : "")
+                          }
+                        >
+                          {isDismissedAdminPill ? (
+                            (() => {
+                              const a = cell[0];
+                              const content = (
+                                <span className="inline-flex items-center gap-1 text-[11px] text-gray-500 italic line-through">
+                                  No aplica
+                                </span>
+                              );
+                              return section.onCellClick ? (
+                                <button
+                                  type="button"
+                                  onClick={() => section.onCellClick!(a)}
+                                  className="block w-full text-left hover:bg-gray-200/60 rounded px-0.5"
+                                >
+                                  {content}
+                                </button>
+                              ) : (
+                                content
+                              );
+                            })()
+                          ) : isDismissedAsEmpty || cell.length === 0 ? (
+                            cell.length === 0 && onEmptyCellClick ? (
                               <button
                                 type="button"
-                                key={a.id}
-                                onClick={() => onCellClick!(a)}
-                                className="block w-full text-left leading-tight rounded px-1 -mx-1 cursor-pointer hover:bg-brand-100/60 transition-colors"
-                                title={tooltip || undefined}
+                                onClick={() =>
+                                  onEmptyCellClick({
+                                    slot_id: row.slot_id,
+                                    team_role_id: row.team_role_id,
+                                    slot_name: row.slot_name,
+                                    team_role_label: row.team_role_label,
+                                    date: d,
+                                  })
+                                }
+                                className="block w-full text-left text-[11px] text-gray-300 hover:text-rose-700 hover:bg-rose-100/60 rounded px-0.5"
+                                title="Crear celda Sin cubrir"
                               >
-                                {content}
+                                —
                               </button>
-                            );
-                          }
-                          return (
-                            <div
-                              key={a.id}
-                              className="block w-full text-left leading-tight"
-                              title={tooltip || undefined}
-                            >
-                              {content}
-                            </div>
-                          );
-                        })
-                      )}
+                            ) : (
+                              <span className="text-[11px] text-gray-300">
+                                —
+                              </span>
+                            )
+                          ) : (
+                            cell.map((a) => {
+                              const isMe =
+                                sectionHighlight !== null
+                                && a.person_id === sectionHighlight;
+                              const dim =
+                                sectionHighlight !== null
+                                && !isMe
+                                && a.person_id !== null;
+                              const content = (
+                                <span
+                                  className={
+                                    "inline-flex items-center gap-1.5 max-w-full "
+                                    + (dim ? "opacity-60" : "")
+                                  }
+                                >
+                                  {a.person_id !== null && a.person_name && (
+                                    <Avatar
+                                      name={a.person_name}
+                                      mine={isMe}
+                                      imageUrl={a.person_avatar_url}
+                                    />
+                                  )}
+                                  {/* Lock icon is admin-only.
+                                      Members don't need to know
+                                      an admin pinned the shift —
+                                      the lock's visible behaviour
+                                      for them is "the swap modal
+                                      doesn't open", which the
+                                      cellIsClickable prop already
+                                      enforces. sectionHighlight is
+                                      set on /me views and unset
+                                      on /admin views — same
+                                      discriminator used by the
+                                      dismissed-cell render. */}
+                                  {a.locked_at
+                                    && sectionHighlight === null && (
+                                      <LockIcon className="h-3 w-3 text-amber-600 shrink-0" />
+                                    )}
+                                  {a.swap_offer_id != null && (
+                                    <SwapIcon className="h-3 w-3 text-sky-600 shrink-0" />
+                                  )}
+                                  {a.person_id === null ? (
+                                    <span className="text-rose-700 font-medium">
+                                      Sin cubrir
+                                    </span>
+                                  ) : (
+                                    <span
+                                      className={
+                                        isMe
+                                          ? "font-semibold text-brand-700"
+                                          : "text-gray-800"
+                                      }
+                                    >
+                                      {personLastName({
+                                        name: a.person_name ?? "",
+                                        last_name: a.person_last_name,
+                                      })}
+                                    </span>
+                                  )}
+                                </span>
+                              );
+                              const clickable =
+                                sectionInteractive
+                                && (section.cellIsClickable
+                                  ? section.cellIsClickable(a)
+                                  : true);
+                              const swapTooltip =
+                                a.swap_offer_id != null
+                                  ? "Turno modificado por un cambio entre miembros"
+                                  : null;
+                              const tooltip = [
+                                isMe && clickable
+                                  ? "Haz clic para pedir cobertura para este turno"
+                                  : null,
+                                swapTooltip,
+                                a.notes,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ");
+                              if (clickable) {
+                                return (
+                                  <button
+                                    type="button"
+                                    key={a.id}
+                                    onClick={() => section.onCellClick!(a)}
+                                    className="block w-full text-left leading-tight rounded px-1 -mx-1 cursor-pointer hover:bg-brand-100/60 transition-colors"
+                                    title={tooltip || undefined}
+                                  >
+                                    {content}
+                                  </button>
+                                );
+                              }
+                              return (
+                                <div
+                                  key={a.id}
+                                  className="block w-full text-left leading-tight"
+                                  title={tooltip || undefined}
+                                >
+                                  {content}
+                                </div>
+                              );
+                            })
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+                {meetingsByDate && (
+                  // The `border-t-2` on the <tr> would render the
+                  // section separator under border-collapse:collapse;
+                  // we use border-separate now, so the border has to
+                  // live on the cells. Same below for the absences
+                  // (emerald) row.
+                  <tr className="bg-violet-50/30">
+                    <td className="sticky left-0 z-10 bg-violet-50/60 px-3 py-2 border-r border-t-2 border-r-gray-200 border-t-gray-200 font-medium text-gray-800">
+                      <span className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full shrink-0 bg-violet-500" />
+                        <span>Reuniones</span>
+                      </span>
                     </td>
-                  );
-                })}
-              </tr>
-            ))}
-            {meetingsByDate && (
-              // The `border-t-2` on the <tr> would render the
-              // section separator under border-collapse:collapse;
-              // we use border-separate now, so the border has to
-              // live on the cells. Same below for the absences
-              // (emerald) row.
-              <tr className="bg-violet-50/30">
-                <td className="sticky left-0 z-10 bg-violet-50/60 px-3 py-2 border-r border-t-2 border-r-gray-200 border-t-gray-200 font-medium text-gray-800">
-                  <span className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full shrink-0 bg-violet-500" />
-                    <span>Reuniones</span>
-                  </span>
-                </td>
-                {grid.dates.map((d) => {
-                  const items = meetingsByDate.get(d) ?? [];
-                  const isToday = d === today;
-                  const wd = new Date(d).getDay();
-                  const isWeekend = wd === 0 || wd === 6;
-                  const isHoliday = holidayDates.has(d);
-                  return (
-                    <td
-                      key={d}
-                      className={
+                    {dates.map((d) => {
+                      const items = meetingsByDate.get(d) ?? [];
+                      const isToday = d === today;
+                      const wd = new Date(d).getDay();
+                      const isWeekend = wd === 0 || wd === 6;
+                      const isHoliday = holidayDates.has(d);
+                      return (
+                        <td
+                          key={d}
+                          className={
+                            "align-top px-1.5 py-2 border-b border-t-2 border-b-gray-100 border-t-gray-200 "
+                            + (isToday
+                              ? "bg-brand-50/20 "
+                              : isHoliday
+                                ? "bg-amber-50 "
+                                : isWeekend
+                                  ? "bg-slate-100 "
+                                  : "")
+                          }
+                        >
+                          {items.length === 0 ? (
+                            <span className="text-[11px] text-gray-300">
+                              —
+                            </span>
+                          ) : (
+                            <div className="flex flex-col gap-1">
+                              {items.map((m) => (
+                                <span
+                                  key={`${m.meeting_id}_${m.start_time}`}
+                                  className="inline-flex flex-col leading-tight"
+                                  title={
+                                    [
+                                      m.location,
+                                      m.organizer_name
+                                        ? `Organiza ${m.organizer_name}`
+                                        : null,
+                                      m.description,
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" · ") || undefined
+                                  }
+                                >
+                                  <span className="font-medium text-violet-800 truncate">
+                                    {m.title}
+                                  </span>
+                                  <span className="text-[10px] text-violet-600">
+                                    {m.start_time.slice(0, 5)}
+                                    –{m.end_time.slice(0, 5)}
+                                  </span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                )}
+                {absencesByDate && (
+                  <tr className="bg-emerald-50/30">
+                    <td className="sticky left-0 z-10 bg-emerald-50/60 px-3 py-2 border-r border-t-2 border-r-gray-200 border-t-gray-200 font-medium text-gray-800">
+                      <span className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full shrink-0 bg-emerald-500" />
+                        <span>Libre</span>
+                      </span>
+                    </td>
+                    {dates.map((d) => {
+                      const absent = absencesByDate.get(d) ?? [];
+                      const isToday = d === today;
+                      const wd = new Date(d).getDay();
+                      const isWeekend = wd === 0 || wd === 6;
+                      const isHoliday = holidayDates.has(d);
+                      const cellContent =
+                        absent.length === 0 ? (
+                          <span className="text-[11px] text-gray-300">
+                            —
+                          </span>
+                        ) : (
+                          <div className="flex flex-col gap-1">
+                            {absent.map((m) => {
+                              const isMe =
+                                sectionHighlight !== null
+                                && m.person_id === sectionHighlight;
+                              return (
+                                <span
+                                  key={m.person_id}
+                                  className="inline-flex items-center gap-1.5 leading-tight"
+                                  title={
+                                    BLOCK_LABEL[m.block_type]
+                                    ?? m.block_type
+                                  }
+                                >
+                                  <Avatar
+                                    name={m.person_name}
+                                    mine={isMe}
+                                    imageUrl={m.person_avatar_url}
+                                  />
+                                  <span
+                                    className={
+                                      isMe
+                                        ? "font-semibold text-brand-700"
+                                        : "text-gray-800"
+                                    }
+                                  >
+                                    {personLastName({
+                                      name: m.person_name,
+                                      last_name: m.person_last_name,
+                                    })}
+                                  </span>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        );
+                      const baseCellClass =
                         "align-top px-1.5 py-2 border-b border-t-2 border-b-gray-100 border-t-gray-200 "
                         + (isToday
                           ? "bg-brand-50/20 "
@@ -517,142 +686,93 @@ export function PlanningGrid({
                             ? "bg-amber-50 "
                             : isWeekend
                               ? "bg-slate-100 "
-                              : "")
-                      }
-                    >
-                      {items.length === 0 ? (
-                        <span className="text-[11px] text-gray-300">—</span>
-                      ) : (
-                        <div className="flex flex-col gap-1">
-                          {items.map((m) => (
-                            <span
-                              key={`${m.meeting_id}_${m.start_time}`}
-                              className="inline-flex flex-col leading-tight"
-                              title={
-                                [
-                                  m.location,
-                                  m.organizer_name
-                                    ? `Organiza ${m.organizer_name}`
-                                    : null,
-                                  m.description,
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ") || undefined
+                              : "");
+                      if (section.onAbsenceCellClick) {
+                        return (
+                          <td key={d} className={baseCellClass + "p-0"}>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                section.onAbsenceCellClick!(d)
+                              }
+                              title="Gestionar personas ausentes este día"
+                              className={
+                                "block w-full h-full text-left px-1.5 py-2 cursor-pointer "
+                                + "hover:bg-emerald-100/50 transition-colors group"
                               }
                             >
-                              <span className="font-medium text-violet-800 truncate">
-                                {m.title}
-                              </span>
-                              <span className="text-[10px] text-violet-600">
-                                {m.start_time.slice(0, 5)}
-                                –{m.end_time.slice(0, 5)}
-                              </span>
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            )}
-            {absencesByDate && (
-              <tr className="bg-emerald-50/30">
-                <td className="sticky left-0 z-10 bg-emerald-50/60 px-3 py-2 border-r border-t-2 border-r-gray-200 border-t-gray-200 font-medium text-gray-800">
-                  <span className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full shrink-0 bg-emerald-500" />
-                    <span>Libre</span>
-                  </span>
-                </td>
-                {grid.dates.map((d) => {
-                  const absent = absencesByDate.get(d) ?? [];
-                  const isToday = d === today;
-                  const wd = new Date(d).getDay();
-                  const isWeekend = wd === 0 || wd === 6;
-                  const isHoliday = holidayDates.has(d);
-                  const cellContent =
-                    absent.length === 0 ? (
-                      <span className="text-[11px] text-gray-300">—</span>
-                    ) : (
-                      <div className="flex flex-col gap-1">
-                        {absent.map((m) => {
-                          const isMe =
-                            highlightPersonId !== null
-                            && m.person_id === highlightPersonId;
-                          return (
-                            <span
-                              key={m.person_id}
-                              className="inline-flex items-center gap-1.5 leading-tight"
-                              title={
-                                BLOCK_LABEL[m.block_type] ?? m.block_type
-                              }
-                            >
-                              <Avatar
-                                name={m.person_name}
-                                mine={isMe}
-                                imageUrl={m.person_avatar_url}
-                              />
+                              {cellContent}
                               <span
-                                className={
-                                  isMe
-                                    ? "font-semibold text-brand-700"
-                                    : "text-gray-800"
-                                }
+                                className="block text-[10px] text-emerald-700/70 opacity-0 group-hover:opacity-100 mt-0.5"
+                                aria-hidden
                               >
-                                {personLastName({
-                                  name: m.person_name,
-                                  last_name: m.person_last_name,
-                                })}
+                                Gestionar
                               </span>
-                            </span>
-                          );
-                        })}
-                      </div>
-                    );
-                  const baseCellClass =
-                    "align-top px-1.5 py-2 border-b border-t-2 border-b-gray-100 border-t-gray-200 "
-                    + (isToday
-                      ? "bg-brand-50/20 "
-                      : isHoliday
-                        ? "bg-amber-50 "
-                        : isWeekend
-                          ? "bg-slate-100 "
-                          : "");
-                  if (onAbsenceCellClick) {
-                    return (
-                      <td key={d} className={baseCellClass + "p-0"}>
-                        <button
-                          type="button"
-                          onClick={() => onAbsenceCellClick(d)}
-                          title="Gestionar personas ausentes este día"
-                          className={
-                            "block w-full h-full text-left px-1.5 py-2 cursor-pointer "
-                            + "hover:bg-emerald-100/50 transition-colors group"
-                          }
-                        >
+                            </button>
+                          </td>
+                        );
+                      }
+                      return (
+                        <td key={d} className={baseCellClass}>
                           {cellContent}
-                          <span
-                            className="block text-[10px] text-emerald-700/70 opacity-0 group-hover:opacity-100 mt-0.5"
-                            aria-hidden
-                          >
-                            Gestionar
-                          </span>
-                        </button>
-                      </td>
-                    );
-                  }
-                  return (
-                    <td key={d} className={baseCellClass}>
-                      {cellContent}
-                    </td>
-                  );
-                })}
-              </tr>
-            )}
-          </tbody>
-        </table>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
+}
+
+function buildMeetingsByDate(meetings: MeetingInstance[]) {
+  const map = new Map<string, MeetingInstance[]>();
+  for (const m of meetings) {
+    const list = map.get(m.date) ?? [];
+    list.push(m);
+    map.set(m.date, list);
+  }
+  for (const list of map.values()) {
+    list.sort((a, b) => a.start_time.localeCompare(b.start_time));
+  }
+  return map;
+}
+
+function buildAbsencesByDate(absences: TeamAbsence[], dates: string[]) {
+  const result = new Map<
+    string,
+    {
+      person_id: number;
+      person_name: string;
+      person_last_name: string | null;
+      person_avatar_url: string | null;
+      block_type: string;
+    }[]
+  >();
+  for (const d of dates) {
+    const items: typeof result extends Map<string, infer V> ? V : never = [];
+    const seen = new Set<number>();
+    for (const a of absences) {
+      if (a.start_date <= d && d <= a.end_date) {
+        if (seen.has(a.person_id)) continue;
+        seen.add(a.person_id);
+        items.push({
+          person_id: a.person_id,
+          person_name: a.person_name,
+          person_last_name: a.person_last_name,
+          person_avatar_url: a.person_avatar_url,
+          block_type: a.block_type,
+        });
+      }
+    }
+    items.sort((x, y) => x.person_name.localeCompare(y.person_name));
+    result.set(d, items);
+  }
+  return result;
 }
 
 function buildGrid(assignments: Assignment[], forceDates?: string[]) {
