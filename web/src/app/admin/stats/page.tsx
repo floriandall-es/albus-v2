@@ -1230,10 +1230,23 @@ function CoverageTrend({
                 <XAxis
                   dataKey="month"
                   tick={{ fontSize: 10, fill: "#4b5563" }}
+                  tickFormatter={miniMonthLabel}
                 />
                 <YAxis
                   allowDecimals={false}
                   tick={{ fontSize: 10, fill: "#4b5563" }}
+                  label={{
+                    value: "Turnos",
+                    angle: -90,
+                    position: "insideLeft",
+                    offset: 14,
+                    style: {
+                      fontSize: 10,
+                      fill: "#6b7280",
+                      fontWeight: 500,
+                      textAnchor: "middle",
+                    },
+                  }}
                 />
                 <Tooltip
                   contentStyle={{
@@ -1241,6 +1254,7 @@ function CoverageTrend({
                     border: "1px solid #e5e7eb",
                     borderRadius: 8,
                   }}
+                  labelFormatter={(ym) => miniMonthLabelFull(String(ym ?? ""))}
                 />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Line
@@ -1328,12 +1342,25 @@ function MiniTrend({
         </div>
       </div>
       <div className="mt-1">
-        <ResponsiveContainer width="100%" height={80}>
+        <ResponsiveContainer width="100%" height={96}>
           <LineChart
             data={data}
             margin={{ top: 4, right: 4, left: 0, bottom: 0 }}
           >
-            <XAxis dataKey="x" hide />
+            {/* Month tick labels along the bottom — formatted as
+                three-letter Spanish month abbreviations ("may",
+                "jun", …) so they fit even on a 4-card row. Y stays
+                hidden because the headline total (top-right of
+                the card) is the readout for absolute values. */}
+            <XAxis
+              dataKey="x"
+              tick={{ fontSize: 9, fill: "#9ca3af" }}
+              tickFormatter={miniMonthLabel}
+              axisLine={false}
+              tickLine={false}
+              interval="preserveStartEnd"
+              minTickGap={12}
+            />
             <YAxis hide allowDecimals={false} />
             <Tooltip
               contentStyle={{
@@ -1343,6 +1370,7 @@ function MiniTrend({
                 padding: "4px 8px",
               }}
               labelStyle={{ color: "#6b7280" }}
+              labelFormatter={(ym) => miniMonthLabelFull(String(ym ?? ""))}
               formatter={(v) => [Number(v), ""]}
             />
             <Line
@@ -1357,6 +1385,30 @@ function MiniTrend({
       </div>
     </div>
   );
+}
+
+// Three-letter Spanish month abbreviations for the mini-trend axes
+// and the calendar heat map. Shared so the two surfaces don't drift.
+const ES_MONTHS_3 = [
+  "ene", "feb", "mar", "abr", "may", "jun",
+  "jul", "ago", "sep", "oct", "nov", "dic",
+];
+
+function miniMonthLabel(ym: string): string {
+  // ym like "2026-05" → "may"
+  const m = Number(ym.slice(5, 7));
+  return ES_MONTHS_3[m - 1] ?? ym;
+}
+
+function miniMonthLabelFull(ym: string): string {
+  // Tooltip uses the full month + year ("mayo 2026") so the
+  // hover detail is unambiguous even when the axis ticks elide.
+  const months = [
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+  ];
+  const m = Number(ym.slice(5, 7));
+  return `${months[m - 1] ?? ym} ${ym.slice(0, 4)}`;
 }
 
 /** Categoría filter chips. Pure visual; state lives in the page.
