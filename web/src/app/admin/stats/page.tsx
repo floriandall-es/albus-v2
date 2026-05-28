@@ -1303,9 +1303,22 @@ function MonthlyTrendsPanel({
         color={accent}
       />
       <MiniTrend
-        title="Cambios solicitados"
+        title="Cambios de turno"
         data={monthly.map((m) => ({ x: m.year_month, y: m.swap_offers_created }))}
         color="#6366f1"
+        // Secondary line: how many of the requested swaps actually
+        // got covered. Visualising both side-by-side surfaces the
+        // cubrir rate — a gap between the lines is "lots of
+        // requests, nobody covering."
+        secondary={{
+          label: "Cubiertos",
+          data: monthly.map((m) => ({
+            x: m.year_month,
+            y: m.swap_offers_fulfilled,
+          })),
+          color: "#10b981",
+        }}
+        primaryLabel="Solicitados"
       />
       <MiniTrend
         title="Bloqueos (días)"
@@ -1325,14 +1338,39 @@ function MiniTrend({
   title,
   data,
   color,
+  primaryLabel,
+  secondary,
 }: {
   title: string;
   data: { x: string; y: number }[];
   color: string;
+  /** When `secondary` is set, this short label disambiguates the
+   * primary headline number ("Solicitados" vs "Cubiertos"). */
+  primaryLabel?: string;
+  /** Optional second line on the same chart. Used by the Cambios
+   * card to overlay "cubiertos" on top of "solicitados" so the
+   * gap between the two lines reads as the cubrir rate. */
+  secondary?: {
+    label: string;
+    data: { x: string; y: number }[];
+    color: string;
+  };
 }) {
   const total = data.reduce((acc, d) => acc + d.y, 0);
   const max = data.reduce((m, d) => (d.y > m ? d.y : m), 0);
   const avg = data.length > 0 ? Math.round(total / data.length) : 0;
+  const secondaryTotal = secondary
+    ? secondary.data.reduce((acc, d) => acc + d.y, 0)
+    : 0;
+  // Merge primary + secondary by x so a single Recharts dataset
+  // can host both lines. Recharts plots each Line by its own
+  // dataKey ("y" for primary, "y2" for secondary).
+  const merged = useMemo(() => {
+    if (!secondary) return data.map((d) => ({ x: d.x, y: d.y }));
+    const map = new Map<string, number>();
+    for (const d of secondary.data) map.set(d.x, d.y);
+    return data.map((d) => ({ x: d.x, y: d.y, y2: map.get(d.x) ?? 0 }));
+  }, [data, secondary]);
   return (
     <div className="rounded-xl bg-white p-3 shadow-soft ring-1 ring-gray-200">
       <div className="flex items-baseline justify-between gap-2">
@@ -1341,16 +1379,30 @@ function MiniTrend({
             {title}
           </div>
         </div>
-        {/* Headline: total across the selected period, with the
-            "total" label explicit so the number isn't ambiguous
-            ("is 2152 this month? the average?"). */}
+        {/* Headline: total across the selected period. When
+            `secondary` is present we show two totals stacked (primary
+            on top, secondary smaller below) so the cubrir rate is
+            instantly readable. */}
         <div className="text-right leading-tight">
           <div className="text-sm font-semibold tabular-nums text-gray-900">
             {total.toLocaleString("es-ES")}
           </div>
           <div className="text-[9px] uppercase tracking-wider text-gray-400">
-            total
+            {primaryLabel ?? "total"}
           </div>
+          {secondary && (
+            <div className="mt-0.5">
+              <span
+                className="text-xs font-semibold tabular-nums"
+                style={{ color: secondary.color }}
+              >
+                {secondaryTotal.toLocaleString("es-ES")}
+              </span>
+              <span className="ml-1 text-[9px] uppercase tracking-wider text-gray-400">
+                {secondary.label}
+              </span>
+            </div>
+          )}
         </div>
       </div>
       {/* Second line below the headline: max + average over the
@@ -1362,7 +1414,7 @@ function MiniTrend({
       <div className="mt-1">
         <ResponsiveContainer width="100%" height={96}>
           <LineChart
-            data={data}
+            data={merged}
             margin={{ top: 4, right: 4, left: 0, bottom: 0 }}
           >
             {/* Month tick labels along the bottom — formatted as
@@ -1400,15 +1452,38 @@ function MiniTrend({
               }}
               labelStyle={{ color: "#6b7280" }}
               labelFormatter={(ym) => miniMonthLabelFull(String(ym ?? ""))}
-              formatter={(v) => [Number(v), ""]}
+              formatter={(v, name) => {
+                // When a secondary line is present, Recharts calls
+                // the formatter once per series. We surface a real
+                // label so the tooltip reads "Solicitados: 12" vs
+                // "Cubiertos: 9" instead of two unlabeled lines.
+                const label = name === "secondary"
+                  ? secondary?.label ?? ""
+                  : primaryLabel ?? "";
+                return [Number(v), label];
+              }}
             />
             <Line
               type="monotone"
               dataKey="y"
+              name="primary"
               stroke={color}
               strokeWidth={2}
               dot={false}
             />
+            {secondary && (
+              <Line
+                type="monotone"
+                dataKey="y2"
+                name="secondary"
+                stroke={secondary.color}
+                strokeWidth={2}
+                dot={false}
+                // Dashed so even at a glance the eye can tell which
+                // line is which without reading the colors.
+                strokeDasharray="4 2"
+              />
+            )}
           </LineChart>
         </ResponsiveContainer>
       </div>
