@@ -67,6 +67,13 @@ class InvitationPublicView(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     expires_at: datetime
+    # Migration 0080. Decides which on-page billing flow the
+    # accept form renders. Under 'team_pays' the invitee gets a
+    # short "your team covers you" notice; under 'members_pay'
+    # they choose between starting a 30-day trial or staying on
+    # paper. Defaults to 'members_pay' for tenants on schema
+    # versions that pre-date the billing column.
+    tenant_billing_model: str = "members_pay"
 
 
 class InviteAcceptRequest(BaseModel):
@@ -91,6 +98,15 @@ class InviteAcceptRequest(BaseModel):
     # original signup; the server still requires the field to be
     # true so the invitee saw and ticked the checkbox.
     accept_terms: bool = False
+    # Migration 0080 / docs/billing-plan.md, chunk 8. Only
+    # consulted under `members_pay`: True = start the 30-day
+    # personal trial on accept (subscription_status='trialing');
+    # False = stay on paper (subscription_status='never_subscribed').
+    # Under `team_pays` this is ignored — the tenant covers the
+    # invitee and the server flips them straight to 'active'.
+    # Defaults to None so old clients (pre-billing UI) accept
+    # cleanly and just stay 'never_subscribed' under members_pay.
+    start_trial: bool | None = None
 
 
 # The response is the same shape as login — frontend can drop the user

@@ -11,7 +11,7 @@ Two hashes are persisted per row:
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import text
@@ -329,6 +329,7 @@ def get_invitation_public(raw_token: str, db: Session = Depends(_public_db)) -> 
         first_name=first_name,
         last_name=last_name,
         expires_at=inv.expires_at,
+        tenant_billing_model=tenant.billing_model,
     )
 
 
@@ -417,6 +418,32 @@ def accept_invitation(
             person.cargos = [
                 c.strip()[:120] for c in payload.cargos if c and c.strip()
             ]
+        # Migration 0080 / billing chunk 8. Three branches:
+        #
+        # 1. team_pays:  tenant subscription covers everyone — flip
+        #                straight to 'active'. Future Stripe seat
+        #                reconciliation will bump the member quantity
+        #                on the admin's sub item.
+        # 2. members_pay + start_trial=True:  start a personal
+        #                30-day trial. The Stripe Customer +
+        #                Subscription get created lazily on first
+        #                Portal click (no card required up front);
+        #                the row carries 'trialing' + trial_end so
+        #                the banner countdown + billing surface
+        #                already work.
+        # 3. members_pay + start_trial in (False, None):  stay on
+        #                paper. The invitee accepted to be in the
+        #                planning but doesn't want the app. They
+        #                can flip later from /me/billing.
+        if tenant.billing_model == "team_pays":
+            person.subscription_status = "active"
+            # Mirror the tenant trial_end so the banner countdown
+            # on /me reads the same date the admin sees on /admin.
+            person.trial_end_at = tenant.trial_end_at
+        elif payload.start_trial:
+            person.subscription_status = "trialing"
+            person.trial_end_at = now_utc + timedelta(days=30)
+        # else: leave as 'never_subscribed' (the column default).
         created_person = True
     else:
         # Cross-tenant accept: the Person already has a password from

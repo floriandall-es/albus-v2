@@ -56,16 +56,22 @@ Next session picks up at **"Implementation chunks"** below.
   this branch; the cutoff is "NOW()" at migration time.
 - ✅ Chunk 15: landing pricing card update — "Opcional" framing,
   team_pays callout below the cards.
+- ✅ Chunk 8: member invite flow — under `members_pay` the
+  accept page surfaces a "Probar 30 días gratis" / "No, gracias
+  — seguiré en papel" picker (required pick); under `team_pays`
+  shows a short courtesy note and the server flips the invitee
+  to 'active' on accept. Trial picks land as `trialing` with
+  trial_end = now + 30 days.
+- ✅ Chunk 16: RUNBOOK §8 with Stripe keys location, test cards,
+  webhook replay, manual grandfather SQL, common failure modes.
 
 **Still TODO before going live:**
-- Chunk 1: Stripe Dashboard setup (manual, no code).
-- Chunk 8: member invite flow — "Probar 30 días gratis" choice
-  on `/invitations/by-token/...` accept page.
+- Chunk 1: Stripe Dashboard setup (manual, no code) — create
+  the two recurring prices, the webhook endpoint, paste IDs
+  into `/srv/albus/.env`.
 - Chunk 14: nine email templates (trial-ending × 3, trial-ended,
   payment-failed, sub-canceled, member trial-ending × 3, plus
   the "team switched models" system email).
-- Chunk 16: RUNBOOK addendum (Stripe keys location, test card
-  numbers, replay-webhook command, manual grandfather).
 
 ## GTM shape
 

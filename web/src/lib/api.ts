@@ -1616,6 +1616,12 @@ export const api = {
       /** Affirmative ToS + Privacy acceptance. Server rejects
        * with 422 if missing or false. */
       accept_terms: boolean;
+      /** Migration 0080 / billing chunk 8. Only consulted under
+       * `members_pay`: true = start a 30-day personal trial,
+       * false = stay on paper. Under `team_pays` ignored — the
+       * server flips the invitee straight to 'active'. Omit
+       * entirely for old clients (server treats as false). */
+      start_trial?: boolean;
     },
   ) =>
     request<AuthResponse>(
@@ -2610,6 +2616,11 @@ export type InvitationPublicView = {
   first_name: string | null;
   last_name: string | null;
   expires_at: string;
+  /** Migration 0080. Lets the accept page render the right
+   * billing flow — short notice under team_pays, trial-vs-paper
+   * picker under members_pay. Defaults to "members_pay" if the
+   * server is on an older schema. */
+  tenant_billing_model: "members_pay" | "team_pays";
 };
 
 // ---------------------------------------------------------------------------
