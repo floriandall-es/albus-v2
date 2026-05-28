@@ -1,7 +1,12 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { api, type Assignment } from "@/lib/api";
+import {
+  api,
+  type Assignment,
+  type ServicioTimelineCell,
+} from "@/lib/api";
 import { PlanningGrid } from "@/components/schedule/planning-grid";
 import { formatPeriod } from "@/components/admin/month-picker";
 import { Button, EmptyState, ErrorText } from "@/components/admin/ui";
@@ -11,6 +16,7 @@ import {
   CalendarRange,
   LayoutGrid,
   List,
+  Network,
   User,
   Users,
 } from "lucide-react";
@@ -36,7 +42,15 @@ const RANGE_STORAGE_KEY = "trivu.me.turnos.range";
 // "show everything" — that way a new slot the admin adds later
 // shows up automatically instead of being silently filtered out.
 const HIDDEN_SLOTS_STORAGE_KEY = "trivu.me.turnos.hiddenSlots";
-type Scope = "mine" | "team";
+/** Three slices of the same planning data:
+ *  - "mine"     = only the caller's own assignments
+ *  - "team"     = the entire current tenant's published schedule
+ *  - "servicio" = the current tenant's grid plus an extra grid per
+ *                 sibling Equipo in the Servicio that shares its
+ *                 planning. Only offered when the tenant belongs to a
+ *                 Servicio. Replaces the standalone /me/servicio page
+ *                 (kept as a redirect for any deep links). */
+type Scope = "mine" | "team" | "servicio";
 type ViewMode = "list" | "grid";
 /** "3d"  = today + next 2 days (rolling window starting today).
  *  "week" = Mon–Sun of the current week.
@@ -111,6 +125,12 @@ export default function TurnosPage() {
     queryKey: ["schedules"],
     queryFn: api.listSchedules,
   });
+  // Read `?scope=servicio` once on mount so the redirect from the
+  // retired /me/servicio route lands the user in the right scope
+  // without relying on whatever they had stored in localStorage.
+  // Any value other than the three valid Scope keys is ignored.
+  const searchParams = useSearchParams();
+  const scopeFromUrl = searchParams?.get("scope") ?? null;
 
   // Members see published schedules only.
   const publishedSchedules = useMemo(() => {
@@ -137,8 +157,28 @@ export default function TurnosPage() {
   );
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const storedScope = window.localStorage.getItem(SCOPE_STORAGE_KEY);
-    if (storedScope === "mine" || storedScope === "team") setScope(storedScope);
+    // ?scope=… (set by the /me/servicio→/me/turnos redirect) wins
+    // over the stored preference for this one render — the user
+    // explicitly asked for that scope by clicking the link.
+    if (
+      scopeFromUrl === "mine"
+      || scopeFromUrl === "team"
+      || scopeFromUrl === "servicio"
+    ) {
+      setScope(scopeFromUrl);
+      // Persist so a refresh keeps the user on the same scope
+      // they were just redirected into.
+      window.localStorage.setItem(SCOPE_STORAGE_KEY, scopeFromUrl);
+    } else {
+      const storedScope = window.localStorage.getItem(SCOPE_STORAGE_KEY);
+      if (
+        storedScope === "mine"
+        || storedScope === "team"
+        || storedScope === "servicio"
+      ) {
+        setScope(storedScope);
+      }
+    }
     const storedView = window.localStorage.getItem(VIEW_STORAGE_KEY);
     if (storedView === "list" || storedView === "grid") {
       setView(storedView);
@@ -173,6 +213,12 @@ export default function TurnosPage() {
         // ignored — bad JSON just means "no preference".
       }
     }
+    // Mount-only — re-running this on `scopeFromUrl` change would
+    // clobber subsequent user toggles for view / range / hiddenSlots
+    // by re-reading them from localStorage. The `?scope=…` redirect
+    // is a one-shot landing-page handoff, so reading it once is
+    // exactly what we want.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const setScopePersisted = (s: Scope) => {
     setScope(s);
@@ -271,6 +317,43 @@ export default function TurnosPage() {
     () => new Set((holidays.data ?? []).map((h) => h.date)),
     [holidays.data],
   );
+
+  // Cross-equipo Servicio timeline. Only fires when scope === "servicio"
+  // AND the caller's tenant actually belongs to a Servicio (rare not
+  // to in production, but we guard so single-tenant deployments don't
+  // hit a useless 404). Date bounds mirror the selected schedule's
+  // month so the sibling grids align with the user's own grid.
+  const servicioId = me.data?.current_tenant.servicio_id ?? null;
+  const servicioFromIso = detail.data
+    ? `${detail.data.period.slice(0, 7)}-01`
+    : null;
+  const servicioToIso = useMemo(() => {
+    if (!detail.data) return null;
+    const period = detail.data.period;
+    const y = Number(period.slice(0, 4));
+    const m = Number(period.slice(5, 7));
+    const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+    return `${period.slice(0, 7)}-${String(last).padStart(2, "0")}`;
+  }, [detail.data]);
+  const servicioTimeline = useQuery({
+    queryKey: [
+      "servicio-timeline",
+      servicioId,
+      servicioFromIso,
+      servicioToIso,
+    ],
+    queryFn: () =>
+      api.getServicioTimeline(
+        servicioId as number,
+        servicioFromIso as string,
+        servicioToIso as string,
+      ),
+    enabled:
+      scope === "servicio"
+      && servicioId !== null
+      && servicioFromIso !== null
+      && servicioToIso !== null,
+  });
 
   // ALL hooks must run on every render (Rules of Hooks), so the
   // derivations that depend on the user/schedule live here BEFORE
@@ -403,7 +486,11 @@ export default function TurnosPage() {
                 </option>
               ))}
             </select>
-            <ScopeToggle value={scope} onChange={setScopePersisted} />
+            <ScopeToggle
+              value={scope}
+              onChange={setScopePersisted}
+              showServicio={servicioId !== null}
+            />
             <ViewToggle value={view} onChange={setViewPersisted} />
             <RangeToggle value={range} onChange={setRangePersisted} />
           </>
@@ -502,7 +589,11 @@ export default function TurnosPage() {
       )}
       {selectedId !== null && detail.data && !allSlotsHidden && (
         <>
-          {view === "list" ? (
+          {/* Servicio scope is inherently a multi-table cross-equipo
+              read; the Lista mode (a personal upcoming-shifts feed)
+              doesn't translate. Force the grid path when scope ===
+              "servicio" regardless of the Lista/Tabla toggle. */}
+          {view === "list" && scope !== "servicio" ? (
             scope === "mine" ? (
               // Mis turnos + Lista — one row per day in the active
               // Rango, including off days. Empty days get "Sin turno"
@@ -545,30 +636,69 @@ export default function TurnosPage() {
                 </div>
               )}
               {visibleAssignments.length > 0 && (
-                <PlanningGrid
-                  assignments={visibleAssignments}
+                <>
+                  {/* Header above the user's own team's grid is
+                      only useful in Servicio scope (otherwise the
+                      page title already tells the user whose
+                      schedule they're looking at). */}
+                  {scope === "servicio" && me.data && (
+                    <h2 className="mb-2 mt-1 text-sm font-semibold text-gray-700">
+                      {me.data.current_tenant.name}
+                      <span className="ml-2 rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-brand-800">
+                        Tu equipo
+                      </span>
+                    </h2>
+                  )}
+                  <PlanningGrid
+                    assignments={visibleAssignments}
+                    holidayDates={holidayDates}
+                    highlightPersonId={myPersonId}
+                    onCellClick={(a) => setSwapTarget(a)}
+                    cellIsClickable={(a) =>
+                      a.person_id === myPersonId
+                      && !a.locked_at
+                    }
+                    // Libre + Reuniones rows are derived from team-wide
+                    // data; they only make sense when the grid IS the
+                    // user's team (Equipo or Servicio). Scope=mine is a
+                    // personal summary so we skip them to keep the
+                    // focus on "what I'm doing".
+                    absences={
+                      scope === "team" || scope === "servicio"
+                        ? absences.data
+                        : undefined
+                    }
+                    meetings={
+                      scope === "team" || scope === "servicio"
+                        ? meetingInstances.data
+                        : undefined
+                    }
+                    // Mis + Tabla: force every date in the active Rango
+                    // as a column, so off days appear as empty cells
+                    // next to working days. Equipo + Tabla keeps the
+                    // legacy derivation (dates come from assignments).
+                    forceDates={
+                      scope === "mine" ? allDatesInRange : undefined
+                    }
+                  />
+                </>
+              )}
+
+              {/* Sibling Equipo grids — only in Servicio scope. One
+                  PlanningGrid per sibling that shares planning, in
+                  alphabetical order. Each ServicioTimelineCell is
+                  upcast to an Assignment with default values for the
+                  fields the cross-tenant endpoint doesn't carry
+                  (team_role_*, notes, locked_at, dismissed_at,
+                  swap_offer_id, person_avatar_url). The grid is
+                  read-only — no onCellClick — because the user has no
+                  authority over a sibling team's planning. */}
+              {scope === "servicio" && (
+                <SiblingGrids
+                  cells={servicioTimeline.data?.cells ?? []}
+                  callerTenantId={me.data?.current_tenant.id ?? null}
                   holidayDates={holidayDates}
-                  highlightPersonId={myPersonId}
-                  onCellClick={(a) => setSwapTarget(a)}
-                  cellIsClickable={(a) =>
-                    a.person_id === myPersonId
-                    && !a.locked_at
-                  }
-                  // Libre + Reuniones rows are derived from team-wide
-                  // data; they only make sense in Equipo scope. When
-                  // scope=mine the grid is a personal summary, so we
-                  // skip them to keep the focus on "what I'm doing".
-                  absences={scope === "team" ? absences.data : undefined}
-                  meetings={
-                    scope === "team" ? meetingInstances.data : undefined
-                  }
-                  // Mis + Tabla: force every date in the active Rango
-                  // as a column, so off days appear as empty cells
-                  // next to working days. Equipo + Tabla keeps the
-                  // legacy derivation (dates come from assignments).
-                  forceDates={
-                    scope === "mine" ? allDatesInRange : undefined
-                  }
+                  loading={servicioTimeline.isLoading}
                 />
               )}
             </>
@@ -598,9 +728,15 @@ export default function TurnosPage() {
 function ScopeToggle({
   value,
   onChange,
+  showServicio,
 }: {
   value: Scope;
   onChange: (v: Scope) => void;
+  /** Whether to render the third "Servicio" option. We hide it when
+   * the tenant has no servicio_id (single-tenant deployment or a
+   * pre-Phase-A legacy equipo) because clicking it would just yield
+   * an empty section. */
+  showServicio: boolean;
 }) {
   return (
     <div className="inline-flex rounded-md border border-gray-300 bg-white p-0.5 shadow-sm">
@@ -634,6 +770,135 @@ function ScopeToggle({
         <Users className="h-3.5 w-3.5" />
         Equipo
       </button>
+      {showServicio && (
+        <button
+          type="button"
+          onClick={() => onChange("servicio")}
+          aria-pressed={value === "servicio"}
+          title="Tu equipo + los demás equipos del servicio que comparten su planificación"
+          className={
+            "inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-medium transition-colors "
+            + (value === "servicio"
+              ? "bg-brand-600 text-white"
+              : "text-gray-700 hover:bg-gray-50")
+          }
+        >
+          <Network className="h-3.5 w-3.5" />
+          Servicio
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Upcasts a flat `ServicioTimelineCell` (cross-tenant wire shape)
+ * to a full `Assignment` (per-tenant wire shape) with defaults for
+ * the fields the cross-tenant endpoint doesn't carry. Lossy but
+ * read-only — sibling grids never interact with the data, so the
+ * synthesised id / locked_at / dismissed_at / swap_offer_id / notes /
+ * team_role_* fields are fine as nulls. slot_position defaults to 0
+ * because the cross-tenant view has no source-of-truth ordering across
+ * tenants; PlanningGrid falls back to alphabetical-by-slot-name in
+ * that case which is what the previous /me/servicio grid did too. */
+function cellToAssignment(
+  c: ServicioTimelineCell,
+  scheduleId: number,
+): Assignment {
+  return {
+    id: c.assignment_id,
+    schedule_id: scheduleId,
+    slot_id: c.slot_id,
+    slot_name: c.slot_name,
+    slot_color: c.slot_color,
+    slot_position: 0,
+    slot_start_time: c.slot_start_time,
+    slot_end_time: c.slot_end_time,
+    date: c.date,
+    person_id: c.person_id,
+    person_name: c.person_name,
+    person_first_name: null,
+    person_last_name: c.person_last_name,
+    person_avatar_url: null,
+    team_role_id: null,
+    team_role_label: null,
+    notes: null,
+    locked_at: null,
+    locked_by_membership_id: null,
+    dismissed_at: null,
+    swap_offer_id: null,
+  };
+}
+
+function SiblingGrids({
+  cells,
+  callerTenantId,
+  holidayDates,
+  loading,
+}: {
+  cells: ServicioTimelineCell[];
+  callerTenantId: number | null;
+  holidayDates: Set<string>;
+  loading: boolean;
+}) {
+  // Group cells by sibling tenant (excluding the caller's own).
+  const groups = useMemo(() => {
+    type Group = {
+      tenant_id: number;
+      tenant_name: string;
+      assignments: Assignment[];
+    };
+    const map = new Map<number, Group>();
+    for (const c of cells) {
+      if (c.tenant_id === callerTenantId) continue;
+      let g = map.get(c.tenant_id);
+      if (!g) {
+        g = {
+          tenant_id: c.tenant_id,
+          tenant_name: c.tenant_name,
+          assignments: [],
+        };
+        map.set(c.tenant_id, g);
+      }
+      g.assignments.push(cellToAssignment(c, c.schedule_id));
+    }
+    return Array.from(map.values()).sort((a, b) =>
+      a.tenant_name.localeCompare(b.tenant_name, "es"),
+    );
+  }, [cells, callerTenantId]);
+
+  if (loading) {
+    return (
+      <p className="mt-6 text-sm text-gray-500">
+        Cargando otros equipos del servicio…
+      </p>
+    );
+  }
+  if (groups.length === 0) {
+    return (
+      <div className="mt-6 rounded-xl bg-white p-6 ring-1 ring-gray-200 shadow-soft text-sm text-gray-600">
+        Ningún otro equipo del servicio comparte planificación en este
+        mes. Cada equipo controla qué comparte desde
+        Configuración → Compartir.
+      </div>
+    );
+  }
+  return (
+    <div className="mt-6 space-y-6">
+      {groups.map((g) => (
+        <div key={g.tenant_id}>
+          <h2 className="mb-2 text-sm font-semibold text-gray-700">
+            {g.tenant_name}
+          </h2>
+          <PlanningGrid
+            assignments={g.assignments}
+            holidayDates={holidayDates}
+            // No highlightPersonId — the caller doesn't belong to
+            // this sibling team. No onCellClick — read-only. No
+            // absences / meetings — Phase C.2 timeline doesn't
+            // surface them cross-tenant.
+          />
+        </div>
+      ))}
     </div>
   );
 }
