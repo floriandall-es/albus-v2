@@ -1331,15 +1331,33 @@ function MiniTrend({
   color: string;
 }) {
   const total = data.reduce((acc, d) => acc + d.y, 0);
+  const max = data.reduce((m, d) => (d.y > m ? d.y : m), 0);
+  const avg = data.length > 0 ? Math.round(total / data.length) : 0;
   return (
     <div className="rounded-xl bg-white p-3 shadow-soft ring-1 ring-gray-200">
-      <div className="flex items-baseline justify-between">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-          {title}
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+            {title}
+          </div>
         </div>
-        <div className="text-sm font-semibold tabular-nums text-gray-900">
-          {total.toLocaleString("es-ES")}
+        {/* Headline: total across the selected period, with the
+            "total" label explicit so the number isn't ambiguous
+            ("is 2152 this month? the average?"). */}
+        <div className="text-right leading-tight">
+          <div className="text-sm font-semibold tabular-nums text-gray-900">
+            {total.toLocaleString("es-ES")}
+          </div>
+          <div className="text-[9px] uppercase tracking-wider text-gray-400">
+            total
+          </div>
         </div>
+      </div>
+      {/* Second line below the headline: max + average over the
+          period. Gives the eye an anchor for the chart's amplitude
+          without needing the Y axis ticks. */}
+      <div className="mt-0.5 text-[10px] text-gray-500">
+        máx {max.toLocaleString("es-ES")} · prom {avg.toLocaleString("es-ES")}
       </div>
       <div className="mt-1">
         <ResponsiveContainer width="100%" height={96}>
@@ -1349,9 +1367,10 @@ function MiniTrend({
           >
             {/* Month tick labels along the bottom — formatted as
                 three-letter Spanish month abbreviations ("may",
-                "jun", …) so they fit even on a 4-card row. Y stays
-                hidden because the headline total (top-right of
-                the card) is the readout for absolute values. */}
+                "jun", …) so they fit even on a 4-card row. Y axis
+                shows narrow ticks so the line's amplitude can be
+                read in absolute terms (the corner total alone
+                doesn't tell you whether "may" was 200 or 400). */}
             <XAxis
               dataKey="x"
               tick={{ fontSize: 9, fill: "#9ca3af" }}
@@ -1361,7 +1380,17 @@ function MiniTrend({
               interval="preserveStartEnd"
               minTickGap={12}
             />
-            <YAxis hide allowDecimals={false} />
+            <YAxis
+              tick={{ fontSize: 9, fill: "#9ca3af" }}
+              allowDecimals={false}
+              axisLine={false}
+              tickLine={false}
+              width={24}
+              // 3 ticks total: 0, ~mid, max. Keeps the gridline
+              // density low enough that the chart still reads as a
+              // sparkline rather than a "real" chart.
+              tickCount={3}
+            />
             <Tooltip
               contentStyle={{
                 fontSize: 11,
