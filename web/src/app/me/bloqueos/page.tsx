@@ -109,6 +109,20 @@ export default function BloqueosPage() {
                         )}
                       </div>
                     )}
+                    {/* Heads-up to the requester: shifts you'd
+                        displace if approved. Helps the member
+                        plan ahead (e.g. ask a colleague to swap
+                        before the bloqueo is approved). */}
+                    {b.conflicting_shifts.length > 0 && (
+                      <div className="text-[11px] text-amber-700 mt-0.5">
+                        ⚠ Tienes{" "}
+                        {b.conflicting_shifts.length}
+                        {b.conflicting_shifts_truncated && "+"} turno
+                        {b.conflicting_shifts.length === 1 ? "" : "s"}{" "}
+                        asignado{b.conflicting_shifts.length === 1 ? "" : "s"}{" "}
+                        en este rango — tendrán que re-asignarse si se aprueba.
+                      </div>
+                    )}
                     {b.status === "denied" && b.review_notes && (
                       <div className="text-xs text-rose-700 mt-0.5">
                         Motivo: {b.review_notes}

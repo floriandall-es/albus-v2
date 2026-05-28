@@ -302,6 +302,18 @@ export type AvailabilityBlock = {
    * fetch. NULL whenever reviewer_membership_id is NULL. */
   reviewer_person_name: string | null;
   reviewer_tenant_name: string | null;
+  /** Shifts the requester already has on days inside this block's
+   * range — what the admin would be asking the solver to
+   * re-assign if they approve. Populated ONLY for status='pending'
+   * rows (other statuses get []). Capped at 20 entries per block
+   * — see conflicting_shifts_truncated. */
+  conflicting_shifts: {
+    date: string;
+    slot_name: string;
+    role_label: string | null;
+  }[];
+  /** True when the conflict list was clipped at the 20-entry cap. */
+  conflicting_shifts_truncated: boolean;
   created_at: string;
 };
 

@@ -167,7 +167,51 @@ export default function AvailabilityPage() {
                       {STATUS_LABEL[b.status] ?? b.status}
                     </StatusPill>
                   </td>
-                  <td className="px-4 py-2 text-gray-600">{b.notes ?? "—"}</td>
+                  <td className="px-4 py-2 text-gray-600">
+                    {b.notes ?? "—"}
+                    {/* Migration 0083 follow-up. Surface conflicts
+                        when a pending bloqueo would displace
+                        already-assigned shifts. Empty array on
+                        non-pending rows (or pending rows with no
+                        conflicts) — guard on length. */}
+                    {b.conflicting_shifts.length > 0 && (
+                      <div className="mt-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-900">
+                        <div className="font-semibold">
+                          ⚠ Tiene{" "}
+                          {b.conflicting_shifts.length}
+                          {b.conflicting_shifts_truncated && "+"} turno
+                          {b.conflicting_shifts.length === 1 ? "" : "s"}{" "}
+                          asignado{b.conflicting_shifts.length === 1 ? "" : "s"}{" "}
+                          en este rango
+                        </div>
+                        <ul className="mt-0.5 space-y-0.5">
+                          {b.conflicting_shifts.slice(0, 5).map((s, i) => (
+                            <li key={`${s.date}-${i}`}>
+                              <span className="tabular-nums">{s.date}</span>
+                              {" — "}
+                              {s.slot_name}
+                              {s.role_label && (
+                                <span className="text-amber-700">
+                                  {" · "}
+                                  {s.role_label}
+                                </span>
+                              )}
+                            </li>
+                          ))}
+                          {b.conflicting_shifts.length > 5 && (
+                            <li className="italic text-amber-700">
+                              … y {b.conflicting_shifts.length - 5} más
+                              {b.conflicting_shifts_truncated && "+"}
+                            </li>
+                          )}
+                        </ul>
+                        <div className="mt-1 text-[10px] text-amber-700">
+                          Si apruebas, el solver tendrá que
+                          re-asignar estos turnos.
+                        </div>
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-2">
                     {/* Same flex pattern /admin/slots + /admin/trasplantes
                         use — `text-right space-x-2` was wrapping the

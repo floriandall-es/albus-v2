@@ -30,6 +30,18 @@ class AvailabilityBlockUpdate(AvailabilityBlockBase):
     pass
 
 
+class ConflictingShift(BaseModel):
+    """One assignment that would be displaced if the admin approves
+    the bloqueo. Computed only for pending blocks (no point flagging
+    conflicts on already-decided ones)."""
+
+    date: date
+    slot_name: str
+    # The sub-actividad / team_role label when the slot is
+    # team_composition — null for single / multiple_same slots.
+    role_label: str | None = None
+
+
 class AvailabilityBlockOut(BaseModel):
     id: int
     tenant_id: int
@@ -55,6 +67,15 @@ class AvailabilityBlockOut(BaseModel):
     # reviewer_membership_id is NULL.
     reviewer_person_name: str | None = None
     reviewer_tenant_name: str | None = None
+    # Migration 0083 follow-up. Shifts the requester already has on
+    # days inside this block's range — what the admin would be
+    # asking the solver to re-assign if they approve. Populated ONLY
+    # for status='pending' rows (other statuses get []). Capped at
+    # 20 entries per block — past that the admin gets the gist.
+    conflicting_shifts: list[ConflictingShift] = []
+    # True when the conflict list was truncated. UI uses it to render
+    # "… y N más" so the admin knows there are more.
+    conflicting_shifts_truncated: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}

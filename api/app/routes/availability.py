@@ -13,7 +13,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import and_, or_, text
 
 from app.db.session import AdminSessionLocal, set_tenant
-from app.models import AvailabilityBlock, Membership, Person, Tenant
+from app.models import (
+    Assignment,
+    AvailabilityBlock,
+    Membership,
+    Person,
+    Schedule,
+    Slot,
+    SlotTeamRole,
+    Tenant,
+)
 from app.routes.deps import RequestContext, get_current_context
 from app.schemas.availability import (
     TeamAbsence,
@@ -23,6 +32,7 @@ from app.schemas.availability import (
     AvailabilityDenyRequest,
     AvailabilityRequestCreate,
     BlockStatus,
+    ConflictingShift,
     ServicioAdminOut,
 )
 
@@ -58,12 +68,20 @@ def _serialize(
     person: Person,
     *,
     reviewers: dict[int, tuple[str, str]] | None = None,
+    conflicts: dict[int, tuple[list[ConflictingShift], bool]] | None = None,
+    ctx: RequestContext | None = None,
 ) -> AvailabilityBlockOut:
     """`reviewers` is the pre-batched map produced by
     `_resolve_reviewers(...)` — pass it when serialising multiple
     blocks at once to avoid N+1 lookups. For single-block contexts
     we resolve inline (one extra query when the block has a
     reviewer; zero when it doesn't).
+
+    `conflicts` carries the pre-batched conflict-shifts result keyed
+    by block id (see `_resolve_conflicts`). When omitted on a
+    pending block we resolve inline via the passed `ctx`; on
+    non-pending blocks we skip the lookup entirely (conflicts are
+    only interesting before the decision is made).
     """
     rev_name: str | None = None
     rev_tenant: str | None = None
@@ -74,6 +92,17 @@ def _serialize(
                 rev_name, rev_tenant = hit
         else:
             rev_name, rev_tenant = _reviewer_display(block.reviewer_membership_id)
+    conflict_shifts: list[ConflictingShift] = []
+    conflict_truncated = False
+    if block.status == "pending":
+        if conflicts is not None:
+            conflict_shifts, conflict_truncated = conflicts.get(
+                block.id, ([], False)
+            )
+        elif ctx is not None:
+            conflict_shifts, conflict_truncated = _resolve_conflicts(
+                ctx, [block]
+            ).get(block.id, ([], False))
     return AvailabilityBlockOut(
         id=block.id,
         tenant_id=block.tenant_id,
@@ -91,6 +120,8 @@ def _serialize(
         reviewer_membership_id=block.reviewer_membership_id,
         reviewer_person_name=rev_name,
         reviewer_tenant_name=rev_tenant,
+        conflicting_shifts=conflict_shifts,
+        conflicting_shifts_truncated=conflict_truncated,
         created_at=block.created_at,
     )
 
@@ -119,6 +150,77 @@ def _reviewer_display(
         return (None, None)
     _m, p, t = row
     return (p.name, t.name)
+
+
+# Cap on conflicting-shift rows reported per pending bloqueo. Past
+# this the admin gets the gist — they can open the planning grid
+# if they need the exhaustive list. Keeps the JSON payload bounded
+# even on pathological cases (someone requesting a 6-month leave
+# while assigned every-day shifts).
+_CONFLICT_CAP = 20
+
+
+def _resolve_conflicts(
+    ctx: RequestContext,
+    blocks: list[AvailabilityBlock],
+) -> dict[int, tuple[list[ConflictingShift], bool]]:
+    """For each pending block in `blocks`, find the assignments the
+    block would displace if approved. Cross-tenant blocks are
+    resolved via AdminSessionLocal because their assignments live
+    in the requester's tenant, not the caller's RLS scope.
+
+    Returns a dict keyed by block.id → (shifts, truncated_flag).
+    Empty for non-pending blocks (we don't bother flagging
+    conflicts after the decision is made).
+    """
+    pending = [b for b in blocks if b.status == "pending"]
+    if not pending:
+        return {}
+
+    # Partition by tenant_id — local tenant rows go through
+    # ctx.db (RLS-scoped), cross-tenant rows through AdminSessionLocal.
+    local_pending = [b for b in pending if b.tenant_id == ctx.tenant.id]
+    cross_pending = [b for b in pending if b.tenant_id != ctx.tenant.id]
+
+    out: dict[int, tuple[list[ConflictingShift], bool]] = {}
+
+    def _fetch(db, blocks_subset: list[AvailabilityBlock]) -> None:
+        for b in blocks_subset:
+            rows = (
+                db.query(Assignment, Slot, SlotTeamRole)
+                .join(Schedule, Schedule.id == Assignment.schedule_id)
+                .join(Slot, Slot.id == Assignment.slot_id)
+                .outerjoin(SlotTeamRole, SlotTeamRole.id == Assignment.team_role_id)
+                .filter(
+                    Schedule.status.in_(["published", "archived"]),
+                    Assignment.person_id == b.person_id,
+                    Assignment.date.between(b.start_date, b.end_date),
+                    Assignment.tenant_id == b.tenant_id,
+                )
+                .order_by(Assignment.date.asc(), Slot.position.asc())
+                # Fetch one extra row so we can detect truncation
+                # without a second COUNT query.
+                .limit(_CONFLICT_CAP + 1)
+                .all()
+            )
+            truncated = len(rows) > _CONFLICT_CAP
+            shifts = [
+                ConflictingShift(
+                    date=a.date,
+                    slot_name=s.name,
+                    role_label=r.role_label if r is not None else None,
+                )
+                for (a, s, r) in rows[:_CONFLICT_CAP]
+            ]
+            out[b.id] = (shifts, truncated)
+
+    if local_pending:
+        _fetch(ctx.db, local_pending)
+    if cross_pending:
+        with AdminSessionLocal() as adb:
+            _fetch(adb, cross_pending)
+
+    return out
 
 
 def _resolve_reviewers(
@@ -211,9 +313,16 @@ def list_blocks(
 
     all_blocks = [b for b, _ in rows] + [b for b, _ in cross_rows]
     reviewers = _resolve_reviewers(all_blocks)
+    conflicts = _resolve_conflicts(ctx, all_blocks)
     serialised = (
-        [_serialize(b, p, reviewers=reviewers) for b, p in rows]
-        + [_serialize(b, p, reviewers=reviewers) for b, p in cross_rows]
+        [
+            _serialize(b, p, reviewers=reviewers, conflicts=conflicts)
+            for b, p in rows
+        ]
+        + [
+            _serialize(b, p, reviewers=reviewers, conflicts=conflicts)
+            for b, p in cross_rows
+        ]
     )
     # Final sort across the union — preserves the per-source order
     # when there are ties.
@@ -287,7 +396,7 @@ def create_block(
     ctx.db.flush()
     person = ctx.db.get(Person, block.person_id)
     assert person is not None
-    return _serialize(block, person)
+    return _serialize(block, person, ctx=ctx)
 
 
 @router.put(
@@ -312,7 +421,7 @@ def update_block(
     ctx.db.flush()
     person = ctx.db.get(Person, block.person_id)
     assert person is not None
-    return _serialize(block, person)
+    return _serialize(block, person, ctx=ctx)
 
 
 @router.delete(
@@ -467,7 +576,7 @@ def approve_block(
     block.status = "approved"
     block.reviewed_by_membership_id = ctx.membership.id
     block.reviewed_at = datetime.now(timezone.utc)
-    return _serialize(block, person)
+    return _serialize(block, person, ctx=ctx)
 
 
 @router.post(
@@ -495,7 +604,7 @@ def deny_block(
     block.reviewed_at = datetime.now(timezone.utc)
     if payload.review_notes is not None:
         block.review_notes = payload.review_notes
-    return _serialize(block, person)
+    return _serialize(block, person, ctx=ctx)
 
 
 # ---------------------------------------------------------------------------
@@ -535,7 +644,7 @@ def create_my_request(
     )
     ctx.db.add(block)
     ctx.db.flush()
-    return _serialize(block, ctx.person)
+    return _serialize(block, ctx.person, ctx=ctx)
 
 
 @router.get(
@@ -553,7 +662,11 @@ def list_my_requests(
         .all()
     )
     reviewers = _resolve_reviewers([b for b, _ in rows])
-    return [_serialize(b, p, reviewers=reviewers) for b, p in rows]
+    conflicts = _resolve_conflicts(ctx, [b for b, _ in rows])
+    return [
+        _serialize(b, p, reviewers=reviewers, conflicts=conflicts)
+        for b, p in rows
+    ]
 
 
 # ---------------------------------------------------------------------------
