@@ -153,13 +153,13 @@ const COPY = {
     audience: {
       title: "Una herramienta, dos vistas.",
       subtitle:
-        "Tú lo administras; tu equipo lo usa. Las dos partes están pensadas con el mismo cuidado.",
+        "Una para quien planifica. Otra para quien recibe los turnos. Las dos pensadas con el mismo cuidado.",
       tabs: {
         jefe: "Para el jefe de servicio",
         equipo: "Para el equipo",
       },
       jefe: {
-        heading: "Recupera el control sin perder el viernes por la tarde.",
+        heading: "Planifica sin perder el viernes por la tarde.",
         bullets: [
           {
             heading: "El cuadrante en un clic",
@@ -212,8 +212,8 @@ const COPY = {
           icon: "wand" as const,
           tone: "brand" as const,
           heading: "Planificación inteligente",
-          body: "Un solver matemático (Google OR-Tools) construye el mes respetando reglas duras — descansos, incompatibilidades, topes de frecuencia, sucesiones — y minimizando la desviación en el reparto. Cuando una restricción no se puede cumplir, lo dice y propone soluciones.",
-          chip: "CP-SAT",
+          body: "Construye el mes en menos de un minuto respetando todas tus reglas — descansos, vacaciones, rotaciones, incompatibilidades — y repartiendo la carga de forma justa entre el equipo. Si algo no encaja, te dice qué pasa y propone cómo arreglarlo.",
+          chip: "1 clic",
         },
         {
           icon: "sun" as const,
@@ -447,13 +447,13 @@ const COPY = {
     audience: {
       title: "One tool, two views.",
       subtitle:
-        "You manage it; your team uses it. Both sides built with the same care.",
+        "One for whoever plans. One for whoever receives the shifts. Both built with the same care.",
       tabs: {
         jefe: "For department chiefs",
         equipo: "For team members",
       },
       jefe: {
-        heading: "Get your Friday afternoon back without losing control.",
+        heading: "Plan the month without losing your Friday afternoon.",
         bullets: [
           {
             heading: "Rota in one click",
@@ -506,8 +506,8 @@ const COPY = {
           icon: "wand" as const,
           tone: "brand" as const,
           heading: "Smart planning",
-          body: "A mathematical solver (Google OR-Tools) builds the month respecting hard rules — rest periods, incompatibilities, frequency caps, successions — and minimizing distribution drift. When a constraint can't be met, it explains why and suggests fixes.",
-          chip: "CP-SAT",
+          body: "Builds the month in under a minute respecting all your rules — rest, vacations, rotations, incompatibilities — and distributing the load fairly across the team. If something doesn't fit, it tells you what's wrong and how to fix it.",
+          chip: "1 click",
         },
         {
           icon: "sun" as const,
@@ -1222,14 +1222,17 @@ function HeroMockup({
     | { kind: "person"; initials: string; mine?: boolean }
     | { kind: "gap" };
 
-  // Initials palette — keep small, distinct, repeat-resistant.
+  // Initials palette — deliberately abstract two-letter codes (AB,
+  // CD, …). Anything that read as plausible Spanish-surname starts
+  // (CE / FO / MO …) risked being misread as "people from my team"
+  // when shown to a real department.
   const P = {
-    CE: "CE",
-    ES: "ES",
-    FO: "FO",
-    JD: "JD",
-    MO: "MO",
-    SA: "SA",
+    CE: "AB",
+    ES: "CD",
+    FO: "EF",
+    JD: "GH",
+    MO: "IJ",
+    SA: "KL",
   } as const;
 
   // Hand-built schedule that "looks like" a real cuadrante: today
@@ -1515,12 +1518,12 @@ function HeroMockup({
  * letters always read as the same person. */
 function MiniAvatar({ initials, mine }: { initials: string; mine?: boolean }) {
   const palette: Record<string, { bg: string; fg: string }> = {
-    CE: { bg: "#fef3c7", fg: "#92400e" }, // amber
-    ES: { bg: "#dbeafe", fg: "#1e40af" }, // blue
-    FO: { bg: "#dcfce7", fg: "#166534" }, // green
-    JD: { bg: "#fce7f3", fg: "#9d174d" }, // pink
-    MO: { bg: "#e0e7ff", fg: "#3730a3" }, // indigo
-    SA: { bg: "#ccfbf1", fg: "#115e59" }, // teal
+    AB: { bg: "#fef3c7", fg: "#92400e" }, // amber
+    CD: { bg: "#dbeafe", fg: "#1e40af" }, // blue
+    EF: { bg: "#dcfce7", fg: "#166534" }, // green
+    GH: { bg: "#fce7f3", fg: "#9d174d" }, // pink
+    IJ: { bg: "#e0e7ff", fg: "#3730a3" }, // indigo
+    KL: { bg: "#ccfbf1", fg: "#115e59" }, // teal
   };
   const p = palette[initials] ?? { bg: "#e5e7eb", fg: "#374151" };
   return (
@@ -1549,7 +1552,6 @@ function PhoneMockup({ lang }: { lang: Lang }) {
         guardiaTime: "22:00 – 08:00",
         quirofano: "Quirófano",
         quirofanoTime: "08:00 – 14:00",
-        sales: "Sales",
         you: "Tú",
         balance: "Mes equilibrado",
       }
@@ -1561,7 +1563,6 @@ function PhoneMockup({ lang }: { lang: Lang }) {
         guardiaTime: "22:00 – 08:00",
         quirofano: "OR",
         quirofanoTime: "08:00 – 14:00",
-        sales: "Sales",
         you: "You",
         balance: "Balanced month",
       };
@@ -1592,7 +1593,7 @@ function PhoneMockup({ lang }: { lang: Lang }) {
               {lang === "es" ? "Mis turnos" : "My shifts"}
             </h3>
             <div className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-brand-100 text-brand-700 text-[10px] font-semibold">
-              SA
+              {t.you}
             </div>
           </div>
           {/* Today card */}
@@ -1601,20 +1602,15 @@ function PhoneMockup({ lang }: { lang: Lang }) {
           </div>
           <div className="rounded-2xl bg-brand-50 ring-1 ring-brand-100 p-3">
             <div className="flex items-center gap-2">
-              <div className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">
-                SA
+              <div className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-brand-200 text-brand-800 text-xs font-semibold ring-2 ring-brand-500 ring-offset-1">
+                {t.you}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-semibold text-brand-800 truncate">
-                  {t.sales}
-                  <span className="ml-1.5 text-[10px] font-medium uppercase tracking-wide text-brand-600">
-                    {t.you}
-                  </span>
+                  {t.guardia}
                 </div>
-                <div className="mt-0.5 flex items-center gap-2 text-[11px] text-brand-700">
-                  <span>{t.guardia}</span>
-                  <span className="text-brand-400">·</span>
-                  <span>{t.guardiaTime}</span>
+                <div className="mt-0.5 text-[11px] text-brand-700">
+                  {t.guardiaTime}
                 </div>
               </div>
             </div>
@@ -1625,17 +1621,15 @@ function PhoneMockup({ lang }: { lang: Lang }) {
           </div>
           <div className="rounded-2xl bg-white ring-1 ring-gray-200 p-3">
             <div className="flex items-center gap-2">
-              <div className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-teal-100 text-teal-700 text-xs font-semibold">
-                SA
+              <div className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-brand-200 text-brand-800 text-xs font-semibold ring-2 ring-brand-500 ring-offset-1">
+                {t.you}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-semibold text-gray-900 truncate">
-                  {t.sales}
+                  {t.quirofano}
                 </div>
-                <div className="mt-0.5 flex items-center gap-2 text-[11px] text-gray-600">
-                  <span>{t.quirofano}</span>
-                  <span className="text-gray-400">·</span>
-                  <span>{t.quirofanoTime}</span>
+                <div className="mt-0.5 text-[11px] text-gray-600">
+                  {t.quirofanoTime}
                 </div>
               </div>
             </div>
@@ -1754,23 +1748,45 @@ function AdminMockup() {
         </div>
         <div className="mt-3 space-y-2">
           {[
-            { name: "Fontana", action: "Vacaciones · 12–19 jul" },
-            { name: "Morcillo", action: "Cobertura · Guardia 04/06" },
-            { name: "Jorda", action: "Cambio con Ceron · 14/06" },
+            {
+              initials: "AB",
+              avatarBg: "#dbeafe",
+              avatarFg: "#1e40af",
+              kind: "Vacaciones",
+              detail: "12–19 jul",
+            },
+            {
+              initials: "CD",
+              avatarBg: "#fef3c7",
+              avatarFg: "#92400e",
+              kind: "Cobertura",
+              detail: "Guardia · 04 jun",
+            },
+            {
+              initials: "EF",
+              avatarBg: "#dcfce7",
+              avatarFg: "#166534",
+              kind: "Cambio de turno",
+              detail: "14 jun",
+            },
           ].map((p) => (
             <div
-              key={p.name}
+              key={p.initials}
               className="flex items-center gap-2 rounded-lg bg-gray-50 px-2.5 py-1.5"
             >
-              <div className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-gray-200 text-[10px] font-semibold text-gray-700">
-                {p.name.slice(0, 2).toUpperCase()}
+              <div
+                className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold"
+                style={{ backgroundColor: p.avatarBg, color: p.avatarFg }}
+                aria-hidden
+              >
+                {p.initials}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-[11px] font-semibold text-gray-900 truncate">
-                  {p.name}
+                  {p.kind}
                 </div>
                 <div className="text-[10px] text-gray-600 truncate">
-                  {p.action}
+                  {p.detail}
                 </div>
               </div>
               <button
