@@ -1065,19 +1065,47 @@ function EquityPanel({
           </div>
         ) : (
           <div className="mt-3 grid gap-4 sm:grid-cols-2">
-            <ResponsiveContainer width="100%" height={180}>
+            <ResponsiveContainer width="100%" height={210}>
               <BarChart
                 data={hist}
-                margin={{ top: 8, right: 16, left: 0, bottom: 4 }}
+                margin={{ top: 8, right: 16, left: 8, bottom: 24 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                 <XAxis
                   dataKey="label"
                   tick={{ fontSize: 10, fill: "#4b5563" }}
+                  // Axis label sits below the tick row. Without it
+                  // the X values "103–108" etc. are mysterious; with
+                  // it they read as "turnos normalizados a 100% FTE."
+                  label={{
+                    value: "Turnos / FTE 100%",
+                    position: "insideBottom",
+                    offset: -16,
+                    style: {
+                      fontSize: 10,
+                      fill: "#6b7280",
+                      fontWeight: 500,
+                    },
+                  }}
                 />
                 <YAxis
                   allowDecimals={false}
                   tick={{ fontSize: 10, fill: "#4b5563" }}
+                  // Rotated label on the Y axis — same idea, makes
+                  // "8" on the gridline read as "8 personas" without
+                  // needing the tooltip.
+                  label={{
+                    value: "Personas",
+                    angle: -90,
+                    position: "insideLeft",
+                    offset: 14,
+                    style: {
+                      fontSize: 10,
+                      fill: "#6b7280",
+                      fontWeight: 500,
+                      textAnchor: "middle",
+                    },
+                  }}
                 />
                 <Tooltip
                   cursor={{ fill: "rgba(0,0,0,0.04)" }}
