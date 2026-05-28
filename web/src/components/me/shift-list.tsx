@@ -249,6 +249,17 @@ function ShiftRow({
               {a.team_role_label && (
                 <span className="text-gray-400">· {a.team_role_label}</span>
               )}
+              {/* Equipo chip — only set on sibling-tenant rows in
+                  the /me/turnos Servicio scope Lista. No chip on
+                  the caller's own rows means "no chip = my equipo",
+                  giving Servicio Lista a clean visual where the
+                  user's own shifts read naturally and cross-team
+                  rows are explicitly tagged. */}
+              {a.tenant_name && (
+                <span className="inline-flex items-center rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-600">
+                  {a.tenant_name}
+                </span>
+              )}
               <ShiftTimeBadge a={a} />
             </div>
           </div>

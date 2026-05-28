@@ -455,6 +455,23 @@ export default function TurnosPage() {
     return (absences.data ?? []).filter((b) => b.person_id === myPid);
   }, [absences.data, me.data]);
 
+  // Combined Servicio Lista feed: caller's own filtered assignments
+  // PLUS every sibling cell upcast to an Assignment. Sibling rows are
+  // tagged with their tenant_name so ShiftRow can render an equipo
+  // chip — the caller's own rows leave it undefined so they read as
+  // "no chip = my shift" (visual emphasis without explicit tagging).
+  // Empty array when scope != "servicio" so the memo is cheap in
+  // every other context.
+  const servicioListAssignments = useMemo(() => {
+    if (scope !== "servicio") return [] as Assignment[];
+    const own = visibleAssignments;
+    const callerTid = me.data?.current_tenant.id ?? null;
+    const sibling = (servicioTimeline.data?.cells ?? [])
+      .filter((c) => c.tenant_id !== callerTid)
+      .map((c) => cellToAssignment(c, c.schedule_id));
+    return [...own, ...sibling];
+  }, [scope, visibleAssignments, servicioTimeline.data, me.data]);
+
   if (me.isLoading || schedules.isLoading) {
     return <p className="text-sm text-gray-500">Cargando…</p>;
   }
@@ -598,11 +615,7 @@ export default function TurnosPage() {
       )}
       {selectedId !== null && detail.data && !allSlotsHidden && (
         <>
-          {/* Servicio scope is inherently a multi-table cross-equipo
-              read; the Lista mode (a personal upcoming-shifts feed)
-              doesn't translate. Force the grid path when scope ===
-              "servicio" regardless of the Lista/Tabla toggle. */}
-          {view === "list" && scope !== "servicio" ? (
+          {view === "list" ? (
             scope === "mine" ? (
               // Mis turnos + Lista — one row per day in the active
               // Rango, including off days. Empty days get "Sin turno"
@@ -620,17 +633,28 @@ export default function TurnosPage() {
                 canRequestCoverage={true}
               />
             ) : (
+              // Equipo + Lista (visibleAssignments = caller's team
+              // only) and Servicio + Lista (servicioListAssignments
+              // = caller's team + every sibling cell tagged with its
+              // tenant_name). Same ShiftListView in both cases — the
+              // chip on each row tells the user which equipo a given
+              // shift belongs to in the Servicio variant.
               <ShiftListView
-                assignments={visibleAssignments}
+                assignments={
+                  scope === "servicio"
+                    ? servicioListAssignments
+                    : visibleAssignments
+                }
                 myPersonId={myPersonId}
                 scope={scope}
                 range={range}
                 onClickShift={(a) => {
                   if (a.locked_at) return;
                   // Coverage requests are only valid for your own
-                  // shifts. In team-scope the list shows everyone's
-                  // rows; the ShiftRow itself already gates clicks to
-                  // your own, so this extra guard is belt-and-braces.
+                  // shifts. In team / servicio scope the list shows
+                  // everyone's rows; the ShiftRow itself already
+                  // gates clicks to your own, so this extra guard is
+                  // belt-and-braces.
                   if (a.person_id !== myPersonId) return;
                   setSwapTarget(a);
                 }}
@@ -815,6 +839,9 @@ function cellToAssignment(
     locked_by_membership_id: null,
     dismissed_at: null,
     swap_offer_id: null,
+    // Tag with the owning equipo so the Servicio Lista view can
+    // render a chip on the row. Read by ShiftRow (shift-list.tsx).
+    tenant_name: c.tenant_name,
   };
 }
 
@@ -1198,7 +1225,10 @@ function ShiftListView({
       : "No hay más turnos por venir este mes.";
   })();
 
-  const showPerson = scope === "team";
+  // The person avatar + name take top billing whenever the list is
+  // showing more than just the caller — that's Equipo and Servicio
+  // both. Mis is the only scope where every row is the same person.
+  const showPerson = scope === "team" || scope === "servicio";
 
   return (
     <div className="space-y-4">

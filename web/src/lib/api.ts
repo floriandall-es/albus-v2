@@ -321,6 +321,13 @@ export type Assignment = {
    * rows are also auto-locked so they survive regeneration. */
   dismissed_at: string | null;
   swap_offer_id: number | null;
+  /** Client-side decoration ONLY — never set by the backend. The
+   * /me/turnos Servicio scope tags sibling-tenant assignments with
+   * the equipo name so a small chip can render in the Lista view,
+   * and so the eye can disambiguate the same surgeon name appearing
+   * across teams. Leave undefined for own-team rows + every non-
+   * Servicio caller. */
+  tenant_name?: string | null;
 };
 
 export type EligiblePerson = {
