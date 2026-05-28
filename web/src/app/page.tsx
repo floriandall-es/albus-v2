@@ -71,24 +71,24 @@ const COPY = {
       backToApp: "Volver a la app",
       features: "Cómo funciona",
       forWhom: "Para quién",
+      pricing: "Precios",
       faq: "Preguntas",
     },
     hero: {
-      pilotBadge:
-        "Pilotado en Cirugía Torácica · Hospital Universitario La Fe",
+      pilotBadge: "Hecho con cirujanos en activo y sus equipos",
       title: "El cuadrante del mes,",
       titleAccent: "hecho.",
       subtitle:
-        "Trivu construye la planificación de tu servicio respetando guardias, rotaciones, vacaciones y reglas — y reparte la carga de forma justa. Tú validas; el equipo lo ve en su móvil.",
-      ctaPrimary: "Crear cuenta gratis",
+        "Trivu construye la planificación de tu servicio respetando guardias, rotaciones, vacaciones y reglas — y la reparte de forma justa. El jefe valida; el equipo lo ve en su móvil.",
+      ctaPrimary: "Empezar gratis",
       ctaSecondary: "Ver cómo funciona",
-      mockHeader: "Planificación · Junio 2026",
+      mockHeader: "Planificación · Junio",
       mockBalanced: "Equilibrada",
       mockPublished: "Publicada",
       kpi: [
         { value: "9 h", label: "que recuperas cada mes" },
         { value: "100 %", label: "de las reglas, respetadas" },
-        { value: "0 €", label: "durante la alpha" },
+        { value: "30 d", label: "de prueba gratis" },
       ],
     },
     beforeAfter: {
@@ -265,50 +265,87 @@ const COPY = {
         {
           icon: "hospital" as const,
           heading: "Hecho con cirujanos en activo",
-          body: "Diseñado y probado en la Unidad de Cirugía Torácica del Hospital La Fe de Valencia. Cada feature pasa primero por su semana real antes de salir a más servicios.",
+          body: "Diseñado junto a cirujanos y sus equipos. Cada función pasa por una semana real de uso clínico antes de salir a más servicios — nada de pizarras y teoría.",
         },
         {
           icon: "sparkles" as const,
-          heading: "Optimización matemática real",
-          body: "Google OR-Tools (el mismo solver detrás de los planificadores de Amazon Logistics) genera el cuadrante. No es un script — es un modelo de programación con restricciones.",
+          heading: "Reparto matemáticamente justo",
+          body: "El cuadrante no se genera por azar. Un solver matemático respeta tus reglas y reparte la carga de forma óptima entre las personas del equipo.",
         },
         {
           icon: "shield" as const,
-          heading: "RGPD, datos cifrados",
-          body: "Aislamiento por equipo a nivel de base de datos (FORCE ROW LEVEL SECURITY). Contraseñas con bcrypt. Sin trackers ni analítica de terceros.",
+          heading: "Tus datos, tuyos",
+          body: "Cada equipo en su propio espacio aislado — nadie ve datos de otro. Conexiones cifradas, RGPD, sin rastreadores ni publicidad de terceros.",
         },
       ],
+    },
+    pricing: {
+      title: "Precios sencillos.",
+      subtitle:
+        "Primer mes gratis. Después, una tarifa clara por persona — sin contratos anuales.",
+      trial: "30 días gratis · Sin tarjeta hasta probarlo",
+      plans: [
+        {
+          name: "Admin",
+          price: "29,90 €",
+          cadence: "/mes",
+          tagline: "Quien crea y mantiene la planificación",
+          features: [
+            "Generación de cuadrantes ilimitada",
+            "Periodos especiales (verano, Navidad…)",
+            "Estadísticas y reparto justo",
+            "Aprobar vacaciones, cambios e incidencias",
+            "Soporte por email",
+          ],
+          cta: "Empezar como admin",
+        },
+        {
+          name: "Miembro",
+          price: "4,90 €",
+          cadence: "/mes",
+          tagline: "Quien recibe sus turnos en el móvil",
+          features: [
+            "Tus turnos en el móvil, con avisos",
+            "Cambios e intercambios con compañeros",
+            "Solicitar vacaciones, bajas, formación",
+            "Directorio del hospital + WhatsApp",
+            "Exportar a Google y Apple Calendar",
+          ],
+          cta: "Pídeselo a tu jefe",
+        },
+      ],
+      finePrint: "Sin contrato anual. Cancela cuando quieras.",
     },
     faq: {
       title: "Preguntas frecuentes",
       items: [
         {
           q: "¿Funciona con las reglas particulares de mi servicio?",
-          a: "Sí. Trivu soporta rotaciones cíclicas, día fijo, asignación libre, sucesiones (después de X no Y durante N días), incompatibilidades, frecuencias máximas, equipos por día, composición por roles, y dependencias entre actividades. Si tu servicio funciona con reglas que no encajan, hablamos.",
+          a: "Sí. Rotaciones, días fijos, descansos obligatorios, incompatibilidades, vacaciones cruzadas, equipos por día y muchas más. Si tu servicio tiene una regla que no encaja, nos la cuentas y la añadimos.",
         },
         {
           q: "¿Cuánto cuesta?",
-          a: "Mientras estemos en alpha, gratis. Tras la alpha habrá una tarifa por servicio (no por persona) que anunciaremos con tiempo. Los servicios pioneros tendrán precio preferente de por vida.",
+          a: "Los primeros 30 días son gratis. Después, 29,90 € al mes para quien crea el cuadrante y 4,90 € al mes por cada miembro del equipo. Sin contrato anual ni permanencia: cancelas cuando quieras.",
         },
         {
           q: "¿Cuánto tarda configurarlo?",
-          a: "Un servicio típico (5–15 personas, 5–8 actividades, reglas estándar) se configura en una tarde. Hay un asistente de onboarding que te guía actividad por actividad y un experto te puede ayudar a importar tu cuadrante actual.",
+          a: "Un servicio típico se configura en una tarde. Un asistente te guía paso a paso por el equipo, las actividades y las reglas. Si quieres, te ayudamos a importar tu cuadrante actual.",
         },
         {
           q: "¿Mis datos están seguros?",
-          a: "Cada equipo tiene su silo de datos a nivel de base de datos — Postgres con FORCE ROW LEVEL SECURITY garantiza que ningún equipo puede ver datos de otro. Conexiones HTTPS. Contraseñas con bcrypt. Sin Google Analytics, Facebook Pixel ni nada parecido.",
+          a: "Cada equipo tiene su propio espacio aislado — nadie ve datos de otro equipo. Conexiones cifradas, contraseñas encriptadas y cumplimiento RGPD. Sin rastreadores, sin publicidad, sin terceros.",
         },
         {
-          q: "¿Se integra con el HCIS / sistemas del hospital?",
-          a: "Hoy no. Trivu genera PDFs imprimibles del cuadrante y cada miembro puede exportar sus turnos a Google Calendar, Apple Calendar o Outlook por iCal. Una integración bidireccional con HCIS está en la lista, pero no es prioritaria mientras los hospitales sigan trabajando en Excel.",
+          q: "¿Se integra con los sistemas del hospital?",
+          a: "Hoy no de forma directa. Trivu genera PDFs imprimibles del cuadrante y cada miembro puede exportar sus turnos a su calendario (Google, Apple, Outlook). Una integración con los HCIS está en el horizonte.",
         },
         {
-          q: "¿Cómo se reparte el trabajo entre equipos de un mismo servicio?",
-          a: "Cada equipo tiene su propia planificación independiente, pero comparten un Servicio. Las reuniones pueden cruzar equipos (invitas a personas de otro equipo del servicio), el directorio es del hospital entero, y opcionalmente puedes compartir tu planificación con los demás equipos del servicio.",
+          q: "¿Y si tengo varios equipos en el mismo servicio?",
+          a: "Cada equipo lleva su planificación de forma independiente, pero pueden coordinarse: reuniones compartidas, directorio común y, si quieren, visibilidad mutua de los cuadrantes publicados.",
         },
         {
-          q: "¿Y si tengo subequipos (residentes, programa de trasplante…)?",
-          a: "Soportado. Los residentes son un equipo aparte que comparte servicio con el equipo principal — tienen su propia planificación pero todos coordinan reuniones. El módulo de trasplantes (opcional) registra cada caso, con cirujanos, fechas y procedimientos.",
+          q: "¿Y si tengo residentes u otro subequipo aparte?",
+          a: "Soportado. Los residentes (u otro subequipo) son un equipo independiente con su propia planificación, pero coordinan reuniones y vacaciones con el equipo principal.",
         },
       ],
     },
@@ -316,12 +353,12 @@ const COPY = {
       title: "Tu próximo cuadrante.",
       subtitle:
         "Sin Excel, sin domingos por la noche. Crea la cuenta y configura tu equipo en una tarde.",
-      ctaPrimary: "Crear cuenta gratis",
+      ctaPrimary: "Empezar gratis 30 días",
       ctaSecondary: "hola@trivu.net",
-      finePrint: "Alpha gratuita · Sin tarjeta · Sin compromiso",
+      finePrint: "Sin tarjeta hasta probarlo · Cancela cuando quieras",
     },
     footer: {
-      tagline: "El planificador del jefe de servicio.",
+      tagline: "La planificación de tu equipo, en una sola herramienta.",
       terms: "Condiciones",
       privacy: "Privacidad",
       contact: "Contacto",
@@ -336,24 +373,24 @@ const COPY = {
       backToApp: "Back to app",
       features: "How it works",
       forWhom: "Who it's for",
+      pricing: "Pricing",
       faq: "FAQ",
     },
     hero: {
-      pilotBadge:
-        "Piloted in Thoracic Surgery · Hospital Universitario La Fe",
+      pilotBadge: "Built with practicing surgeons and their teams",
       title: "The monthly rota,",
       titleAccent: "done.",
       subtitle:
-        "Trivu builds your department's schedule respecting on-calls, rotations, vacations and rules — and balances the load fairly. You approve; your team sees it on their phone.",
-      ctaPrimary: "Create free account",
+        "Trivu builds your department's schedule respecting on-calls, rotations, vacations and rules — and distributes the load fairly. The chief approves; the team sees it on their phone.",
+      ctaPrimary: "Start free",
       ctaSecondary: "See how it works",
-      mockHeader: "Schedule · June 2026",
+      mockHeader: "Schedule · June",
       mockBalanced: "Balanced",
       mockPublished: "Published",
       kpi: [
         { value: "9 h", label: "you reclaim each month" },
         { value: "100%", label: "of rules, respected" },
-        { value: "€0", label: "during alpha" },
+        { value: "30 d", label: "free trial" },
       ],
     },
     beforeAfter: {
@@ -527,50 +564,87 @@ const COPY = {
         {
           icon: "hospital" as const,
           heading: "Built with practicing surgeons",
-          body: "Designed and tested in the Thoracic Surgery Unit of Hospital La Fe in Valencia. Every feature goes through a real on-call week before it ships to other departments.",
+          body: "Designed alongside surgeons and their teams. Every feature goes through a real clinical week before it ships to other departments — no whiteboards and theory.",
         },
         {
           icon: "sparkles" as const,
-          heading: "Real mathematical optimization",
-          body: "Google OR-Tools (the same solver behind Amazon Logistics' planners) generates the rota. Not a script — a constraint programming model with hard and soft constraints.",
+          heading: "Mathematically fair distribution",
+          body: "The rota isn't built by chance. A mathematical solver respects your rules and balances the load optimally across the people in your team.",
         },
         {
           icon: "shield" as const,
-          heading: "GDPR, encrypted data",
-          body: "Per-team isolation at the database level (FORCE ROW LEVEL SECURITY). Passwords with bcrypt. No third-party trackers or analytics.",
+          heading: "Your data, yours",
+          body: "Each team in its own isolated space — nobody sees data from another. Encrypted connections, GDPR-compliant, no trackers, no third-party ads.",
         },
       ],
+    },
+    pricing: {
+      title: "Simple pricing.",
+      subtitle:
+        "First month free. Then a clear per-person fee — no annual contracts.",
+      trial: "30 days free · No card until you try it",
+      plans: [
+        {
+          name: "Admin",
+          price: "€29.90",
+          cadence: "/mo",
+          tagline: "Whoever creates and maintains the rota",
+          features: [
+            "Unlimited rota generation",
+            "Special periods (summer, Christmas…)",
+            "Stats + fair-distribution tools",
+            "Approve vacations, swaps and incidents",
+            "Email support",
+          ],
+          cta: "Start as admin",
+        },
+        {
+          name: "Member",
+          price: "€4.90",
+          cadence: "/mo",
+          tagline: "Whoever receives their shifts on their phone",
+          features: [
+            "Your shifts on your phone, with reminders",
+            "Swaps and coverage with colleagues",
+            "Request vacations, sick leave, training",
+            "Hospital directory + WhatsApp",
+            "Export to Google and Apple Calendar",
+          ],
+          cta: "Ask your chief for access",
+        },
+      ],
+      finePrint: "No annual contract. Cancel anytime.",
     },
     faq: {
       title: "Frequently asked",
       items: [
         {
           q: "Does it work with my department's specific rules?",
-          a: "Yes. Trivu supports cyclic rotations, fixed-day, free assignment, successions (after X no Y for N days), incompatibilities, max frequencies, team-per-day, role composition, and activity dependencies. If your department runs on rules that don't fit, let's talk.",
+          a: "Yes. Rotations, fixed days, mandatory rest, incompatibilities, overlapping vacations, team-per-day requirements and many more. If your department runs on a rule that doesn't fit, tell us and we'll add it.",
         },
         {
           q: "How much does it cost?",
-          a: "While in alpha, free. After alpha there'll be a per-department fee (not per-person) announced with plenty of notice. Pioneer departments get preferred lifetime pricing.",
+          a: "The first 30 days are free. Then €29.90 per month for the person who creates the rota, and €4.90 per month for each team member. No annual contract or lock-in — cancel anytime.",
         },
         {
           q: "How long does setup take?",
-          a: "A typical department (5–15 people, 5–8 activities, standard rules) sets up in one afternoon. There's an onboarding wizard and we can help import your current rota.",
+          a: "A typical department sets up in one afternoon. A guided wizard walks you through team, activities and rules. If you want, we can help import your current rota.",
         },
         {
           q: "Is my data secure?",
-          a: "Each team has its own data silo at the database level — Postgres with FORCE ROW LEVEL SECURITY guarantees no team can see another's data. HTTPS connections. bcrypt-hashed passwords. No Google Analytics, Facebook Pixel or anything similar.",
+          a: "Each team has its own isolated space — nobody sees data from another team. Encrypted connections, encrypted passwords, GDPR-compliant. No trackers, no ads, no third parties.",
         },
         {
-          q: "Does it integrate with the HCIS / hospital systems?",
-          a: "Not today. Trivu generates printable PDFs of the rota and each member can export their shifts to Google Calendar, Apple Calendar or Outlook via iCal. A two-way HCIS integration is on the roadmap but not a priority while hospitals still run on Excel.",
+          q: "Does it integrate with hospital systems?",
+          a: "Not directly today. Trivu generates printable PDFs of the rota and each member can export their shifts to their calendar (Google, Apple, Outlook). HCIS integration is on the horizon.",
         },
         {
-          q: "How does it work across teams in the same department?",
-          a: "Each team has its own independent planning, but they share a Service. Meetings can cross teams (you invite people from sibling teams), the directory is hospital-wide, and you can optionally share your planning with the other teams in your service.",
+          q: "What if I have several teams in the same department?",
+          a: "Each team runs its planning independently, but they can coordinate: shared meetings, common directory and — if they want — mutual visibility of published rotas.",
         },
         {
-          q: "What about subteams (residents, transplant program…)?",
-          a: "Supported. Residents are a separate team that shares the service with the main team — they have their own planning but everyone coordinates meetings. The transplant module (opt-in) logs every case, with surgeons, dates and procedures.",
+          q: "What about residents or another subteam?",
+          a: "Supported. Residents (or any other subteam) are an independent team with their own planning, but they coordinate meetings and vacations with the main team.",
         },
       ],
     },
@@ -578,12 +652,12 @@ const COPY = {
       title: "Your next rota.",
       subtitle:
         "No Excel, no Sunday evenings. Create your account and configure your team in one afternoon.",
-      ctaPrimary: "Create free account",
+      ctaPrimary: "Start free for 30 days",
       ctaSecondary: "hola@trivu.net",
-      finePrint: "Free alpha · No card · No commitment",
+      finePrint: "No card until you try it · Cancel anytime",
     },
     footer: {
-      tagline: "The scheduler your department deserves.",
+      tagline: "Your team's planning, in a single tool.",
       terms: "Terms",
       privacy: "Privacy",
       contact: "Contact",
@@ -684,6 +758,12 @@ export default function LandingPage() {
               className="rounded-md px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-100"
             >
               {c.nav.forWhom}
+            </a>
+            <a
+              href="#pricing"
+              className="rounded-md px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-100"
+            >
+              {c.nav.pricing}
             </a>
             <a
               href="#faq"
@@ -1008,6 +1088,43 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* -----------------------------------------------------------
+          Pricing — two role-tiered plans + a 30-day free trial chip
+          ----------------------------------------------------------- */}
+      <section
+        id="pricing"
+        className="bg-white border-y border-gray-200"
+      >
+        <div className="mx-auto max-w-5xl px-4 sm:px-6 py-16 sm:py-24">
+          <div className="text-center max-w-2xl mx-auto">
+            <h2 className="text-2xl sm:text-4xl font-semibold tracking-tight text-gray-900">
+              {c.pricing.title}
+            </h2>
+            <p className="mt-4 text-base sm:text-lg text-gray-600 leading-relaxed">
+              {c.pricing.subtitle}
+            </p>
+            <div className="mt-6 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 ring-1 ring-emerald-200">
+              <Sparkles className="h-3.5 w-3.5 text-emerald-700" />
+              <span className="text-xs font-semibold text-emerald-800">
+                {c.pricing.trial}
+              </span>
+            </div>
+          </div>
+          <div className="mt-12 grid gap-6 md:grid-cols-2 md:items-stretch">
+            {c.pricing.plans.map((plan, idx) => (
+              <PricingCard
+                key={plan.name}
+                plan={plan}
+                primary={idx === 0}
+              />
+            ))}
+          </div>
+          <p className="mt-6 text-center text-xs text-gray-500">
+            {c.pricing.finePrint}
+          </p>
         </div>
       </section>
 
@@ -1846,6 +1963,79 @@ function FeatureCard({
         {card.heading}
       </h3>
       <p className="mt-2 text-sm text-gray-600 leading-relaxed">{card.body}</p>
+    </div>
+  );
+}
+
+/** One of the two pricing tiers (Admin / Member). `primary` flips
+ * the visual treatment to a brand-tinted gradient — used for the
+ * Admin card because that's the buyer's plan. The Member card stays
+ * neutral so they read as peers (one tool, two roles) rather than
+ * a basic-vs-premium hierarchy. */
+function PricingCard({
+  plan,
+  primary,
+}: {
+  plan: {
+    name: string;
+    price: string;
+    cadence: string;
+    tagline: string;
+    features: readonly string[];
+    cta: string;
+  };
+  primary: boolean;
+}) {
+  return (
+    <div
+      className={
+        "flex flex-col rounded-2xl p-6 sm:p-8 shadow-soft ring-1 "
+        + (primary
+          ? "bg-gradient-to-br from-brand-50 via-white to-white ring-brand-200"
+          : "bg-white ring-gray-200")
+      }
+    >
+      <div className="flex items-baseline gap-2">
+        <h3 className="text-xl font-semibold text-gray-900">{plan.name}</h3>
+      </div>
+      <p className="mt-1 text-sm text-gray-600">{plan.tagline}</p>
+      <div className="mt-5 flex items-baseline gap-1.5">
+        <span className="text-4xl sm:text-5xl font-semibold tracking-tight text-gray-900">
+          {plan.price}
+        </span>
+        <span className="text-sm text-gray-500">{plan.cadence}</span>
+      </div>
+      <ul className="mt-6 space-y-2.5 flex-1">
+        {plan.features.map((f) => (
+          <li key={f} className="flex items-start gap-2.5">
+            <span
+              className={
+                "mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full "
+                + (primary
+                  ? "bg-brand-100 text-brand-700"
+                  : "bg-emerald-100 text-emerald-700")
+              }
+            >
+              <Plus className="h-3 w-3" />
+            </span>
+            <span className="text-sm text-gray-700 leading-snug">{f}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-7">
+        <Link
+          href="/signup"
+          className={
+            "inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors w-full justify-center "
+            + (primary
+              ? "bg-brand-600 text-white hover:bg-brand-700 shadow-soft"
+              : "bg-white text-gray-800 ring-1 ring-gray-300 hover:bg-gray-50")
+          }
+        >
+          {plan.cta}
+          <ArrowRight className="h-4 w-4" />
+        </Link>
+      </div>
     </div>
   );
 }
