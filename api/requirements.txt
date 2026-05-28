@@ -34,6 +34,15 @@ openpyxl==3.1.2
 # (UNIQUE(meeting_id, instance_date) on meeting_reminders_sent),
 # so a restart-mid-tick or a multi-replica deploy is safe.
 APScheduler==3.10.4
+
+# Stripe Billing SDK (migration 0080 / docs/billing-plan.md).
+# We use it from app.services.stripe_client for: creating
+# Customers + Subscriptions at signup, updating SubscriptionItem
+# quantities when seats change (team_pays mode), pausing
+# collection when an admin's sub lapses, generating Customer
+# Portal sessions, and verifying webhook signatures.
+stripe==10.10.0
+
 pytest==8.2.0
 pytest-asyncio==0.23.6
 asgi-lifespan==2.1.0

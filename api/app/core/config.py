@@ -82,6 +82,23 @@ class Settings(BaseSettings):
     # prod (/srv/albus/avatars); in dev defaults to a sibling of the app.
     avatars_dir: str = "/app/avatars"
 
+    # ---------------------------------------------------------------
+    # Stripe Billing (migration 0080 / docs/billing-plan.md).
+    # All four are filled in by the production .env once the Stripe
+    # Dashboard side is configured. In dev they stay empty and the
+    # billing code paths short-circuit without touching the network
+    # (the helpers in app/services/stripe_client raise a clear
+    # RuntimeError if called while unconfigured).
+    # ---------------------------------------------------------------
+    stripe_secret_key: str = ""
+    # Webhook signing secret (whsec_…). The /api/stripe/webhook
+    # handler verifies every request against this; mismatch → 400.
+    stripe_webhook_secret: str = ""
+    # The two recurring Prices created in the Stripe Dashboard at
+    # Dashboard setup time. €29.90/mo and €4.90/mo respectively.
+    stripe_price_admin: str = ""
+    stripe_price_member: str = ""
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
