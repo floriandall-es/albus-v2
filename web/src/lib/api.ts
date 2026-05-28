@@ -320,6 +320,67 @@ export type StatsResponse = {
   rows: StatsRow[];
 };
 
+// --- /api/stats/overview — Commit 1 of the stats dashboard overhaul ---
+// One-shot payload that powers the redesigned /admin/stats top half:
+// the 8-tile KPI strip, the equity histogram + outlier callout, the
+// coverage trend, and the four monthly mini-charts. The existing
+// per-(person, slot, month) StatsResponse still drives the "Detalle
+// por actividad" section underneath.
+
+export type StatsKpis = {
+  total_assignments: number;
+  uncovered_count: number;
+  /** 0–100, server-rounded to 1 decimal. */
+  uncovered_pct: number;
+  swap_offers_open: number;
+  swap_offers_fulfilled: number;
+  swap_offers_cancelled: number;
+  bloqueos_days_total: number;
+  /** Per block_type breakdown (vacation / sick / training / personal /
+   * other). Keys are whichever block_types appeared in the range —
+   * absent keys mean zero. */
+  bloqueos_days_by_type: Record<string, number>;
+  reopened_schedules_count: number;
+  incidents_count: number;
+  /** Snapshot of the team RIGHT NOW (not range-scoped). */
+  active_members: number;
+  /** Sum of fte_pct/100 across non-disabled memberships. */
+  total_fte: number;
+};
+
+export type StatsWorkloadRow = {
+  person_id: number;
+  person_name: string;
+  person_avatar_url: string | null;
+  category_id: number | null;
+  category_name: string | null;
+  fte_pct: number;
+  total_shifts: number;
+  weekend_or_holiday_shifts: number;
+  /** total_shifts × 100 / fte_pct — what the person WOULD do if they
+   * were full-time. Lets the equity histogram compare part-timers
+   * apples-to-apples with full-timers. */
+  normalized_total: number;
+};
+
+export type StatsMonthlyRow = {
+  year_month: string;
+  total_assignments: number;
+  uncovered_count: number;
+  swap_offers_created: number;
+  swap_offers_fulfilled: number;
+  bloqueos_days: number;
+  incidents_count: number;
+};
+
+export type StatsOverviewResponse = {
+  from_date: string;
+  to_date: string;
+  kpis: StatsKpis;
+  workload: StatsWorkloadRow[];
+  monthly: StatsMonthlyRow[];
+};
+
 // Sanitized public read-only absence row used by the planning grid's
 // Libre row. Backed by /api/availability/team-absences.
 export type TeamAbsence = {
@@ -1815,6 +1876,18 @@ export const api = {
     qs.set("to", params.to);
     return request<StatsResponse>(
       `/api/stats/assignments?${qs.toString()}`,
+    );
+  },
+  /** Commit 1 of the stats overhaul. One round-trip payload powering
+   * the KPI strip, equity histogram, coverage trend, and trend mini-
+   * charts on /admin/stats. The existing statsAssignments call still
+   * feeds the "Detalle por actividad" section underneath. */
+  statsOverview: (params: { from: string; to: string }) => {
+    const qs = new URLSearchParams();
+    qs.set("from", params.from);
+    qs.set("to", params.to);
+    return request<StatsOverviewResponse>(
+      `/api/stats/overview?${qs.toString()}`,
     );
   },
   /** Same shape as statsAssignments but scoped to the caller. No

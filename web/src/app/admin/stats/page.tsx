@@ -7,12 +7,21 @@ import {
   CartesianGrid,
   LabelList,
   Legend,
+  Line,
+  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
-import { api, personLastName, type StatsRow } from "@/lib/api";
+import {
+  api,
+  personLastName,
+  type StatsMonthlyRow,
+  type StatsKpis,
+  type StatsRow,
+  type StatsWorkloadRow,
+} from "@/lib/api";
 import {
   Card,
   EmptyState,
@@ -81,11 +90,59 @@ export default function StatsPage() {
     queryKey: ["stats-assignments", fromDate, toDate],
     queryFn: () => api.statsAssignments({ from: fromDate, to: toDate }),
   });
+  // Commit 1 of the stats overhaul. One round-trip payload for the
+  // KPI strip + equity histogram + coverage trend + monthly mini-
+  // charts. Cached separately from the per-slot detail so each
+  // refetches on its own schedule.
+  const ov = useQuery({
+    queryKey: ["stats-overview", fromDate, toDate],
+    queryFn: () => api.statsOverview({ from: fromDate, to: toDate }),
+  });
   // Per-user accent: swap the default teal slot in the fallback
   // palette for the caller's pick.
   const palette = useAccentPalette(FALLBACK_PALETTE);
 
-  const scopedRows = useMemo(() => q.data?.rows ?? [], [q.data]);
+  // Categoría filter. Drives the equity histogram + per-slot charts +
+  // detail table. Does NOT scope the KPI strip / coverage trend /
+  // monthly trends — those stay tenant-wide because a jefe filtering
+  // to "Adjuntos" still cares about service-level coverage gaps and
+  // operational tempo.
+  const [activeCategoryIds, setActiveCategoryIds] = useState<
+    Set<number | null> | null
+  >(null);
+  const categoryOptions = useMemo(() => {
+    const m = new Map<number | null, string>();
+    for (const w of ov.data?.workload ?? []) {
+      m.set(w.category_id, w.category_name ?? "Sin categoría");
+    }
+    return Array.from(m.entries()).sort((a, b) =>
+      String(a[1]).localeCompare(String(b[1]), "es"),
+    );
+  }, [ov.data]);
+  // When the data loads, seed the filter to "all selected" so the
+  // initial render shows everything. We use a Set<number | null> so
+  // members with no categoría land in their own bucket.
+  const effectiveActiveCategoryIds = useMemo(() => {
+    if (activeCategoryIds !== null) return activeCategoryIds;
+    return new Set(categoryOptions.map(([id]) => id));
+  }, [activeCategoryIds, categoryOptions]);
+  // Person IDs that pass the categoría filter. Used to scope the
+  // per-slot rows (StatsResponse doesn't carry category, so we
+  // resolve through the workload payload).
+  const personIdsByCategoryFilter = useMemo(() => {
+    if (!ov.data) return null;
+    const ids = new Set<number>();
+    for (const w of ov.data.workload) {
+      if (effectiveActiveCategoryIds.has(w.category_id)) ids.add(w.person_id);
+    }
+    return ids;
+  }, [ov.data, effectiveActiveCategoryIds]);
+
+  const scopedRows = useMemo(() => {
+    const all = q.data?.rows ?? [];
+    if (personIdsByCategoryFilter === null) return all;
+    return all.filter((r) => personIdsByCategoryFilter.has(r.person_id));
+  }, [q.data, personIdsByCategoryFilter]);
 
   // Pivot rows by slot for chart legends + color mapping.
   const slotMeta = useMemo(() => {
@@ -196,6 +253,49 @@ export default function StatsPage() {
         )}
       </div>
 
+      {/* Top-of-page dashboard: KPI strip + equity panel + coverage
+          trend + monthly mini-charts. Always renders (independent of
+          the per-slot detail below) so the jefe gets a useful read
+          even when no shifts have been published in the range. */}
+      {ov.data && (
+        <div className="mb-8 space-y-6">
+          <KpiStrip kpis={ov.data.kpis} />
+          <div className="grid gap-6 lg:grid-cols-3">
+            <div className="lg:col-span-2">
+              <EquityPanel
+                workload={ov.data.workload}
+                activeCategoryIds={effectiveActiveCategoryIds}
+                accent={palette[0]}
+              />
+            </div>
+            <CoverageTrend monthly={ov.data.monthly} accent={palette[0]} />
+          </div>
+          <MonthlyTrendsPanel monthly={ov.data.monthly} accent={palette[0]} />
+        </div>
+      )}
+
+      {/* Categoría filter chips. Apply to per-slot detail + equity
+          histogram only — the dashboard panels above stay
+          unfiltered. Hidden when there's only one categoría (or
+          none) since the toggle would do nothing. */}
+      {categoryOptions.length > 1 && (
+        <CategoryFilterChips
+          options={categoryOptions}
+          active={effectiveActiveCategoryIds}
+          onToggle={(id) => {
+            const next = new Set(effectiveActiveCategoryIds);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            setActiveCategoryIds(next);
+          }}
+          onAll={() =>
+            setActiveCategoryIds(
+              new Set(categoryOptions.map(([id]) => id)),
+            )
+          }
+        />
+      )}
+
       {q.isLoading && (
         <p className="text-sm text-gray-500">Cargando…</p>
       )}
@@ -209,6 +309,9 @@ export default function StatsPage() {
 
       {q.data && scopedRows.length > 0 && (
         <div className="space-y-6">
+          <h2 className="mt-2 text-base font-semibold text-gray-800">
+            Detalle por actividad
+          </h2>
           {slotMeta.map((slot) => (
             <PerSlotChart
               key={slot.key}
@@ -635,5 +738,545 @@ function DetailTable({
         </div>
       </div>
     </Card>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Commit 1 dashboard components — KPI strip, equity panel, coverage
+// trend, monthly trend mini-charts, categoría filter chips.
+// All scale-agnostic: same UX at 6 members or 100.
+// ---------------------------------------------------------------------------
+
+/** Eight-tile KPI strip. Wraps to two rows under sm.
+ *
+ * Layout decisions:
+ * - Total turnos + Sin cubrir get the most visual weight (they answer
+ *   "is my service running smoothly?" first).
+ * - "Equipo" tile is RIGHT NOW (snapshot), not range-scoped — matches
+ *   the question a jefe actually asks ("how big is my team?").
+ * - Tiles render even when their value is 0 — absence of swap traffic
+ *   is information.
+ */
+function KpiStrip({ kpis }: { kpis: StatsKpis }) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <KpiTile
+        label="Total turnos"
+        value={kpis.total_assignments.toLocaleString("es-ES")}
+        hint="En planificaciones publicadas y archivadas."
+      />
+      <KpiTile
+        label="Sin cubrir"
+        value={kpis.uncovered_count.toLocaleString("es-ES")}
+        hint={
+          kpis.total_assignments > 0
+            ? `${kpis.uncovered_pct}% de los turnos del periodo.`
+            : "Sin actividad en el periodo."
+        }
+        tone={kpis.uncovered_count > 0 ? "warning" : "neutral"}
+      />
+      <KpiTile
+        label="Cambios de turno"
+        value={(
+          kpis.swap_offers_open
+          + kpis.swap_offers_fulfilled
+          + kpis.swap_offers_cancelled
+        ).toLocaleString("es-ES")}
+        hint={`${kpis.swap_offers_fulfilled} cubiertos · ${kpis.swap_offers_open} abiertos · ${kpis.swap_offers_cancelled} cancelados`}
+      />
+      <KpiTile
+        label="Bloqueos"
+        value={`${kpis.bloqueos_days_total} días`}
+        hint={formatBloqueoBreakdown(kpis.bloqueos_days_by_type)}
+      />
+      <KpiTile
+        label="Equipo"
+        value={`${kpis.active_members} activos`}
+        hint={`${kpis.total_fte.toLocaleString("es-ES")} FTE total`}
+      />
+      <KpiTile
+        label="Incidencias"
+        value={kpis.incidents_count.toLocaleString("es-ES")}
+        hint="Registradas en el periodo."
+      />
+      <KpiTile
+        label="Reabiertas"
+        value={kpis.reopened_schedules_count.toLocaleString("es-ES")}
+        hint="Planificaciones reabiertas tras publicar."
+        tone={kpis.reopened_schedules_count > 0 ? "warning" : "neutral"}
+      />
+      <KpiTile
+        label="Asignación / FTE"
+        value={
+          kpis.total_fte > 0
+            ? (kpis.total_assignments / kpis.total_fte).toFixed(1)
+            : "—"
+        }
+        hint="Turnos medios por miembro a tiempo completo."
+      />
+    </div>
+  );
+}
+
+function KpiTile({
+  label,
+  value,
+  hint,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: "neutral" | "warning";
+}) {
+  const valueColour =
+    tone === "warning" ? "text-amber-700" : "text-gray-900";
+  return (
+    <div className="rounded-xl bg-white p-4 shadow-soft ring-1 ring-gray-200">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+        {label}
+      </div>
+      <div className={`mt-1 text-2xl font-semibold tabular-nums ${valueColour}`}>
+        {value}
+      </div>
+      {hint && (
+        <div className="mt-1 text-[11px] leading-snug text-gray-500">
+          {hint}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const BLOQUEO_LABEL_BY_TYPE: Record<string, string> = {
+  vacation: "vacaciones",
+  sick: "enfermedad",
+  training: "formación",
+  personal: "personal",
+  other: "otros",
+};
+
+function formatBloqueoBreakdown(by: Record<string, number>): string {
+  const entries = Object.entries(by)
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(
+      ([k, n]) => `${BLOQUEO_LABEL_BY_TYPE[k] ?? k} ${n}`,
+    );
+  if (entries.length === 0) return "Sin bloqueos en el periodo.";
+  return entries.slice(0, 3).join(" · ");
+}
+
+/** Equity panel — FTE-normalized workload histogram + outlier callout.
+ *
+ * Two visualizations side-by-side:
+ *  - left: histogram of "shifts per 100% FTE" — bin count by N people.
+ *    Same chart works at N=6 (sparse) or N=100 (gaussian-ish).
+ *  - right: outlier callout — top + bottom person by load, with the
+ *    fairness ratio (max / min) as a single number.
+ *
+ * Respects categoría filter: histogram + outliers are computed against
+ * the filtered population.
+ */
+function EquityPanel({
+  workload,
+  activeCategoryIds,
+  accent,
+}: {
+  workload: StatsWorkloadRow[];
+  activeCategoryIds: Set<number | null>;
+  accent: string;
+}) {
+  const filtered = useMemo(
+    () =>
+      workload.filter(
+        (w) => activeCategoryIds.has(w.category_id) && w.total_shifts > 0,
+      ),
+    [workload, activeCategoryIds],
+  );
+
+  // Bin the normalized_total values for the histogram. Use 8 bins
+  // spanning min → max. At N<3 the histogram is meaningless, so skip
+  // and render a placeholder.
+  const hist = useMemo(() => {
+    if (filtered.length < 3) return null;
+    const values = filtered.map((w) => w.normalized_total);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min;
+    if (range === 0) {
+      return [
+        { label: `${min.toFixed(0)}`, count: filtered.length },
+      ];
+    }
+    const binCount = Math.min(8, Math.max(4, Math.ceil(filtered.length / 4)));
+    const binWidth = range / binCount;
+    const bins = Array.from({ length: binCount }, (_, i) => {
+      const lo = min + i * binWidth;
+      const hi = i === binCount - 1 ? max : lo + binWidth;
+      return {
+        label: `${Math.round(lo)}–${Math.round(hi)}`,
+        count: 0,
+      };
+    });
+    for (const v of values) {
+      const idx = Math.min(
+        binCount - 1,
+        Math.floor((v - min) / binWidth),
+      );
+      bins[idx].count += 1;
+    }
+    return bins;
+  }, [filtered]);
+
+  // Outlier callouts: top + bottom by normalized_total.
+  const top = useMemo(
+    () =>
+      [...filtered].sort(
+        (a, b) => b.normalized_total - a.normalized_total,
+      )[0],
+    [filtered],
+  );
+  const bottom = useMemo(
+    () =>
+      [...filtered].sort(
+        (a, b) => a.normalized_total - b.normalized_total,
+      )[0],
+    [filtered],
+  );
+  const ratio = useMemo(() => {
+    if (!top || !bottom || bottom.normalized_total === 0) return null;
+    return top.normalized_total / bottom.normalized_total;
+  }, [top, bottom]);
+
+  return (
+    <Card>
+      <div className="p-4">
+        <h2 className="text-sm font-semibold text-gray-800">
+          Equidad de carga
+        </h2>
+        <p className="mt-0.5 text-xs text-gray-500">
+          Turnos por miembro, normalizados a una jornada del 100%.
+          {filtered.length < 3
+            ? " Aún no hay datos suficientes para comparar."
+            : ""}
+        </p>
+        {hist === null || filtered.length === 0 ? (
+          <div className="mt-3 rounded-md bg-gray-50 px-3 py-6 text-center text-xs text-gray-500">
+            Necesitamos al menos 3 personas con turnos en el periodo
+            para construir la distribución.
+          </div>
+        ) : (
+          <div className="mt-3 grid gap-4 sm:grid-cols-2">
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart
+                data={hist}
+                margin={{ top: 8, right: 16, left: 0, bottom: 4 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 10, fill: "#4b5563" }}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 10, fill: "#4b5563" }}
+                />
+                <Tooltip
+                  cursor={{ fill: "rgba(0,0,0,0.04)" }}
+                  contentStyle={{
+                    fontSize: 12,
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 8,
+                  }}
+                  formatter={(v) => [`${Number(v)} personas`, "Carga"]}
+                />
+                <Bar dataKey="count" fill={accent} radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+            <div className="flex flex-col justify-center gap-3 text-sm">
+              {top && bottom && (
+                <>
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider text-gray-500">
+                      Más cargado
+                    </div>
+                    <div className="font-semibold text-gray-900">
+                      {personLastName({ name: top.person_name })}
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      {top.total_shifts} turnos · {top.normalized_total.toFixed(1)}/FTE
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[11px] uppercase tracking-wider text-gray-500">
+                      Menos cargado
+                    </div>
+                    <div className="font-semibold text-gray-900">
+                      {personLastName({ name: bottom.person_name })}
+                    </div>
+                    <div className="text-xs text-gray-600">
+                      {bottom.total_shifts} turnos · {bottom.normalized_total.toFixed(1)}/FTE
+                    </div>
+                  </div>
+                  {ratio !== null && (
+                    <div className="rounded-md bg-gray-50 px-3 py-2 text-xs">
+                      <span className="text-gray-500">
+                        Ratio max/min:
+                      </span>{" "}
+                      <span
+                        className={
+                          "font-semibold "
+                          + (ratio < 1.5
+                            ? "text-emerald-700"
+                            : ratio < 2.5
+                              ? "text-amber-700"
+                              : "text-rose-700")
+                        }
+                      >
+                        {ratio.toFixed(1)}×
+                      </span>
+                      <span className="ml-1 text-gray-500">
+                        {ratio < 1.5
+                          ? "(equitativo)"
+                          : ratio < 2.5
+                            ? "(diferencias notables)"
+                            : "(desequilibrio significativo)"}
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/** Coverage trend — line chart of monthly total vs uncovered.
+ *
+ * Two lines: total assignments (accent color) + uncovered (amber).
+ * Single chart, low height (~180px) so it sits next to the equity
+ * panel in a 3-column grid on desktop. */
+function CoverageTrend({
+  monthly,
+  accent,
+}: {
+  monthly: StatsMonthlyRow[];
+  accent: string;
+}) {
+  const data = monthly.map((m) => ({
+    month: m.year_month,
+    total: m.total_assignments,
+    uncovered: m.uncovered_count,
+  }));
+  const anyData = data.some((d) => d.total > 0);
+  return (
+    <Card>
+      <div className="p-4">
+        <h2 className="text-sm font-semibold text-gray-800">Cobertura</h2>
+        <p className="mt-0.5 text-xs text-gray-500">
+          Turnos totales vs sin cubrir, por mes.
+        </p>
+        {!anyData ? (
+          <div className="mt-3 rounded-md bg-gray-50 px-3 py-6 text-center text-xs text-gray-500">
+            Sin actividad en el periodo.
+          </div>
+        ) : (
+          <div className="mt-3">
+            <ResponsiveContainer width="100%" height={180}>
+              <LineChart
+                data={data}
+                margin={{ top: 8, right: 16, left: 0, bottom: 4 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis
+                  dataKey="month"
+                  tick={{ fontSize: 10, fill: "#4b5563" }}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 10, fill: "#4b5563" }}
+                />
+                <Tooltip
+                  contentStyle={{
+                    fontSize: 12,
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 8,
+                  }}
+                />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Line
+                  type="monotone"
+                  dataKey="total"
+                  name="Total"
+                  stroke={accent}
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="uncovered"
+                  name="Sin cubrir"
+                  stroke="#f59e0b"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/** Monthly trends panel — four mini-charts side-by-side.
+ *
+ * Each mini-chart is one metric over time. Lets a jefe scan
+ * operational tempo at a glance: "March had double the bloqueos."
+ * Each chart is intentionally low (~110px) so all four fit on one
+ * row at md+ widths. */
+function MonthlyTrendsPanel({
+  monthly,
+  accent,
+}: {
+  monthly: StatsMonthlyRow[];
+  accent: string;
+}) {
+  return (
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <MiniTrend
+        title="Turnos por mes"
+        data={monthly.map((m) => ({ x: m.year_month, y: m.total_assignments }))}
+        color={accent}
+      />
+      <MiniTrend
+        title="Cambios solicitados"
+        data={monthly.map((m) => ({ x: m.year_month, y: m.swap_offers_created }))}
+        color="#6366f1"
+      />
+      <MiniTrend
+        title="Bloqueos (días)"
+        data={monthly.map((m) => ({ x: m.year_month, y: m.bloqueos_days }))}
+        color="#f59e0b"
+      />
+      <MiniTrend
+        title="Incidencias"
+        data={monthly.map((m) => ({ x: m.year_month, y: m.incidents_count }))}
+        color="#f43f5e"
+      />
+    </div>
+  );
+}
+
+function MiniTrend({
+  title,
+  data,
+  color,
+}: {
+  title: string;
+  data: { x: string; y: number }[];
+  color: string;
+}) {
+  const total = data.reduce((acc, d) => acc + d.y, 0);
+  return (
+    <div className="rounded-xl bg-white p-3 shadow-soft ring-1 ring-gray-200">
+      <div className="flex items-baseline justify-between">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+          {title}
+        </div>
+        <div className="text-sm font-semibold tabular-nums text-gray-900">
+          {total.toLocaleString("es-ES")}
+        </div>
+      </div>
+      <div className="mt-1">
+        <ResponsiveContainer width="100%" height={80}>
+          <LineChart
+            data={data}
+            margin={{ top: 4, right: 4, left: 0, bottom: 0 }}
+          >
+            <XAxis dataKey="x" hide />
+            <YAxis hide allowDecimals={false} />
+            <Tooltip
+              contentStyle={{
+                fontSize: 11,
+                border: "1px solid #e5e7eb",
+                borderRadius: 6,
+                padding: "4px 8px",
+              }}
+              labelStyle={{ color: "#6b7280" }}
+              formatter={(v) => [Number(v), ""]}
+            />
+            <Line
+              type="monotone"
+              dataKey="y"
+              stroke={color}
+              strokeWidth={2}
+              dot={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+/** Categoría filter chips. Pure visual; state lives in the page.
+ *
+ * Hidden when there's only one categoría (or none) — useful only
+ * for tenants with mixed-category teams (adjuntos + residentes + ...). */
+function CategoryFilterChips({
+  options,
+  active,
+  onToggle,
+  onAll,
+}: {
+  options: [number | null, string][];
+  active: Set<number | null>;
+  onToggle: (id: number | null) => void;
+  onAll: () => void;
+}) {
+  const allSelected = options.every(([id]) => active.has(id));
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-1.5">
+      <span className="mr-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+        Categoría:
+      </span>
+      <button
+        type="button"
+        onClick={onAll}
+        className={
+          "rounded-full border px-3 py-1 text-xs font-medium transition-colors "
+          + (allSelected
+            ? "border-brand-600 bg-brand-50 text-brand-700"
+            : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50")
+        }
+      >
+        Todas
+      </button>
+      {options.map(([id, name]) => {
+        const on = active.has(id);
+        return (
+          <button
+            key={id ?? "null"}
+            type="button"
+            onClick={() => onToggle(id)}
+            aria-pressed={on}
+            className={
+              "rounded-full border px-3 py-1 text-xs font-medium transition-colors "
+              + (on
+                ? "border-brand-600 bg-brand-600 text-white hover:bg-brand-700"
+                : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50")
+            }
+          >
+            {name}
+          </button>
+        );
+      })}
+    </div>
   );
 }
