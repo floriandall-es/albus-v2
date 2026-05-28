@@ -1357,8 +1357,6 @@ function MiniTrend({
   };
 }) {
   const total = data.reduce((acc, d) => acc + d.y, 0);
-  const max = data.reduce((m, d) => (d.y > m ? d.y : m), 0);
-  const avg = data.length > 0 ? Math.round(total / data.length) : 0;
   const secondaryTotal = secondary
     ? secondary.data.reduce((acc, d) => acc + d.y, 0)
     : 0;
@@ -1404,12 +1402,6 @@ function MiniTrend({
             </div>
           )}
         </div>
-      </div>
-      {/* Second line below the headline: max + average over the
-          period. Gives the eye an anchor for the chart's amplitude
-          without needing the Y axis ticks. */}
-      <div className="mt-0.5 text-[10px] text-gray-500">
-        máx {max.toLocaleString("es-ES")} · prom {avg.toLocaleString("es-ES")}
       </div>
       <div className="mt-1">
         <ResponsiveContainer width="100%" height={96}>
