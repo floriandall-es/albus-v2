@@ -5,10 +5,13 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   LabelList,
   Legend,
   Line,
   LineChart,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -144,6 +147,20 @@ export default function StatsPage() {
     return all.filter((r) => personIdsByCategoryFilter.has(r.person_id));
   }, [q.data, personIdsByCategoryFilter]);
 
+  // Commit 2 — per-person drill-down. State for which person's side
+  // panel is open. Null = panel closed. Set by clicking any per-person
+  // bar in the page (per-slot chart, weekend chart, equity outlier
+  // callouts) — see onPersonClick wiring below.
+  const [selectedPersonId, setSelectedPersonId] = useState<number | null>(
+    null,
+  );
+  const selectedPerson = useMemo(() => {
+    if (selectedPersonId === null) return null;
+    return (
+      ov.data?.workload.find((w) => w.person_id === selectedPersonId) ?? null
+    );
+  }, [selectedPersonId, ov.data]);
+
   // Pivot rows by slot for chart legends + color mapping.
   const slotMeta = useMemo(() => {
     // Sprint 17: chart key is (slot_id, team_role_id) so team_composition
@@ -260,18 +277,43 @@ export default function StatsPage() {
       {ov.data && (
         <div className="mb-8 space-y-6">
           <KpiStrip kpis={ov.data.kpis} />
+          {/* Categoría rollup — donut + per-categoría comparison.
+              Hidden when the tenant has ≤1 categoría (the donut would
+              be a single 100% slice and the bars one row). For mixed-
+              composition services this is THE primary view at scale. */}
+          {categoryOptions.length > 1 && (
+            <CategoriaRollup
+              workload={ov.data.workload}
+              palette={palette}
+            />
+          )}
           <div className="grid gap-6 lg:grid-cols-3">
             <div className="lg:col-span-2">
               <EquityPanel
                 workload={ov.data.workload}
                 activeCategoryIds={effectiveActiveCategoryIds}
                 accent={palette[0]}
+                onPersonClick={setSelectedPersonId}
               />
             </div>
             <CoverageTrend monthly={ov.data.monthly} accent={palette[0]} />
           </div>
           <MonthlyTrendsPanel monthly={ov.data.monthly} accent={palette[0]} />
         </div>
+      )}
+
+      {/* Per-person side panel (Commit 2 drill-down). Renders when
+          selectedPersonId is set; otherwise nothing. Reads the
+          person's per-slot detail from the existing scopedRows so
+          there's no extra fetch. */}
+      {selectedPerson && (
+        <PersonDetailPanel
+          person={selectedPerson}
+          rows={q.data?.rows ?? []}
+          months={monthsBetween(fromDate, toDate)}
+          accent={palette[0]}
+          onClose={() => setSelectedPersonId(null)}
+        />
       )}
 
       {/* Categoría filter chips. Apply to per-slot detail + equity
@@ -318,6 +360,7 @@ export default function StatsPage() {
               slot={slot}
               rows={scopedRows}
               months={monthsBetween(fromDate, toDate)}
+              onPersonClick={setSelectedPersonId}
             />
           ))}
 
@@ -476,6 +519,7 @@ function PerSlotChart({
   slot,
   rows,
   months,
+  onPersonClick,
 }: {
   slot: {
     slot_id: number;
@@ -486,18 +530,30 @@ function PerSlotChart({
   };
   rows: StatsRow[];
   months: string[];
+  /** Commit 2 drill-down. Fires with the person_id of whichever
+   * stacked bar segment the user clicks. Lifted up to the page so
+   * the side panel can read from existing data. */
+  onPersonClick?: (personId: number) => void;
 }) {
   // Pivot: one row per person, columns are months (count for THIS
   // slot/role). Skip persons with zero count for this slot to keep
   // the chart tight.
   const data = useMemo(() => {
-    const byPid = new Map<number, { person: string; total: number; cells: Record<string, number> }>();
+    const byPid = new Map<
+      number,
+      { person_id: number; person: string; total: number; cells: Record<string, number> }
+    >();
     for (const r of rows) {
       if (r.slot_id !== slot.slot_id) continue;
       if ((r.team_role_id ?? null) !== slot.team_role_id) continue;
       let row = byPid.get(r.person_id);
       if (!row) {
-        row = { person: personLastName({ name: r.person_name }), total: 0, cells: {} };
+        row = {
+          person_id: r.person_id,
+          person: personLastName({ name: r.person_name }),
+          total: 0,
+          cells: {},
+        };
         byPid.set(r.person_id, row);
       }
       row.cells[r.year_month] = (row.cells[r.year_month] ?? 0) + r.count;
@@ -505,6 +561,7 @@ function PerSlotChart({
     }
     const list = Array.from(byPid.values()).map((p) => {
       const out: Record<string, number | string> = {
+        person_id: p.person_id,
         person: p.person,
         total: p.total,
       };
@@ -600,6 +657,15 @@ function PerSlotChart({
               stackId="s"
               fill={shades[i]}
               name={m}
+              cursor={onPersonClick ? "pointer" : undefined}
+              onClick={(d) => {
+                // Recharts passes the row datum as the click arg.
+                // person_id is stamped on each row in the `data`
+                // pivot above; click any bar segment to open the
+                // per-person side panel.
+                const pid = (d as { person_id?: number })?.person_id;
+                if (pid && onPersonClick) onPersonClick(pid);
+              }}
             >
               <LabelList
                 dataKey={m}
@@ -883,10 +949,14 @@ function EquityPanel({
   workload,
   activeCategoryIds,
   accent,
+  onPersonClick,
 }: {
   workload: StatsWorkloadRow[];
   activeCategoryIds: Set<number | null>;
   accent: string;
+  /** Click the top / bottom outlier name → open the per-person side
+   * panel. Same drill-down channel as the per-slot chart click. */
+  onPersonClick?: (personId: number) => void;
 }) {
   const filtered = useMemo(
     () =>
@@ -998,28 +1068,38 @@ function EquityPanel({
             <div className="flex flex-col justify-center gap-3 text-sm">
               {top && bottom && (
                 <>
-                  <div>
+                  <button
+                    type="button"
+                    className="text-left transition-colors hover:text-brand-700"
+                    onClick={() => onPersonClick?.(top.person_id)}
+                    disabled={!onPersonClick}
+                  >
                     <div className="text-[11px] uppercase tracking-wider text-gray-500">
                       Más cargado
                     </div>
-                    <div className="font-semibold text-gray-900">
+                    <div className="font-semibold text-gray-900 underline-offset-2 hover:underline">
                       {personLastName({ name: top.person_name })}
                     </div>
                     <div className="text-xs text-gray-600">
                       {top.total_shifts} turnos · {top.normalized_total.toFixed(1)}/FTE
                     </div>
-                  </div>
-                  <div>
+                  </button>
+                  <button
+                    type="button"
+                    className="text-left transition-colors hover:text-brand-700"
+                    onClick={() => onPersonClick?.(bottom.person_id)}
+                    disabled={!onPersonClick}
+                  >
                     <div className="text-[11px] uppercase tracking-wider text-gray-500">
                       Menos cargado
                     </div>
-                    <div className="font-semibold text-gray-900">
+                    <div className="font-semibold text-gray-900 underline-offset-2 hover:underline">
                       {personLastName({ name: bottom.person_name })}
                     </div>
                     <div className="text-xs text-gray-600">
                       {bottom.total_shifts} turnos · {bottom.normalized_total.toFixed(1)}/FTE
                     </div>
-                  </div>
+                  </button>
                   {ratio !== null && (
                     <div className="rounded-md bg-gray-50 px-3 py-2 text-xs">
                       <span className="text-gray-500">
@@ -1277,6 +1357,402 @@ function CategoryFilterChips({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// Commit 2 — categoría rollup + per-person side panel.
+// ---------------------------------------------------------------------------
+
+/** Categoría rollup: donut of total shifts by categoría + a compact
+ * per-categoría comparison table. Designed as the primary at-scale
+ * view: a 100-adjunto + 30-residente service collapses into a
+ * 4-row table, which is way more readable than 130 individual bars.
+ *
+ * Hidden by the parent when the tenant has ≤1 categoría (caller
+ * checks categoryOptions.length > 1). At N=2+ categorías this is the
+ * jefe's "what's the work split between adjuntos and residentes?"
+ * answer in one glance. */
+function CategoriaRollup({
+  workload,
+  palette,
+}: {
+  workload: StatsWorkloadRow[];
+  palette: string[];
+}) {
+  // Bucket per categoría. Use category_id (or null) as the key.
+  const buckets = useMemo(() => {
+    const m = new Map<
+      string,
+      {
+        key: string;
+        category_id: number | null;
+        category_name: string;
+        total_shifts: number;
+        weekend_shifts: number;
+        head_count: number;
+        fte: number;
+      }
+    >();
+    for (const w of workload) {
+      const key = w.category_id === null ? "null" : String(w.category_id);
+      let b = m.get(key);
+      if (!b) {
+        b = {
+          key,
+          category_id: w.category_id,
+          category_name: w.category_name ?? "Sin categoría",
+          total_shifts: 0,
+          weekend_shifts: 0,
+          head_count: 0,
+          fte: 0,
+        };
+        m.set(key, b);
+      }
+      b.total_shifts += w.total_shifts;
+      b.weekend_shifts += w.weekend_or_holiday_shifts;
+      b.head_count += 1;
+      b.fte += w.fte_pct / 100;
+    }
+    return Array.from(m.values()).sort(
+      (a, b) => b.total_shifts - a.total_shifts,
+    );
+  }, [workload]);
+
+  // Drop categorías that had zero shifts in the period — they
+  // clutter the donut as 0-degree slices and waste a row in the
+  // comparison table. The KPI strip already shows total team size.
+  const active = buckets.filter((b) => b.total_shifts > 0);
+  const totalShifts = active.reduce((acc, b) => acc + b.total_shifts, 0);
+
+  if (active.length === 0) {
+    return null;
+  }
+
+  // Assign a stable color per categoría from the page palette.
+  const colored = active.map((b, i) => ({
+    ...b,
+    color: palette[i % palette.length],
+  }));
+
+  return (
+    <Card>
+      <div className="p-4">
+        <h2 className="text-sm font-semibold text-gray-800">
+          Reparto por categoría
+        </h2>
+        <p className="mt-0.5 text-xs text-gray-500">
+          Turnos totales agrupados por categoría profesional. Útil
+          cuando el equipo es grande y la vista por persona se vuelve
+          ilegible.
+        </p>
+        <div className="mt-3 grid gap-4 md:grid-cols-2">
+          <ResponsiveContainer width="100%" height={220}>
+            <PieChart>
+              <Pie
+                data={colored}
+                dataKey="total_shifts"
+                nameKey="category_name"
+                cx="50%"
+                cy="50%"
+                outerRadius={80}
+                innerRadius={48}
+                paddingAngle={1}
+              >
+                {colored.map((entry) => (
+                  <Cell key={entry.key} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip
+                contentStyle={{
+                  fontSize: 12,
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 8,
+                }}
+                formatter={(v, n) => [`${Number(v)} turnos`, n]}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="text-left text-[11px] uppercase tracking-wider text-gray-500">
+                <tr>
+                  <th className="pb-2">Categoría</th>
+                  <th className="pb-2 text-right">Turnos</th>
+                  <th className="pb-2 text-right">Personas</th>
+                  <th className="pb-2 text-right">FTE</th>
+                  <th className="pb-2 text-right">T/FTE</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {colored.map((b) => {
+                  const pct = totalShifts > 0
+                    ? Math.round((b.total_shifts / totalShifts) * 100)
+                    : 0;
+                  const tPerFte =
+                    b.fte > 0 ? (b.total_shifts / b.fte).toFixed(1) : "—";
+                  return (
+                    <tr key={b.key}>
+                      <td className="py-1.5">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: b.color }}
+                          />
+                          <div className="leading-tight">
+                            <div className="font-medium text-gray-900">
+                              {b.category_name}
+                            </div>
+                            <div className="text-[10px] text-gray-500">
+                              {pct}% del total
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-1.5 text-right tabular-nums text-gray-900">
+                        {b.total_shifts}
+                      </td>
+                      <td className="py-1.5 text-right tabular-nums text-gray-700">
+                        {b.head_count}
+                      </td>
+                      <td className="py-1.5 text-right tabular-nums text-gray-700">
+                        {b.fte.toFixed(1)}
+                      </td>
+                      <td className="py-1.5 text-right tabular-nums font-semibold text-gray-900">
+                        {tPerFte}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <p className="mt-2 text-[10px] leading-snug text-gray-500">
+              T/FTE = turnos por jornada del 100%. Compara categorías
+              con composiciones de tiempo parcial distintas en igualdad
+              de condiciones.
+            </p>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+/** Per-person side panel — drill-down from any chart click.
+ *
+ * Renders as a right-anchored sheet (fixed) so it works regardless
+ * of page scroll position. Closed by clicking the backdrop or the X.
+ * Reads from data the page already has (workload row + the per-slot
+ * StatsRow list) — no extra fetch.
+ *
+ * Content priority for a jefe:
+ *  1. Identity (name, categoría, FTE)
+ *  2. Headline: total shifts + weekend share + FTE-normalized rate
+ *  3. Per-slot breakdown (table)
+ *  4. Per-month sparkline of the person's total (trend over the range)
+ */
+function PersonDetailPanel({
+  person,
+  rows,
+  months,
+  accent,
+  onClose,
+}: {
+  person: StatsWorkloadRow;
+  rows: StatsRow[];
+  months: string[];
+  accent: string;
+  onClose: () => void;
+}) {
+  // Per-slot breakdown for this person, summed across months.
+  const perSlot = useMemo(() => {
+    type Row = {
+      key: string;
+      slot_name: string;
+      team_role_label: string | null;
+      slot_color: string | null;
+      total: number;
+    };
+    const m = new Map<string, Row>();
+    for (const r of rows) {
+      if (r.person_id !== person.person_id) continue;
+      const key = `${r.slot_id}|${r.team_role_id ?? ""}`;
+      let entry = m.get(key);
+      if (!entry) {
+        entry = {
+          key,
+          slot_name: r.slot_name,
+          team_role_label: r.team_role_label,
+          slot_color: r.slot_color,
+          total: 0,
+        };
+        m.set(key, entry);
+      }
+      entry.total += r.count;
+    }
+    return Array.from(m.values()).sort((a, b) => b.total - a.total);
+  }, [rows, person.person_id]);
+
+  // Per-month total for the sparkline. Pre-zero each month so the
+  // line is continuous.
+  const trend = useMemo(() => {
+    const by: Record<string, number> = {};
+    for (const ym of months) by[ym] = 0;
+    for (const r of rows) {
+      if (r.person_id !== person.person_id) continue;
+      by[r.year_month] = (by[r.year_month] ?? 0) + r.count;
+    }
+    return months.map((m) => ({ x: m, y: by[m] ?? 0 }));
+  }, [rows, months, person.person_id]);
+
+  const weekendPct =
+    person.total_shifts > 0
+      ? Math.round(
+          (person.weekend_or_holiday_shifts / person.total_shifts) * 100,
+        )
+      : 0;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex justify-end bg-black/40"
+      onClick={onClose}
+    >
+      <div
+        className="h-full w-full max-w-md overflow-y-auto bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Sticky header — name + categoría + close. */}
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-gray-200 bg-white px-5 py-4">
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-base font-semibold text-gray-900">
+              {person.person_name}
+            </div>
+            <div className="mt-0.5 truncate text-xs text-gray-500">
+              {person.category_name ?? "Sin categoría"} · FTE {person.fte_pct}%
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar"
+            className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+          >
+            <span aria-hidden className="text-xl leading-none">×</span>
+          </button>
+        </div>
+
+        {/* Headline tiles. */}
+        <div className="grid grid-cols-3 gap-2 px-5 py-4">
+          <PanelStat
+            label="Turnos"
+            value={person.total_shifts.toLocaleString("es-ES")}
+          />
+          <PanelStat
+            label="Fines de semana"
+            value={`${person.weekend_or_holiday_shifts}`}
+            hint={`${weekendPct}% del total`}
+          />
+          <PanelStat
+            label="Por FTE"
+            value={person.normalized_total.toFixed(1)}
+            hint="Normalizado a 100%"
+          />
+        </div>
+
+        {/* Per-slot breakdown. */}
+        <div className="border-t border-gray-100 px-5 py-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+            Reparto por actividad
+          </div>
+          {perSlot.length === 0 ? (
+            <p className="mt-2 text-xs text-gray-500">
+              Sin turnos en el periodo.
+            </p>
+          ) : (
+            <ul className="mt-2 space-y-1.5">
+              {perSlot.map((s) => (
+                <li key={s.key} className="flex items-center gap-2 text-xs">
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: s.slot_color ?? "#94a3b8" }}
+                  />
+                  <span className="flex-1 truncate text-gray-700">
+                    {s.slot_name}
+                    {s.team_role_label && (
+                      <span className="ml-1 text-gray-400">
+                        · {s.team_role_label}
+                      </span>
+                    )}
+                  </span>
+                  <span className="tabular-nums font-semibold text-gray-900">
+                    {s.total}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {/* Per-month trend sparkline. */}
+        <div className="border-t border-gray-100 px-5 py-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+            Tendencia por mes
+          </div>
+          <div className="mt-2">
+            <ResponsiveContainer width="100%" height={100}>
+              <LineChart
+                data={trend}
+                margin={{ top: 4, right: 4, left: 0, bottom: 0 }}
+              >
+                <XAxis dataKey="x" tick={{ fontSize: 9, fill: "#9ca3af" }} />
+                <YAxis hide allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{
+                    fontSize: 11,
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 6,
+                    padding: "4px 8px",
+                  }}
+                  formatter={(v) => [Number(v), "turnos"]}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="y"
+                  stroke={accent}
+                  strokeWidth={2}
+                  dot={{ r: 2 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PanelStat({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <div className="rounded-md bg-gray-50 px-3 py-2 ring-1 ring-gray-200">
+      <div className="text-[10px] uppercase tracking-wider text-gray-500">
+        {label}
+      </div>
+      <div className="mt-0.5 text-lg font-semibold tabular-nums text-gray-900">
+        {value}
+      </div>
+      {hint && (
+        <div className="text-[10px] text-gray-500">{hint}</div>
+      )}
     </div>
   );
 }
