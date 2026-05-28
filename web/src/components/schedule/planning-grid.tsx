@@ -1,5 +1,11 @@
 "use client";
-import { Fragment, useMemo, type ReactNode } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from "react";
 import {
   avatarSrc,
   personLastName,
@@ -193,10 +199,73 @@ export function PlanningGrid({
     );
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  return (
+    <PlanningGridInner
+      resolvedSections={resolvedSections}
+      sectionGrids={sectionGrids}
+      dates={dates}
+      holidayDates={holidayDates}
+      flaggedAssignmentIds={flaggedAssignmentIds}
+      onEmptyCellClick={onEmptyCellClick}
+    />
+  );
+}
+
+/** Split out so the scroll-container ref + the today-scroll effect
+ * can live next to each other without polluting the parent's hooks.
+ * Pure presentation — every render-relevant value is already
+ * resolved by PlanningGrid. */
+function PlanningGridInner({
+  resolvedSections,
+  sectionGrids,
+  dates,
+  holidayDates,
+  flaggedAssignmentIds,
+  onEmptyCellClick,
+}: {
+  resolvedSections: PlanningGridSection[];
+  sectionGrids: ReturnType<typeof buildGrid>[];
+  dates: string[];
+  holidayDates: Set<string>;
+  flaggedAssignmentIds?: Set<number>;
+  onEmptyCellClick?: PlanningGridProps["onEmptyCellClick"];
+}) {
+  // Today, computed once on mount. Used by both the cell-coloring
+  // logic and the auto-scroll effect below. A page kept open past
+  // midnight will keep the previous day highlighted until reload —
+  // acceptable for our workflow.
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
+  // Scroll today into view as the first visible date column on
+  // initial render + whenever the date window changes. The sticky
+  // "Turno" column's width is subtracted so today doesn't slide
+  // underneath it. Skipped when today isn't in the rendered range
+  // (e.g. viewing a non-current schedule) — the natural leftmost
+  // position is the right default in that case.
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    if (!dates.includes(today)) return;
+    const th = container.querySelector<HTMLElement>(
+      `[data-date="${today}"]`,
+    );
+    if (!th) return;
+    const stickyCol = container.querySelector<HTMLElement>(
+      "thead th[data-sticky-col='true']",
+    );
+    const stickyWidth = stickyCol?.offsetWidth ?? 0;
+    // Math.max guards against negative scrollLeft when today happens
+    // to be the very first date in the range (offsetLeft would be
+    // smaller than the sticky column width).
+    container.scrollLeft = Math.max(0, th.offsetLeft - stickyWidth);
+  }, [dates, today]);
 
   return (
-    <div className="overflow-x-auto rounded-xl bg-white shadow-soft ring-1 ring-gray-200">
+    <div
+      ref={scrollContainerRef}
+      className="overflow-x-auto rounded-xl bg-white shadow-soft ring-1 ring-gray-200"
+    >
       {/* `border-separate border-spacing-0` is what makes `sticky`
           actually work on the first column. Tailwind preflight sets
           tables to `border-collapse: collapse`, which prevents
@@ -213,7 +282,10 @@ export function PlanningGrid({
                 width in a table). The 180px floor used to eat
                 ~half the screen on mobile for short names like
                 "Guardia" or "Planta". */}
-            <th className="sticky left-0 bg-gray-50 z-10 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 border-b border-r border-gray-200 whitespace-nowrap">
+            <th
+              data-sticky-col="true"
+              className="sticky left-0 bg-gray-50 z-10 px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 border-b border-r border-gray-200 whitespace-nowrap"
+            >
               Turno
             </th>
             {dates.map((d) => {
@@ -225,6 +297,7 @@ export function PlanningGrid({
               return (
                 <th
                   key={d}
+                  data-date={d}
                   className={
                     "px-1 py-2.5 text-center min-w-[84px] border-b "
                     + (isToday
