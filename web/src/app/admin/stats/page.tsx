@@ -267,7 +267,7 @@ export default function StatsPage() {
     <>
       <PageHeader title="Estadísticas" />
 
-      <div className="mb-6 flex flex-wrap items-end gap-3">
+      <div className="mb-4 flex flex-wrap items-end gap-3">
         <div className="w-72">
           <MonthPicker label="Desde" value={fromPeriod} onChange={setFromPeriod} />
         </div>
@@ -281,6 +281,35 @@ export default function StatsPage() {
           </div>
         )}
       </div>
+
+      {/* Categoría filter — sits at the top so it reads as a
+          page-wide scope, not a per-section thing. Applies to the
+          equity histogram, the calendar heat map, the per-slot
+          detail charts and the detail table. Does NOT scope the
+          KPI strip / categoría rollup / coverage trend / monthly
+          trends — those are service-level views by design (a jefe
+          filtering to "Adjuntos" still wants to see whether the
+          schedule has uncovered shifts overall). Hidden when the
+          tenant has ≤1 categoría. */}
+      {categoryOptions.length > 1 && (
+        <div className="mb-6">
+          <CategoryFilterChips
+            options={categoryOptions}
+            active={effectiveActiveCategoryIds}
+            onToggle={(id) => {
+              const next = new Set(effectiveActiveCategoryIds);
+              if (next.has(id)) next.delete(id);
+              else next.add(id);
+              setActiveCategoryIds(next);
+            }}
+            onAll={() =>
+              setActiveCategoryIds(
+                new Set(categoryOptions.map(([id]) => id)),
+              )
+            }
+          />
+        </div>
+      )}
 
       {/* Top-of-page dashboard: KPI strip + equity panel + coverage
           trend + monthly mini-charts. Always renders (independent of
@@ -318,12 +347,14 @@ export default function StatsPage() {
           and the per-slot detail. Scales naturally — each person
           is one ~16px row, so a 100-member team is a 1600px-tall
           scrollable panel. Hidden when there's literally nothing
-          to plot in the range. */}
+          to plot in the range. The page-level categoría filter
+          scopes which persons appear here. */}
       {cal.data
         && (cal.data.entries.length > 0 || cal.data.persons.length > 0) && (
           <CalendarHeatmap
             data={cal.data}
             accent={palette[0]}
+            personIdsFilter={personIdsByCategoryFilter}
             onPersonClick={setSelectedPersonId}
           />
         )}
@@ -339,28 +370,6 @@ export default function StatsPage() {
           months={monthsBetween(fromDate, toDate)}
           accent={palette[0]}
           onClose={() => setSelectedPersonId(null)}
-        />
-      )}
-
-      {/* Categoría filter chips. Apply to per-slot detail + equity
-          histogram only — the dashboard panels above stay
-          unfiltered. Hidden when there's only one categoría (or
-          none) since the toggle would do nothing. */}
-      {categoryOptions.length > 1 && (
-        <CategoryFilterChips
-          options={categoryOptions}
-          active={effectiveActiveCategoryIds}
-          onToggle={(id) => {
-            const next = new Set(effectiveActiveCategoryIds);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            setActiveCategoryIds(next);
-          }}
-          onAll={() =>
-            setActiveCategoryIds(
-              new Set(categoryOptions.map(([id]) => id)),
-            )
-          }
         />
       )}
 
@@ -2048,10 +2057,16 @@ function isoFromDate(d: Date): string {
 function CalendarHeatmap({
   data,
   accent,
+  personIdsFilter,
   onPersonClick,
 }: {
   data: StatsCalendarResponse;
   accent: string;
+  /** When set, restricts the rendered persons to this set. The
+   * page-level categoría filter feeds this — `null` means no
+   * filter (show everyone), an empty set means "hide everyone"
+   * which is a valid state (user unchecked every chip). */
+  personIdsFilter?: Set<number> | null;
   onPersonClick?: (personId: number) => void;
 }) {
   const [mode, setMode] = useState<HeatmapMode>("shifts");
@@ -2060,6 +2075,14 @@ function CalendarHeatmap({
     () => daysBetween(data.from_date, data.to_date),
     [data.from_date, data.to_date],
   );
+
+  // Visible persons after the categoría filter is applied. Computed
+  // here rather than at the call site so the totals + lookup map
+  // below all stay scoped consistently.
+  const visiblePersons = useMemo(() => {
+    if (!personIdsFilter) return data.persons;
+    return data.persons.filter((p) => personIdsFilter.has(p.id));
+  }, [data.persons, personIdsFilter]);
 
   const holidayDates = useMemo(
     () => new Set(data.holidays),
@@ -2150,9 +2173,11 @@ function CalendarHeatmap({
           </div>
         </div>
 
-        {data.persons.length === 0 ? (
+        {visiblePersons.length === 0 ? (
           <p className="mt-4 text-xs text-gray-500">
-            No hay miembros activos en el equipo.
+            {data.persons.length === 0
+              ? "No hay miembros activos en el equipo."
+              : "Ninguna persona coincide con los filtros."}
           </p>
         ) : (
           <div className="mt-3 overflow-x-auto">
@@ -2187,7 +2212,7 @@ function CalendarHeatmap({
               </div>
 
               {/* Rows */}
-              {data.persons.map((p) => {
+              {visiblePersons.map((p) => {
                 const rowTotal = totals.get(p.id) ?? 0;
                 return (
                   <div key={p.id} className="flex items-center">
