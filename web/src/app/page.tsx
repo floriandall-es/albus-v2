@@ -75,8 +75,8 @@ const COPY = {
       faq: "Preguntas",
     },
     hero: {
-      title: "El cuadrante del mes,",
-      titleAccent: "hecho.",
+      title: "La planificación del mes,",
+      titleAccent: "hecha.",
       subtitle:
         "Trivu construye la planificación de tu servicio respetando guardias, rotaciones, vacaciones y reglas — y la reparte de forma justa. El jefe valida; el equipo lo ve en su móvil.",
       ctaPrimary: "Empezar gratis",
@@ -93,7 +93,7 @@ const COPY = {
         badge: "Sin Trivu",
         sublabel: "Excel + WhatsApp",
         points: [
-          { kind: "bad", text: "Sábado por la tarde rehaciendo el cuadrante" },
+          { kind: "bad", text: "Sábado por la tarde rehaciendo la planificación" },
           { kind: "bad", text: "Tres conflictos de guardia que nadie vio" },
           { kind: "bad", text: "Vacaciones cruzadas descubiertas en agosto" },
           {
@@ -107,7 +107,7 @@ const COPY = {
         badge: "Con Trivu",
         sublabel: "Solver matemático",
         points: [
-          { kind: "good", text: "Cuadrante generado en menos de un minuto" },
+          { kind: "good", text: "Planificación generada en menos de un minuto" },
           {
             kind: "good",
             text: "Conflictos detectados antes de publicar",
@@ -131,7 +131,7 @@ const COPY = {
         },
         {
           eyebrow: "Paso 2",
-          title: "Se genera el cuadrante",
+          title: "Se genera la planificación",
           body:
             "Un clic. El solver construye el mes respetando reglas duras y equilibrando el reparto. Si una restricción no encaja, lo dice y propone aflojarla.",
         },
@@ -161,7 +161,7 @@ const COPY = {
         heading: "Planifica sin perder el viernes por la tarde.",
         bullets: [
           {
-            heading: "El cuadrante en un clic",
+            heading: "La planificación en un clic",
             body: "Genera el mes respetando todas tus reglas. Lo regeneras tantas veces como quieras.",
           },
           {
@@ -225,7 +225,7 @@ const COPY = {
           icon: "swap" as const,
           tone: "sky" as const,
           heading: "Cambios entre compañeros",
-          body: "Una persona pide cobertura, otra la acepta. El cambio se aplica al cuadrante, los dos calendarios se actualizan, y queda registrado quién cubrió a quién — todo sin que el jefe tenga que firmar nada.",
+          body: "Una persona pide cobertura, otra la acepta. El cambio se aplica a la planificación, los dos calendarios se actualizan, y queda registrado quién cubrió a quién — todo sin que el jefe tenga que firmar nada.",
           chip: "Auto-aprobado",
         },
         {
@@ -264,7 +264,7 @@ const COPY = {
         {
           icon: "sparkles" as const,
           heading: "Reparto matemáticamente justo",
-          body: "El cuadrante no se genera por azar. Un solver matemático respeta tus reglas y reparte la carga de forma óptima entre las personas del equipo.",
+          body: "La planificación no se genera por azar. Un solver matemático respeta tus reglas y reparte la carga de forma óptima entre las personas del equipo.",
         },
         {
           icon: "shield" as const,
@@ -285,7 +285,7 @@ const COPY = {
           cadence: "/mes",
           tagline: "Quien crea y mantiene la planificación",
           features: [
-            "Generación de cuadrantes ilimitada",
+            "Generación de planificaciones ilimitada",
             "Periodos especiales (verano, Navidad…)",
             "Estadísticas y reparto justo",
             "Aprobar vacaciones, cambios e incidencias",
@@ -319,11 +319,11 @@ const COPY = {
         },
         {
           q: "¿Cuánto cuesta?",
-          a: "Los primeros 30 días son gratis. Después, 29,90 € al mes para quien crea el cuadrante y 4,90 € al mes por cada miembro del equipo. Sin contrato anual ni permanencia: cancelas cuando quieras.",
+          a: "Los primeros 30 días son gratis. Después, 29,90 € al mes para quien crea la planificación y 4,90 € al mes por cada miembro del equipo. Sin contrato anual ni permanencia: cancelas cuando quieras.",
         },
         {
           q: "¿Cuánto tarda configurarlo?",
-          a: "Un servicio típico se configura en una tarde. Un asistente te guía paso a paso por el equipo, las actividades y las reglas. Si quieres, te ayudamos a importar tu cuadrante actual.",
+          a: "Un servicio típico se configura en una tarde. Un asistente te guía paso a paso por el equipo, las actividades y las reglas. Si quieres, te ayudamos a importar tu planificación actual.",
         },
         {
           q: "¿Mis datos están seguros?",
@@ -331,7 +331,7 @@ const COPY = {
         },
         {
           q: "¿Y si tengo varios equipos en el mismo servicio?",
-          a: "Cada equipo lleva su planificación de forma independiente, pero pueden coordinarse: reuniones compartidas, directorio común y, si quieren, visibilidad mutua de los cuadrantes publicados.",
+          a: "Cada equipo lleva su planificación de forma independiente, pero pueden coordinarse: reuniones compartidas, directorio común y, si quieren, visibilidad mutua de las planificaciones publicadas.",
         },
         {
           q: "¿Y si tengo residentes u otro subequipo aparte?",
@@ -340,7 +340,7 @@ const COPY = {
       ],
     },
     finalCta: {
-      title: "Tu próximo cuadrante.",
+      title: "Tu próxima planificación.",
       subtitle:
         "Sin Excel, sin domingos por la noche. Crea la cuenta y configura tu equipo en una tarde.",
       ctaPrimary: "Empezar gratis 30 días",
@@ -1223,7 +1223,7 @@ function HeroMockup({
     SA: "KL",
   } as const;
 
-  // Hand-built schedule that "looks like" a real cuadrante: today
+  // Hand-built schedule that "looks like" a real planificación: today
   // is column 4 (highlighted), some rotation patterns, a couple of
   // uncovered cells in rose.
   const rows: { slot: string; color: string; cells: Cell[] }[] = [
