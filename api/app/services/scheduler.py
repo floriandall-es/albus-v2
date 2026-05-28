@@ -170,20 +170,46 @@ def slots_overlap_in_time(slot_a: Slot, d_a: date, slot_b: Slot, d_b: date) -> b
     return s1 < e2 and s2 < e1
 
 
-def _slot_applies(slot: Slot, d: date, holiday_dates: set[date]) -> bool:
+def _days_applied_matches(
+    days_applied: str,
+    custom_days_bitmap: int | None,
+    d: date,
+    holiday_dates: set[date],
+) -> bool:
+    """Pure helper: does (days_applied, custom_days_bitmap) match
+    date d? Same logic for both Slot defaults and SlotPeriodSnapshot
+    overrides — the snapshot mirrors the slot's column shape so a
+    single function handles both. See _Context.effective_slot_applies
+    for the period-aware variant that picks which (days_applied,
+    bitmap) pair to consult."""
     weekday = d.weekday()  # Mon=0 .. Sun=6
     is_weekend = weekday >= 5
     is_holiday = d in holiday_dates
-    if slot.days_applied == "all":
+    if days_applied == "all":
         return True
-    if slot.days_applied == "weekdays":
+    if days_applied == "weekdays":
         return not is_weekend and not is_holiday
-    if slot.days_applied == "weekends_holidays":
+    if days_applied == "weekends_holidays":
         return is_weekend or is_holiday
-    if slot.days_applied == "custom":
-        bitmap = slot.custom_days_bitmap or 0
+    if days_applied == "custom":
+        bitmap = custom_days_bitmap or 0
         return bool(bitmap & (1 << weekday))
     return False
+
+
+def _slot_applies(slot: Slot, d: date, holiday_dates: set[date]) -> bool:
+    """Slot-default applicability check. PERIOD-AGNOSTIC — does NOT
+    consult SlotPeriodSnapshot.days_applied even when a snapshot
+    exists. Callers that need the period-aware answer must use
+    `_Context.effective_slot_applies(slot, d)` instead; this helper
+    is here for code paths that don't hold a _Context (e.g. unit
+    tests, ad-hoc tooling)."""
+    return _days_applied_matches(
+        slot.days_applied,
+        slot.custom_days_bitmap,
+        d,
+        holiday_dates,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -611,6 +637,31 @@ class _Context:
         (slot, date) pair entirely."""
         snap = self._snapshot_for(slot_id, d)
         return bool(snap and snap.dismissed)
+
+    def effective_slot_applies(self, slot: Slot, d: date) -> bool:
+        """Period-aware applicability: does this slot run on date d?
+        When an active snapshot exists for (period, slot), its
+        (days_applied, custom_days_bitmap) replace the slot's
+        defaults — so a slot that runs Mon/Wed/Thu/Fri normally can
+        become weekdays-only during Verano without the solver
+        silently skipping Tuesdays. Dismissed snapshots collapse to
+        False (matches `is_period_dismissed`)."""
+        snap = self._snapshot_for(slot.id, d)
+        if snap is not None:
+            if snap.dismissed:
+                return False
+            return _days_applied_matches(
+                snap.days_applied,
+                snap.custom_days_bitmap,
+                d,
+                self.holiday_dates,
+            )
+        return _days_applied_matches(
+            slot.days_applied,
+            slot.custom_days_bitmap,
+            d,
+            self.holiday_dates,
+        )
 
     def effective_headcount(self, slot: Slot, d: date) -> int:
         snap = self._snapshot_for(slot.id, d)
@@ -1376,8 +1427,9 @@ class _Context:
         # Availability blocks.
         if self.is_blocked(person_id, d):
             return "La persona tiene un bloqueo de disponibilidad aprobado en esa fecha"
-        # Slot date applicability.
-        if not _slot_applies(slot, d, self.holiday_dates):
+        # Slot date applicability — period-aware so a snapshot's
+        # `days_applied` override beats the slot's default.
+        if not self.effective_slot_applies(slot, d):
             return "El slot no aplica en esa fecha"
         return None
 
@@ -1563,7 +1615,7 @@ def _greedy_fallback(
             ctx.slots, key=lambda s: (_slot_priority(s, d), s.id)
         )
         for slot in slots_in_priority_order:
-            if not _slot_applies(slot, d, ctx.holiday_dates):
+            if not ctx.effective_slot_applies(slot, d):
                 continue
             # Sprint 28: skip dismissed (slot, date) — the dismissed
             # rows were already emitted from the locked-carry pass
@@ -2187,6 +2239,10 @@ def _compute_team_composition_rotation_prepins(
             cur_team, cur_dates, cur_rule_id = [], [], None
 
         for d in ctx.dates:
+            # `_slot_applies` (slot defaults only) is fine here: the
+            # next guard skips every in-snapshot date entirely, so
+            # whether or not the snapshot's `days_applied` differs
+            # from the slot's never reaches this code.
             if not _slot_applies(slot, d, ctx.holiday_dates):
                 flush()
                 continue
@@ -2520,7 +2576,7 @@ def _solve_cpsat(
 
     for d in ctx.dates:
         for slot in ctx.slots:
-            if not _slot_applies(slot, d, ctx.holiday_dates):
+            if not ctx.effective_slot_applies(slot, d):
                 continue
             # Sprint 28: skip entire (slot, date) when admin marked
             # "No aplica". The dismissed rows were already emitted
