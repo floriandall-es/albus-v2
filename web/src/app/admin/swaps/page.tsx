@@ -184,10 +184,10 @@ function SwapLimitCard() {
               Límite de cambios por mes y persona
             </h3>
             <p className="mt-0.5 text-xs text-gray-500 max-w-xl">
-              Tope opcional. Cada cambio cumplido cuenta tanto para
-              quien lo pidió como para quien lo aceptó, dentro del
-              mes del turno original. Déjalo en blanco para no
-              limitar.
+              Tope opcional. Cada cambio cumplido cuenta sólo para
+              quien lo pidió, dentro del mes del turno original —
+              cubrir un turno ajeno no resta cuota a quien ayuda.
+              Déjalo en blanco para no limitar.
             </p>
           </div>
           <span

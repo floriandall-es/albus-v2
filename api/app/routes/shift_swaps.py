@@ -88,19 +88,18 @@ def _month_range(d: date_t) -> tuple[date_t, date_t]:
 def _swap_count_for_person_in_month(
     ctx: RequestContext, person_id: int, period_date: date_t
 ) -> int:
-    """Count fulfilled swap offers where this person was either the
-    requester or the accepted responder, AND the original assignment
-    falls in `period_date`'s month. Used to enforce
-    `tenant.max_swaps_per_member_per_month` at accept-response time
+    """Count fulfilled swap offers this person REQUESTED, scoped to
+    the month of the original assignment. Used to enforce
+    `tenant.max_swaps_per_member_per_month` at offer / accept time
     and surface usage via /api/me/swap-quota.
 
-    Both sides of every fulfilled swap count once. Cover responses
-    count too: the requester is giving up a shift, the responder is
-    picking it up — that's still one cambio per person in the month.
+    Only the requester is charged a cambio — the responder is doing
+    a favour and shouldn't be penalised for helping. Customers asked
+    for this so a colleague who often covers for others doesn't
+    burn through their own monthly quota.
     """
     first, last = _month_range(period_date)
-    # Requester side: offer.requested_by_membership maps to person_id.
-    requester_q = (
+    rows = (
         ctx.db.query(ShiftSwapOffer.id)
         .join(
             Membership,
@@ -114,36 +113,9 @@ def _swap_count_for_person_in_month(
             Assignment.date >= first,
             Assignment.date <= last,
         )
+        .all()
     )
-    # Responder side: the accepted ShiftSwapResponse's responder
-    # maps to person_id.
-    responder_q = (
-        ctx.db.query(ShiftSwapOffer.id)
-        .join(
-            ShiftSwapResponse,
-            ShiftSwapResponse.offer_id == ShiftSwapOffer.id,
-        )
-        .join(
-            Membership,
-            Membership.id == ShiftSwapResponse.responder_membership_id,
-        )
-        .join(Assignment, Assignment.id == ShiftSwapOffer.assignment_id)
-        .filter(
-            ShiftSwapOffer.tenant_id == ctx.tenant.id,
-            ShiftSwapOffer.status == "fulfilled",
-            ShiftSwapResponse.status == "accepted",
-            Membership.person_id == person_id,
-            Assignment.date >= first,
-            Assignment.date <= last,
-        )
-    )
-    # Union (distinct offer ids) — defensive: a person can't be both
-    # requester and accepted-responder of the same offer, but DISTINCT
-    # keeps the count honest if any data ever drifts.
-    union_ids = {row[0] for row in requester_q.all()} | {
-        row[0] for row in responder_q.all()
-    }
-    return len(union_ids)
+    return len(rows)
 
 
 def _enforce_swap_quota(
@@ -781,17 +753,13 @@ def respond_to_offer(
             ),
         )
 
-    # UX courtesy: don't let a responder at quota submit a response
-    # they wouldn't be able to fulfil. accept_response still
-    # re-enforces this — the responder could otherwise hit the cap
-    # via parallel responses or fulfilments from other offers.
-    original = _assignment_or_404(ctx, o.assignment_id)
-    _enforce_swap_quota(
-        ctx,
-        ctx.person.id,
-        original.date,
-        ctx.person.last_name or ctx.person.name or "Tú",
-    )
+    # Quota note: as of the only-requester-counts change, the
+    # responder is never charged a cambio, so there's nothing to
+    # enforce here. We deliberately don't gate response creation on
+    # the requester's quota either — they already passed that check
+    # at create_offer time and accept_response will recheck before
+    # actually fulfilling. Letting the responder propose freely
+    # keeps the colleague-helps-colleague flow friction-free.
 
     swap_assignment = None
     if payload.kind == "swap":
@@ -852,22 +820,12 @@ def accept_response(
     if responder_m is None:
         raise HTTPException(status_code=400, detail="Respondedor inválido")
 
-    # Per-tenant monthly cap. Both sides spend a cambio when an
-    # offer is fulfilled; reject the accept if either side is at
-    # the cap. Scoped to the month of `original.date` — for a swap
-    # response that crosses months we use the same period for both
-    # sides so admins can reason about "X cambios en mayo".
+    # Per-tenant monthly cap. Only the requester spends a cambio
+    # when an offer is fulfilled — the responder is doing a favour
+    # and doesn't burn quota. Scoped to the month of `original.date`
+    # so admins can reason about "X cambios en mayo".
     requester_label = ctx.person.last_name or ctx.person.name or "tú"
-    responder_person = ctx.db.get(Person, responder_m.person_id)
-    responder_label = (
-        (responder_person.last_name or responder_person.name)
-        if responder_person
-        else "el respondedor"
-    )
     _enforce_swap_quota(ctx, ctx.person.id, original.date, requester_label)
-    _enforce_swap_quota(
-        ctx, responder_m.person_id, original.date, responder_label
-    )
 
     # Re-check eligibility AT ACCEPT TIME — the schedule may have changed.
     # For a SWAP, each person is GIVING UP their own assignment, so it
@@ -1196,10 +1154,10 @@ class SwapQuotaOut(BaseModel):
     """Per-person view of swap usage in a given month.
 
     `limit` is the tenant's `max_swaps_per_member_per_month` (null =
-    unlimited). `used` counts fulfilled offers where the caller was
-    either requester or accepted responder, scoped to that month.
-    The frontend uses both to render "X de N cambios este mes" and
-    disable swap actions when used >= limit.
+    unlimited). `used` counts fulfilled offers the caller REQUESTED
+    in that month — covering someone else's shift no longer charges
+    the responder. The frontend uses both to render "X de N cambios
+    este mes" and disable swap actions when used >= limit.
     """
 
     period: str  # YYYY-MM
