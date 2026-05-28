@@ -292,7 +292,32 @@ export type AvailabilityBlock = {
   reviewed_by_membership_id: number | null;
   reviewed_at: string | null;
   review_notes: string | null;
+  /** Migration 0083. When set, the block is locked to this
+   * membership — only they can approve/deny. May reference an
+   * admin in a sibling equipo within the same servicio. NULL on
+   * legacy rows (any admin in the block's own tenant). */
+  reviewer_membership_id: number | null;
+  /** Denormalised at read time so the frontend can render
+   * "Solicitada a: Dr. Pérez (Cardiología)" without a second
+   * fetch. NULL whenever reviewer_membership_id is NULL. */
+  reviewer_person_name: string | null;
+  reviewer_tenant_name: string | null;
   created_at: string;
+};
+
+/** One row of the servicio-wide admin picker shown when a member
+ * raises a bloqueo on /me/bloqueos. Returned by
+ * GET /api/me/servicio/admins. */
+export type ServicioAdminOption = {
+  membership_id: number;
+  person_id: number;
+  person_name: string;
+  tenant_id: number;
+  tenant_name: string;
+  /** True for admins in the caller's own equipo. The picker
+   * uses this to group "Tu equipo" vs "Otros equipos del
+   * servicio". */
+  is_own_tenant: boolean;
 };
 
 // Aggregated stats — one row per (person, slot, team_role, year-month)
@@ -1995,6 +2020,12 @@ export const api = {
     end_date: string;
     block_type: AvailabilityBlockType;
     notes?: string | null;
+    /** Migration 0083. Optional admin pick — when set, the bloqueo
+     * locks to this membership (only they can approve/deny). May
+     * point to an admin in a sibling equipo within the same
+     * servicio. Omit/null = legacy behaviour (any admin of own
+     * tenant). */
+    reviewer_membership_id?: number | null;
   }) =>
     request<AvailabilityBlock>("/api/me/availability-requests", {
       method: "POST",
@@ -2002,6 +2033,12 @@ export const api = {
     }),
   deleteMyAvailabilityRequest: (id: number) =>
     request<void>(`/api/me/availability-requests/${id}`, { method: "DELETE" }),
+  /** Migration 0083. Picker source for the reviewer dropdown on
+   * the /me/bloqueos create modal. Returns every admin of every
+   * approved equipo in the caller's servicio, with the caller's
+   * own equipo sorted first. */
+  listMyServicioAdmins: () =>
+    request<ServicioAdminOption[]>("/api/me/servicio/admins"),
   createAvailabilityBlock: (body: {
     person_id: number;
     start_date: string;

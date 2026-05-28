@@ -136,7 +136,21 @@ export default function AvailabilityPage() {
                 return (
                 <tr key={b.id} className="border-b last:border-b-0">
                   <td className="px-4 py-2">
-                    <span>{b.person_name}</span>
+                    <div className="flex flex-col leading-tight">
+                      <span>{b.person_name}</span>
+                      {/* Migration 0083. When the block comes from a
+                          sibling equipo (cross-tenant routing via
+                          reviewer_membership_id), surface the source
+                          equipo so the admin knows this isn't one of
+                          their own team's members. */}
+                      {b.reviewer_tenant_name && b.tenant_id !== undefined && (
+                        <span className="text-[10px] text-gray-500">
+                          {b.reviewer_person_name
+                            ? `Asignada a ${b.reviewer_person_name}`
+                            : null}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-2">{b.start_date}</td>
                   <td className="px-4 py-2">{b.end_date}</td>

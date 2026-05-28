@@ -1,10 +1,11 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
   type AvailabilityBlock,
   type AvailabilityBlockType,
+  type ServicioAdminOption,
 } from "@/lib/api";
 import { DateRangeField } from "@/components/admin/date-range";
 import { EmptyState, StatusPill } from "@/components/admin/ui";
@@ -95,6 +96,19 @@ export default function BloqueosPage() {
                         {b.notes}
                       </div>
                     )}
+                    {b.reviewer_person_name && (
+                      <div className="text-[11px] text-gray-500 mt-0.5">
+                        {b.status === "pending" ? "Pendiente de" : "Decidida por"}{" "}
+                        <span className="font-medium text-gray-700">
+                          {b.reviewer_person_name}
+                        </span>
+                        {b.reviewer_tenant_name && (
+                          <span className="text-gray-400">
+                            {" "}· {b.reviewer_tenant_name}
+                          </span>
+                        )}
+                      </div>
+                    )}
                     {b.status === "denied" && b.review_notes && (
                       <div className="text-xs text-rose-700 mt-0.5">
                         Motivo: {b.review_notes}
@@ -132,6 +146,17 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
   const [end, setEnd] = useState("");
   const [type, setType] = useState<AvailabilityBlockType>("vacation");
   const [notes, setNotes] = useState("");
+  // Migration 0083. Optional servicio-wide reviewer routing.
+  // Empty string = "no pick" (legacy: any admin of own equipo).
+  // A membership id locks the request to that specific admin.
+  const [reviewerMembershipId, setReviewerMembershipId] = useState<string>("");
+  // Picker source. Cached for the modal's lifetime; the dropdown
+  // hides if the response has ≤1 admin (a single-admin tenant
+  // doesn't need a picker — the legacy flow is fine).
+  const admins = useQuery({
+    queryKey: ["my-servicio-admins"],
+    queryFn: api.listMyServicioAdmins,
+  });
   const save = useMutation({
     mutationFn: () =>
       api.createMyAvailabilityRequest({
@@ -139,12 +164,19 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
         end_date: end,
         block_type: type,
         notes: notes || null,
+        reviewer_membership_id: reviewerMembershipId
+          ? Number(reviewerMembershipId)
+          : null,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["my-availability"] });
       onClose();
     },
   });
+
+  // Group admins by tenant for the dropdown's optgroup labels.
+  // Own equipo first ("Tu equipo"), then sibling equipos by name.
+  const adminGroups = useAdminGroups(admins.data ?? []);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <div className="w-full max-w-md rounded-lg bg-white shadow-lg">
@@ -186,6 +218,43 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
               <option value="other">Otro</option>
             </select>
           </label>
+          {/* Reviewer picker (migration 0083). Hidden when there's
+              only one admin in the picker — at that scale the
+              dropdown is noise, the request lands with that admin
+              regardless. Shown with optgroups when there are
+              cross-equipo siblings in the same servicio. */}
+          {admins.data && admins.data.length > 1 && (
+            <label className="block">
+              <span className="text-sm font-medium text-gray-700">
+                Enviar a
+              </span>
+              <select
+                value={reviewerMembershipId}
+                onChange={(e) => setReviewerMembershipId(e.target.value)}
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm bg-white"
+              >
+                <option value="">
+                  Cualquier admin de mi equipo
+                </option>
+                {adminGroups.map((g) => (
+                  <optgroup key={g.label} label={g.label}>
+                    {g.admins.map((a) => (
+                      <option
+                        key={a.membership_id}
+                        value={String(a.membership_id)}
+                      >
+                        {a.person_name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-gray-500">
+                Sólo el admin elegido podrá aprobar o denegar esta
+                solicitud.
+              </p>
+            </label>
+          )}
           <label className="block">
             <span className="text-sm font-medium text-gray-700">Notas</span>
             <textarea
@@ -220,4 +289,34 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
       </div>
     </div>
   );
+}
+
+/** Group servicio admins for the dropdown's <optgroup> structure.
+ * Own equipo first under "Tu equipo"; sibling equipos appear under
+ * their tenant name. Admins within each group are already pre-
+ * sorted by the backend, so we just preserve order. */
+function useAdminGroups(
+  admins: ServicioAdminOption[],
+): { label: string; admins: ServicioAdminOption[] }[] {
+  return useMemo(() => {
+    if (admins.length === 0) return [];
+    const own = admins.filter((a) => a.is_own_tenant);
+    const cross = admins.filter((a) => !a.is_own_tenant);
+    const groups: { label: string; admins: ServicioAdminOption[] }[] = [];
+    if (own.length > 0) {
+      groups.push({ label: "Tu equipo", admins: own });
+    }
+    // Sibling equipos: bucket by tenant_name, preserving the
+    // alphabetical order the backend hands us.
+    const seen = new Set<string>();
+    for (const a of cross) {
+      if (seen.has(a.tenant_name)) continue;
+      seen.add(a.tenant_name);
+      groups.push({
+        label: a.tenant_name,
+        admins: cross.filter((x) => x.tenant_name === a.tenant_name),
+      });
+    }
+    return groups;
+  }, [admins]);
 }
