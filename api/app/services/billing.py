@@ -1,9 +1,10 @@
 """Billing domain logic (migration 0080).
 
 This module holds the pure decision logic the rest of the codebase
-needs to check billing state — without depending on Stripe.
+needs to check billing state — plus the one impure helper that
+pushes seat counts back to Stripe under `team_pays`.
 
-Three things live here today:
+Pure helpers:
 
   - `has_app_access(person, tenant)` — can this Person log into
     the app for THIS tenant? Routes through whichever
@@ -17,23 +18,39 @@ Three things live here today:
     Returns (False, reason) for blocked cases so the route can
     422/403 with a user-facing message.
 
-What's NOT here: Stripe API calls (those live in
-`app.services.stripe_client`), seat reconciliation (that lives in
-`app.services.subscription_reconciler` — to be written), webhook
-dispatch (`app.routes.stripe_webhook`).
+Impure (depends on Stripe + DB):
 
-The helpers are deliberately stateless — every input comes via
+  - `reconcile_team_pays_seats(tenant, db)` — pushes the current
+    active-member count to the tenant's Stripe Subscription as
+    the `price_member` quantity. No-op for grandfathered tenants
+    (no Stripe sub) and for `members_pay` mode (the tenant sub
+    only covers the admin in that mode).
+
+What's NOT here: Stripe SDK calls (those live in
+`app.services.stripe_client`), webhook dispatch
+(`app.routes.stripe_webhook`).
+
+The pure helpers are stateless — every input comes via
 arguments — so they're trivial to unit-test without a DB.
 
-See docs/billing-plan.md, chunks 4 / 5 / 6.
+See docs/billing-plan.md, chunks 4 / 5 / 6 / 12.
 """
 
 from __future__ import annotations
 
 import calendar
+import logging
 from datetime import date
 
-from app.models import Person, Tenant
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.models import Membership, Person, Tenant
+from app.services import stripe_client
+
+
+logger = logging.getLogger("app.billing.reconcile")
 
 
 # Statuses that confer access. `trialing` and `active` are the
@@ -136,6 +153,77 @@ def can_generate_for(
     # hard-gate transition to 'unpaid' is what stops us) → unlimited
     # horizon.
     return True, None
+
+
+def reconcile_team_pays_seats(tenant: Tenant, db: Session) -> None:
+    """Push the current active-member count to Stripe.
+
+    Counts non-disabled memberships in the tenant, then calls
+    `stripe_client.update_member_seats` with the new quantity for
+    the `price_member` SubscriptionItem. Stripe prorates the next
+    invoice automatically.
+
+    No-op (and returns silently) when:
+
+      - Stripe isn't configured for this environment
+        (`STRIPE_SECRET_KEY` empty) — dev/test deploys.
+      - `tenant.billing_model != 'team_pays'` — under `members_pay`
+        the tenant sub only covers the admin (€29.90); members pay
+        individually via their own Stripe subscription.
+      - `tenant.stripe_subscription_id IS NULL` — grandfathered
+        alpha pilots (migration 0081) and tenants that haven't gone
+        through paid signup yet. Nothing to update.
+
+    Catches every Stripe exception and just logs it — we never want
+    a Stripe outage to break a member-invite request. The next
+    reconcile call OR a future periodic sweep will heal any
+    divergence between our seat count and Stripe's.
+
+    Call this from every route that changes the count of active
+    memberships in a tenant:
+
+      - POST /api/invitations          (new member invited)
+      - PUT  /api/team/{id}            (disabled toggle changes)
+      - POST /api/team/invite/bulk/commit  (bulk invites)
+      - Anywhere else a Membership is created or has disabled_at
+        flipped.
+    """
+    if not settings.stripe_secret_key:
+        return
+    if tenant.billing_model != "team_pays":
+        return
+    if not tenant.stripe_subscription_id:
+        return
+
+    count = int(
+        db.query(func.count(Membership.id))
+        .filter(
+            Membership.tenant_id == tenant.id,
+            Membership.disabled_at.is_(None),
+        )
+        .scalar()
+        or 0
+    )
+
+    try:
+        stripe_client.update_member_seats(
+            subscription_id=tenant.stripe_subscription_id,
+            new_quantity=count,
+        )
+        logger.info(
+            "Reconciled team_pays seats tenant=%s subscription=%s count=%d",
+            tenant.slug,
+            tenant.stripe_subscription_id,
+            count,
+        )
+    except Exception as e:  # noqa: BLE001 — intentional broad catch
+        # Don't propagate. The member-invite (or whatever) HTTP
+        # response shouldn't 500 because Stripe is degraded.
+        logger.error(
+            "Stripe seat reconcile failed tenant=%s err=%s",
+            tenant.slug,
+            e,
+        )
 
 
 def _format_es_month_year(d: date) -> str:

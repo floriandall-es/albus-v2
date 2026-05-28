@@ -109,6 +109,13 @@ def create_invitation(
     # admin will trigger delivery later via the /admin/team "Enviar
     # invitación" button, which rotates the token + sends the email.
 
+    # Billing chunk 12 follow-up. Under team_pays the new
+    # membership counts toward the seat-billed Stripe Subscription;
+    # push the updated count. No-op for grandfathered / unpaid /
+    # members_pay tenants — reconciler short-circuits on those.
+    from app.services.billing import reconcile_team_pays_seats
+    reconcile_team_pays_seats(ctx.tenant, ctx.db)
+
     return InviteCreateResponse(
         invitation_id=created.invitation.id,
         email=created.invitation.email,

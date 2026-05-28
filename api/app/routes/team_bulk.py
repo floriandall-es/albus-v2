@@ -607,6 +607,14 @@ def commit_bulk(
         errored,
     )
 
+    # Billing chunk 12 follow-up. Single reconcile call after the
+    # whole batch (not per-row) — under team_pays Stripe charges
+    # by current quantity so one PATCH at the end is correct AND
+    # cheaper than N individual calls.
+    if committed > 0:
+        from app.services.billing import reconcile_team_pays_seats
+        reconcile_team_pays_seats(ctx.tenant, ctx.db)
+
     return BulkCommitResponse(
         results=results,
         summary=BulkCommitSummary(

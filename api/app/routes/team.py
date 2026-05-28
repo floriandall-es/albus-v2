@@ -120,16 +120,27 @@ def update_team_member(
             raise HTTPException(status_code=422, detail="Unknown category_id")
     for k, v in data.items():
         setattr(m, k, v)
+    disabled_state_changed = False
     if disabled is not None:
         if disabled and m.disabled_at is None:
             # Stamp the moment we paused — useful later for "disabled
             # since X" UI hints and any cleanup batch jobs.
             m.disabled_at = datetime.now(timezone.utc)
-        elif not disabled:
+            disabled_state_changed = True
+        elif not disabled and m.disabled_at is not None:
             m.disabled_at = None
+            disabled_state_changed = True
     if allowed_slot_ids is not None:
         _sync_allowed_activities(ctx, m, set(allowed_slot_ids))
     ctx.db.flush()
+    # Billing chunk 12 follow-up. The seat count under team_pays
+    # only changes when the disabled flag flips, not on every
+    # PUT — so guard on that to avoid spamming Stripe with no-op
+    # quantity calls. Inline import to avoid bloating the module-
+    # level import graph for an opt-in feature.
+    if disabled_state_changed:
+        from app.services.billing import reconcile_team_pays_seats
+        reconcile_team_pays_seats(ctx.tenant, ctx.db)
     person = ctx.db.get(Person, m.person_id)
     cat = ctx.db.get(Category, m.category_id) if m.category_id else None
     assert person is not None
