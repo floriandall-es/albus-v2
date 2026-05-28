@@ -64,14 +64,23 @@ Next session picks up at **"Implementation chunks"** below.
   trial_end = now + 30 days.
 - ✅ Chunk 16: RUNBOOK §8 with Stripe keys location, test cards,
   webhook replay, manual grandfather SQL, common failure modes.
+- ✅ Chunk 14: nine email templates landed in
+  `app/services/email_templates.py` — admin trial-ending,
+  trial-ended, payment-failed, sub-canceled; member trial-ending,
+  trial-ended, payment-failed; system mail for the members→team
+  flip. Templates are wired into the send infrastructure but the
+  triggers (a scheduler tick that looks for members in the
+  ending-trial windows + webhook handlers that fire the
+  payment-failed mail) still need to be hooked up.
 
 **Still TODO before going live:**
 - Chunk 1: Stripe Dashboard setup (manual, no code) — create
   the two recurring prices, the webhook endpoint, paste IDs
   into `/srv/albus/.env`.
-- Chunk 14: nine email templates (trial-ending × 3, trial-ended,
-  payment-failed, sub-canceled, member trial-ending × 3, plus
-  the "team switched models" system email).
+- Wire the new email templates into actual triggers: a daily
+  scheduler tick for trial-ending nudges + the webhook
+  dispatch table for failed-payment / canceled events. The
+  copy is the slow part; wiring is mechanical.
 
 ## GTM shape
 

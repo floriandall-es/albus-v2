@@ -484,3 +484,229 @@ def dm_unread_email(
         f"— El equipo de Trivu\n"
     )
     return subject, body
+
+
+# ---------------------------------------------------------------------------
+# Billing (migration 0080 / docs/billing-plan.md, chunk 14)
+# ---------------------------------------------------------------------------
+#
+# Nine templates covering the full subscription lifecycle. Four go
+# to admins (trial-ending × 3-day cadence, trial-ended, payment
+# failed, sub canceled); four to members on members_pay (trial-
+# ending × 3-day cadence, trial-ended, payment failed); plus one
+# system mail for members whose tenant flipped to team_pays.
+#
+# All deep-links point at `/admin/billing` or `/me/billing` so the
+# recipient lands on the page with the actionable button. No card
+# numbers or PII leak into bodies — Stripe owns the invoice copy
+# via the Customer Portal.
+
+
+# ---- Admin: trial countdown ----------------------------------------------
+
+def admin_trial_ending_email(
+    *,
+    recipient_first_name: str,
+    days_remaining: int,
+    trial_end_at: datetime,
+    billing_url: str,
+) -> tuple[str, str]:
+    """Sent at days 23 / 27 / 29 of the admin trial. One template
+    with a count down — three sends because by day 29 the calmer
+    earlier nudges have failed to convert and we need a sharper
+    "tomorrow" framing."""
+    when = format_spanish_date(trial_end_at)
+    if days_remaining <= 1:
+        subject = "Tu prueba de Trivu termina mañana"
+    else:
+        subject = f"Tu prueba de Trivu termina en {days_remaining} días"
+    body = (
+        f"Hola {recipient_first_name},\n\n"
+        f"Tu prueba de Trivu termina el {when} "
+        f"({days_remaining} día{'s' if days_remaining != 1 else ''} restantes).\n\n"
+        f"Para no perder acceso al panel ni a la planificación, "
+        f"activa tu suscripción desde:\n"
+        f"{billing_url}\n\n"
+        f"Si decides no continuar, no tienes que hacer nada — la "
+        f"cuenta se desactivará sola al terminar la prueba y nadie "
+        f"te cobrará.\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body
+
+
+def admin_trial_ended_email(
+    *,
+    recipient_first_name: str,
+    billing_url: str,
+) -> tuple[str, str]:
+    """Sent on day 31, the morning after the trial expires. The
+    admin is now read-only — no new planning generation, no
+    invites, no publishing — but past planning stays visible."""
+    subject = "Tu prueba de Trivu ha terminado"
+    body = (
+        f"Hola {recipient_first_name},\n\n"
+        f"Tu prueba ha terminado. La planificación que ya has hecho "
+        f"sigue accesible, pero no podrás generar planificaciones "
+        f"nuevas ni invitar a más miembros hasta que actives la "
+        f"suscripción.\n\n"
+        f"Activa cuando quieras desde:\n"
+        f"{billing_url}\n\n"
+        f"Si necesitas más tiempo para decidir, contesta a este "
+        f"correo y lo hablamos.\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body
+
+
+def admin_payment_failed_email(
+    *,
+    recipient_first_name: str,
+    billing_url: str,
+) -> tuple[str, str]:
+    """Sent when Stripe reports a failed charge on the tenant
+    subscription. We don't include the amount — Stripe's own
+    "your card was declined" mail already does that, and we
+    want to focus on the action."""
+    subject = "No hemos podido cobrar tu suscripción de Trivu"
+    body = (
+        f"Hola {recipient_first_name},\n\n"
+        f"El último cargo de tu suscripción de Trivu no se ha "
+        f"podido procesar. Lo intentaremos automáticamente en los "
+        f"próximos días, pero si la tarjeta sigue rechazándose "
+        f"perderás acceso al panel.\n\n"
+        f"Actualiza tu método de pago aquí:\n"
+        f"{billing_url}\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body
+
+
+def admin_subscription_canceled_email(
+    *,
+    recipient_first_name: str,
+    billing_url: str,
+) -> tuple[str, str]:
+    """Sent when the admin's subscription transitions to canceled
+    (either by their own action via the Portal, or because every
+    retry failed). Read-only state starts immediately."""
+    subject = "Suscripción de Trivu cancelada"
+    body = (
+        f"Hola {recipient_first_name},\n\n"
+        f"Tu suscripción de Trivu se ha cancelado. La planificación "
+        f"existente sigue accesible en modo solo lectura, pero ya "
+        f"no podrás generar planificaciones nuevas ni invitar a "
+        f"más miembros.\n\n"
+        f"Si fue un error o quieres volver, reactívala desde:\n"
+        f"{billing_url}\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body
+
+
+# ---- Member: trial countdown (members_pay only) --------------------------
+
+def member_trial_ending_email(
+    *,
+    recipient_first_name: str,
+    days_remaining: int,
+    trial_end_at: datetime,
+    billing_url: str,
+) -> tuple[str, str]:
+    """Same 23 / 27 / 29-day cadence as the admin version, but
+    pointing at /me/billing and framed for the individual
+    member. Only fires under members_pay — under team_pays
+    members don't have a personal subscription."""
+    when = format_spanish_date(trial_end_at)
+    if days_remaining <= 1:
+        subject = "Tu prueba de Trivu termina mañana"
+    else:
+        subject = f"Tu prueba de Trivu termina en {days_remaining} días"
+    body = (
+        f"Hola {recipient_first_name},\n\n"
+        f"Tu prueba personal de Trivu termina el {when} "
+        f"({days_remaining} día{'s' if days_remaining != 1 else ''} restantes).\n\n"
+        f"Si quieres seguir viendo tus turnos en el móvil, recibir "
+        f"avisos de cambios y proponer permutas, activa la "
+        f"suscripción (4,90 €/mes, sin permanencia) desde:\n"
+        f"{billing_url}\n\n"
+        f"Si prefieres volver al papel, no tienes que hacer nada — "
+        f"tu acceso se cerrará solo al terminar la prueba y tu "
+        f"admin seguirá imprimiendo la planificación como hasta "
+        f"ahora.\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body
+
+
+def member_trial_ended_email(
+    *,
+    recipient_first_name: str,
+    billing_url: str,
+) -> tuple[str, str]:
+    """Sent the morning after the member's personal trial ends.
+    The member loses app access; they're still in the planning,
+    so the admin can keep scheduling them."""
+    subject = "Tu prueba de Trivu ha terminado"
+    body = (
+        f"Hola {recipient_first_name},\n\n"
+        f"Tu prueba ha terminado. Seguirás apareciendo en la "
+        f"planificación de tu equipo, pero ya no podrás abrir la "
+        f"app ni recibir avisos en el móvil.\n\n"
+        f"Si quieres reactivarla (4,90 €/mes, sin permanencia):\n"
+        f"{billing_url}\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body
+
+
+def member_payment_failed_email(
+    *,
+    recipient_first_name: str,
+    billing_url: str,
+) -> tuple[str, str]:
+    """Sent when a member's personal subscription charge fails
+    under members_pay. Doesn't apply under team_pays — the
+    tenant sub is the one billed there."""
+    subject = "No hemos podido cobrar tu suscripción de Trivu"
+    body = (
+        f"Hola {recipient_first_name},\n\n"
+        f"El último cargo de tu suscripción de Trivu no se ha "
+        f"podido procesar. Lo intentaremos otra vez en los "
+        f"próximos días — si la tarjeta sigue fallando, perderás "
+        f"el acceso a la app.\n\n"
+        f"Actualiza tu método de pago aquí:\n"
+        f"{billing_url}\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body
+
+
+# ---- System: billing model switch ----------------------------------------
+
+def member_switched_to_team_pays_email(
+    *,
+    recipient_first_name: str,
+    tenant_name: str,
+    billing_url: str,
+) -> tuple[str, str]:
+    """Sent to every member whose tenant flipped from members_pay
+    to team_pays. Their personal subscription has been canceled
+    (and any unused balance prorated back to their card by
+    Stripe); they keep access at no cost to them, covered by
+    the team's new single invoice."""
+    subject = f"{tenant_name} ahora paga tu acceso a Trivu"
+    body = (
+        f"Hola {recipient_first_name},\n\n"
+        f"El administrador de {tenant_name} ha cambiado al modelo "
+        f"\"el equipo paga por todos\". Tu suscripción personal "
+        f"se ha cancelado automáticamente y, si te quedaba algo "
+        f"pendiente de uso, Stripe lo devuelve a tu tarjeta en "
+        f"los próximos días.\n\n"
+        f"Sigues teniendo acceso completo a la app — ahora lo "
+        f"cubre el equipo sin coste para ti.\n\n"
+        f"Si quieres ver el detalle:\n"
+        f"{billing_url}\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body
