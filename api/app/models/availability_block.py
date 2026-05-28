@@ -48,6 +48,15 @@ class AvailabilityBlock(Base):
     reviewed_by_membership_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("memberships.id", ondelete="SET NULL"), nullable=True
     )
+    # Migration 0083. When set, ONLY this membership can approve/deny
+    # the block — regardless of which tenant the block belongs to.
+    # The chosen reviewer can be from a sibling equipo in the same
+    # servicio (cross-tenant). NULL → legacy behaviour: any admin in
+    # the block's own tenant can review (covers every row that
+    # pre-dates this feature).
+    reviewer_membership_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("memberships.id", ondelete="SET NULL"), nullable=True
+    )
     reviewed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

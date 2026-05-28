@@ -81,11 +81,36 @@ def admin_pendientes(
     _require_admin(ctx)
     now = datetime.now(timezone.utc)
 
+    # Local pending bloqueos: every pending block in the caller's
+    # tenant where this admin is allowed to review — which is either
+    # (a) the block has no chosen reviewer (legacy: any local admin),
+    # or (b) the block is locked to THIS membership. Blocks locked
+    # to a different sibling admin must not show up in this count.
     bloqueos = (
         ctx.db.query(AvailabilityBlock)
         .filter(AvailabilityBlock.status == "pending")
+        .filter(
+            (AvailabilityBlock.reviewer_membership_id.is_(None))
+            | (AvailabilityBlock.reviewer_membership_id == ctx.membership.id)
+        )
         .count()
     )
+    # Plus cross-tenant blocks where this admin is the chosen
+    # reviewer (migration 0083). Lives in a sibling equipo's tenant,
+    # so RLS on the caller's connection can't see it — use
+    # AdminSessionLocal. Bounded to the same membership id we
+    # would have allowed locally, so it's safe.
+    from app.db.session import AdminSessionLocal as _Admin
+    with _Admin() as adb:
+        bloqueos += (
+            adb.query(AvailabilityBlock)
+            .filter(
+                AvailabilityBlock.status == "pending",
+                AvailabilityBlock.reviewer_membership_id == ctx.membership.id,
+                AvailabilityBlock.tenant_id != ctx.tenant.id,
+            )
+            .count()
+        )
     invitations = (
         ctx.db.query(Invitation)
         .filter(
