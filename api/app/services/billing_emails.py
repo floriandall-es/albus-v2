@@ -386,7 +386,9 @@ def _tenant_admin_persons(db: Session, tenant_id: int) -> list[Person]:
             Membership.tenant_id == tenant_id,
             Membership.disabled_at.is_(None),
             # Postgres array contains operator — roles is TEXT[].
-            Membership.roles.contains(["admin"]),
+            # Generic ARRAY type → .contains() unsupported. Use the
+            # Postgres native @> operator via .op() instead.
+            Membership.roles.op("@>")(["admin"]),
         )
         .all()
     )

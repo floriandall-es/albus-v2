@@ -601,7 +601,11 @@ def _list_servicio_admins(ctx: RequestContext) -> list[ServicioAdminOut]:
                 .filter(
                     Membership.tenant_id == ctx.tenant.id,
                     Membership.disabled_at.is_(None),
-                    Membership.roles.contains(["admin"]),
+                    # Membership.roles is the generic sqlalchemy ARRAY;
+                    # `.contains()` raises NotImplementedError on it.
+                    # Use Postgres' native @> operator via .op() so we
+                    # don't have to change the model's column type.
+                    Membership.roles.op("@>")(["admin"]),
                 )
                 .all()
             )
@@ -630,7 +634,10 @@ def _list_servicio_admins(ctx: RequestContext) -> list[ServicioAdminOut]:
                 Tenant.servicio_id == ctx.tenant.servicio_id,
                 Tenant.approval_state == "approved",
                 Membership.disabled_at.is_(None),
-                Membership.roles.contains(["admin"]),
+                # See the standalone-tenant branch above for why .op("@>")
+                # instead of .contains() — generic ARRAY type doesn't
+                # implement the latter.
+                Membership.roles.op("@>")(["admin"]),
             )
             .all()
         )
