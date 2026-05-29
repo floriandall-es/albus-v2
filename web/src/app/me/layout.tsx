@@ -10,7 +10,6 @@ import {
   Building2,
   CalendarDays,
   CalendarOff,
-  CreditCard,
   Home,
   LogOut,
   Menu,
@@ -48,12 +47,12 @@ const NAV: { href: string; label: string; icon: LucideIcon }[] = [
   // Sprint 28 / Phase 2A: 1:1 DMs. Same hospital gate as the
   // directory — DMs only work between members of the same hospital.
   { href: "/me/mensajes", label: "Mensajes", icon: MessageCircle },
+  // Facturación lives INSIDE Mi cuenta now — see
+  // /me/settings/page.tsx for the deep-link card. Pulled out of
+  // the sidebar because members don't need it on every page
+  // (especially under team_pays where there's nothing for them
+  // to do there anyway).
   { href: "/me/settings", label: "Mi cuenta", icon: Settings },
-  // Migration 0080 / docs/billing-plan.md. Personal billing page —
-  // active under members_pay (the member subscribes themselves);
-  // shows a "your team pays" notice under team_pays. Always visible
-  // in the nav so the member can find it either way.
-  { href: "/me/billing", label: "Facturación", icon: CreditCard },
 ];
 
 export default function MeLayout({ children }: { children: ReactNode }) {

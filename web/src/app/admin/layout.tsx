@@ -10,7 +10,6 @@ import {
   CalendarDays,
   CalendarOff,
   Clock,
-  CreditCard,
   Heart,
   Home,
   LogOut,
@@ -110,13 +109,12 @@ const NAV: NavSection[] = [
   {
     title: "Cuenta",
     items: [
+      // Facturación lives INSIDE Mi cuenta now — see
+      // /admin/settings/page.tsx for the deep-link card. Pulled
+      // out of the sidebar because admins don't need it on every
+      // page; surfacing it permanently was clutter for the value
+      // it added.
       { href: "/admin/settings", label: "Mi cuenta", icon: Settings },
-      // Migration 0080 / docs/billing-plan.md. Admin-only billing
-      // surface: plan summary, seat breakdown, Stripe Portal,
-      // billing-model toggle. Renders for every admin even when
-      // the tenant is grandfathered — the page itself handles the
-      // "no Stripe Customer yet" state by hiding the Portal button.
-      { href: "/admin/billing", label: "Facturación", icon: CreditCard },
     ],
   },
 ];
