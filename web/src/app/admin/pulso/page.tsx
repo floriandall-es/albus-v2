@@ -76,14 +76,18 @@ const QUESTION_TITLES: Record<string, string> = {
   fairness: "Reparto justo",
   workload: "Carga de trabajo",
   recovery: "Descanso",
-  predictability: "Predictibilidad",
+  // question_key is still "predictability" (stable contract) but
+  // the display matches what the scores actually measure: a
+  // higher score = more last-minute changes = LESS predictable.
+  // "Predictibilidad" would imply the opposite direction.
+  predictability: "Cambios de última hora",
 };
 
 const QUESTION_HINTS: Record<string, string> = {
   fairness: "Más alto = más justo percibido",
   workload: "Más alto = más pesado",
   recovery: "Más alto = más descansado",
-  predictability: "Más alto = más cambios de última hora",
+  predictability: "Más alto = más cambios imprevistos",
 };
 
 export default function AdminPulsoPage() {

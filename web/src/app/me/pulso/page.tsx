@@ -480,7 +480,7 @@ function shortQuestionLabel(key: string): string {
     case "recovery":
       return "Descanso";
     case "predictability":
-      return "Predictibilidad";
+      return "Cambios imprevistos";
     case "team_support":
       return "Apoyo del equipo";
     case "tool_friction":
