@@ -58,6 +58,7 @@ from app.models.stripe_event import StripeEvent
 from app.models.billing_email_sent import BillingEmailSent
 from app.models.admin_promotion_request import AdminPromotionRequest
 from app.models.push import PushSubscription
+from app.models.pulse import PulseResponse, PulseSettings
 
 __all__ = [
     "Hospital",
@@ -114,4 +115,6 @@ __all__ = [
     "BillingEmailSent",
     "AdminPromotionRequest",
     "PushSubscription",
+    "PulseResponse",
+    "PulseSettings",
 ]

@@ -845,3 +845,32 @@ def admin_promotion_request_email(
         f"— El equipo de Trivu\n"
     )
     return subject, body
+
+
+# ---------------------------------------------------------------------------
+# Pulse weekly invite (migration 0090)
+# ---------------------------------------------------------------------------
+
+
+def pulse_invite_email(
+    *,
+    recipient_first_name: str,
+    deep_link: str,
+) -> tuple[str, str]:
+    """Friday-afternoon fan-out from the pulse worker for anyone
+    without a push subscription. Plain prose — the 5-question
+    payload itself lives behind the link, not inline, so we can
+    iterate copy without re-templating every email."""
+    subject = "Pulso semanal de Trivu · 30 segundos"
+    body = (
+        f"Hola {recipient_first_name},\n\n"
+        f"Esta semana, ¿cómo te ha ido? Tenemos 5 preguntas rápidas "
+        f"sobre carga, descanso y reparto. Tu respuesta es siempre "
+        f"agregada — el jefe ve la media del equipo, nunca quién "
+        f"contestó qué.\n\n"
+        f"Contestar (30 segundos): {deep_link}\n\n"
+        f"Si esta semana no es buen momento, también está bien "
+        f"saltarse: la próxima llegará el viernes que viene.\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body

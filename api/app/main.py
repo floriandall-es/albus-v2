@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.services.billing_emails import tick as billing_emails_tick
 from app.services.meeting_reminders import tick as meeting_reminders_tick
+from app.services.pulse import tick as pulse_tick
 from app.routes import (
     admin_dashboard,
     admin_promotion,
@@ -28,6 +29,7 @@ from app.routes import (
     onboarding,
     periodos,
     public_catalog,
+    pulse,
     push,
     schedules,
     servicios,
@@ -81,6 +83,7 @@ app.include_router(founder.router, prefix="/api")
 app.include_router(stripe_webhook.router, prefix="/api")
 app.include_router(billing.router, prefix="/api")
 app.include_router(push.router, prefix="/api")
+app.include_router(pulse.router, prefix="/api")
 
 # Serve user-uploaded profile photos. The directory is mounted from a
 # host volume in prod (/srv/albus/avatars). We create it on startup so
@@ -149,6 +152,22 @@ def _start_background_jobs() -> None:
         id="billing_emails",
         coalesce=True,
         misfire_grace_time=3600,
+        max_instances=1,
+    )
+    # Migration 0090: pulse weekly fan-out. The tick is gated
+    # internally — it only fires for tenants with enabled=true
+    # AND last_notified_week_iso != current week. Running every
+    # 5 minutes is overkill cron-wise but matches the meeting
+    # reminders cadence, keeps the moving parts small, and gives
+    # us up to a 5-min slip on the "fire at 14:00 Friday"
+    # promise (acceptable for a weekly nudge).
+    _scheduler.add_job(
+        pulse_tick,
+        trigger="interval",
+        minutes=5,
+        id="pulse_weekly",
+        coalesce=True,
+        misfire_grace_time=300,
         max_instances=1,
     )
     _scheduler.start()
