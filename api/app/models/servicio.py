@@ -58,18 +58,18 @@ class Servicio(Base):
     # to share a slug ("cirugia-toracica" in both La Fe and La Paz)
     # but not within one hospital.
     slug: Mapped[str] = mapped_column(String(64), nullable=False)
-    # Migration 0085. How bloqueos route to a reviewer:
-    #   - 'delegated' (default): every member picks an admin on
-    #     /me/bloqueos. Today's behaviour, preserved for every
-    #     existing servicio after upgrade.
-    #   - 'centralised': bloqueos auto-route to the Jefe de Servicio
-    #     (a person.cargos entry matches "jefe de servicio"
-    #     case-insensitively). The mode is gated at the API: only
-    #     the Jefe can flip it. If centralised but no Jefe exists
-    #     when a member raises a bloqueo, create_my_request falls
-    #     back to delegated for that one request.
+    # Migration 0085 + 0086. How bloqueos route to a reviewer:
+    #   - 'centralised' (default since 0086): bloqueos auto-route
+    #     to the Jefe de Servicio (a person.cargos entry matches
+    #     "jefe de servicio" case-insensitively). When no Jefe
+    #     currently exists, create_my_request transparently falls
+    #     back to the delegated picker — so this default is safe
+    #     even on servicios that haven't named a Jefe yet.
+    #   - 'delegated': explicit override. Every member picks an
+    #     admin on /me/bloqueos even when a Jefe exists. The
+    #     mode is gated at the API: only the Jefe can flip it.
     bloqueo_routing_mode: Mapped[str] = mapped_column(
-        String(16), nullable=False, server_default="delegated"
+        String(16), nullable=False, server_default="centralised"
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

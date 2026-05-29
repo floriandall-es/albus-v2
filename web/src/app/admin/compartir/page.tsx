@@ -236,42 +236,15 @@ function BloqueoRoutingCard() {
       <div className="p-4 space-y-3">
         <p className="text-xs text-gray-600 max-w-xl">
           Decide cómo se enrutan las solicitudes de bloqueo del servicio.
-          Por defecto cada miembro elige a qué admin enviar la solicitud
-          (descentralizado). Si lo prefieres, puedes centralizar todas
-          las solicitudes en ti.
+          Por defecto las solicitudes se centralizan en el Jefe de
+          Servicio. Si prefieres que cada miembro elija a qué admin
+          enviarlas, cámbialo a descentralizado.
         </p>
 
         <div className="space-y-2">
-          <label
-            className={
-              "flex cursor-pointer items-start gap-3 rounded-md border p-3 "
-              + (mode === "delegated"
-                ? "border-brand-300 bg-brand-50/40"
-                : "border-gray-200 hover:bg-gray-50")
-            }
-          >
-            <input
-              type="radio"
-              name="bloqueo-routing"
-              className="mt-1"
-              checked={mode === "delegated"}
-              disabled={save.isPending}
-              onChange={() => save.mutate("delegated")}
-            />
-            <div className="min-w-0">
-              <div className="text-sm font-medium text-gray-900">
-                Descentralizado{" "}
-                <span className="text-xs font-normal text-gray-500">
-                  (por defecto)
-                </span>
-              </div>
-              <div className="mt-0.5 text-xs text-gray-600">
-                Cada miembro elige a qué admin del servicio envía su
-                solicitud de bloqueo en /me/bloqueos.
-              </div>
-            </div>
-          </label>
-
+          {/* Recommended default first. Order matters for visual
+              hierarchy — the toggle reads "this is the safe choice,
+              flip only if you want the alternative". */}
           <label
             className={
               "flex cursor-pointer items-start gap-3 rounded-md border p-3 "
@@ -294,7 +267,10 @@ function BloqueoRoutingCard() {
                   ? "Centralizado en mí"
                   : jefeName
                     ? `Centralizado en ${jefeName}`
-                    : "Centralizado en el Jefe de Servicio"}
+                    : "Centralizado en el Jefe de Servicio"}{" "}
+                <span className="text-xs font-normal text-gray-500">
+                  (por defecto)
+                </span>
               </div>
               <div className="mt-0.5 text-xs text-gray-600">
                 <CalendarOff className="-mt-0.5 mr-1 inline h-3 w-3 text-amber-700" />
@@ -303,7 +279,34 @@ function BloqueoRoutingCard() {
                   : jefeName
                     ? `Todas las solicitudes irán a ${jefeName}` +
                       (jefeTenant ? ` (${jefeTenant}).` : ".")
-                    : "Todas las solicitudes irán al Jefe de Servicio."}
+                    : "Todas las solicitudes irán al Jefe de Servicio cuando lo asignes."}
+              </div>
+            </div>
+          </label>
+
+          <label
+            className={
+              "flex cursor-pointer items-start gap-3 rounded-md border p-3 "
+              + (mode === "delegated"
+                ? "border-brand-300 bg-brand-50/40"
+                : "border-gray-200 hover:bg-gray-50")
+            }
+          >
+            <input
+              type="radio"
+              name="bloqueo-routing"
+              className="mt-1"
+              checked={mode === "delegated"}
+              disabled={save.isPending}
+              onChange={() => save.mutate("delegated")}
+            />
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-gray-900">
+                Descentralizado
+              </div>
+              <div className="mt-0.5 text-xs text-gray-600">
+                Cada miembro elige a qué admin del servicio envía su
+                solicitud de bloqueo en /me/bloqueos.
               </div>
             </div>
           </label>
