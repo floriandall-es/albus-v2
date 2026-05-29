@@ -42,6 +42,11 @@ from app.schemas.shift_swap import (
     SwapResponseOut,
 )
 from app.services.email import send_email, should_email_person
+from app.services.notifications import (
+    EmailPayload,
+    PushPayload,
+    try_push_or_email,
+)
 from app.services.email_templates import (
     format_spanish_date,
     swap_accepted_email,
@@ -1269,10 +1274,6 @@ def _notify_offer_created(
         )
     recipients = recipients_q.all()
     for p in recipients:
-        # Pendientes (not yet activated) only get the invitation
-        # email; skip routine notifications until they sign in.
-        if not should_email_person(p.hashed_password):
-            continue
         subject, body = swap_offer_created_email(
             recipient_name=p.name,
             requester_name=requester_name,
@@ -1281,7 +1282,16 @@ def _notify_offer_created(
             notes=offer.notes,
             app_url=settings.public_base_url,
         )
-        send_email(p.email, subject, body)
+        try_push_or_email(
+            p,
+            push=PushPayload(
+                title=f"{requester_name} pide cobertura",
+                body=f"{slot_name} · {shift_date}",
+                path="/me/swaps",
+                tag=f"swap:offer:{offer.id}",
+            ),
+            email=EmailPayload(subject=subject, body=body),
+        )
 
 
 def _notify_response_created(
@@ -1313,8 +1323,6 @@ def _notify_response_created(
             swap_slot_name = sa_slot_name
             swap_date = sa_date
 
-    if not should_email_person(requester.hashed_password):
-        return
     subject, body = swap_response_email(
         requester_name=requester.name,
         responder_name=responder_name,
@@ -1326,7 +1334,25 @@ def _notify_response_created(
         notes=response.notes,
         app_url=settings.public_base_url,
     )
-    send_email(requester.email, subject, body)
+    # Push title varies by kind so a glance at the lock screen
+    # tells you whether someone wants to cover (no reciprocal) or
+    # swap (reciprocal): the requester will likely act on each
+    # differently.
+    push_title = (
+        f"{responder_name} ofrece cambio"
+        if response.kind == "swap"
+        else f"{responder_name} cubre tu turno"
+    )
+    try_push_or_email(
+        requester,
+        push=PushPayload(
+            title=push_title,
+            body=f"{slot_name} · {shift_date}",
+            path="/me/swaps",
+            tag=f"swap:offer:{offer.id}",
+        ),
+        email=EmailPayload(subject=subject, body=body),
+    )
 
 
 def _notify_response_accepted(
@@ -1357,8 +1383,6 @@ def _notify_response_accepted(
         )
     if responder is None or requester is None:
         return
-    if not should_email_person(responder.hashed_password):
-        return
     subject, body = swap_accepted_email(
         responder_name=responder.name,
         requester_name=requester.name,
@@ -1367,7 +1391,16 @@ def _notify_response_accepted(
         shift_date=shift_date,
         app_url=settings.public_base_url,
     )
-    send_email(responder.email, subject, body)
+    try_push_or_email(
+        responder,
+        push=PushPayload(
+            title=f"{requester.name} aceptó tu propuesta",
+            body=f"{slot_name} · {shift_date}",
+            path="/me/swaps",
+            tag=f"swap:offer:{offer.id}",
+        ),
+        email=EmailPayload(subject=subject, body=body),
+    )
 
 
 def _list_tenant_admin_persons(ctx: RequestContext) -> list[Person]:
@@ -1448,8 +1481,6 @@ def _notify_admins_pending_approval(
     if not responder or not requester:
         return
     for admin_p in _list_tenant_admin_persons(ctx):
-        if not should_email_person(admin_p.hashed_password):
-            continue
         subject, body = swap_admin_pending_approval_email(
             admin_name=admin_p.name,
             requester_name=requester.name,
@@ -1459,7 +1490,19 @@ def _notify_admins_pending_approval(
             shift_date=shift_date,
             app_url=settings.public_base_url,
         )
-        send_email(admin_p.email, subject, body)
+        try_push_or_email(
+            admin_p,
+            push=PushPayload(
+                title="Cambio pendiente de aprobar",
+                body=(
+                    f"{requester.name} ↔ {responder.name} · "
+                    f"{slot_name} · {shift_date}"
+                ),
+                path="/admin/swaps",
+                tag=f"swap:pending:{offer.id}",
+            ),
+            email=EmailPayload(subject=subject, body=body),
+        )
 
 
 def _notify_veto(
@@ -1495,7 +1538,7 @@ def _notify_veto(
     admin_name = admin.name if admin else "Un admin"
 
     def _send(p: Person | None, *, audience: str) -> None:
-        if p is None or not should_email_person(p.hashed_password):
+        if p is None:
             return
         subject, body = swap_vetoed_email(
             recipient_name=p.name,
@@ -1507,7 +1550,16 @@ def _notify_veto(
             notes=notes,
             app_url=settings.public_base_url,
         )
-        send_email(p.email, subject, body)
+        try_push_or_email(
+            p,
+            push=PushPayload(
+                title=f"{admin_name} vetó el cambio",
+                body=f"{slot_name} · {shift_date}",
+                path="/me/swaps",
+                tag=f"swap:veto:{offer.id}",
+            ),
+            email=EmailPayload(subject=subject, body=body),
+        )
 
     _send(requester, audience="requester")
     _send(responder, audience="responder")

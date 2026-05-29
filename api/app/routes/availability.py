@@ -24,6 +24,7 @@ from app.models import (
     Tenant,
 )
 from app.routes.deps import RequestContext, get_current_context
+from app.services.notifications import PushPayload, push_only
 from app.schemas.availability import (
     TeamAbsence,
     AvailabilityBlockCreate,
@@ -38,6 +39,71 @@ from app.schemas.availability import (
 )
 
 router = APIRouter()
+
+
+def _bloqueo_summary(block: AvailabilityBlock) -> str:
+    """Short body line for the push: "26 jun – 28 jun" or "26 jun"
+    when single-day. Notification bodies can be long enough that
+    we don't need any abbreviation, but a compact range still
+    reads better on the lock screen than the ISO format."""
+    start = block.start_date.strftime("%d/%m")
+    if block.end_date and block.end_date != block.start_date:
+        end = block.end_date.strftime("%d/%m")
+        return f"{start} – {end}"
+    return start
+
+
+def _push_bloqueo_submitted(
+    ctx: RequestContext, block: AvailabilityBlock
+) -> None:
+    """Notify the chosen reviewer that a bloqueo needs them.
+
+    No email counterpart today — bloqueos historically relied on
+    admins poll-checking the pendientes badge. Push closes that
+    gap for the subscribed reviewers; everyone else still sees
+    the sidebar badge next time they open Trivu."""
+    if block.reviewer_membership_id is None:
+        return
+    reviewer_m = ctx.db.get(Membership, block.reviewer_membership_id)
+    if reviewer_m is None:
+        return
+    reviewer = ctx.db.get(Person, reviewer_m.person_id)
+    submitter_name = ctx.person.name
+    push_only(
+        reviewer,
+        push=PushPayload(
+            title=f"{submitter_name} pide un bloqueo",
+            body=_bloqueo_summary(block),
+            path="/admin/availability",
+            tag=f"bloqueo:request:{block.id}",
+        ),
+    )
+
+
+def _push_bloqueo_decided(
+    ctx: RequestContext,
+    block: AvailabilityBlock,
+    *,
+    person: Person,
+    approved: bool,
+) -> None:
+    """Notify the submitter of the admin's decision. `person` is the
+    block's owner — passed in by the caller since admin routes
+    already loaded them via _load_for_review."""
+    reviewer_name = ctx.person.name
+    if approved:
+        title = f"{reviewer_name} aprobó tu bloqueo"
+    else:
+        title = f"{reviewer_name} rechazó tu bloqueo"
+    push_only(
+        person,
+        push=PushPayload(
+            title=title,
+            body=_bloqueo_summary(block),
+            path="/me/bloqueos",
+            tag=f"bloqueo:decision:{block.id}",
+        ),
+    )
 
 
 def _require_admin(ctx: RequestContext) -> None:
@@ -577,6 +643,10 @@ def approve_block(
     block.status = "approved"
     block.reviewed_by_membership_id = ctx.membership.id
     block.reviewed_at = datetime.now(timezone.utc)
+    try:
+        _push_bloqueo_decided(ctx, block, person=person, approved=True)
+    except Exception:  # noqa: BLE001
+        pass
     return _serialize(block, person, ctx=ctx)
 
 
@@ -605,6 +675,10 @@ def deny_block(
     block.reviewed_at = datetime.now(timezone.utc)
     if payload.review_notes is not None:
         block.review_notes = payload.review_notes
+    try:
+        _push_bloqueo_decided(ctx, block, person=person, approved=False)
+    except Exception:  # noqa: BLE001
+        pass
     return _serialize(block, person, ctx=ctx)
 
 
@@ -665,6 +739,15 @@ def create_my_request(
     )
     ctx.db.add(block)
     ctx.db.flush()
+    # Push the chosen reviewer so they know it's their queue.
+    # Failures are swallowed inside push_only — bloqueo creation
+    # must succeed even if the notification path errors.
+    try:
+        _push_bloqueo_submitted(ctx, block)
+    except Exception:  # noqa: BLE001
+        # Mirror the same blanket-catch pattern dms.py uses for
+        # its email-fallback path. Notifications are best-effort.
+        pass
     return _serialize(block, ctx.person, ctx=ctx)
 
 
