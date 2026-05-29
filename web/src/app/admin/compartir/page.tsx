@@ -2,9 +2,21 @@
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Eye, EyeOff } from "lucide-react";
+import { Building2, CalendarOff, Eye, EyeOff } from "lucide-react";
 import { api, type SharePolicy, type Slot } from "@/lib/api";
 import { Card, EmptyState, PageHeader } from "@/components/admin/ui";
+
+/** Migration 0085. Cargo string match must agree with the backend
+ * (_person_is_jefe_de_servicio in routes/availability.py): strip
+ * whitespace + lowercase, exact equality. Keeps the UI gate
+ * consistent with the API gate so a jefe never sees the toggle
+ * card without being able to use it (or vice versa). */
+const JEFE_CARGO = "jefe de servicio";
+function personIsJefe(cargos: string[] | undefined | null): boolean {
+  return (cargos ?? []).some(
+    (c) => (c ?? "").trim().toLowerCase() === JEFE_CARGO,
+  );
+}
 
 /**
  * /admin/compartir — admin-only share-policy configuration.
@@ -160,7 +172,159 @@ export default function CompartirPage() {
           <SlotPicker />
         </section>
       )}
+
+      {/* Migration 0085. Bloqueo routing toggle, only rendered when
+          the caller's cargo includes "Jefe de Servicio". Cargo gate
+          matches the backend's _require_jefe_admin. Non-jefes don't
+          even see the section header, so the feature is silently
+          out of view for them. */}
+      {personIsJefe(me.data?.person.cargos) && (
+        <section className="mt-8">
+          <h2 className="mb-2 text-sm font-semibold text-gray-700">
+            Aprobación de bloqueos
+          </h2>
+          <BloqueoRoutingCard />
+        </section>
+      )}
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bloqueo routing (migration 0085)
+// ---------------------------------------------------------------------------
+
+function BloqueoRoutingCard() {
+  const qc = useQueryClient();
+  const routing = useQuery({
+    queryKey: ["bloqueo-routing"],
+    queryFn: api.getBloqueoRouting,
+  });
+  const save = useMutation({
+    mutationFn: (next: "delegated" | "centralised") =>
+      api.updateBloqueoRouting({ mode: next }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["bloqueo-routing"] });
+      // The /me/bloqueos picker queries this too — invalidate so a
+      // tab open elsewhere refreshes the next time it's used.
+      qc.invalidateQueries({ queryKey: ["my-servicio-admins"] });
+    },
+  });
+
+  if (routing.isLoading) {
+    return <p className="text-sm text-gray-500">Cargando…</p>;
+  }
+  if (routing.isError) {
+    // Defensive: if the cargo check race-conditioned (jefe lost
+    // the cargo mid-session) the server may now 403. Render a
+    // clean message rather than the raw error.
+    return (
+      <Card>
+        <p className="px-4 py-3 text-sm text-rose-700">
+          No se ha podido cargar este ajuste.
+        </p>
+      </Card>
+    );
+  }
+  const data = routing.data!;
+  const mode = data.mode;
+  const jefeName = data.jefe?.person_name ?? null;
+  const jefeTenant = data.jefe?.tenant_name ?? null;
+
+  return (
+    <Card>
+      <div className="p-4 space-y-3">
+        <p className="text-xs text-gray-600 max-w-xl">
+          Decide cómo se enrutan las solicitudes de bloqueo del servicio.
+          Por defecto cada miembro elige a qué admin enviar la solicitud
+          (descentralizado). Si lo prefieres, puedes centralizar todas
+          las solicitudes en ti.
+        </p>
+
+        <div className="space-y-2">
+          <label
+            className={
+              "flex cursor-pointer items-start gap-3 rounded-md border p-3 "
+              + (mode === "delegated"
+                ? "border-brand-300 bg-brand-50/40"
+                : "border-gray-200 hover:bg-gray-50")
+            }
+          >
+            <input
+              type="radio"
+              name="bloqueo-routing"
+              className="mt-1"
+              checked={mode === "delegated"}
+              disabled={save.isPending}
+              onChange={() => save.mutate("delegated")}
+            />
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-gray-900">
+                Descentralizado{" "}
+                <span className="text-xs font-normal text-gray-500">
+                  (por defecto)
+                </span>
+              </div>
+              <div className="mt-0.5 text-xs text-gray-600">
+                Cada miembro elige a qué admin del servicio envía su
+                solicitud de bloqueo en /me/bloqueos.
+              </div>
+            </div>
+          </label>
+
+          <label
+            className={
+              "flex cursor-pointer items-start gap-3 rounded-md border p-3 "
+              + (mode === "centralised"
+                ? "border-amber-300 bg-amber-50/40"
+                : "border-gray-200 hover:bg-gray-50")
+            }
+          >
+            <input
+              type="radio"
+              name="bloqueo-routing"
+              className="mt-1"
+              checked={mode === "centralised"}
+              disabled={save.isPending}
+              onChange={() => save.mutate("centralised")}
+            />
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-gray-900">
+                {data.caller_is_jefe
+                  ? "Centralizado en mí"
+                  : jefeName
+                    ? `Centralizado en ${jefeName}`
+                    : "Centralizado en el Jefe de Servicio"}
+              </div>
+              <div className="mt-0.5 text-xs text-gray-600">
+                <CalendarOff className="-mt-0.5 mr-1 inline h-3 w-3 text-amber-700" />
+                {data.caller_is_jefe
+                  ? "Todas las solicitudes del servicio llegarán a ti."
+                  : jefeName
+                    ? `Todas las solicitudes irán a ${jefeName}` +
+                      (jefeTenant ? ` (${jefeTenant}).` : ".")
+                    : "Todas las solicitudes irán al Jefe de Servicio."}
+              </div>
+            </div>
+          </label>
+        </div>
+
+        {mode === "centralised" && !data.jefe && (
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Modo centralizado activado pero ningún miembro tiene el
+            cargo &ldquo;Jefe de Servicio&rdquo;. Hasta que se asigne,
+            las solicitudes seguirán el flujo descentralizado (el
+            miembro elige el admin).
+          </p>
+        )}
+
+        {save.isError && (
+          <p className="text-xs text-rose-700">
+            {(save.error as Error).message}
+          </p>
+        )}
+      </div>
+    </Card>
   );
 }
 

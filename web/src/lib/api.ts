@@ -324,8 +324,8 @@ export type AvailabilityBlock = {
 };
 
 /** One row of the servicio-wide admin picker shown when a member
- * raises a bloqueo on /me/bloqueos. Returned by
- * GET /api/me/servicio/admins. */
+ * raises a bloqueo on /me/bloqueos. Carried inside
+ * `ServicioAdminPicker.admins`. */
 export type ServicioAdminOption = {
   membership_id: number;
   person_id: number;
@@ -336,6 +336,39 @@ export type ServicioAdminOption = {
    * uses this to group "Tu equipo" vs "Otros equipos del
    * servicio". */
   is_own_tenant: boolean;
+};
+
+/** Migration 0085. Servicio bloqueo routing mode + the picker
+ * candidates. When `mode === "centralised"` AND a Jefe de
+ * Servicio is resolved, `admins` collapses to that single
+ * membership and /me/bloqueos hides the dropdown. When the
+ * servicio is centralised but no Jefe is currently in place,
+ * the server returns `mode === "delegated"` (and the full
+ * picker) so the member can still raise a bloqueo. Returned by
+ * GET /api/me/servicio/admins. */
+export type ServicioAdminPicker = {
+  mode: "delegated" | "centralised";
+  admins: ServicioAdminOption[];
+};
+
+/** Migration 0085. Snapshot of how bloqueos route in the caller's
+ * servicio. Read by the Jefe de Servicio on /admin/compartir;
+ * other admins get 403. */
+export type BloqueoRouting = {
+  mode: "delegated" | "centralised";
+  /** The deterministically-resolved Jefe de Servicio, or null
+   * when nobody currently carries the cargo. */
+  jefe: {
+    membership_id: number;
+    person_id: number;
+    person_name: string;
+    tenant_id: number;
+    tenant_name: string;
+  } | null;
+  /** True when the caller themselves is the resolved jefe — the
+   * toggle copy switches from "Centralizar en {Name}" to
+   * "Centralizar en mí". */
+  caller_is_jefe: boolean;
 };
 
 // Aggregated stats — one row per (person, slot, team_role, year-month)
@@ -2078,12 +2111,28 @@ export const api = {
     }),
   deleteMyAvailabilityRequest: (id: number) =>
     request<void>(`/api/me/availability-requests/${id}`, { method: "DELETE" }),
-  /** Migration 0083. Picker source for the reviewer dropdown on
-   * the /me/bloqueos create modal. Returns every admin of every
-   * approved equipo in the caller's servicio, with the caller's
-   * own equipo sorted first. */
+  /** Migration 0083 + 0085. Picker source for the reviewer
+   * dropdown on the /me/bloqueos create modal. Returns the
+   * servicio routing mode AND the candidate admins. When mode is
+   * 'centralised' AND a Jefe de Servicio resolves, `admins`
+   * collapses to that single membership and the UI renders a
+   * read-only "Se enviará a X" line instead of the dropdown. */
   listMyServicioAdmins: () =>
-    request<ServicioAdminOption[]>("/api/me/servicio/admins"),
+    request<ServicioAdminPicker>("/api/me/servicio/admins"),
+  /** Migration 0085. Read the bloqueo routing mode for the
+   * caller's servicio. Jefe-only — returns 403 to non-jefes.
+   * Used by /admin/compartir to render (or hide) the toggle. */
+  getBloqueoRouting: () =>
+    request<BloqueoRouting>("/api/servicios/me/bloqueo-routing"),
+  /** Migration 0085. Flip the bloqueo routing mode. Jefe-only.
+   * Setting 'centralised' with no jefe currently in place is
+   * allowed — create_my_request silently falls back to delegated
+   * until a jefe reappears, so the toggle can be pre-armed. */
+  updateBloqueoRouting: (body: { mode: "delegated" | "centralised" }) =>
+    request<BloqueoRouting>("/api/servicios/me/bloqueo-routing", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
   createAvailabilityBlock: (body: {
     person_id: number;
     start_date: string;

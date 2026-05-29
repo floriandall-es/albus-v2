@@ -166,25 +166,30 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
   // picker loads, or a deliberately cleared selection); save is
   // gated on a non-empty value below.
   const [reviewerMembershipId, setReviewerMembershipId] = useState<string>("");
-  // Picker source. Cached for the modal's lifetime.
+  // Picker source. Cached for the modal's lifetime. Returns
+  // { mode, admins } — migration 0085 wrapped the old bare array.
+  // When mode === 'centralised' AND a Jefe de Servicio is resolved,
+  // `admins` collapses to that single membership and we render a
+  // read-only "Se enviará a {jefe}" line instead of the dropdown.
+  // When the servicio is centralised but no jefe is in place, the
+  // server reports mode='delegated' so the full picker still shows.
   const admins = useQuery({
     queryKey: ["my-servicio-admins"],
     queryFn: api.listMyServicioAdmins,
   });
+  const adminList = admins.data?.admins ?? [];
+  const isCentralised = admins.data?.mode === "centralised";
   // Auto-default to the first admin (which is sorted to be from
   // the user's own equipo) as soon as the picker resolves — so the
   // common case is one click ("Enviar") rather than two. Only fires
   // when the field is still empty so the user's manual selection
-  // isn't overwritten by a refetch.
+  // isn't overwritten by a refetch. Centralised mode also benefits
+  // because the single jefe is the first (and only) entry.
   useEffect(() => {
-    if (
-      admins.data
-      && admins.data.length > 0
-      && reviewerMembershipId === ""
-    ) {
-      setReviewerMembershipId(String(admins.data[0].membership_id));
+    if (adminList.length > 0 && reviewerMembershipId === "") {
+      setReviewerMembershipId(String(adminList[0].membership_id));
     }
-  }, [admins.data, reviewerMembershipId]);
+  }, [adminList, reviewerMembershipId]);
   const save = useMutation({
     mutationFn: () =>
       api.createMyAvailabilityRequest({
@@ -202,7 +207,9 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
 
   // Group admins by tenant for the dropdown's optgroup labels.
   // Own equipo first ("Tu equipo"), then sibling equipos by name.
-  const adminGroups = useAdminGroups(admins.data ?? []);
+  // Skipped when centralised since the dropdown is replaced by a
+  // read-only line.
+  const adminGroups = useAdminGroups(adminList);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
       <div className="w-full max-w-md rounded-lg bg-white shadow-lg">
@@ -244,13 +251,34 @@ function NewRequestModal({ onClose }: { onClose: () => void }) {
               <option value="other">Otro</option>
             </select>
           </label>
-          {/* Reviewer picker (migration 0083). Required — the
-              member must always pick one specific admin who will
-              review the request. The dropdown auto-selects the
-              first option (their own equipo's first admin) on
-              load, so a one-admin tenant is still a single-click
-              flow. */}
-          {admins.data && admins.data.length > 0 && (
+          {/* Reviewer routing. Migration 0083 introduced the picker;
+              migration 0085 added the centralised mode where the
+              Jefe de Servicio reviews every bloqueo. The shape
+              switches based on `mode` from the server:
+                - delegated: full dropdown with optgroups
+                - centralised: read-only "Se enviará a X" line,
+                  the form still submits the (single) jefe id
+                  via the hidden state. */}
+          {adminList.length > 0 && isCentralised && (
+            <div className="block">
+              <span className="block text-sm font-medium text-gray-700">
+                Enviar a
+              </span>
+              <div className="mt-1 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                <span className="font-medium">
+                  {adminList[0].person_name}
+                </span>
+                <span className="text-amber-700">
+                  {" "}· {adminList[0].tenant_name} · Jefe de Servicio
+                </span>
+              </div>
+              <p className="mt-1 text-[11px] text-gray-500">
+                Tu servicio centraliza las solicitudes de bloqueo en el
+                Jefe de Servicio.
+              </p>
+            </div>
+          )}
+          {adminList.length > 0 && !isCentralised && (
             <label className="block">
               <span className="text-sm font-medium text-gray-700">
                 Enviar a
