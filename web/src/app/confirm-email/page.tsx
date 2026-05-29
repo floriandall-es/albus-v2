@@ -23,18 +23,23 @@ export default function ConfirmEmailPage() {
 }
 
 /**
- * Landing page for two related email confirmation flows.
+ * Landing page for two related email confirmation flows. Both are
+ * fully public — token-only — so the link works from any browser,
+ * any device, including email-app in-app webviews on phones (which
+ * don't share cookies with Safari and so wouldn't have a session
+ * even when the user just initiated the flow on their laptop).
  *
- * 1. `kind=verify` — signup verification. The token alone is proof
- *    the recipient controls the mailbox; no logged-in session is
- *    required (the user may be reading on a phone, signed up on
- *    a laptop). Marks person.email_verified_at and clears the
- *    "verifica tu correo" banner.
+ * 1. `kind=verify` — signup verification. Marks
+ *    person.email_verified_at and clears the "verifica tu correo"
+ *    banner.
  *
  * 2. `kind=change` (or omitted, legacy) — email-change confirmation.
- *    Requires BOTH the token AND a logged-in session matching the
- *    token's person_id, so a forwarded link alone can't hijack an
- *    account.
+ *    The JWT is bound to the new_email — the only security
+ *    guarantee that matters is "you can only change to an address
+ *    you control", and that's already enforced by the token only
+ *    arriving in the new mailbox. We used to ALSO require a
+ *    matching logged-in session here; dropped because it broke the
+ *    very common laptop-initiates / phone-clicks flow.
  */
 function ConfirmEmailInner() {
   const router = useRouter();
@@ -48,7 +53,6 @@ function ConfirmEmailInner() {
     | { kind: "loading" }
     | { kind: "ok_change"; email: string }
     | { kind: "ok_verify"; email: string }
-    | { kind: "not_logged_in" }
     | { kind: "err"; message: string };
   const [state, setState] = useState<State>({ kind: "idle" });
 
@@ -64,8 +68,6 @@ function ConfirmEmailInner() {
     setState({ kind: "loading" });
 
     if (kind === "verify") {
-      // Public endpoint. The token's signature proves address
-      // ownership; no bearer required.
       api
         .verifyEmail(token)
         .then((person) => {
@@ -81,17 +83,13 @@ function ConfirmEmailInner() {
           setState({ kind: "err", message: msg });
         });
     } else {
-      // Email-change confirmation needs the active session matching
-      // the token's person_id. If we're not logged in, prompt and
-      // bail rather than calling the API and showing a confusing 401.
-      if (!getToken()) {
-        setState({ kind: "not_logged_in" });
-        return;
-      }
       api
         .confirmEmailChange(token)
         .then((person) => {
           if (cancelled) return;
+          // Same idea — invalidate /me in case the user IS logged
+          // in here too (laptop flow); on the phone flow there's
+          // no /me cached anyway, so the call is a no-op.
           qc.invalidateQueries({ queryKey: ["me"] });
           setState({ kind: "ok_change", email: person.email });
         })
@@ -125,12 +123,20 @@ function ConfirmEmailInner() {
               Tu email se ha actualizado a{" "}
               <span className="font-medium">{state.email}</span>.
             </p>
+            {/* Branch on session presence: the user might be opening
+                this in their logged-in browser (laptop) OR on their
+                phone with no Trivu session. In the latter case we
+                push to /login so they can sign in with the new
+                address; the in-app webview case lands them somewhere
+                sensible instead of a dead-end. */}
             <button
               type="button"
-              onClick={() => router.push("/me/settings")}
+              onClick={() =>
+                router.push(getToken() ? "/me/settings" : "/login")
+              }
               className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
             >
-              Ir a mi configuración
+              {getToken() ? "Ir a mi configuración" : "Iniciar sesión"}
             </button>
           </>
         )}
@@ -151,23 +157,6 @@ function ConfirmEmailInner() {
               className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
             >
               {getToken() ? "Ir al panel" : "Iniciar sesión"}
-            </button>
-          </>
-        )}
-
-        {state.kind === "not_logged_in" && (
-          <>
-            <p className="text-sm text-gray-700">
-              Para terminar de cambiar el email necesitas iniciar sesión
-              con la cuenta que solicitó el cambio. Después te
-              devolveremos aquí automáticamente.
-            </p>
-            <button
-              type="button"
-              onClick={() => router.push("/login")}
-              className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-            >
-              Inicia sesión
             </button>
           </>
         )}

@@ -35,7 +35,8 @@ from app.models import (
     Slot,
     SlotTeamRole,
 )
-from app.routes.deps import RequestContext, get_current_context
+from app.routes.deps import RequestContext, get_current_context, get_db_raw
+from sqlalchemy.orm import Session
 from app.schemas.auth import (
     AppearanceUpdateRequest,
     EmailChangeRequest,
@@ -393,20 +394,25 @@ def change_email(
 @router.post("/me/email/confirm", response_model=PersonOut)
 def confirm_email_change(
     token: str,
-    ctx: RequestContext = Depends(get_current_context),
+    db: Session = Depends(get_db_raw),
 ) -> Person:
     """Apply the email change after the user clicks the confirmation
     link in the new address's inbox.
 
-    The endpoint REQUIRES a logged-in session (Bearer) plus the
-    token, and validates that the token's person_id matches the
-    session's. Two reasons:
-    - Belt + braces — the token alone proves address ownership;
-      adding the session ensures only the original account holder
-      can complete the change. A forwarded link, on its own, gets
-      nothing.
-    - The /me path naturally requires the session, so this is
-      consistent with the rest of the user surface.
+    NO logged-in session required. The original design required both
+    the token AND a matching session, but that broke the natural
+    flow: users initiate the change on a laptop and then tap the
+    confirmation link on their phone (different browser, often an
+    in-app webview with no Trivu session). The "belt + braces" gain
+    was marginal — the security guarantee that matters is "you can
+    only change your email to an address you control", which the
+    token-bound-to-new_email already provides on its own. Forwarded
+    link is still useless to an attacker: they'd need to also control
+    the new email address, by which point they could just do password
+    reset.
+
+    Same model as /forgot-password — link arrives at the new mailbox,
+    clicking applies the change from any browser, any device.
     """
     import jwt as _jwt
 
@@ -420,23 +426,25 @@ def confirm_email_change(
         raise HTTPException(
             status_code=400, detail="Enlace de confirmación inválido"
         )
-    if payload.get("person_id") != ctx.person.id:
+    person_id = payload.get("person_id")
+    if not person_id:
         raise HTTPException(
-            status_code=403,
-            detail=(
-                "Inicia sesión con la cuenta a la que pertenece el cambio "
-                "y vuelve a abrir el enlace"
-            ),
+            status_code=400, detail="Enlace de confirmación inválido"
+        )
+    person = db.get(Person, person_id)
+    if person is None:
+        raise HTTPException(
+            status_code=404, detail="Cuenta no encontrada"
         )
     new_email = str(payload["new_email"]).strip().lower()
-    if new_email == ctx.person.email:
+    if new_email == person.email:
         # Idempotent — the user opened the link twice, no-op.
-        return ctx.person
+        return person
     # Re-check uniqueness in case someone else claimed the email
     # between the request and the confirmation.
     other = (
-        ctx.db.query(Person)
-        .filter(func.lower(Person.email) == new_email, Person.id != ctx.person.id)
+        db.query(Person)
+        .filter(func.lower(Person.email) == new_email, Person.id != person.id)
         .first()
     )
     if other is not None:
@@ -444,16 +452,17 @@ def confirm_email_change(
             status_code=status.HTTP_409_CONFLICT,
             detail="Ya existe una cuenta con ese email",
         )
-    ctx.person.email = new_email
+    person.email = new_email
     try:
-        ctx.db.flush()
+        db.flush()
+        db.commit()
     except IntegrityError:
-        ctx.db.rollback()
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Ya existe una cuenta con ese email",
         )
-    return ctx.person
+    return person
 
 
 # ---------------------------------------------------------------------------
