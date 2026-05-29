@@ -306,7 +306,7 @@ function BloqueoRoutingCard() {
               </div>
               <div className="mt-0.5 text-xs text-gray-600">
                 Cada miembro elige a qué admin del servicio envía su
-                solicitud de bloqueo en /me/bloqueos.
+                solicitud de bloqueo.
               </div>
             </div>
           </label>
