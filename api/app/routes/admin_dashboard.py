@@ -232,14 +232,12 @@ def patch_tenant_settings(
     )
     slug = ctx.tenant.slug
     tid = ctx.tenant.id
+    # tenants table has created_at only — no updated_at column.
+    # (Several other tenant-touching tables do have updated_at;
+    # tenants itself doesn't. Easy paper-cut to miss when
+    # extrapolating from neighbouring tables.)
     ctx.db.execute(
-        text(
-            """
-            UPDATE tenants
-            SET name = :name, updated_at = NOW()
-            WHERE id = :tid
-            """
-        ),
+        text("UPDATE tenants SET name = :name WHERE id = :tid"),
         {"name": new_name, "tid": tid},
     )
     ctx.db.commit()
