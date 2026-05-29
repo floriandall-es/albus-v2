@@ -327,6 +327,17 @@ def patch_admin_settings(
     payload: PulseSettingsPatch,
     ctx: RequestContext = Depends(get_current_context),
 ) -> PulseSettingsOut:
+    """Flip the on/off toggle for the caller's tenant.
+
+    Reads the post-update row BEFORE commit so we can return it
+    in the same transaction. Calling get_admin_settings() (or any
+    RLS-scoped query) after commit() blows up with
+    ObjectDeletedError: the SET LOCAL app.tenant_id GUC is
+    transaction-scoped, so a fresh query in a new transaction
+    sees RLS reject every row, including the caller's own
+    membership. The right fix is to never run a second RLS query
+    on the same session after committing — do all reads up front.
+    """
     _require_admin(ctx)
     _ensure_settings_row(ctx)
     ctx.db.execute(
@@ -339,13 +350,27 @@ def patch_admin_settings(
         ),
         {"en": payload.enabled, "tid": ctx.tenant.id},
     )
+    # Read back inside the same transaction so RLS is still
+    # primed by `SET LOCAL app.tenant_id`.
+    row = ctx.db.execute(
+        text(
+            """
+            SELECT enabled, last_notified_week_iso
+            FROM pulse_settings WHERE tenant_id = :tid
+            """
+        ),
+        {"tid": ctx.tenant.id},
+    ).first()
     ctx.db.commit()
     logger.info(
         "pulse settings: tenant=%s enabled=%s",
         ctx.tenant.id,
         payload.enabled,
     )
-    return get_admin_settings(ctx)
+    return PulseSettingsOut(
+        enabled=bool(row[0]) if row else payload.enabled,
+        last_notified_week_iso=row[1] if row else None,
+    )
 
 
 @router.get("/admin/pulse/stats", response_model=PulseStatsOut)
