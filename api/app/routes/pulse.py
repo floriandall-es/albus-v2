@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
@@ -201,12 +201,17 @@ def get_current_week(
 def post_responses(
     payload: PulseResponseBatchIn,
     ctx: RequestContext = Depends(get_current_context),
-) -> None:
+) -> Response:
     """Upsert a batch of answers for the current ISO week. Any
     answers for question keys not in this week's catalogue are
     rejected (defensive — the frontend shouldn't send those).
     Returns 410 if pulse is disabled for the tenant (the frontend
-    should show a stale-state banner)."""
+    should show a stale-state banner).
+
+    Returns a bare `Response` rather than `None` because FastAPI's
+    body-validation assertion on 204 routes fires on the implicit
+    `-> None` return type. Same workaround used by the push
+    routes."""
     if not _is_enabled(ctx):
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
@@ -255,6 +260,7 @@ def post_responses(
             },
         )
     ctx.db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(
