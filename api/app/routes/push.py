@@ -1,13 +1,11 @@
 """Web Push subscription management (migration 0089).
 
-Three endpoints:
+Four endpoints:
   GET    /api/push/vapid-public-key      Public key for the SW's subscribe()
+  GET    /api/push/subscriptions         List caller's devices (no endpoint
+                                         leaked — only id + UA + timestamps)
   POST   /api/push/subscriptions         Upsert one device subscription
   DELETE /api/push/subscriptions/{id}    Caller revokes one of their devices
-
-We deliberately don't expose a GET to LIST subscriptions in this
-commit — the "manage devices" UI lands in a later frontend pass and
-will add the listing endpoint then.
 
 Authorisation: every route is gated by the caller's session and
 filters every row by `person_id = ctx.person.id`. No tenant scope
@@ -17,6 +15,7 @@ on this table (see migration 0089 docstring).
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
@@ -64,6 +63,19 @@ class SubscriptionCreateResponse(BaseModel):
     id: int
 
 
+class SubscriptionListItem(BaseModel):
+    """One row of GET /api/push/subscriptions. Deliberately omits
+    the endpoint / p256dh / auth — those are opaque tokens the
+    frontend doesn't need and shouldn't echo. Frontend matches the
+    "this device" row by id (stored in localStorage at subscribe
+    time)."""
+
+    id: int
+    user_agent: str | None
+    created_at: datetime
+    last_used_at: datetime | None
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -93,6 +105,41 @@ def get_vapid_public_key(
     # endpoint is uniformly authenticated.
     _ = ctx
     return VapidPublicKeyOut(public_key=settings.vapid_public_key)
+
+
+@router.get(
+    "/push/subscriptions",
+    response_model=list[SubscriptionListItem],
+)
+def list_my_subscriptions(
+    ctx: RequestContext = Depends(get_current_context),
+) -> list[SubscriptionListItem]:
+    """List the caller's own push subscriptions for the
+    "Notificaciones" panel inside /me/settings. Ordered by
+    last_used_at desc (then created_at desc as a tiebreak) so the
+    most recently active device floats to the top."""
+    with AdminSessionLocal() as adb:
+        rows = adb.execute(
+            text(
+                """
+                SELECT id, user_agent, created_at, last_used_at
+                FROM push_subscriptions
+                WHERE person_id = :pid
+                ORDER BY COALESCE(last_used_at, created_at) DESC,
+                         created_at DESC
+                """
+            ),
+            {"pid": ctx.person.id},
+        ).mappings().all()
+    return [
+        SubscriptionListItem(
+            id=r["id"],
+            user_agent=r["user_agent"],
+            created_at=r["created_at"],
+            last_used_at=r["last_used_at"],
+        )
+        for r in rows
+    ]
 
 
 @router.post(

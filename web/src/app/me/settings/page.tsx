@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { CreditCard, ChevronRight } from "lucide-react";
 import { Card } from "@/components/admin/ui";
+import { NotificationsPanel } from "@/components/settings/notifications-panel";
 import { ProfileCards } from "@/components/settings/profile-cards";
 
 export default function MeSettingsPage() {
@@ -9,6 +10,10 @@ export default function MeSettingsPage() {
     <>
       <h1 className="text-2xl font-semibold mb-6">Mi cuenta</h1>
       <ProfileCards />
+      {/* Notificaciones (migration 0089). Self-hides when push
+          isn't supported (old browser / SSR); shows install hint
+          when supported but the user isn't in the installed PWA. */}
+      <NotificationsPanel />
       {/* Facturación moved here out of the sidebar — members don't
           need to see it on every page; it lives inside Mi cuenta
           as a single deep-link card. */}

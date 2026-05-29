@@ -902,6 +902,18 @@ export type DMMessage = {
   created_at: string;
 };
 
+/** Migration 0089. One row of the caller's push subscription list.
+ * Endpoint / encryption keys deliberately omitted — the panel only
+ * needs to identify each device for revoke purposes. The "this
+ * device" row is matched by id (stored in localStorage at subscribe
+ * time), not by snooping the endpoint. */
+export type PushSubscriptionItem = {
+  id: number;
+  user_agent: string | null;
+  created_at: string;
+  last_used_at: string | null;
+};
+
 /** One row of the cross-tenant hospital directory. Returned by
  * `GET /api/hospital/directory` — joins membership + person +
  * tenant + category + group for the listing UI. No emails or
@@ -1687,6 +1699,36 @@ export const api = {
   leaveGroupChat: (conversationId: number) =>
     request<void>(`/api/conversations/${conversationId}/leave`, {
       method: "POST",
+    }),
+  /** Migration 0089. VAPID public key for the service worker to
+   * subscribe with. 503 if push isn't configured server-side; the
+   * frontend treats that as "feature disabled in this environment". */
+  getVapidPublicKey: () =>
+    request<{ public_key: string }>("/api/push/vapid-public-key"),
+  /** Migration 0089. List the caller's push subscriptions for the
+   * Notificaciones panel. Endpoint values intentionally omitted —
+   * the frontend matches "this device" by id stored in
+   * localStorage at subscribe time. */
+  listMyPushSubscriptions: () =>
+    request<PushSubscriptionItem[]>("/api/push/subscriptions"),
+  /** Migration 0089. Upsert one device subscription (idempotent on
+   * endpoint). Returns the row id so the caller can store it
+   * locally as the "this device" marker. */
+  createPushSubscription: (body: {
+    endpoint: string;
+    p256dh: string;
+    auth: string;
+    user_agent: string | null;
+  }) =>
+    request<{ id: number }>("/api/push/subscriptions", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  /** Migration 0089. Caller revokes one of their own
+   * subscriptions. 204 even on a missing/foreign id. */
+  deletePushSubscription: (subscriptionId: number) =>
+    request<void>(`/api/push/subscriptions/${subscriptionId}`, {
+      method: "DELETE",
     }),
   updateProfile: (body: {
     /** Legacy single-field name. Sprint 18+ clients should send
