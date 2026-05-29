@@ -933,6 +933,31 @@ export type PulseHistoryItem = {
   score: number;
 };
 
+/** Migration 0090. Admin-side settings for the tenant's pulse
+ * cadence. `last_notified_week_iso` is informational — drives
+ * the "última notificación enviada" hint in the admin panel. */
+export type PulseAdminSettings = {
+  enabled: boolean;
+  last_notified_week_iso: string | null;
+};
+
+/** Migration 0090. One row of the aggregated admin stats —
+ * always week × question. Never exposes individual responses.
+ * `distribution` is sorted (score, count) pairs so the frontend
+ * can draw a histogram without recomputing. */
+export type PulseQuestionStat = {
+  week_iso: string;
+  question_key: string;
+  mean: number;
+  response_count: number;
+  distribution: [number, number][];
+};
+
+export type PulseAdminStats = {
+  eligible_count: number;
+  weekly: PulseQuestionStat[];
+};
+
 /** Migration 0089. One row of the caller's push subscription list.
  * Endpoint / encryption keys deliberately omitted — the panel only
  * needs to identify each device for revoke purposes. The "this
@@ -1784,6 +1809,29 @@ export const api = {
     request<PulseHistoryItem[]>(
       `/api/pulse/my-history?weeks=${weeks}`,
     ),
+  /** Migration 0090. Admin reads the tenant's pulse on/off state
+   * + last fan-out week. 403 if caller isn't an admin. */
+  getAdminPulseSettings: () =>
+    request<PulseAdminSettings>("/api/admin/pulse/settings"),
+  /** Migration 0090. Admin flips the toggle. Returns the same
+   * shape as GET. */
+  patchAdminPulseSettings: (body: { enabled: boolean }) =>
+    request<PulseAdminSettings>("/api/admin/pulse/settings", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  /** Migration 0090. Aggregated stats for the admin dashboard.
+   * Server defaults to a trailing 26-week window when neither
+   * from/to is supplied. */
+  getAdminPulseStats: (params?: { from?: string; to?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.from) qs.set("from_week", params.from);
+    if (params?.to) qs.set("to_week", params.to);
+    const q = qs.toString();
+    return request<PulseAdminStats>(
+      `/api/admin/pulse/stats${q ? `?${q}` : ""}`,
+    );
+  },
   updateProfile: (body: {
     /** Legacy single-field name. Sprint 18+ clients should send
      * first_name + last_name instead; the server composes `name`

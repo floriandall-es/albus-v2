@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  Activity,
   AlertCircle,
   ArrowLeftRight,
   BarChart3,
@@ -65,6 +66,10 @@ const NAV: NavSection[] = [
       { href: "/admin", label: "Inicio", icon: Home },
       { href: "/admin/schedule", label: "Planificación", icon: CalendarDays },
       { href: "/admin/stats", label: "Estadísticas", icon: BarChart3 },
+      // Migration 0090: team wellbeing pulse. Opt-in per tenant
+      // (default off); the page itself surfaces the toggle and a
+      // dashboard of weekly trends + response rate.
+      { href: "/admin/pulso", label: "Pulso", icon: Activity },
       { href: "/admin/swaps", label: "Cambios de turno", icon: ArrowLeftRight },
       { href: "/admin/availability", label: "Bloqueos", icon: CalendarOff },
       { href: "/admin/reuniones", label: "Reuniones", icon: MessageSquare },
