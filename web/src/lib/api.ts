@@ -1169,6 +1169,36 @@ export type TeamMember = {
   created_at: string;
 };
 
+/** Migration 0087. Status of an admin promotion request — the
+ * consent handshake that runs before we change a member's
+ * Stripe price under members_pay. */
+export type AdminPromotionStatus =
+  | "pending"
+  | "accepted"
+  | "declined"
+  | "cancelled"
+  | "expired";
+
+export type AdminPromotionRequestData = {
+  id: number;
+  target_membership_id: number;
+  target_person_name: string;
+  requested_by_membership_id: number | null;
+  requested_by_person_name: string | null;
+  status: AdminPromotionStatus;
+  created_at: string;
+  expires_at: string;
+  decided_at: string | null;
+};
+
+export type AdminPromotionPreviewData = {
+  tenant_name: string;
+  target_person_name: string;
+  inviter_person_name: string | null;
+  status: AdminPromotionStatus;
+  expires_at: string;
+};
+
 export type TeamMemberUpdate = {
   category_id?: number | null;
   fte_pct?: number;
@@ -1735,6 +1765,48 @@ export const api = {
   listTeam: () => request<TeamMember[]>("/api/team"),
   updateTeamMember: (id: number, body: TeamMemberUpdate) =>
     request<TeamMember>(`/api/team/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  /** Migration 0087. Start the admin-promotion consent flow for
+   * a member. Under members_pay this is required instead of a
+   * direct PUT roles change because their Stripe price moves.
+   * Server creates a pending request and emails the target
+   * accept / decline links. 409 if there's already a pending
+   * request for this person. */
+  createAdminPromotion: (membershipId: number) =>
+    request<AdminPromotionRequestData>(
+      `/api/team/${membershipId}/admin-promotion`,
+      { method: "POST" },
+    ),
+  /** List pending + recently-decided promotions in the tenant.
+   * Drives the modal hint when there's already a pending request
+   * for the member being edited. */
+  listAdminPromotions: () =>
+    request<AdminPromotionRequestData[]>("/api/admin-promotions"),
+  /** Admin withdraws a pending request. 204 on success; idempotent
+   * on already-decided rows. */
+  cancelAdminPromotion: (id: number) =>
+    request<void>(`/api/admin-promotions/${id}`, { method: "DELETE" }),
+  /** Public — token-only. What the /confirm-admin-promotion
+   * landing page reads to render the "X wants to promote you"
+   * card before the target accepts / declines. */
+  previewAdminPromotion: (token: string) =>
+    request<AdminPromotionPreviewData>(
+      `/api/admin-promotion/preview?token=${encodeURIComponent(token)}`,
+    ),
+  /** Public — token-only. Accept the promotion: grants the role
+   * AND triggers Stripe item swap under members_pay. Idempotent
+   * on already-accepted. */
+  acceptAdminPromotion: (token: string) =>
+    request<AdminPromotionPreviewData>(
+      `/api/admin-promotion/accept?token=${encodeURIComponent(token)}`,
+      { method: "POST" },
+    ),
+  /** Public — token-only. Decline: just flips status, no role
+   * change, no Stripe call. Idempotent. */
+  declineAdminPromotion: (token: string) =>
+    request<AdminPromotionPreviewData>(
+      `/api/admin-promotion/decline?token=${encodeURIComponent(token)}`,
+      { method: "POST" },
+    ),
   /** Issue a fresh invitation for an EXISTING pendiente Membership.
    * Used by the per-row "Enviar invitación" button on /admin/team.
    * Server revokes any prior live invites for this email, creates a

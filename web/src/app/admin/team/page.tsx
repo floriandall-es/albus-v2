@@ -452,6 +452,20 @@ function TeamEditDialog({
     (mm) => mm.tenant_id === me.data?.current_tenant.id,
   )?.id ?? null;
   const isSelf = myMembershipId !== null && member.id === myMembershipId;
+  const isMembersPay =
+    me.data?.current_tenant.billing_model === "members_pay";
+  // Pending promotion lookup (migration 0087). Members_pay needs
+  // a consent handshake before the role flip; if there's already
+  // one queued, the modal shows that instead of the regular
+  // toggle so two admins can't double-fire emails.
+  const promotionsQ = useQuery({
+    queryKey: ["admin-promotions"],
+    queryFn: api.listAdminPromotions,
+  });
+  const pendingForThisMember =
+    promotionsQ.data?.find(
+      (p) => p.target_membership_id === member.id && p.status === "pending",
+    ) ?? null;
 
   const [categoryId, setCategoryId] = useState<number | "">(member.category_id ?? "");
   const [ftePct, setFtePct] = useState<string>(member.fte_pct.toString());
@@ -546,6 +560,14 @@ function TeamEditDialog({
       // on saves that aren't touching roles at all.
       const wasAdmin = member.roles.includes("admin");
       const rolesChanged = isAdmin !== wasAdmin;
+      // Migration 0087. Under members_pay a promotion (member →
+      // admin) goes through the consent flow, NOT the bulk PUT. We
+      // strip roles from the payload and the modal's submit handler
+      // fires the promotion request separately. Demotions and
+      // team_pays still ride through here as before.
+      const promoteViaConsent =
+        rolesChanged && isAdmin && !wasAdmin && isMembersPay;
+      const sendRoles = rolesChanged && !promoteViaConsent;
       return api.updateTeamMember(member.id, {
         category_id: categoryId === "" ? null : Number(categoryId),
         fte_pct: Number(ftePct),
@@ -554,13 +576,33 @@ function TeamEditDialog({
           ? { allowed_slot_ids: allowedSlotIdsPayload }
           : {}),
         ...(emailChanged ? { email: trimmedEmail } : {}),
-        ...(rolesChanged ? { roles: isAdmin ? ["admin"] : [] } : {}),
+        ...(sendRoles ? { roles: isAdmin ? ["admin"] : [] } : {}),
       });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["team"] });
       qc.invalidateQueries({ queryKey: ["slots"] });
       onClose();
+    },
+  });
+
+  // Migration 0087. Fires the consent-flow promotion under
+  // members_pay. The role isn't granted here — the target gets an
+  // email and clicks accept. We close the modal on success so
+  // the admin sees the "pending promotion" pill on the team list.
+  const requestPromotion = useMutation({
+    mutationFn: () => api.createAdminPromotion(member.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-promotions"] });
+      qc.invalidateQueries({ queryKey: ["team"] });
+      onClose();
+    },
+  });
+  const cancelPromotion = useMutation({
+    mutationFn: (promotionId: number) =>
+      api.cancelAdminPromotion(promotionId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-promotions"] });
     },
   });
 
@@ -618,6 +660,14 @@ function TeamEditDialog({
     const conflict = buildConflictMessage();
     if (conflict !== null && !confirm(conflict)) return;
     save.mutate();
+    // Migration 0087. If this is a members_pay promotion, ALSO
+    // fire the consent-flow request. The save above stripped
+    // `roles` from its payload (see promoteViaConsent), so the
+    // role flip really happens only on accept.
+    const wasAdmin = member.roles.includes("admin");
+    if (isMembersPay && isAdmin && !wasAdmin) {
+      requestPromotion.mutate();
+    }
   };
 
   // ES locale, short date — for the "Desactivado desde X" hint.
@@ -708,41 +758,83 @@ function TeamEditDialog({
           </label>
         </div>
 
-        {/* Admin role toggle. Disabled on the current admin's OWN
-            row to make the self-demote rule obvious — the backend
-            also rejects it with a clear message if somehow saved.
-            Pendientes are allowed to be flipped on: they become
-            admin the moment they activate the invitation. */}
-        <div className="rounded-md border border-gray-200 bg-gray-50/60 p-3">
-          <label
-            className={
-              "flex items-start gap-2 text-sm "
-              + (isSelf ? "cursor-not-allowed" : "cursor-pointer")
-            }
-          >
-            <input
-              type="checkbox"
-              checked={isAdmin}
-              onChange={(e) => setIsAdmin(e.target.checked)}
-              disabled={isSelf}
-              className="mt-0.5"
-            />
-            <span>
-              <span className="font-medium">Administrador del equipo</span>
-              <span className="block text-xs text-gray-500 mt-0.5">
-                Los administradores ven /admin y gestionan equipo,
-                actividades, reglas, bloqueos y cambios. Puedes tener
-                más de uno.
-              </span>
-              {isSelf && (
-                <span className="block text-xs text-amber-700 mt-1">
-                  No puedes quitarte el rol a ti mismo. Pide a otro
-                  admin si quieres dejar el rol.
+        {/* Admin role toggle. Three modes:
+            - Pending promotion (migration 0087) → render the
+              pending state with a cancel button; the checkbox is
+              suppressed so the admin doesn't double-fire.
+            - members_pay + currently a member → ticking the box
+              triggers the consent flow on save (email + accept
+              link) instead of changing roles directly.
+            - All other cases → direct toggle, as before. */}
+        {pendingForThisMember ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50/60 p-3">
+            <div className="text-sm font-medium text-amber-900">
+              Promoción a admin pendiente
+            </div>
+            <p className="mt-0.5 text-xs text-amber-800">
+              {member.person_name} aún no ha aceptado la promoción.
+              Le hemos enviado un email con el enlace para confirmar.
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                cancelPromotion.mutate(pendingForThisMember.id)
+              }
+              disabled={cancelPromotion.isPending}
+              className="mt-2 text-xs text-rose-700 hover:underline disabled:opacity-50"
+            >
+              {cancelPromotion.isPending
+                ? "Cancelando…"
+                : "Cancelar solicitud"}
+            </button>
+          </div>
+        ) : (
+          <div className="rounded-md border border-gray-200 bg-gray-50/60 p-3">
+            <label
+              className={
+                "flex items-start gap-2 text-sm "
+                + (isSelf ? "cursor-not-allowed" : "cursor-pointer")
+              }
+            >
+              <input
+                type="checkbox"
+                checked={isAdmin}
+                onChange={(e) => setIsAdmin(e.target.checked)}
+                disabled={isSelf}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium">Administrador del equipo</span>
+                <span className="block text-xs text-gray-500 mt-0.5">
+                  Los administradores ven /admin y gestionan equipo,
+                  actividades, reglas, bloqueos y cambios. Puedes tener
+                  más de uno.
                 </span>
-              )}
-            </span>
-          </label>
-        </div>
+                {isSelf && (
+                  <span className="block text-xs text-amber-700 mt-1">
+                    No puedes quitarte el rol a ti mismo. Pide a otro
+                    admin si quieres dejar el rol.
+                  </span>
+                )}
+                {/* Migration 0087. Under members_pay a promotion
+                    changes the target's subscription price. We
+                    can't auto-apply that — surface the consent
+                    flow so the admin knows what happens on save. */}
+                {isMembersPay
+                  && isAdmin
+                  && !member.roles.includes("admin")
+                  && !isSelf && (
+                  <span className="block text-xs text-amber-700 mt-1">
+                    Al guardar enviaremos un email a {member.person_name}
+                    {" "}para que acepte la promoción y el cambio de
+                    precio de su suscripción. El rol se aplica
+                    cuando acepte.
+                  </span>
+                )}
+              </span>
+            </label>
+          </div>
+        )}
 
         <MemberActivitiesSection
           slots={slots}
