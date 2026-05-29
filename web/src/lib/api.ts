@@ -82,10 +82,16 @@ export type Tenant = {
    * "Trasplantes" sidebar entry hides and /api/transplants 404s. */
   transplants_enabled: boolean;
   /** Per-tenant cap on cambios de turno per member per monthly
-   * schedule. Null = unlimited (default). When set, both sides of
-   * every fulfilled swap count toward the limit for the month of
-   * the original assignment. Editable on /admin/swaps. */
+   * schedule. Null = unlimited (default). Only the requester is
+   * charged a cambio at fulfilment — covering for a colleague no
+   * longer burns the responder's quota. Editable on /admin/swaps. */
   max_swaps_per_member_per_month: number | null;
+  /** Migration 0084. When true, a requester clicking Aceptar on a
+   * response parks the offer in pending_admin until an admin
+   * approves or vetoes; only then does the assignment swap fire.
+   * Default false preserves the legacy "requester decides" flow.
+   * Toggled on /admin/swaps. */
+  swap_requires_admin_approval: boolean;
   /** Per-area "I'm done configuring" timestamps. Null = pending
    * (Inicio shows the card, subpage shows the first-visit banner);
    * non-null = admin marked it done. Toggled via
@@ -688,15 +694,30 @@ export function personFullName(p: {
 }
 
 // ---- Shift swaps ----------------------------------------------------------
-export type SwapOfferStatus = "open" | "fulfilled" | "cancelled";
+/** Migration 0084: added `pending_admin` (requester accepted but
+ * tenant has admin-approval on so it's waiting) and `vetoed`
+ * (admin killed the whole offer). */
+export type SwapOfferStatus =
+  | "open"
+  | "pending_admin"
+  | "fulfilled"
+  | "cancelled"
+  | "vetoed";
 export type SwapResponseKind = "cover" | "swap";
 /** Migration 0064: which response kinds the requester will accept. */
 export type SwapOfferAccepts = "cover_only" | "swap_only" | "either";
+/** Migration 0084: `pending_admin` is the response the requester
+ * picked while the admin is still reviewing. */
 export type SwapResponseStatus =
   | "pending"
+  | "pending_admin"
   | "accepted"
   | "declined"
   | "withdrawn";
+/** Migration 0084. Veto scope picked by the admin at decision time:
+ * "response_only" reopens the offer for another colleague to step in,
+ * "entire_offer" closes the cambio for good. */
+export type SwapVetoScope = "response_only" | "entire_offer";
 
 export type SwapAssignmentSummary = {
   id: number;
@@ -741,6 +762,13 @@ export type SwapOffer = {
   /** Migration 0064: which response kinds the requester will
    * accept. "either" preserves legacy behaviour. */
   accepts: SwapOfferAccepts;
+  /** Migration 0084. Admin approval audit trail. All four are
+   * non-null only when the offer went through the admin-approval
+   * flow; null for legacy / direct-path offers. */
+  admin_decided_at: string | null;
+  admin_decided_by_membership_id: number | null;
+  admin_decided_by_person_name: string | null;
+  admin_decision_notes: string | null;
   responses: SwapResponse[];
 };
 
@@ -1452,16 +1480,19 @@ export const api = {
    * stays flat. */
   getMyUnreadCount: () =>
     request<{ total: number }>("/api/me/unread-count"),
-  /** Four roll-ups feeding the admin Pendientes inbox:
-   * bloqueos pending approval, invitations still live, open
-   * swap offers, and (Phase D.3) sibling equipos waiting for
-   * approval in the servicio. Polled every 60 s by the admin
-   * sidebar — mirror of the DM unread badge. */
+  /** Five roll-ups feeding the admin Pendientes inbox:
+   * bloqueos pending approval, invitations still live, open swap
+   * offers (informational only — requester action), swap offers
+   * parked in pending_admin (migration 0084, admin DOES action),
+   * and (Phase D.3) sibling equipos waiting for approval in the
+   * servicio. Polled every 60 s by the admin sidebar — mirror of
+   * the DM unread badge. */
   getAdminPendientes: () =>
     request<{
       bloqueos_pending: number;
       invitations_open: number;
       swap_offers_open: number;
+      swap_offers_pending_admin: number;
       equipos_pending: number;
     }>("/api/admin/pendientes"),
   /** Founder-only: cross-tenant rollup of every signed-up equipo.
@@ -1907,6 +1938,9 @@ export const api = {
      * pass a non-negative integer to cap fulfilled swaps per member
      * per monthly schedule. */
     max_swaps_per_member_per_month?: number | null;
+    /** /admin/swaps writes this. Opt-in admin approval / veto for
+     * every fulfilled cambio. */
+    swap_requires_admin_approval?: boolean;
   }) => request<Tenant>("/api/tenants/me", { method: "PATCH", body: JSON.stringify(body) }),
   /** Mark one of the four post-signup areas as completed (or undo
    * it). Server writes/clears the corresponding
@@ -2165,14 +2199,37 @@ export const api = {
       { method: "POST" },
     ),
   adminListSwaps: () => request<SwapOffer[]>("/api/admin/swaps"),
+  /** Migration 0084. Admin approves a swap parked in pending_admin.
+   * Server re-runs eligibility + charges the requester's quota; on
+   * any failure (schedule changed, requester at cap, etc.) the
+   * response is 400 — the admin should then veto with a note. */
+  adminApproveSwapResponse: (offerId: number, responseId: number) =>
+    request<SwapOffer>(
+      `/api/swap-offers/${offerId}/responses/${responseId}/admin-approve`,
+      { method: "POST" },
+    ),
+  /** Migration 0084. Admin vetoes a swap parked in pending_admin.
+   * `scope: "response_only"` declines this response only and
+   * reopens the offer (another colleague can step in);
+   * `scope: "entire_offer"` closes the offer for good and declines
+   * every still-pending sibling response. `notes` is shown to both
+   * the requester and the responder in the veto email. */
+  adminVetoSwapResponse: (
+    offerId: number,
+    responseId: number,
+    body: { scope: SwapVetoScope; notes?: string | null },
+  ) =>
+    request<SwapOffer>(
+      `/api/swap-offers/${offerId}/responses/${responseId}/admin-veto`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
   /** Per-person view of swap usage in a given month.
    *
    * `period` is YYYY-MM. `used` is the number of fulfilled offers
-   * where the caller was either requester or accepted responder
-   * with the original assignment in that month. `limit` mirrors
-   * tenant.max_swaps_per_member_per_month (null = unlimited). The
-   * frontend renders "X de N cambios este mes" and disables swap
-   * actions when used >= limit. */
+   * the caller REQUESTED in that month (responders are not charged).
+   * `limit` mirrors tenant.max_swaps_per_member_per_month (null =
+   * unlimited). The frontend renders "X de N cambios este mes" and
+   * disables swap actions when used >= limit. */
   getMySwapQuota: (period: string) =>
     request<{ period: string; used: number; limit: number | null }>(
       `/api/me/swap-quota?period=${encodeURIComponent(period)}`,

@@ -143,10 +143,10 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   });
 
   // Pendientes roll-up: bloqueos awaiting approval, invitations
-  // not yet activated, open swap offers. Drives the badge on
-  // the Inicio link (same shape as the DM unread badge in the
-  // member layout). Polls every 60 s — flat-cost SQL on the
-  // backend, three .count() queries.
+  // not yet activated, open + pending-admin swap offers. Drives
+  // the badge on the Inicio link (same shape as the DM unread
+  // badge in the member layout). Polls every 60 s — flat-cost
+  // SQL on the backend, a handful of .count() queries.
   const pendientes = useQuery({
     queryKey: ["admin-pendientes"],
     queryFn: api.getAdminPendientes,
@@ -157,6 +157,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     ? pendientes.data.bloqueos_pending
       + pendientes.data.invitations_open
       + pendientes.data.swap_offers_open
+      + pendientes.data.swap_offers_pending_admin
     : 0;
 
   useEffect(() => {

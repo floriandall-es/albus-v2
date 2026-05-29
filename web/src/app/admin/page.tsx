@@ -351,13 +351,14 @@ export default function AdminDashboard() {
       )}
 
       {/* Pendientes — admin work queue. Only renders when at
-          least one of the three categories has rows. Each card
+          least one of the categories has rows. Each card
           deeplinks to the page that actions it. The sidebar
           Inicio badge mirrors the total. */}
       {pendientes.data
         && pendientes.data.bloqueos_pending
           + pendientes.data.invitations_open
           + pendientes.data.swap_offers_open
+          + pendientes.data.swap_offers_pending_admin
           + pendientes.data.equipos_pending
           > 0 && (
         <section className="mb-8">
@@ -383,6 +384,19 @@ export default function AdminDashboard() {
                 sublabel="Miembros que aún no han entrado"
                 href="/admin/team"
                 tone="violet"
+              />
+            )}
+            {/* Migration 0084. Surfaced before "Cambios abiertos"
+                because this one needs admin action; the latter is
+                informational only. */}
+            {pendientes.data.swap_offers_pending_admin > 0 && (
+              <PendientesCard
+                icon={<ArrowLeftRight className="h-5 w-5" />}
+                count={pendientes.data.swap_offers_pending_admin}
+                label="Cambios por aprobar"
+                sublabel="Esperan tu visto bueno o tu veto"
+                href="/admin/swaps"
+                tone="amber"
               />
             )}
             {pendientes.data.swap_offers_open > 0 && (

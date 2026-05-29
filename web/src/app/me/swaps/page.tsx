@@ -136,21 +136,25 @@ function StatusBadge({ status }: { status: string }) {
     {
       open: "warning",
       pending: "warning",
+      pending_admin: "warning",
       fulfilled: "success",
       accepted: "success",
       cancelled: "neutral",
       declined: "neutral",
       withdrawn: "neutral",
+      vetoed: "danger",
     } as const
   )[status] ?? "neutral";
   const label: Record<string, string> = {
     open: "Abierta",
     pending: "Pendiente",
+    pending_admin: "Esperando admin",
     fulfilled: "Cumplida",
     accepted: "Aceptada",
     cancelled: "Cancelada",
     declined: "Rechazada",
     withdrawn: "Retirada",
+    vetoed: "Denegada por admin",
   };
   return <StatusPill tone={tone}>{label[status] ?? status}</StatusPill>;
 }
@@ -161,6 +165,14 @@ function StatusBadge({ status }: { status: string }) {
 
 function MyOfferCard({ offer }: { offer: SwapOffer }) {
   const qc = useQueryClient();
+  const me = useQuery({ queryKey: ["me"], queryFn: api.me });
+  // Migration 0084. When the tenant requires admin approval, we
+  // warn the requester before they accept ("this won't apply
+  // right away") and show a pending-admin banner once it's
+  // parked. The flag is on /api/me's current_tenant payload.
+  const requiresApproval =
+    me.data?.current_tenant.swap_requires_admin_approval ?? false;
+
   const cancel = useMutation({
     mutationFn: () => api.cancelSwapOffer(offer.id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["swap-offers"] }),
@@ -189,7 +201,10 @@ function MyOfferCard({ offer }: { offer: SwapOffer }) {
         </div>
         <div className="flex items-center gap-2">
           <StatusBadge status={offer.status} />
-          {offer.status === "open" && (
+          {/* Cancel works in both 'open' and 'pending_admin' — in
+              the latter the requester is backing out before the
+              admin decides. */}
+          {(offer.status === "open" || offer.status === "pending_admin") && (
             <button
               className="text-xs text-red-700 hover:underline"
               onClick={() => cancel.mutate()}
@@ -200,6 +215,24 @@ function MyOfferCard({ offer }: { offer: SwapOffer }) {
           )}
         </div>
       </div>
+
+      {/* Migration 0084. Two contextual banners depending on state. */}
+      {offer.status === "pending_admin" && (
+        <div className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Has aceptado una propuesta. El cambio se aplicará cuando un admin
+          lo apruebe.
+        </div>
+      )}
+      {offer.status === "vetoed" && (
+        <div className="mt-2 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-800">
+          El admin ha denegado este cambio.
+          {offer.admin_decision_notes && (
+            <span className="block mt-0.5">
+              Motivo: {offer.admin_decision_notes}
+            </span>
+          )}
+        </div>
+      )}
 
       {offer.responses.length > 0 && (
         <ul className="mt-3 space-y-2 border-t pt-3">
@@ -237,7 +270,24 @@ function MyOfferCard({ offer }: { offer: SwapOffer }) {
                   <>
                     <button
                       className="rounded-md bg-emerald-700 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
-                      onClick={() => accept.mutate(r.id)}
+                      onClick={() => {
+                        // Confirm before accepting when admin
+                        // approval is required — otherwise the
+                        // requester might be surprised that
+                        // "Aceptar" doesn't apply immediately.
+                        if (
+                          requiresApproval
+                          && !window.confirm(
+                            "Tu equipo requiere aprobación del admin para "
+                            + "aplicar cambios. La solicitud quedará en "
+                            + "espera hasta que un admin la apruebe.\n\n"
+                            + "¿Aceptar la propuesta?",
+                          )
+                        ) {
+                          return;
+                        }
+                        accept.mutate(r.id);
+                      }}
                       disabled={accept.isPending}
                     >
                       Aceptar
