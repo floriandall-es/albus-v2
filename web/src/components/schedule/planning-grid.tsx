@@ -567,9 +567,20 @@ function PlanningGridInner({
                                     <SwapIcon className="h-3 w-3 text-sky-600 shrink-0" />
                                   )}
                                   {a.person_id === null ? (
-                                    <span className="text-rose-700 font-medium">
-                                      Sin cubrir
-                                    </span>
+                                    // Member views (sectionHighlight set on
+                                    // /me/turnos) render a subtle dash —
+                                    // "Sin cubrir" in rose is admin language
+                                    // and looks alarming to a member who
+                                    // can't act on it anyway. Admin views
+                                    // keep the explicit rose label since
+                                    // the admin DOES need to notice + fix.
+                                    sectionHighlight !== null ? (
+                                      <span className="text-gray-400">—</span>
+                                    ) : (
+                                      <span className="text-rose-700 font-medium">
+                                        Sin cubrir
+                                      </span>
+                                    )
                                   ) : (
                                     <span
                                       className={
