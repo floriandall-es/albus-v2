@@ -17,7 +17,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from sqlalchemy import text
 
@@ -164,4 +164,88 @@ def admin_pendientes(
         swap_offers_open=swap_offers,
         swap_offers_pending_admin=swap_offers_pending_admin,
         equipos_pending=equipos_pending,
+    )
+
+
+
+# ---------------------------------------------------------------------------
+# Tenant settings (admin-editable display name)
+# ---------------------------------------------------------------------------
+
+
+class TenantSettingsOut(BaseModel):
+    """What the admin sees on /admin/settings under the team card."""
+
+    id: int
+    # `name` is the human-friendly display string admins can rewrite
+    # at will. Shown in the sidebar header, tenant picker, peer
+    # rows in DMs, email subject lines, etc.
+    name: str
+    # `slug` is the URL-stable identifier — frozen by design.
+    # Surfaced read-only so the admin knows what the system uses
+    # for routing and can't accidentally break shared links by
+    # editing it.
+    slug: str
+    # Parent hospital read-only (Phase D — admins don't move
+    # tenants between hospitals from here).
+    hospital_name: str | None
+
+
+class TenantSettingsPatch(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+
+
+@router.get("/admin/tenant", response_model=TenantSettingsOut)
+def get_tenant_settings(
+    ctx: RequestContext = Depends(get_current_context),
+) -> TenantSettingsOut:
+    _require_admin(ctx)
+    return TenantSettingsOut(
+        id=ctx.tenant.id,
+        name=ctx.tenant.name,
+        slug=ctx.tenant.slug,
+        hospital_name=ctx.tenant.hospital.name if ctx.tenant.hospital else None,
+    )
+
+
+@router.patch("/admin/tenant", response_model=TenantSettingsOut)
+def patch_tenant_settings(
+    payload: TenantSettingsPatch,
+    ctx: RequestContext = Depends(get_current_context),
+) -> TenantSettingsOut:
+    """Rename the caller's tenant. Display-only — slug stays
+    frozen so shared URLs and the tenant picker keep working.
+
+    Same RLS-after-commit caveat as the pulse PATCH: we read
+    back inside the same transaction and build the response from
+    locals, never querying again after commit().
+    """
+    _require_admin(ctx)
+    new_name = payload.name.strip()
+    if not new_name:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="El nombre no puede estar vacío.",
+        )
+    hospital_name = (
+        ctx.tenant.hospital.name if ctx.tenant.hospital else None
+    )
+    slug = ctx.tenant.slug
+    tid = ctx.tenant.id
+    ctx.db.execute(
+        text(
+            """
+            UPDATE tenants
+            SET name = :name, updated_at = NOW()
+            WHERE id = :tid
+            """
+        ),
+        {"name": new_name, "tid": tid},
+    )
+    ctx.db.commit()
+    return TenantSettingsOut(
+        id=tid,
+        name=new_name,
+        slug=slug,
+        hospital_name=hospital_name,
     )

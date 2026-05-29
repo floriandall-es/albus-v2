@@ -3,12 +3,17 @@ import Link from "next/link";
 import { CreditCard, ChevronRight } from "lucide-react";
 import { Card, PageHeader } from "@/components/admin/ui";
 import { ProfileCards } from "@/components/settings/profile-cards";
+import { TenantSettingsCard } from "@/components/settings/tenant-settings-card";
 
 export default function AdminSettingsPage() {
   return (
     <>
       <PageHeader title="Mi cuenta" />
       <ProfileCards />
+      {/* Tenant rename + read-only slug / hospital. Lives in Mi
+          cuenta (not the operational sidebar) because it's a
+          settings action admins touch infrequently. */}
+      <TenantSettingsCard />
       {/* Facturación moved here out of the sidebar — admins don't
           need to see it on every page; it lives inside Mi cuenta
           as a single deep-link card. */}

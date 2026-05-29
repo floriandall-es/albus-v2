@@ -985,6 +985,17 @@ export type PulseCatalogue = {
   rotating: PulseCatalogueQuestion[];
 };
 
+/** Admin-only view of the caller's tenant settings. `name` is
+ * editable; `slug` is the URL-stable identifier and stays
+ * frozen; `hospital_name` is the parent hospital (read-only,
+ * Phase D — admins don't reparent from here). */
+export type AdminTenantSettings = {
+  id: number;
+  name: string;
+  slug: string;
+  hospital_name: string | null;
+};
+
 /** Migration 0089. One row of the caller's push subscription list.
  * Endpoint / encryption keys deliberately omitted — the panel only
  * needs to identify each device for revoke purposes. The "this
@@ -1865,6 +1876,17 @@ export const api = {
       `/api/admin/pulse/catalogue/${encodeURIComponent(questionKey)}`,
       { method: "PATCH", body: JSON.stringify(body) },
     ),
+  /** Admin-only: read the tenant's editable settings (display name,
+   * read-only slug + hospital name). */
+  getAdminTenantSettings: () =>
+    request<AdminTenantSettings>("/api/admin/tenant"),
+  /** Admin-only: rename the tenant. Slug stays frozen — URLs and
+   * the tenant picker keep working unchanged. */
+  patchAdminTenantSettings: (body: { name: string }) =>
+    request<AdminTenantSettings>("/api/admin/tenant", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
   /** Migration 0090. Aggregated stats for the admin dashboard.
    * Server defaults to a trailing 26-week window when neither
    * from/to is supplied. */
