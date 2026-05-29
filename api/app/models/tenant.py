@@ -100,12 +100,22 @@ class Tenant(Base):
     )
     # Sprint 28 / migration 0050: per-tenant cap on how many cambios
     # de turno each member can do per monthly schedule. Null =
-    # unlimited (the historical default). When set, both the
-    # requester and the accepted responder of a fulfilled swap
-    # count toward the limit, scoped to the month of the original
-    # assignment's date.
+    # unlimited (the historical default). Only the requester is
+    # charged a cambio at fulfilment — covering for a colleague no
+    # longer burns the responder's quota (changed after launch on
+    # customer feedback; see _swap_count_for_person_in_month in
+    # routes/shift_swaps.py for the reasoning).
     max_swaps_per_member_per_month: Mapped[int | None] = mapped_column(
         Integer, nullable=True
+    )
+    # Migration 0084. Opt-in: when true, an accepted response moves
+    # the offer into `pending_admin` and an admin must approve before
+    # assignments swap. Default false preserves the historical
+    # "requester decision is final" flow. The flag is read at *accept*
+    # time, so toggling it mid-flight applies to whichever offers are
+    # decided after the change.
+    swap_requires_admin_approval: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
     )
     # Explicit per-area "I'm done configuring this" flags, set by the
     # admin clicking "Marcar como completado" on each subpage. Drives

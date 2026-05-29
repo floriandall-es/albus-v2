@@ -163,6 +163,92 @@ def swap_admin_notification_email(
 
 
 # ---------------------------------------------------------------------------
+# Admin approval / veto (migration 0084)
+# ---------------------------------------------------------------------------
+
+
+def swap_admin_pending_approval_email(
+    *,
+    admin_name: str,
+    requester_name: str,
+    responder_name: str,
+    kind: str,
+    slot_name: str,
+    shift_date: str,
+    app_url: str,
+) -> tuple[str, str]:
+    """Tenant enabled admin approval; requester just accepted a
+    response. Tell every admin the cambio is parked in their queue
+    and link them straight to /admin/swaps where the approve / veto
+    buttons live."""
+    action = "cubrir" if kind == "cover" else "cambiar"
+    subject = (
+        f"Aprobar cambio de turno: {requester_name} → {responder_name} "
+        f"({shift_date})"
+    )
+    body = (
+        f"Hola {admin_name},\n\n"
+        f"Un cambio de turno está esperando tu aprobación:\n"
+        f"  · {slot_name} — {shift_date}\n"
+        f"  · {requester_name} quiere que {responder_name} lo {action}\n\n"
+        f"Aprueba o deniega desde:\n{app_url}/admin/swaps\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body
+
+
+def swap_vetoed_email(
+    *,
+    recipient_name: str,
+    audience: str,
+    admin_name: str,
+    scope: str,
+    slot_name: str,
+    shift_date: str,
+    notes: str | None,
+    app_url: str,
+) -> tuple[str, str]:
+    """Admin vetoed a pending_admin swap; the requester, the
+    responder, and (when scope='entire_offer') any other people
+    who had open responses on the offer all get this so nobody is
+    left wondering. `audience` picks the right opening
+    ("Tu cambio…" vs "El cambio que ibas a cubrir…").
+
+    `scope` decides the closing line:
+      - 'response_only': the offer reopens, so the requester (or
+        another responder) can keep trying.
+      - 'entire_offer': the offer is closed for good."""
+    if audience == "requester":
+        opening = f"Tu solicitud de cambio para {slot_name} ({shift_date}) ha sido denegada por {admin_name}."
+    elif audience == "responder":
+        opening = f"El cambio para {slot_name} ({shift_date}) en el que ibas a participar ha sido denegado por {admin_name}."
+    else:
+        # other_responder: their offer to help is no longer relevant.
+        opening = f"La solicitud de cambio para {slot_name} ({shift_date}) ha sido cerrada por {admin_name}."
+
+    if scope == "response_only":
+        closing = (
+            "La solicitud sigue abierta — el solicitante puede aceptar "
+            "otra respuesta o cancelarla."
+        )
+    else:
+        closing = "La solicitud queda cerrada."
+
+    notes_line = f"\nMotivo: {notes}\n" if notes else ""
+
+    subject = f"Cambio denegado: {slot_name} ({shift_date})"
+    body = (
+        f"Hola {recipient_name},\n\n"
+        f"{opening}\n"
+        f"{notes_line}\n"
+        f"{closing}\n\n"
+        f"Consulta el detalle:\n{app_url}/me/swaps\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body
+
+
+# ---------------------------------------------------------------------------
 # Schedule reopen
 # ---------------------------------------------------------------------------
 

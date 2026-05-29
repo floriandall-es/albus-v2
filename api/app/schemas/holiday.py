@@ -54,6 +54,11 @@ class TenantUpdate(BaseModel):
     # Stored as int >= 0 on the tenant; values <= 0 are treated as
     # "no swaps allowed" by the swap acceptance check.
     max_swaps_per_member_per_month: int | None = Field(default=None, ge=0)
+    # Migration 0084. Admin approval / veto step for shift swaps.
+    # PATCH true to require an admin's blessing before every fulfilled
+    # cambio; false (the default) preserves the legacy "requester
+    # decision is final" flow.
+    swap_requires_admin_approval: bool | None = None
 
 
 class SetupAreaUpdate(BaseModel):

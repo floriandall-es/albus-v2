@@ -19,7 +19,9 @@ class ShiftSwapOffer(Base):
     __tablename__ = "shift_swap_offers"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('open','fulfilled','cancelled')",
+            # Migration 0084: added 'pending_admin' (requester accepted,
+            # waiting on admin) and 'vetoed' (admin killed the offer).
+            "status IN ('open','pending_admin','fulfilled','cancelled','vetoed')",
             name="ck_swap_offer_status",
         ),
         CheckConstraint(
@@ -70,6 +72,22 @@ class ShiftSwapOffer(Base):
     closed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Migration 0084: when tenant.swap_requires_admin_approval is on
+    # and the requester accepts a response, the offer enters
+    # `pending_admin` and these three fields are stamped once an
+    # admin approves or vetoes. NULL on every offer that fulfilled
+    # or cancelled through the legacy direct path.
+    admin_decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    admin_decided_by_membership_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("memberships.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    admin_decision_notes: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
 
 
 class ShiftSwapResponse(Base):
@@ -79,7 +97,9 @@ class ShiftSwapResponse(Base):
             "kind IN ('cover','swap')", name="ck_swap_response_kind"
         ),
         CheckConstraint(
-            "status IN ('pending','accepted','declined','withdrawn')",
+            # Migration 0084: added 'pending_admin' for the response
+            # the requester picked while admin approval is pending.
+            "status IN ('pending','pending_admin','accepted','declined','withdrawn')",
             name="ck_swap_response_status",
         ),
         CheckConstraint(

@@ -46,10 +46,15 @@ class AdminPendientesCounts(BaseModel):
         the tenant. The admin doesn't action these directly (the
         requester does), but they're visible here as awareness —
         admin can chase if someone's been stuck for days.
+      - swap_offers_pending_admin : ShiftSwapOffer.status ==
+        'pending_admin'. The admin DOES action these — they need
+        to approve or veto before the cambio takes effect (only
+        relevant when tenant.swap_requires_admin_approval is on).
     """
     bloqueos_pending: int
     invitations_open: int
     swap_offers_open: int
+    swap_offers_pending_admin: int
     # Phase D.3: pending sibling equipos awaiting approval in the
     # caller's Servicio. Zero for legacy tenants without a
     # servicio_id. Same shape as the other counts — one number
@@ -125,6 +130,14 @@ def admin_pendientes(
         .filter(ShiftSwapOffer.status == "open")
         .count()
     )
+    # Migration 0084. Offers awaiting admin approve/veto. Indexed
+    # via ix_swap_offers_pending_admin so this is fast even on a
+    # busy tenant.
+    swap_offers_pending_admin = (
+        ctx.db.query(ShiftSwapOffer)
+        .filter(ShiftSwapOffer.status == "pending_admin")
+        .count()
+    )
 
     # Pending sibling equipos in this servicio (excluding own —
     # the caller's own tenant is by definition not in this list
@@ -149,5 +162,6 @@ def admin_pendientes(
         bloqueos_pending=bloqueos,
         invitations_open=invitations,
         swap_offers_open=swap_offers,
+        swap_offers_pending_admin=swap_offers_pending_admin,
         equipos_pending=equipos_pending,
     )

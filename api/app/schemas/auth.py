@@ -125,9 +125,16 @@ class TenantOut(BaseModel):
     transplants_enabled: bool = False
     # Sprint 28 / migration 0050: cap on cambios de turno per member
     # per monthly schedule. Null = unlimited (historical default).
-    # When set, both sides of every fulfilled swap count toward the
-    # limit for the month of the original assignment.
+    # Only the requester is charged a cambio at fulfilment (changed
+    # post-launch on customer feedback so colleagues who cover for
+    # others don't burn their own quota).
     max_swaps_per_member_per_month: int | None = None
+    # Migration 0084. Opt-in admin approval step for shift swaps.
+    # When true, a requester clicking "Aceptar" parks the offer in
+    # `pending_admin` until an admin approves or vetoes — the actual
+    # assignment swap only fires on approve. Default false preserves
+    # the legacy "requester decides" flow.
+    swap_requires_admin_approval: bool = False
     # Per-area "I'm done configuring" timestamps. NULL = pending,
     # surfaced in the Inicio checklist; non-null = admin marked it
     # done, card disappears and the first-visit banner stops

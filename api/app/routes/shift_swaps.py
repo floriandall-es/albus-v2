@@ -34,6 +34,7 @@ from app.models import (
 )
 from app.routes.deps import RequestContext, get_current_context
 from app.schemas.shift_swap import (
+    AdminVetoRequest,
     AssignmentSummary,
     CreateOfferRequest,
     CreateResponseRequest,
@@ -45,8 +46,10 @@ from app.services.email_templates import (
     format_spanish_date,
     swap_accepted_email,
     swap_admin_notification_email,
+    swap_admin_pending_approval_email,
     swap_offer_created_email,
     swap_response_email,
+    swap_vetoed_email,
 )
 from app.services.scheduler import slots_overlap_in_time
 
@@ -227,6 +230,16 @@ def _serialize_offer(
         .order_by(ShiftSwapResponse.created_at)
         .all()
     )
+    # Migration 0084. Look up the deciding admin's display name for
+    # the audit trail. Cheap (single get); skipped entirely when no
+    # admin decision was recorded.
+    admin_person_name: str | None = None
+    if o.admin_decided_by_membership_id is not None:
+        admin_m = ctx.db.get(Membership, o.admin_decided_by_membership_id)
+        if admin_m is not None:
+            admin_p = ctx.db.get(Person, admin_m.person_id)
+            if admin_p is not None:
+                admin_person_name = admin_p.name
     return SwapOfferOut(
         id=o.id,
         tenant_id=o.tenant_id,
@@ -246,6 +259,10 @@ def _serialize_offer(
             else None
         ),
         accepts=o.accepts,  # type: ignore[arg-type]
+        admin_decided_at=o.admin_decided_at,
+        admin_decided_by_membership_id=o.admin_decided_by_membership_id,
+        admin_decided_by_person_name=admin_person_name,
+        admin_decision_notes=o.admin_decision_notes,
         responses=[_serialize_response(ctx, r) for r in responses],
     )
 
@@ -677,14 +694,20 @@ def cancel_offer(
     o = _offer_or_404(ctx, offer_id)
     if o.requested_by_membership_id != ctx.membership.id:
         raise HTTPException(status_code=403, detail="No es tu solicitud")
-    if o.status != "open":
+    # Cancellable from either 'open' or 'pending_admin'. The
+    # pending_admin case lets the requester back out while the admin
+    # hasn't decided yet — the staged swap simply never happens.
+    if o.status not in ("open", "pending_admin"):
         raise HTTPException(status_code=400, detail="La solicitud ya está cerrada")
     o.status = "cancelled"
     o.closed_at = datetime.now(timezone.utc)
-    # Mark all pending responses as withdrawn.
+    # Mark every still-undecided response as withdrawn. Catches both
+    # plain 'pending' responses on a normal cancel AND the
+    # 'pending_admin' response (the one the requester had accepted)
+    # when cancelling out of pending_admin.
     for r in ctx.db.query(ShiftSwapResponse).filter(
         ShiftSwapResponse.offer_id == o.id,
-        ShiftSwapResponse.status == "pending",
+        ShiftSwapResponse.status.in_(("pending", "pending_admin")),
     ):
         r.status = "withdrawn"
         r.decided_at = o.closed_at
@@ -794,6 +817,148 @@ def respond_to_offer(
     return _serialize_response(ctx, r)
 
 
+def _finalize_swap(
+    ctx: RequestContext,
+    o: ShiftSwapOffer,
+    r: ShiftSwapResponse,
+    original: Assignment,
+    responder_m: Membership,
+    *,
+    decided_by_membership_id: int | None = None,
+    decision_notes: str | None = None,
+) -> None:
+    """Apply a fulfilled swap end-to-end.
+
+    Shared between the direct-path requester accept (legacy /
+    tenant-flag-off) and the admin-approve endpoint. Re-runs
+    eligibility (the schedule may have shifted since the requester
+    clicked accept), charges the requester's monthly quota, mutates
+    the assignments, marks the response accepted + offer fulfilled,
+    declines every sibling response, and fires the responder +
+    admin notification emails. Raises 400 on any blocker so the
+    caller can surface a clean error.
+
+    `decided_by_membership_id` is set ONLY when this fires from the
+    admin-approval path — it stamps the audit trail on the offer.
+    `decision_notes` is optional admin-supplied context, also for
+    the audit trail.
+
+    The responder/requester eligibility messages reference the
+    parties by name (not "tú") so the same wording works whether
+    the caller is the requester (direct path) or an admin
+    (approval path)."""
+    requester_m = ctx.db.get(Membership, o.requested_by_membership_id)
+    if requester_m is None:
+        raise HTTPException(status_code=400, detail="Solicitante inválido")
+    requester_p = ctx.db.get(Person, requester_m.person_id)
+    responder_p = ctx.db.get(Person, responder_m.person_id)
+    requester_name = (
+        requester_p.last_name or requester_p.name
+        if requester_p
+        else "El solicitante"
+    )
+    responder_name = (
+        responder_p.last_name or responder_p.name
+        if responder_p
+        else "El respondedor"
+    )
+
+    # Quota charge on the requester. Done BEFORE eligibility so the
+    # admin sees the "over cap" error first if both apply — it's
+    # the cheaper fix (raise the cap) vs the harder one (re-edit
+    # the schedule).
+    _enforce_swap_quota(
+        ctx, requester_m.person_id, original.date, requester_name
+    )
+
+    # Re-check eligibility. For a SWAP each person is GIVING UP
+    # their own assignment, so it shouldn't count as a self-conflict
+    # for the new shift they're taking.
+    swap_exclude_for_responder: set[int] = set()
+    swap_exclude_for_requester: set[int] = set()
+    if r.kind == "swap" and r.swap_assignment_id is not None:
+        swap_exclude_for_responder.add(r.swap_assignment_id)
+        swap_exclude_for_requester.add(original.id)
+
+    reason = _check_eligibility_for_slot(
+        ctx,
+        responder_m.person_id,
+        original,
+        exclude_assignment_ids=swap_exclude_for_responder,
+    )
+    if reason:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{responder_name} ya no es elegible: {reason}",
+        )
+
+    if r.kind == "swap":
+        if r.swap_assignment_id is None:
+            raise HTTPException(
+                status_code=500, detail="Swap response sin asignación destino"
+            )
+        their_assignment = _assignment_or_404(ctx, r.swap_assignment_id)
+        if their_assignment.person_id != responder_m.person_id:
+            raise HTTPException(
+                status_code=400,
+                detail="El turno propuesto ya no pertenece al respondedor",
+            )
+        reverse_reason = _check_eligibility_for_slot(
+            ctx,
+            requester_m.person_id,
+            their_assignment,
+            exclude_assignment_ids=swap_exclude_for_requester,
+        )
+        if reverse_reason:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"{requester_name} ya no es elegible para el turno "
+                    f"propuesto: {reverse_reason}"
+                ),
+            )
+        original.person_id = responder_m.person_id
+        their_assignment.person_id = requester_m.person_id
+        original.swap_offer_id = o.id
+        their_assignment.swap_offer_id = o.id
+    else:
+        # Cover: responder takes the assignment.
+        original.person_id = responder_m.person_id
+        original.swap_offer_id = o.id
+
+    now = datetime.now(timezone.utc)
+    r.status = "accepted"
+    r.decided_at = now
+    o.status = "fulfilled"
+    o.closed_at = now
+    if decided_by_membership_id is not None:
+        o.admin_decided_by_membership_id = decided_by_membership_id
+        o.admin_decided_at = now
+        o.admin_decision_notes = decision_notes
+
+    # Decline every still-undecided sibling response (both 'pending'
+    # and 'pending_admin' — the latter shouldn't happen at runtime
+    # since only one response is in pending_admin at a time, but
+    # we include it for safety).
+    others = (
+        ctx.db.query(ShiftSwapResponse)
+        .filter(
+            ShiftSwapResponse.offer_id == o.id,
+            ShiftSwapResponse.status.in_(("pending", "pending_admin")),
+            ShiftSwapResponse.id != r.id,
+        )
+        .all()
+    )
+    for other in others:
+        other.status = "declined"
+        other.decided_at = now
+
+    ctx.db.flush()
+
+    _notify_response_accepted(ctx, o, r, original, requester_p, responder_p)
+    _notify_admins(ctx, o, r, original, requester_p, responder_p)
+
+
 @router.post(
     "/swap-offers/{offer_id}/responses/{response_id}/accept",
     response_model=SwapOfferOut,
@@ -803,6 +968,18 @@ def accept_response(
     response_id: int,
     ctx: RequestContext = Depends(get_current_context),
 ) -> SwapOfferOut:
+    """Requester picks one of the responses on their offer.
+
+    Two paths depending on the tenant's admin-approval flag (read
+    at *this* moment, not at offer-creation time):
+
+      - flag OFF (default / legacy): runs _finalize_swap inline,
+        the offer becomes 'fulfilled' immediately.
+      - flag ON: stages the swap as 'pending_admin' and notifies
+        admins. No assignments mutate and the requester's quota
+        is NOT charged yet — both happen later, only if an admin
+        clicks approve.
+    """
     o = _offer_or_404(ctx, offer_id)
     if o.requested_by_membership_id != ctx.membership.id:
         raise HTTPException(status_code=403, detail="No es tu solicitud")
@@ -820,93 +997,190 @@ def accept_response(
     if responder_m is None:
         raise HTTPException(status_code=400, detail="Respondedor inválido")
 
-    # Per-tenant monthly cap. Only the requester spends a cambio
-    # when an offer is fulfilled — the responder is doing a favour
-    # and doesn't burn quota. Scoped to the month of `original.date`
-    # so admins can reason about "X cambios en mayo".
-    requester_label = ctx.person.last_name or ctx.person.name or "tú"
-    _enforce_swap_quota(ctx, ctx.person.id, original.date, requester_label)
-
-    # Re-check eligibility AT ACCEPT TIME — the schedule may have changed.
-    # For a SWAP, each person is GIVING UP their own assignment, so it
-    # shouldn't count as a self-conflict for the new shift they're taking.
-    swap_exclude_for_responder: set[int] = set()
-    swap_exclude_for_requester: set[int] = set()
-    if r.kind == "swap" and r.swap_assignment_id is not None:
-        # Responder is giving up `swap_assignment_id` (their old shift).
-        swap_exclude_for_responder.add(r.swap_assignment_id)
-        # Requester is giving up `original.id` (their old shift).
-        swap_exclude_for_requester.add(original.id)
-
-    reason = _check_eligibility_for_slot(
-        ctx,
-        responder_m.person_id,
-        original,
-        exclude_assignment_ids=swap_exclude_for_responder,
-    )
-    if reason:
-        raise HTTPException(
-            status_code=400,
-            detail=f"El respondedor ya no es elegible: {reason}",
+    if ctx.tenant.swap_requires_admin_approval:
+        # Admin-approval path. We still run eligibility + quota as a
+        # courtesy filter so we don't park clearly-broken swaps in
+        # the admin's queue — easier to fix at the source.
+        requester_label = ctx.person.last_name or ctx.person.name or "tú"
+        _enforce_swap_quota(
+            ctx, ctx.person.id, original.date, requester_label
         )
-
-    if r.kind == "swap":
-        if r.swap_assignment_id is None:
-            raise HTTPException(
-                status_code=500, detail="Swap response sin asignación destino"
-            )
-        their_assignment = _assignment_or_404(ctx, r.swap_assignment_id)
-        if their_assignment.person_id != responder_m.person_id:
-            raise HTTPException(
-                status_code=400,
-                detail="El turno propuesto ya no pertenece al respondedor",
-            )
-        # Reverse check: asker must be eligible for responder's slot.
-        reverse_reason = _check_eligibility_for_slot(
+        swap_exclude_for_responder: set[int] = set()
+        if r.kind == "swap" and r.swap_assignment_id is not None:
+            swap_exclude_for_responder.add(r.swap_assignment_id)
+        reason = _check_eligibility_for_slot(
             ctx,
-            ctx.person.id,
-            their_assignment,
-            exclude_assignment_ids=swap_exclude_for_requester,
+            responder_m.person_id,
+            original,
+            exclude_assignment_ids=swap_exclude_for_responder,
         )
-        if reverse_reason:
+        if reason:
             raise HTTPException(
                 status_code=400,
-                detail=f"No eres elegible para su turno: {reverse_reason}",
+                detail=f"El respondedor ya no es elegible: {reason}",
             )
-        # Swap the person_ids and mark BOTH sides as swap-modified.
-        original.person_id = responder_m.person_id
-        their_assignment.person_id = ctx.person.id
-        original.swap_offer_id = o.id
-        their_assignment.swap_offer_id = o.id
-    else:
-        # Cover: responder takes the assignment.
-        original.person_id = responder_m.person_id
-        original.swap_offer_id = o.id
+        # Stage. Other 'pending' responses stay as-is so a veto can
+        # cleanly reopen the offer and let the requester pick a
+        # different colleague without re-soliciting responses.
+        r.status = "pending_admin"
+        o.status = "pending_admin"
+        ctx.db.flush()
+        _notify_admins_pending_approval(ctx, o, r, original)
+        return _serialize_offer(ctx, o)
+
+    # Legacy direct path: do everything inline.
+    _finalize_swap(ctx, o, r, original, responder_m)
+    return _serialize_offer(ctx, o)
+
+
+@router.post(
+    "/swap-offers/{offer_id}/responses/{response_id}/admin-approve",
+    response_model=SwapOfferOut,
+)
+def admin_approve_response(
+    offer_id: int,
+    response_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> SwapOfferOut:
+    """Admin signs off on a pending_admin swap and applies it.
+
+    Re-runs eligibility + quota via _finalize_swap; if anything
+    has broken since the requester clicked accept the call 400s
+    and the admin should veto instead (the message body explains
+    what changed). On success the assignment swap fires, both
+    parties are notified, and the audit trail records which admin
+    decided + when.
+
+    The deciding admin must not be the requester or the responder —
+    even an admin can't rubber-stamp their own cambio.
+    """
+    if "admin" not in ctx.membership.roles:
+        raise HTTPException(status_code=403, detail="Admin role required")
+    o = _offer_or_404(ctx, offer_id)
+    if o.status != "pending_admin":
+        raise HTTPException(
+            status_code=400, detail="La solicitud no está esperando aprobación"
+        )
+    r = _response_or_404(ctx, o, response_id)
+    if r.status != "pending_admin":
+        raise HTTPException(
+            status_code=400, detail="Esta respuesta ya está decidida"
+        )
+    responder_m = ctx.db.get(Membership, r.responder_membership_id)
+    if responder_m is None:
+        raise HTTPException(status_code=400, detail="Respondedor inválido")
+    if ctx.membership.id in (
+        o.requested_by_membership_id,
+        responder_m.id,
+    ):
+        raise HTTPException(
+            status_code=403, detail="No puedes aprobar tu propio cambio"
+        )
+    original = _assignment_or_404(ctx, o.assignment_id)
+    _finalize_swap(
+        ctx,
+        o,
+        r,
+        original,
+        responder_m,
+        decided_by_membership_id=ctx.membership.id,
+    )
+    return _serialize_offer(ctx, o)
+
+
+@router.post(
+    "/swap-offers/{offer_id}/responses/{response_id}/admin-veto",
+    response_model=SwapOfferOut,
+)
+def admin_veto_response(
+    offer_id: int,
+    response_id: int,
+    payload: AdminVetoRequest,
+    ctx: RequestContext = Depends(get_current_context),
+) -> SwapOfferOut:
+    """Admin rejects a pending_admin swap.
+
+    `scope` decides what happens to the offer:
+      - "response_only": this one response → 'declined', offer
+        reopens to 'open' so the requester can pick another
+        responder (siblings stay pending). Right call when the
+        responder isn't the issue — wrong colleague for this
+        shift, scheduling conflict on their side, etc.
+      - "entire_offer": this response → 'declined', every
+        still-pending sibling → 'declined', offer → 'vetoed'.
+        Closes the door entirely. Right call when the *shift*
+        shouldn't be swappable (admin needs the requester on
+        this one, or the schedule is about to change).
+
+    Same self-veto guard as approve: the deciding admin can't be
+    the requester or the responder.
+    """
+    if "admin" not in ctx.membership.roles:
+        raise HTTPException(status_code=403, detail="Admin role required")
+    o = _offer_or_404(ctx, offer_id)
+    if o.status != "pending_admin":
+        raise HTTPException(
+            status_code=400, detail="La solicitud no está esperando aprobación"
+        )
+    r = _response_or_404(ctx, o, response_id)
+    if r.status != "pending_admin":
+        raise HTTPException(
+            status_code=400, detail="Esta respuesta ya está decidida"
+        )
+    responder_m = ctx.db.get(Membership, r.responder_membership_id)
+    if responder_m is None:
+        raise HTTPException(status_code=400, detail="Respondedor inválido")
+    if ctx.membership.id in (
+        o.requested_by_membership_id,
+        responder_m.id,
+    ):
+        raise HTTPException(
+            status_code=403, detail="No puedes denegar tu propio cambio"
+        )
 
     now = datetime.now(timezone.utc)
-    r.status = "accepted"
+    r.status = "declined"
     r.decided_at = now
-    o.status = "fulfilled"
-    o.closed_at = now
+    o.admin_decided_by_membership_id = ctx.membership.id
+    o.admin_decided_at = now
+    o.admin_decision_notes = payload.notes
 
-    # Decline all other pending responses on this offer.
-    others = (
-        ctx.db.query(ShiftSwapResponse)
-        .filter(
-            ShiftSwapResponse.offer_id == o.id,
-            ShiftSwapResponse.status == "pending",
-            ShiftSwapResponse.id != r.id,
+    other_declined_responses: list[ShiftSwapResponse] = []
+    if payload.scope == "entire_offer":
+        # Close the whole offer. Decline every still-pending sibling
+        # too so nobody sees a stale "Aceptar" button later.
+        siblings = (
+            ctx.db.query(ShiftSwapResponse)
+            .filter(
+                ShiftSwapResponse.offer_id == o.id,
+                ShiftSwapResponse.status == "pending",
+                ShiftSwapResponse.id != r.id,
+            )
+            .all()
         )
-        .all()
-    )
-    for other in others:
-        other.status = "declined"
-        other.decided_at = now
+        for other in siblings:
+            other.status = "declined"
+            other.decided_at = now
+            other_declined_responses.append(other)
+        o.status = "vetoed"
+        o.closed_at = now
+    else:
+        # Just this response. Offer reopens so the requester can pick
+        # another colleague (or cancel if there are no other options).
+        o.status = "open"
 
     ctx.db.flush()
 
-    _notify_response_accepted(ctx, o, r, original)
-    _notify_admins(ctx, o, r, original)
+    original = _assignment_or_404(ctx, o.assignment_id)
+    _notify_veto(
+        ctx,
+        o,
+        r,
+        original,
+        scope=payload.scope,
+        other_declined_responses=other_declined_responses,
+        notes=payload.notes,
+    )
     return _serialize_offer(ctx, o)
 
 
@@ -923,6 +1197,10 @@ def decline_response(
     if o.requested_by_membership_id != ctx.membership.id:
         raise HTTPException(status_code=403, detail="No es tu solicitud")
     r = _response_or_404(ctx, o, response_id)
+    # Only fresh responses can be declined here. A 'pending_admin'
+    # response is past the requester's hands (admin is reviewing it)
+    # — the requester wanting to back out should cancel the offer
+    # entirely, which also withdraws the pending_admin response.
     if r.status != "pending":
         raise HTTPException(status_code=400, detail="Ya decidida")
     r.status = "declined"
@@ -1056,14 +1334,27 @@ def _notify_response_accepted(
     offer: ShiftSwapOffer,
     response: ShiftSwapResponse,
     original: Assignment,
+    requester: Person | None = None,
+    responder: Person | None = None,
 ) -> None:
+    """Notify the responder that their offer was accepted.
+
+    Pre-fetched `requester` and `responder` Person rows are supplied
+    by _finalize_swap — needed because in the admin-approval path
+    ctx.person is the admin, not the requester, so we can't infer
+    them from context alone."""
     slot = ctx.db.get(Slot, original.slot_id)
     slot_name, shift_date = _shift_label(original, slot)
-    responder_m = ctx.db.get(Membership, response.responder_membership_id)
-    if responder_m is None:
-        return
-    responder = ctx.db.get(Person, responder_m.person_id)
-    requester = ctx.db.get(Person, ctx.person.id)
+    if responder is None:
+        responder_m = ctx.db.get(Membership, response.responder_membership_id)
+        responder = (
+            ctx.db.get(Person, responder_m.person_id) if responder_m else None
+        )
+    if requester is None:
+        requester_m = ctx.db.get(Membership, offer.requested_by_membership_id)
+        requester = (
+            ctx.db.get(Person, requester_m.person_id) if requester_m else None
+        )
     if responder is None or requester is None:
         return
     if not should_email_person(responder.hashed_password):
@@ -1079,35 +1370,49 @@ def _notify_response_accepted(
     send_email(responder.email, subject, body)
 
 
-def _notify_admins(
-    ctx: RequestContext,
-    offer: ShiftSwapOffer,
-    response: ShiftSwapResponse,
-    original: Assignment,
-) -> None:
-    slot = ctx.db.get(Slot, original.slot_id)
-    slot_name, shift_date = _shift_label(original, slot)
-    responder_m = ctx.db.get(Membership, response.responder_membership_id)
-    responder = (
-        ctx.db.get(Person, responder_m.person_id) if responder_m else None
-    )
-    requester = ctx.db.get(Person, ctx.person.id)
-    if not responder or not requester:
-        return
-
-    # Membership.roles is a generic ARRAY(String), which doesn't support
-    # SQLAlchemy's .contains() — that's only on postgresql.ARRAY. Fetch all
-    # memberships and filter in Python. Cheap: typical tenant has handfuls
-    # of memberships.
-    admin_persons: list[Person] = []
+def _list_tenant_admin_persons(ctx: RequestContext) -> list[Person]:
+    """Every admin in the caller's tenant. Membership.roles is a
+    generic ARRAY(String), so we filter in Python — tenant
+    memberships are small (handfuls)."""
+    admins: list[Person] = []
     for m, p in (
         ctx.db.query(Membership, Person)
         .join(Person, Person.id == Membership.person_id)
         .all()
     ):
         if "admin" in (m.roles or []):
-            admin_persons.append(p)
-    for admin_p in admin_persons:
+            admins.append(p)
+    return admins
+
+
+def _notify_admins(
+    ctx: RequestContext,
+    offer: ShiftSwapOffer,
+    response: ShiftSwapResponse,
+    original: Assignment,
+    requester: Person | None = None,
+    responder: Person | None = None,
+) -> None:
+    """Notify every tenant admin that a swap has fulfilled.
+
+    Same audit-log purpose as before but takes pre-fetched parties
+    so it works from both the direct path AND the admin-approval
+    path (where ctx.person is the deciding admin)."""
+    slot = ctx.db.get(Slot, original.slot_id)
+    slot_name, shift_date = _shift_label(original, slot)
+    if responder is None:
+        responder_m = ctx.db.get(Membership, response.responder_membership_id)
+        responder = (
+            ctx.db.get(Person, responder_m.person_id) if responder_m else None
+        )
+    if requester is None:
+        requester_m = ctx.db.get(Membership, offer.requested_by_membership_id)
+        requester = (
+            ctx.db.get(Person, requester_m.person_id) if requester_m else None
+        )
+    if not responder or not requester:
+        return
+    for admin_p in _list_tenant_admin_persons(ctx):
         if not should_email_person(admin_p.hashed_password):
             continue
         subject, body = swap_admin_notification_email(
@@ -1120,6 +1425,99 @@ def _notify_admins(
             app_url=settings.public_base_url,
         )
         send_email(admin_p.email, subject, body)
+
+
+def _notify_admins_pending_approval(
+    ctx: RequestContext,
+    offer: ShiftSwapOffer,
+    response: ShiftSwapResponse,
+    original: Assignment,
+) -> None:
+    """Tenant flag is on, requester just accepted, swap is parked
+    in pending_admin — every admin gets an email saying it's their
+    turn to decide. ctx.person here is the requester (this is
+    always called from accept_response), so we read the requester
+    directly from ctx."""
+    slot = ctx.db.get(Slot, original.slot_id)
+    slot_name, shift_date = _shift_label(original, slot)
+    responder_m = ctx.db.get(Membership, response.responder_membership_id)
+    responder = (
+        ctx.db.get(Person, responder_m.person_id) if responder_m else None
+    )
+    requester = ctx.db.get(Person, ctx.person.id)
+    if not responder or not requester:
+        return
+    for admin_p in _list_tenant_admin_persons(ctx):
+        if not should_email_person(admin_p.hashed_password):
+            continue
+        subject, body = swap_admin_pending_approval_email(
+            admin_name=admin_p.name,
+            requester_name=requester.name,
+            responder_name=responder.name,
+            kind=response.kind,
+            slot_name=slot_name,
+            shift_date=shift_date,
+            app_url=settings.public_base_url,
+        )
+        send_email(admin_p.email, subject, body)
+
+
+def _notify_veto(
+    ctx: RequestContext,
+    offer: ShiftSwapOffer,
+    response: ShiftSwapResponse,
+    original: Assignment,
+    *,
+    scope: str,
+    other_declined_responses: list[ShiftSwapResponse],
+    notes: str | None,
+) -> None:
+    """Admin vetoed a pending_admin swap — email the requester and
+    the affected responders so neither is left wondering.
+
+    With scope='entire_offer' the requester learns the cambio is
+    permanently off the table; every still-pending responder also
+    gets an email (they were waiting on an answer that won't come).
+    With scope='response_only' only the requester + this one
+    responder get told; the offer is open again so siblings stay
+    relevant."""
+    slot = ctx.db.get(Slot, original.slot_id)
+    slot_name, shift_date = _shift_label(original, slot)
+    requester_m = ctx.db.get(Membership, offer.requested_by_membership_id)
+    requester = (
+        ctx.db.get(Person, requester_m.person_id) if requester_m else None
+    )
+    responder_m = ctx.db.get(Membership, response.responder_membership_id)
+    responder = (
+        ctx.db.get(Person, responder_m.person_id) if responder_m else None
+    )
+    admin = ctx.db.get(Person, ctx.person.id)
+    admin_name = admin.name if admin else "Un admin"
+
+    def _send(p: Person | None, *, audience: str) -> None:
+        if p is None or not should_email_person(p.hashed_password):
+            return
+        subject, body = swap_vetoed_email(
+            recipient_name=p.name,
+            audience=audience,
+            admin_name=admin_name,
+            scope=scope,
+            slot_name=slot_name,
+            shift_date=shift_date,
+            notes=notes,
+            app_url=settings.public_base_url,
+        )
+        send_email(p.email, subject, body)
+
+    _send(requester, audience="requester")
+    _send(responder, audience="responder")
+    if scope == "entire_offer":
+        for other in other_declined_responses:
+            other_m = ctx.db.get(Membership, other.responder_membership_id)
+            other_p = (
+                ctx.db.get(Person, other_m.person_id) if other_m else None
+            )
+            _send(other_p, audience="other_responder")
 
 
 # ---------------------------------------------------------------------------

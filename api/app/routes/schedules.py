@@ -631,6 +631,9 @@ def reopen_schedule(
     )
 
     # Open swap offers tied to assignments of this schedule.
+    # Migration 0084: also catch 'pending_admin' offers (admin
+    # hadn't decided yet when the reopen fired) — they shouldn't
+    # linger past a schedule reopen any more than open ones can.
     open_offers = (
         ctx.db.query(ShiftSwapOffer, Assignment, Slot, Person)
         .join(Assignment, Assignment.id == ShiftSwapOffer.assignment_id)
@@ -642,7 +645,7 @@ def reopen_schedule(
         .join(Person, Person.id == Membership.person_id)
         .filter(
             Assignment.schedule_id == s.id,
-            ShiftSwapOffer.status == "open",
+            ShiftSwapOffer.status.in_(("open", "pending_admin")),
         )
         .all()
     )
@@ -662,7 +665,10 @@ def reopen_schedule(
             ctx.db.query(ShiftSwapResponse)
             .filter(
                 ShiftSwapResponse.offer_id == offer.id,
-                ShiftSwapResponse.status == "pending",
+                # Catch the staged 'pending_admin' response too,
+                # so an admin doesn't see a stale approve button
+                # on an offer that was nuked by the reopen.
+                ShiftSwapResponse.status.in_(("pending", "pending_admin")),
             )
             .update(
                 {"status": "withdrawn", "decided_at": now},
