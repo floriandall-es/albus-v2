@@ -32,7 +32,9 @@ from app.routes.deps import RequestContext, get_current_context
 from app.services.pulse import (
     CORE_QUESTIONS,
     ROTATING_QUESTIONS,
+    apply_overrides,
     current_week_iso,
+    effective_questions_for_week,
     question_by_key,
     questions_for_week,
 )
@@ -110,18 +112,34 @@ class PulseStatsOut(BaseModel):
 
 
 class PulseCatalogueQuestion(BaseModel):
-    """Admin-facing view of one question. Same shape as
-    PulseQuestionOut on the member side, plus a flag indicating
-    whether this question is in the current week's rotation
-    (always true for core questions)."""
+    """Admin-facing view of one question with override state.
+
+    `prompt` is the effective text the team sees (custom override
+    if set, in-code default otherwise). `default_prompt` is what
+    the prompt would be without overrides — surfaced so the admin
+    UI can show "reset to default" affordance.
+
+    `enabled` defaults to True; only False when the admin
+    explicitly disabled the question. `is_this_week` factors in
+    both the rotation slot AND the enabled flag — false when a
+    rotating question is in this week's slot but the admin
+    disabled it (the survey will fall through to 4 core
+    questions only).
+
+    `is_customized` is true iff `prompt != default_prompt` or
+    `enabled == False`. Drives the "personalizada" pill in the
+    admin UI."""
 
     key: str
     prompt: str
+    default_prompt: str
     scale_type: str
     scale_max: int
     labels: list[str] = []
     is_core: bool
     is_this_week: bool
+    enabled: bool = True
+    is_customized: bool = False
 
 
 class PulseCatalogueOut(BaseModel):
@@ -176,6 +194,24 @@ def _ensure_settings_row(ctx: RequestContext) -> None:
     ctx.db.flush()
 
 
+def _load_overrides(ctx: RequestContext) -> dict[str, dict]:
+    """Read the JSONB overrides column. Empty dict when the row
+    doesn't exist yet (member hitting current-week before admin
+    ever touched settings)."""
+    row = ctx.db.execute(
+        text(
+            """
+            SELECT question_overrides FROM pulse_settings
+            WHERE tenant_id = :tid
+            """
+        ),
+        {"tid": ctx.tenant.id},
+    ).first()
+    if not row or not row[0]:
+        return {}
+    return dict(row[0])
+
+
 # ---------------------------------------------------------------------------
 # Member-facing routes
 # ---------------------------------------------------------------------------
@@ -193,7 +229,11 @@ def get_current_week(
     flag to render the disabled banner instead of the form.
     Cheaper than gating with 404."""
     week_iso = current_week_iso()
-    questions = questions_for_week(week_iso)
+    # Migration 0091: apply per-tenant overrides (rewording +
+    # disable) so the member sees what the admin configured, not
+    # the in-code defaults.
+    overrides = _load_overrides(ctx)
+    questions = effective_questions_for_week(week_iso, overrides)
     rows = ctx.db.execute(
         text(
             """
@@ -243,7 +283,13 @@ def post_responses(
             detail="Pulso desactivado en este equipo.",
         )
     week_iso = current_week_iso()
-    week_questions = {q.key for q in questions_for_week(week_iso)}
+    # Migration 0091: reject submissions for questions the admin
+    # disabled. effective_questions_for_week strips disabled keys,
+    # so anything not in that set 422s.
+    overrides = _load_overrides(ctx)
+    week_questions = {
+        q.key for q in effective_questions_for_week(week_iso, overrides)
+    }
     for answer in payload.answers:
         q = question_by_key(answer.question_key)
         if q is None or answer.question_key not in week_questions:
@@ -340,36 +386,172 @@ def get_admin_catalogue(
     (services/pulse.py). When we ship per-tenant overrides, this
     endpoint becomes the read-side of that editor."""
     _require_admin(ctx)
+    _ensure_settings_row(ctx)
+    overrides = _load_overrides(ctx)
     week_iso = current_week_iso()
     week_keys = {q.key for q in questions_for_week(week_iso)}
-    core = [
-        PulseCatalogueQuestion(
+
+    def to_out(q, *, is_core: bool, in_week_set: bool) -> PulseCatalogueQuestion:
+        o = overrides.get(q.key, {})
+        is_enabled = o.get("enabled", True) is not False
+        custom_prompt = (o.get("prompt") or "").strip()
+        effective_prompt = custom_prompt or q.prompt_es
+        return PulseCatalogueQuestion(
             key=q.key,
-            prompt=q.prompt_es,
+            prompt=effective_prompt,
+            default_prompt=q.prompt_es,
             scale_type=q.scale_type,
             scale_max=q.scale_max,
             labels=list(q.labels_es),
-            is_core=True,
-            is_this_week=True,
+            is_core=is_core,
+            is_this_week=is_enabled and in_week_set,
+            enabled=is_enabled,
+            is_customized=bool(custom_prompt) or not is_enabled,
         )
-        for q in CORE_QUESTIONS
-    ]
-    rotating = [
-        PulseCatalogueQuestion(
-            key=q.key,
-            prompt=q.prompt_es,
-            scale_type=q.scale_type,
-            scale_max=q.scale_max,
-            labels=list(q.labels_es),
-            is_core=False,
-            is_this_week=q.key in week_keys,
-        )
-        for q in ROTATING_QUESTIONS
-    ]
+
     return PulseCatalogueOut(
         current_week_iso=week_iso,
-        core=core,
-        rotating=rotating,
+        core=[
+            to_out(q, is_core=True, in_week_set=True)
+            for q in CORE_QUESTIONS
+        ],
+        rotating=[
+            to_out(q, is_core=False, in_week_set=q.key in week_keys)
+            for q in ROTATING_QUESTIONS
+        ],
+    )
+
+
+class PulseQuestionOverridePatch(BaseModel):
+    """Body for PATCH /admin/pulse/catalogue/{key}.
+
+    Both fields optional and independently applied. `prompt=null`
+    clears the rewording (falls back to the default). `enabled` is
+    a plain bool; omitting it leaves the current enabled-state
+    untouched. Server validates the resulting effective set still
+    has at least one enabled question per week."""
+
+    prompt: str | None = Field(default=None, max_length=300)
+    enabled: bool | None = None
+
+
+@router.patch(
+    "/admin/pulse/catalogue/{question_key}",
+    response_model=PulseCatalogueOut,
+)
+def patch_admin_catalogue_question(
+    question_key: str,
+    payload: PulseQuestionOverridePatch,
+    ctx: RequestContext = Depends(get_current_context),
+) -> PulseCatalogueOut:
+    """Apply a per-question override. Rejects if the change would
+    leave the current ISO week with zero questions.
+
+    The change takes effect for next week's survey at the latest.
+    If you reword a question mid-week, members who haven't yet
+    answered see the new prompt; members who already answered keep
+    their score (the underlying question_key didn't change).
+    """
+    _require_admin(ctx)
+    _ensure_settings_row(ctx)
+    q = question_by_key(question_key)
+    if q is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Pregunta '{question_key}' no existe.",
+        )
+    # Merge with existing overrides.
+    overrides = _load_overrides(ctx)
+    current = dict(overrides.get(question_key, {}))
+    if payload.prompt is not None:
+        # Empty string / whitespace = clear the override.
+        stripped = payload.prompt.strip()
+        if stripped:
+            current["prompt"] = stripped
+        else:
+            current.pop("prompt", None)
+    if payload.enabled is not None:
+        current["enabled"] = payload.enabled
+    # Empty merged dict → drop the key entirely so the JSON stays
+    # tidy and the "is_customized" flag clears.
+    if current:
+        overrides[question_key] = current
+    else:
+        overrides.pop(question_key, None)
+    # Floor check: the current ISO week must still have at least
+    # one effective question. Otherwise the admin would create a
+    # week the team can't answer.
+    week_iso = current_week_iso()
+    week_questions = effective_questions_for_week(week_iso, overrides)
+    if not week_questions:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Necesitas al menos una pregunta activa cada "
+                "semana. Activa al menos una antes de desactivar "
+                "esta."
+            ),
+        )
+    # Write back. We rebuild the whole column rather than use
+    # jsonb_set so the "drop empty key" case is handled the same
+    # way as "edit key".
+    import json as _json
+
+    ctx.db.execute(
+        text(
+            """
+            UPDATE pulse_settings
+            SET question_overrides = CAST(:j AS jsonb),
+                updated_at = NOW()
+            WHERE tenant_id = :tid
+            """
+        ),
+        {"j": _json.dumps(overrides), "tid": ctx.tenant.id},
+    )
+    # Read back inside the transaction (same RLS-after-commit
+    # gotcha we hit on patch_admin_settings).
+    fresh_overrides = _load_overrides(ctx)
+    ctx.db.commit()
+    logger.info(
+        "pulse override: tenant=%s key=%s prompt=%s enabled=%s",
+        ctx.tenant.id,
+        question_key,
+        payload.prompt is not None,
+        payload.enabled,
+    )
+    # Build the response in the same shape get_admin_catalogue
+    # uses, but with fresh_overrides already in hand — avoids a
+    # second RLS query after commit.
+    week_keys = {q.key for q in questions_for_week(week_iso)}
+
+    def to_out(q, *, is_core: bool, in_week_set: bool) -> PulseCatalogueQuestion:
+        o = fresh_overrides.get(q.key, {})
+        is_enabled = o.get("enabled", True) is not False
+        custom_prompt = (o.get("prompt") or "").strip()
+        effective_prompt = custom_prompt or q.prompt_es
+        return PulseCatalogueQuestion(
+            key=q.key,
+            prompt=effective_prompt,
+            default_prompt=q.prompt_es,
+            scale_type=q.scale_type,
+            scale_max=q.scale_max,
+            labels=list(q.labels_es),
+            is_core=is_core,
+            is_this_week=is_enabled and in_week_set,
+            enabled=is_enabled,
+            is_customized=bool(custom_prompt) or not is_enabled,
+        )
+
+    return PulseCatalogueOut(
+        current_week_iso=week_iso,
+        core=[
+            to_out(q, is_core=True, in_week_set=True)
+            for q in CORE_QUESTIONS
+        ],
+        rotating=[
+            to_out(q, is_core=False, in_week_set=q.key in week_keys)
+            for q in ROTATING_QUESTIONS
+        ],
     )
 
 

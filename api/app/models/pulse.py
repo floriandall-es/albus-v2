@@ -7,6 +7,8 @@ are minimal — most of the per-question business logic lives in
 
 from datetime import datetime
 
+from typing import Any
+
 from sqlalchemy import (
     Boolean,
     DateTime,
@@ -18,6 +20,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -47,6 +50,14 @@ class PulseSettings(Base):
     # this tenant; mismatch (or NULL) → send.
     last_notified_week_iso: Mapped[str | None] = mapped_column(
         String(8), nullable=True
+    )
+    # Migration 0091. Per-tenant question overrides. Keyed by
+    # question_key; each value may carry `prompt` (rewritten
+    # text) and/or `enabled` (false to skip the question).
+    # Missing keys / missing fields fall through to the in-code
+    # defaults. See services/pulse.py::apply_overrides.
+    question_overrides: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default="{}"
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

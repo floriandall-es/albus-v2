@@ -176,6 +176,58 @@ def question_by_key(key: str) -> PulseQuestion | None:
 
 
 # ---------------------------------------------------------------------------
+# Per-tenant overrides (migration 0091)
+# ---------------------------------------------------------------------------
+
+
+def apply_overrides(
+    question: PulseQuestion,
+    overrides: dict[str, dict] | None,
+) -> PulseQuestion | None:
+    """Return the question with the tenant's override applied, or
+    None if the override disables it. Scale / scale_max / labels
+    are never overridden — those are the time-series contract and
+    must stay stable across all tenants.
+
+    The `enabled` flag defaults to True when absent. `prompt`
+    falls through to the default when absent or empty after trim.
+    """
+    if not overrides:
+        return question
+    o = overrides.get(question.key)
+    if not o:
+        return question
+    if o.get("enabled", True) is False:
+        return None
+    custom_prompt = (o.get("prompt") or "").strip()
+    if not custom_prompt:
+        return question
+    return PulseQuestion(
+        key=question.key,
+        prompt_es=custom_prompt,
+        scale_type=question.scale_type,
+        scale_max=question.scale_max,
+        labels_es=question.labels_es,
+    )
+
+
+def effective_questions_for_week(
+    week_iso: str,
+    overrides: dict[str, dict] | None,
+) -> list[PulseQuestion]:
+    """Return the week's question set after applying tenant
+    overrides — the version the member sees in /me/pulso.
+
+    Order matches questions_for_week (core first, then the week's
+    rotating slot). Disabled questions are dropped; remaining
+    questions keep their (possibly reworded) prompts."""
+    base = questions_for_week(week_iso)
+    return [
+        eq for q in base if (eq := apply_overrides(q, overrides)) is not None
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Worker tick — Friday 14:00 fan-out
 # ---------------------------------------------------------------------------
 

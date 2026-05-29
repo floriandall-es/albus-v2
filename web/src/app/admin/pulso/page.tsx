@@ -27,13 +27,22 @@
  * signals well, which is enough to start producing insight.
  */
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   useMutation,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Activity, HelpCircle, Star, Users } from "lucide-react";
+import {
+  Activity,
+  Check,
+  HelpCircle,
+  Pencil,
+  RotateCcw,
+  Star,
+  Users,
+  X,
+} from "lucide-react";
 import {
   CartesianGrid,
   Line,
@@ -157,12 +166,21 @@ function ToggleSwitch({
   onChange,
   disabled,
   ariaLabel,
+  size = "md",
 }: {
   checked: boolean;
   onChange: (next: boolean) => void;
   disabled?: boolean;
   ariaLabel: string;
+  /** "md" (default) — full-size for the settings card. "sm" —
+   * inline-friendly for per-question rows. */
+  size?: "md" | "sm";
 }) {
+  const isSm = size === "sm";
+  const track = isSm ? "h-5 w-9" : "h-6 w-11";
+  const thumb = isSm ? "h-4 w-4" : "h-5 w-5";
+  const offTranslate = isSm ? "translate-x-0.5" : "translate-x-0.5";
+  const onTranslate = isSm ? "translate-x-4" : "translate-x-5";
   return (
     <button
       type="button"
@@ -172,14 +190,18 @@ function ToggleSwitch({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={
-        "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 "
+        "relative inline-flex shrink-0 items-center rounded-full transition-colors disabled:opacity-50 "
+        + track
+        + " "
         + (checked ? "bg-brand-600" : "bg-gray-300")
       }
     >
       <span
         className={
-          "inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform "
-          + (checked ? "translate-x-5" : "translate-x-0.5")
+          "inline-block transform rounded-full bg-white shadow-sm transition-transform "
+          + thumb
+          + " "
+          + (checked ? onTranslate : offTranslate)
         }
       />
     </button>
@@ -246,11 +268,11 @@ function CatalogueSection() {
             </ul>
           </div>
           <p className="mt-4 text-[11px] text-gray-500">
-            Próximamente: podrás reescribir las preguntas con
-            palabras de tu equipo y desactivar las rotativas que
-            no encajen. La escala y el orden seguirán fijos para
-            que las gráficas históricas comparen como debe.
-            (Semana actual: {prettyWeek(current_week_iso)}.)
+            Puedes reescribir cualquier pregunta para que suene a tu
+            equipo, o desactivar las que no encajen. La escala se
+            queda fija para que las gráficas históricas sigan
+            comparándose como deben. (Semana actual:{" "}
+            {prettyWeek(current_week_iso)}.)
           </p>
         </div>
       </Card>
@@ -280,25 +302,144 @@ function QuestionRow({
   q: PulseCatalogueQuestion;
   highlight?: boolean;
 }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(q.prompt);
+  const patch = useMutation({
+    mutationFn: (body: { prompt?: string | null; enabled?: boolean }) =>
+      api.patchAdminPulseQuestion(q.key, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin-pulse-catalogue"] });
+      qc.invalidateQueries({ queryKey: ["pulse-current-week"] });
+      setEditing(false);
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      window.alert(msg);
+    },
+  });
+  function saveDraft() {
+    const trimmed = draft.trim();
+    // Empty → clear the rewording (server falls back to default).
+    patch.mutate({
+      prompt: trimmed.length === 0 ? null : trimmed,
+    });
+  }
+  function resetPrompt() {
+    setDraft(q.default_prompt);
+    patch.mutate({ prompt: null });
+  }
   return (
     <li
       className={
-        "px-3 py-2 " + (highlight ? "bg-brand-50/60" : "")
+        "px-3 py-2 transition-colors "
+        + (highlight ? "bg-brand-50/60 " : "")
+        + (!q.enabled ? "opacity-60" : "")
       }
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm text-gray-900">{q.prompt}</p>
-          <p className="mt-0.5 text-[11px] text-gray-500">
-            {scaleDescription(q)}
-          </p>
+      {editing ? (
+        <div>
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={2}
+            maxLength={300}
+            autoFocus
+            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none"
+          />
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <p className="text-[11px] text-gray-500">
+              Por defecto:{" "}
+              <span className="italic">{q.default_prompt}</span>
+            </p>
+            <div className="flex shrink-0 items-center gap-1">
+              {q.prompt !== q.default_prompt && (
+                <button
+                  type="button"
+                  onClick={resetPrompt}
+                  disabled={patch.isPending}
+                  className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Por defecto
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setDraft(q.prompt);
+                  setEditing(false);
+                }}
+                className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50"
+              >
+                <X className="h-3 w-3" />
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={saveDraft}
+                disabled={
+                  patch.isPending || draft.trim() === q.prompt
+                }
+                className="inline-flex items-center gap-1 rounded-md bg-brand-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                <Check className="h-3 w-3" />
+                {patch.isPending ? "Guardando…" : "Guardar"}
+              </button>
+            </div>
+          </div>
         </div>
-        {highlight && (
-          <span className="shrink-0 rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-medium text-brand-700">
-            Esta semana
-          </span>
-        )}
-      </div>
+      ) : (
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm text-gray-900">
+              {q.prompt}
+              {q.is_customized && (
+                <span className="ml-2 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-medium text-violet-700">
+                  Personalizada
+                </span>
+              )}
+            </p>
+            <p className="mt-0.5 text-[11px] text-gray-500">
+              {scaleDescription(q)}
+              {!q.enabled && (
+                <span className="ml-2 text-gray-400">
+                  · Desactivada
+                </span>
+              )}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {highlight && (
+              <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-medium text-brand-700">
+                Esta semana
+              </span>
+            )}
+            <button
+              type="button"
+              aria-label="Editar pregunta"
+              onClick={() => {
+                setDraft(q.prompt);
+                setEditing(true);
+              }}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <ToggleSwitch
+              checked={q.enabled}
+              onChange={(v) => patch.mutate({ enabled: v })}
+              disabled={patch.isPending}
+              ariaLabel={
+                q.enabled
+                  ? "Desactivar pregunta"
+                  : "Activar pregunta"
+              }
+              size="sm"
+            />
+          </div>
+        </div>
+      )}
     </li>
   );
 }

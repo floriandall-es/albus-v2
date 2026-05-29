@@ -958,19 +958,25 @@ export type PulseAdminStats = {
   weekly: PulseQuestionStat[];
 };
 
-/** Migration 0090. Admin view of one question in the catalogue.
- * `is_core` distinguishes the 4 always-asked questions from the
- * rotating slot; `is_this_week` flags which ones land in the
- * current week's survey (always true for core, true for exactly
- * one of the rotating questions). */
+/** Migration 0090 + 0091. Admin view of one question with
+ * tenant-override state. `prompt` is the effective text members
+ * see; `default_prompt` is the in-code default so the admin UI
+ * can show "restablecer" affordance. `enabled` is the post-
+ * override on/off; `is_customized` is true iff prompt was rewritten
+ * OR the question was disabled. `is_this_week` is false for
+ * disabled rotating questions even when their key would have been
+ * picked. */
 export type PulseCatalogueQuestion = {
   key: string;
   prompt: string;
+  default_prompt: string;
   scale_type: "scale" | "choice";
   scale_max: number;
   labels: string[];
   is_core: boolean;
   is_this_week: boolean;
+  enabled: boolean;
+  is_customized: boolean;
 };
 
 export type PulseCatalogue = {
@@ -1843,10 +1849,22 @@ export const api = {
     }),
   /** Migration 0090. Full question catalogue — every core + every
    * rotating question, with flags marking which ones land in the
-   * current ISO week. Read-only for v1; future per-tenant
-   * overrides will arrive via PATCH on this endpoint. */
+   * current ISO week and the per-tenant override state (custom
+   * prompt + enabled/disabled). */
   getAdminPulseCatalogue: () =>
     request<PulseCatalogue>("/api/admin/pulse/catalogue"),
+  /** Migration 0091. Apply a per-question override. `prompt=null`
+   * (or empty string) clears the rewording. `enabled=false`
+   * disables the question. Returns the fresh catalogue. 422 if
+   * the change would leave this week with zero questions. */
+  patchAdminPulseQuestion: (
+    questionKey: string,
+    body: { prompt?: string | null; enabled?: boolean },
+  ) =>
+    request<PulseCatalogue>(
+      `/api/admin/pulse/catalogue/${encodeURIComponent(questionKey)}`,
+      { method: "PATCH", body: JSON.stringify(body) },
+    ),
   /** Migration 0090. Aggregated stats for the admin dashboard.
    * Server defaults to a trailing 26-week window when neither
    * from/to is supplied. */
