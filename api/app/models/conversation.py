@@ -117,7 +117,7 @@ class ConversationMember(Base):
     )
     # Sprint 28 / Phase 2B / migration 0056: last time we
     # emailed THIS member about THIS conversation. Drives the
-    # 2h cooldown so we don't spam someone who already got an
+    # 2-day cooldown so we don't spam someone who already got an
     # "unread messages" nudge.
     last_email_sent_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

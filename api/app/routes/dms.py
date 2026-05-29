@@ -38,12 +38,14 @@ from app.routes.deps import RequestContext, get_current_context
 logger = logging.getLogger("app.dms")
 
 
-# Phase 2B email-fallback knobs. The 2h cooldown means a member
-# gets at most one "unread messages" email per conversation per
-# 2 hours regardless of message volume. The 5min "actively
-# reading" window suppresses emails for people who just had the
-# conversation open and saw the message live.
-EMAIL_COOLDOWN = timedelta(hours=2)
+# Phase 2B email-fallback knobs. The 2-day cooldown means a
+# member gets at most one "unread messages" email per
+# conversation every 48 hours regardless of message volume —
+# generous enough that an active chat doesn't generate multiple
+# inbox pings per day. The 5min "actively reading" window
+# suppresses emails for people who just had the conversation
+# open and saw the message live.
+EMAIL_COOLDOWN = timedelta(days=2)
 ACTIVE_READ_WINDOW = timedelta(minutes=5)
 
 
