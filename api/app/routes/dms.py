@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, text
 
 from app.core.config import settings
+from app.db.session import AdminSessionLocal
 from app.models import (
     Conversation,
     ConversationMember,
@@ -206,25 +207,33 @@ def _peer_is_in_my_hospital(
 ) -> bool:
     """True when peer has at least one ACTIVE membership at
     hospital_id with directory_visible=true. We require visibility
-    to start a DM — invisible members aren't reachable. The check
-    crosses tenants, so we use a raw SQL EXISTS with explicit join
-    (bypassing RLS by not querying via the ORM with a tenant
-    filter)."""
-    row = ctx.db.execute(
-        text(
-            """
-            SELECT 1
-            FROM memberships m
-            JOIN tenants t ON t.id = m.tenant_id
-            WHERE m.person_id = :pid
-              AND m.disabled_at IS NULL
-              AND m.directory_visible = TRUE
-              AND t.hospital_id = :hid
-            LIMIT 1
-            """
-        ),
-        {"pid": peer_person_id, "hid": hospital_id},
-    ).first()
+    to start a DM — invisible members aren't reachable.
+
+    The check crosses tenants. `ctx.db` carries the caller's
+    tenant_id RLS session setting, which would hide the peer's
+    membership row when they belong to a sibling tenant in the
+    same hospital — exactly the case the hospital directory is
+    designed to surface. We open a short-lived AdminSessionLocal
+    (RLS-bypassing) for the lookup. The directory itself uses a
+    SECURITY DEFINER function for the same reason; this mirrors
+    that pattern.
+    """
+    with AdminSessionLocal() as adb:
+        row = adb.execute(
+            text(
+                """
+                SELECT 1
+                FROM memberships m
+                JOIN tenants t ON t.id = m.tenant_id
+                WHERE m.person_id = :pid
+                  AND m.disabled_at IS NULL
+                  AND m.directory_visible = TRUE
+                  AND t.hospital_id = :hid
+                LIMIT 1
+                """
+            ),
+            {"pid": peer_person_id, "hid": hospital_id},
+        ).first()
     return row is not None
 
 
@@ -905,6 +914,16 @@ def _validate_hospital_peers(
     the same hospital. 422 if any id fails (rather than silently
     dropping) so the frontend can show a clear "this person isn't
     available" error before the partial create lands.
+
+    Same RLS consideration as `_peer_is_in_my_hospital`: the
+    directory exposes peers from sibling tenants in the hospital
+    via a SECURITY DEFINER function, but `ctx.db` is RLS-scoped
+    to the caller's tenant_id so a direct join to `memberships`
+    can't see those rows. We open AdminSessionLocal for the
+    validation. Without this fix the "Algunas personas no están
+    disponibles en tu hospital" error fires for anyone the user
+    picks from a sibling tenant — even though the directory just
+    showed them.
     """
     deduped = sorted(
         {pid for pid in person_ids if pid != ctx.person.id}
@@ -914,24 +933,25 @@ def _validate_hospital_peers(
             status_code=400,
             detail="Un grupo necesita al menos un miembro además de ti.",
         )
-    rows = (
-        ctx.db.execute(
-            text(
-                """
-                SELECT DISTINCT p.id
-                FROM persons p
-                JOIN memberships m ON m.person_id = p.id
-                JOIN tenants t ON t.id = m.tenant_id
-                WHERE p.id = ANY(:ids)
-                  AND t.hospital_id = :hid
-                  AND m.disabled_at IS NULL
-                """
-            ),
-            {"ids": deduped, "hid": hospital_id},
+    with AdminSessionLocal() as adb:
+        rows = (
+            adb.execute(
+                text(
+                    """
+                    SELECT DISTINCT p.id
+                    FROM persons p
+                    JOIN memberships m ON m.person_id = p.id
+                    JOIN tenants t ON t.id = m.tenant_id
+                    WHERE p.id = ANY(:ids)
+                      AND t.hospital_id = :hid
+                      AND m.disabled_at IS NULL
+                    """
+                ),
+                {"ids": deduped, "hid": hospital_id},
+            )
+            .mappings()
+            .all()
         )
-        .mappings()
-        .all()
-    )
     found = {r["id"] for r in rows}
     missing = [pid for pid in deduped if pid not in found]
     if missing:
