@@ -35,6 +35,7 @@ from app.services.pulse import (
     apply_overrides,
     current_week_iso,
     effective_questions_for_week,
+    open_week_iso,
     question_by_key,
     questions_for_week,
 )
@@ -212,6 +213,22 @@ def _load_overrides(ctx: RequestContext) -> dict[str, dict]:
     return dict(row[0])
 
 
+def _open_week_iso_for_tenant(ctx: RequestContext) -> str:
+    """Resolve the answerable week for the caller's tenant. Falls
+    back to today's ISO week when no notification has fired
+    yet."""
+    row = ctx.db.execute(
+        text(
+            """
+            SELECT last_notified_week_iso FROM pulse_settings
+            WHERE tenant_id = :tid
+            """
+        ),
+        {"tid": ctx.tenant.id},
+    ).first()
+    return open_week_iso(row[0] if row else None)
+
+
 # ---------------------------------------------------------------------------
 # Member-facing routes
 # ---------------------------------------------------------------------------
@@ -228,7 +245,10 @@ def get_current_week(
     disabled for the tenant — the frontend uses the `enabled`
     flag to render the disabled banner instead of the form.
     Cheaper than gating with 404."""
-    week_iso = current_week_iso()
+    # The open week is bounded by worker firings, not by ISO
+    # boundaries — a survey published last Friday stays open until
+    # the next Friday's worker tick rotates it.
+    week_iso = _open_week_iso_for_tenant(ctx)
     # Migration 0091: apply per-tenant overrides (rewording +
     # disable) so the member sees what the admin configured, not
     # the in-code defaults.
@@ -282,7 +302,9 @@ def post_responses(
             status_code=status.HTTP_410_GONE,
             detail="Pulso desactivado en este equipo.",
         )
-    week_iso = current_week_iso()
+    # Submissions always target the open week, not "today's" ISO
+    # week — the open window is bounded by worker firings.
+    week_iso = _open_week_iso_for_tenant(ctx)
     # Migration 0091: reject submissions for questions the admin
     # disabled. effective_questions_for_week strips disabled keys,
     # so anything not in that set 422s.
@@ -388,7 +410,7 @@ def get_admin_catalogue(
     _require_admin(ctx)
     _ensure_settings_row(ctx)
     overrides = _load_overrides(ctx)
-    week_iso = current_week_iso()
+    week_iso = _open_week_iso_for_tenant(ctx)
     return PulseCatalogueOut(
         current_week_iso=week_iso,
         core=[
@@ -495,10 +517,11 @@ def patch_admin_catalogue_question(
         overrides[question_key] = current
     else:
         overrides.pop(question_key, None)
-    # Floor check: the current ISO week must still have at least
-    # one effective question. Otherwise the admin would create a
-    # week the team can't answer.
-    week_iso = current_week_iso()
+    # Floor check: the open week must still have at least one
+    # effective question. Otherwise the admin would create a
+    # window the team can't answer. Same week-resolution rule
+    # the GET endpoints use.
+    week_iso = _open_week_iso_for_tenant(ctx)
     week_questions = effective_questions_for_week(week_iso, overrides)
     if not week_questions:
         raise HTTPException(

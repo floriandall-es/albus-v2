@@ -100,8 +100,10 @@ class PulseResponse(Base):
         nullable=False,
         index=True,
     )
-    # ISO week the response is for. Hard close: POST rejects
-    # anything that isn't the current ISO week.
+    # ISO week the response is for. Soft close: POST rejects
+    # anything that isn't the currently OPEN week (= the last
+    # week the worker fanned out for, kept open until the next
+    # worker firing rotates it). See services/pulse.py::open_week_iso.
     week_iso: Mapped[str] = mapped_column(String(8), nullable=False)
     # Stable key from the in-code catalogue. Untyped string so the
     # catalogue can evolve without migrations — the FK is logical,

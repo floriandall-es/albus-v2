@@ -17,10 +17,12 @@ Two halves:
     asking everyone to answer. Idempotency is the
     `last_notified_week_iso` column: atomic per tenant.
 
-ISO week semantics: ISO 8601 weeks start Monday. The "hard close
-Sunday night" UX is implicit — the moment Monday 00:00 hits in
-Europe/Madrid, the week_iso changes, and POSTs for the previous
-week start returning 410. No explicit `closes_at` timestamp needed.
+ISO week semantics: ISO 8601 weeks start Monday. The "open"
+survey window is bounded by worker firings rather than calendar
+boundaries — a week stays open from its Friday 14:00 worker tick
+until the NEXT Friday's tick rotates it. Means surgeons on
+weekend guardia can still answer Tuesday and it counts toward
+the right week. See open_week_iso().
 """
 
 from __future__ import annotations
@@ -181,11 +183,37 @@ ROTATING_QUESTIONS: tuple[PulseQuestion, ...] = (
 def current_week_iso(now: datetime | None = None) -> str:
     """Return today's ISO week as "YYYY-Www". `now` defaults to
     Europe/Madrid clock — all pulse state is computed in hospital
-    time, never UTC."""
+    time, never UTC.
+
+    Used by the worker to decide which week to stamp on its
+    Friday fan-out. Member-facing endpoints should use
+    `open_week_iso()` instead — the "answerable" window is
+    bounded by worker firings, not by ISO week boundaries."""
     if now is None:
         now = datetime.now(tz=_TZ)
     iso_year, iso_week, _ = now.isocalendar()
     return f"{iso_year}-W{iso_week:02d}"
+
+
+def open_week_iso(last_notified_week_iso: str | None) -> str:
+    """Return the ISO week the team can currently answer for.
+
+    The survey opens Friday 14:00 Europe/Madrid (worker tick
+    stamps `pulse_settings.last_notified_week_iso`) and stays
+    open until the NEXT worker firing rotates it — at which
+    point the previous week's responses become immutable. This
+    is softer than an ISO-week boundary: someone on weekend
+    guardia who answers Tuesday is still answering "last
+    Friday's" survey, which matches what the team understands
+    by "the open pulse".
+
+    Fallback to today's ISO week when no notification has ever
+    fired (fresh enable). The first worker tick after that will
+    stamp the same value, so there's no jump.
+    """
+    if last_notified_week_iso:
+        return last_notified_week_iso
+    return current_week_iso()
 
 
 def week_iso_for(d: date) -> str:

@@ -138,9 +138,9 @@ function SettingsSection() {
                 Cuando está activa, cada viernes a las 14:00 el
                 equipo recibe una notificación (push si tienen la
                 app instalada, email si no) con las preguntas que
-                tengas activas abajo. La semana cierra el domingo
-                a medianoche; las respuestas pasadas son
-                inmutables.
+                tengas activas abajo. La encuesta queda abierta
+                hasta el siguiente viernes — las respuestas se
+                congelan cuando arranca la nueva.
               </p>
               {settings.data?.last_notified_week_iso && (
                 <p className="mt-2 text-[11px] text-gray-500">
