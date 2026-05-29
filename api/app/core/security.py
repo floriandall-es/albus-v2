@@ -105,6 +105,48 @@ def decode_email_change_token(token: str) -> dict[str, Any]:
     return payload
 
 
+def create_admin_promotion_token(
+    *, request_id: int, target_membership_id: int
+) -> str:
+    """Token carried by the accept / decline links in the admin
+    promotion email (migration 0087). Bound to a specific
+    promotion request id so a single token can only ever drive
+    that one decision. TTL matches the request's expires_at —
+    14 days from creation, kept in settings."""
+    now = datetime.now(timezone.utc)
+    payload: dict[str, Any] = {
+        "kind": "admin_promotion",
+        "request_id": request_id,
+        "target_membership_id": target_membership_id,
+        "iat": int(now.timestamp()),
+        "exp": int(
+            (
+                now
+                + timedelta(
+                    hours=settings.admin_promotion_ttl_hours
+                )
+            ).timestamp()
+        ),
+    }
+    return jwt.encode(
+        payload, settings.jwt_secret, algorithm=settings.jwt_algorithm
+    )
+
+
+def decode_admin_promotion_token(token: str) -> dict[str, Any]:
+    payload = jwt.decode(
+        token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
+    )
+    if payload.get("kind") != "admin_promotion":
+        raise jwt.InvalidTokenError("Not an admin-promotion token")
+    if (
+        not payload.get("request_id")
+        or not payload.get("target_membership_id")
+    ):
+        raise jwt.InvalidTokenError("Malformed admin-promotion token")
+    return payload
+
+
 def create_email_verify_token(*, person_id: int) -> str:
     """Self-contained JWT identifying a person to be marked verified.
     Sent on signup to the address the user gave us; clicking the

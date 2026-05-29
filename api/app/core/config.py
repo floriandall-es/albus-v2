@@ -49,6 +49,12 @@ class Settings(BaseSettings):
     # on phone, finish on laptop", short enough that a stolen
     # mailbox doesn't yield long-term reset capability.
     password_reset_ttl_minutes: int = 60
+    # TTL for the admin promotion accept/decline link (migration
+    # 0087). 14 days lets a vacationing member catch up to the
+    # email; long enough not to be annoying, short enough that
+    # the admin's mental model "they didn't reply, ping them again"
+    # stays valid.
+    admin_promotion_ttl_hours: int = 24 * 14
 
     # Current version string of the Terms of Service + Privacy
     # Policy. Stored on persons.terms_accepted_version when a user

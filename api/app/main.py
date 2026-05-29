@@ -11,6 +11,7 @@ from app.services.billing_emails import tick as billing_emails_tick
 from app.services.meeting_reminders import tick as meeting_reminders_tick
 from app.routes import (
     admin_dashboard,
+    admin_promotion,
     auth,
     availability,
     billing,
@@ -58,6 +59,7 @@ app.include_router(slots.router, prefix="/api")
 app.include_router(slot_dependencies.router, prefix="/api")
 app.include_router(team.router, prefix="/api")
 app.include_router(team_bulk.router, prefix="/api")
+app.include_router(admin_promotion.router, prefix="/api")
 app.include_router(invitations.router, prefix="/api")
 app.include_router(onboarding.router, prefix="/api")
 app.include_router(holidays.router, prefix="/api")

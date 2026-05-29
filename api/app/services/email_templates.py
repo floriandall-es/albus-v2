@@ -796,3 +796,52 @@ def member_switched_to_team_pays_email(
         f"— El equipo de Trivu\n"
     )
     return subject, body
+
+
+# ---------------------------------------------------------------------------
+# Admin promotion consent (migration 0087)
+# ---------------------------------------------------------------------------
+
+
+def admin_promotion_request_email(
+    *,
+    recipient_name: str,
+    inviter_name: str,
+    tenant_name: str,
+    billing_model: str,
+    accept_url: str,
+    decline_url: str,
+    ttl_hours: int,
+) -> tuple[str, str]:
+    """Sent to the target of an admin promotion (migration 0087).
+
+    Under members_pay this is REQUIRED before we can change their
+    Stripe price. Under team_pays the team card pays so consent is
+    informational but the same template flows; the price line
+    adapts so the recipient isn't told they'll be charged more
+    when they won't be."""
+    subject = f"{inviter_name} quiere promocionarte a admin en {tenant_name}"
+    if billing_model == "members_pay":
+        price_line = (
+            "Tu suscripción de Trivu pasaría del precio Miembro al "
+            "precio Admin a partir de la próxima factura. Puedes ver "
+            "los importes desde tu Portal de Stripe."
+        )
+    else:
+        price_line = (
+            "El equipo paga tu acceso, así que tu tarjeta no recibirá "
+            "ningún cargo adicional."
+        )
+    body = (
+        f"Hola {recipient_name},\n\n"
+        f"{inviter_name} te ha propuesto el rol de administrador en "
+        f"{tenant_name}. Como admin podrás gestionar el equipo, las "
+        f"actividades, las reglas y la planificación.\n\n"
+        f"{price_line}\n\n"
+        f"Aceptar: {accept_url}\n"
+        f"Rechazar: {decline_url}\n\n"
+        f"El enlace caduca en {ttl_hours // 24} días. Si no respondes "
+        f"a tiempo, el admin puede volver a enviarte la solicitud.\n\n"
+        f"— El equipo de Trivu\n"
+    )
+    return subject, body

@@ -56,6 +56,7 @@ from app.models.periodo_especial import (
 )
 from app.models.stripe_event import StripeEvent
 from app.models.billing_email_sent import BillingEmailSent
+from app.models.admin_promotion_request import AdminPromotionRequest
 
 __all__ = [
     "Hospital",
@@ -110,4 +111,5 @@ __all__ = [
     "SlotFrequencyCapPeriodOverride",
     "StripeEvent",
     "BillingEmailSent",
+    "AdminPromotionRequest",
 ]

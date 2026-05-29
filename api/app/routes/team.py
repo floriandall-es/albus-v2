@@ -132,6 +132,28 @@ def update_team_member(
     # Snapshot the pre-write admin state so we can decide later
     # whether to reconcile the admin seat count on Stripe.
     was_admin = "admin" in (m.roles or [])
+    # Under members_pay a promotion changes the target's Stripe
+    # price — we can't silently swap a recurring charge. The
+    # /api/team/{id}/admin-promotion endpoint runs the consent
+    # flow (email with accept link). Direct promotions via this
+    # PUT are rejected here. Demotions are fine because they only
+    # lower the bill; team_pays is fine because the tenant card
+    # pays so no consent matters.
+    if (
+        "roles" in data
+        and data["roles"] is not None
+        and ctx.tenant.billing_model == "members_pay"
+        and not was_admin
+        and "admin" in list(data["roles"])
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Para promocionar un miembro a admin en este "
+                "modelo de facturación, usa el flujo de "
+                "consentimiento: POST /api/team/{id}/admin-promotion."
+            ),
+        )
     if "roles" in data and data["roles"] is not None:
         next_roles = list(data["roles"])
         unknown = [r for r in next_roles if r not in {"admin"}]
