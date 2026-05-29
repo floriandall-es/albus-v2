@@ -680,7 +680,11 @@ function QuestionTimeseriesCard({
                 <YAxis
                   stroke="#6b7280"
                   fontSize={11}
-                  domain={[1, 5]}
+                  // All scales are 4-point now (even-numbered so
+                  // there's no neutral middle to coast on). If we
+                  // ever ship a question with a different scale,
+                  // make this dynamic per-card.
+                  domain={[1, 4]}
                   tickLine={false}
                   axisLine={false}
                 />

@@ -81,16 +81,19 @@ CORE_QUESTIONS: tuple[PulseQuestion, ...] = (
         key="fairness",
         prompt_es="¿Sientes que el reparto de turnos esta semana ha sido justo contigo?",
         scale_type="scale",
-        scale_max=5,
+        scale_max=4,
         # Every scale question now ships with per-point labels so
-        # the survey button can render "3 · Regular" instead of a
+        # the survey button can render "3 · Justo" instead of a
         # bare "3". The numbers are the data we chart; the labels
         # are the UX. Labels are part of the time-series contract
         # (along with scale_max) and are NOT tenant-customisable —
         # only prompts are. Order is monotonic 1→N from "worst"
         # to "best" so chart direction is consistent across
-        # questions.
-        labels_es=("Injusto", "Poco", "Regular", "Bien", "Muy bien"),
+        # questions. Every scale is 4-point (even, no neutral
+        # middle to hide in) — we deliberately do not offer a
+        # "regular / normal" option that would let respondents
+        # coast.
+        labels_es=("Injusto", "Poco justo", "Justo", "Muy justo"),
         default_enabled=True,
     ),
     PulseQuestion(
@@ -105,8 +108,8 @@ CORE_QUESTIONS: tuple[PulseQuestion, ...] = (
         key="recovery",
         prompt_es="¿Cómo de descansado/a te sientes ahora mismo?",
         scale_type="scale",
-        scale_max=5,
-        labels_es=("Agotado", "Cansado", "Normal", "Bien", "Pleno"),
+        scale_max=4,
+        labels_es=("Agotado", "Cansado", "Bien", "Pleno"),
         default_enabled=True,
     ),
     PulseQuestion(
@@ -134,8 +137,8 @@ ROTATING_QUESTIONS: tuple[PulseQuestion, ...] = (
         key="team_support",
         prompt_es="¿Has sentido apoyo del equipo cuando lo necesitabas?",
         scale_type="scale",
-        scale_max=5,
-        labels_es=("Ninguno", "Poco", "Algo", "Mucho", "Total"),
+        scale_max=4,
+        labels_es=("Ninguno", "Poco", "Bastante", "Total"),
         default_enabled=False,
     ),
     PulseQuestion(
@@ -160,16 +163,16 @@ ROTATING_QUESTIONS: tuple[PulseQuestion, ...] = (
         key="wellbeing",
         prompt_es="En general, ¿cómo estás esta semana?",
         scale_type="scale",
-        scale_max=5,
-        labels_es=("Muy mal", "Mal", "Normal", "Bien", "Genial"),
+        scale_max=4,
+        labels_es=("Muy mal", "Mal", "Bien", "Genial"),
         default_enabled=False,
     ),
     PulseQuestion(
         key="recommend",
         prompt_es="¿Recomendarías a un colega unirse a este equipo?",
         scale_type="scale",
-        scale_max=5,
-        labels_es=("No", "Quizá no", "Tal vez", "Sí", "Seguro"),
+        scale_max=4,
+        labels_es=("No", "Quizá no", "Sí", "Seguro"),
         default_enabled=False,
     ),
 )
