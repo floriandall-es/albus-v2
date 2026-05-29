@@ -266,6 +266,45 @@ def update_member_seats(
     )
 
 
+def swap_subscription_item_price(
+    *,
+    subscription_id: str,
+    from_price: str,
+    to_price: str,
+) -> dict[str, Any]:
+    """Swap a single SubscriptionItem from `from_price` to `to_price`
+    on the given Subscription. Used under members_pay to move a
+    promoted member's personal sub from price_member to price_admin
+    (or back on demote). Stripe prorates the difference on the next
+    invoice.
+
+    No-op when:
+      - The subscription has no item matching `from_price` (the
+        person never had an item at that price — could mean their
+        sub was created at a different price than expected).
+      - `from_price == to_price` (same role, called defensively).
+
+    We modify in place rather than delete+create so the Customer
+    keeps continuity (no proration weirdness around mid-cycle
+    create dates)."""
+    if from_price == to_price:
+        return {}
+    stripe = _with_stripe()
+    sub = stripe.Subscription.retrieve(subscription_id)
+    target_item_id: str | None = None
+    for item in sub["items"]["data"]:
+        if item["price"]["id"] == from_price:
+            target_item_id = item["id"]
+            break
+    if target_item_id is None:
+        return {}
+    return stripe.SubscriptionItem.modify(
+        target_item_id,
+        price=to_price,
+        proration_behavior="create_prorations",
+    )
+
+
 def pause_subscription(subscription_id: str) -> dict[str, Any]:
     """Pause collection on a Subscription without canceling it.
     Used when an admin's sub lapses and we auto-pause every

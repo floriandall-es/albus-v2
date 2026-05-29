@@ -161,37 +161,33 @@ def can_generate_for(
     return True, None
 
 
-def reconcile_personal_sub_on_role_change(
+def swap_personal_sub_role(
     tenant: Tenant,
     person: Person,
     *,
-    was_admin: bool,
     is_admin: bool,
 ) -> None:
-    """Under `members_pay`, pause / resume the affected person's
-    personal `price_member` sub when the admin role flips.
+    """Under `members_pay`, switch the affected person's personal
+    Stripe subscription between price_member and price_admin
+    depending on their current role. Promoted admins pay the admin
+    price themselves; demoted admins go back to paying the member
+    price. The tenant's flat price_admin × 1 line (the founder's
+    own admin seat) is NOT touched — multiple admins are NOT
+    subsidised by the founder; each pays via their own sub.
 
-    The economic logic: under members_pay, the tenant now pays
-    `price_admin × N` for each admin (see reconcile_admin_seats).
-    Without this helper, a promoted member would be double-billed —
-    once via the tenant's admin seat and once via their own member
-    sub. We pause the personal sub on promotion to leave only the
-    tenant charging, and resume on demotion so they go back to
-    paying for themselves.
+    No-op when:
+      - tenant.billing_model != 'members_pay'
+      - Stripe isn't configured
+      - person.stripe_subscription_id is null (pendiente, or a
+        member who hasn't gone through Customer Portal yet to
+        materialise a real Stripe sub)
 
-    Branches:
-      - promotion (was_admin=False → is_admin=True): pause
-      - demotion  (was_admin=True  → is_admin=False): resume
-      - no role change: no-op
-
-    Skips entirely under team_pays (no personal subs exist there)
-    and when the person doesn't have a stripe_subscription_id (a
-    pendiente or members_pay member who never set up payment via
-    the Customer Portal). The "promoted pendiente sets up payment
-    later" edge case is acknowledged but not handled here — when
-    they create their sub via Portal it'll be unpaused, and the
-    next role-change PUT will reconcile. Worst case: one billing
-    cycle of double-charge until someone notices.
+    Edge case: a pendiente promoted to admin BEFORE they go through
+    Portal has no sub to swap. When their sub gets created later
+    by Portal it defaults to price_member (per create_member_
+    subscription); the next role-change PUT will swap it. If
+    nobody touches their role they'd pay member price as an admin
+    until noticed. Webhook follow-up would fix this — TODO.
     """
     if tenant.billing_model != "members_pay":
         return
@@ -199,28 +195,28 @@ def reconcile_personal_sub_on_role_change(
         return
     if not person.stripe_subscription_id:
         return
-    if was_admin == is_admin:
-        return
+    target_price = (
+        settings.stripe_price_admin if is_admin else settings.stripe_price_member
+    )
+    source_price = (
+        settings.stripe_price_member if is_admin else settings.stripe_price_admin
+    )
     try:
-        if is_admin:
-            stripe_client.pause_subscription(person.stripe_subscription_id)
-            logger.info(
-                "Paused personal sub on admin promotion person=%s sub=%s tenant=%s",
-                person.id,
-                person.stripe_subscription_id,
-                tenant.id,
-            )
-        else:
-            stripe_client.resume_subscription(person.stripe_subscription_id)
-            logger.info(
-                "Resumed personal sub on admin demotion person=%s sub=%s tenant=%s",
-                person.id,
-                person.stripe_subscription_id,
-                tenant.id,
-            )
+        stripe_client.swap_subscription_item_price(
+            subscription_id=person.stripe_subscription_id,
+            from_price=source_price,
+            to_price=target_price,
+        )
+        logger.info(
+            "Swapped personal sub role person=%s sub=%s tenant=%s to=%s",
+            person.id,
+            person.stripe_subscription_id,
+            tenant.id,
+            "admin" if is_admin else "member",
+        )
     except Exception:
         logger.exception(
-            "Stripe personal-sub pause/resume failed person=%s sub=%s tenant=%s",
+            "Stripe personal-sub item swap failed person=%s sub=%s tenant=%s",
             person.id,
             person.stripe_subscription_id,
             tenant.id,
@@ -229,25 +225,24 @@ def reconcile_personal_sub_on_role_change(
 
 def reconcile_admin_seats(tenant: Tenant, db: Session) -> None:
     """Push the current admin count to Stripe as the `price_admin`
-    quantity on the tenant's subscription.
+    quantity on the tenant's subscription. **team_pays only**.
 
-    Counts non-disabled memberships that carry the 'admin' role and
-    calls `stripe_client.update_admin_seats` with the new quantity.
-    Fires on BOTH billing models — the admin item lives on the
-    tenant subscription in `members_pay` AND `team_pays` (it's the
-    only item under members_pay; coexists with `price_member` under
-    team_pays).
+    Under team_pays the tenant pays for everyone, and admins are
+    billed at the admin price rather than the member price. So the
+    tenant sub holds price_admin × N_admins + price_member ×
+    N_non_admin_members. This helper pushes the first count.
+
+    Under members_pay we DON'T scale this — each admin pays for
+    themselves via their own personal sub (see
+    `swap_personal_sub_role`). The tenant's price_admin × 1 line
+    stays at 1 forever, representing the founder's seat.
 
     Same silent-noop conditions as `reconcile_team_pays_seats` for
     Stripe-less envs and grandfathered tenants without a sub id.
-
-    Call this from every route that changes the admin count:
-
-      - PUT  /api/team/{id}            (roles or disabled toggle changes)
-      - POST /api/invitations          (invite includes 'admin' role)
-      - POST /api/team/invite/bulk/commit  (bulk invites with admin roles)
     """
     if not settings.stripe_secret_key:
+        return
+    if tenant.billing_model != "team_pays":
         return
     if not tenant.stripe_subscription_id:
         return
@@ -322,11 +317,16 @@ def reconcile_team_pays_seats(tenant: Tenant, db: Session) -> None:
     if not tenant.stripe_subscription_id:
         return
 
+    # NON-admin members only. Admin memberships are billed via the
+    # price_admin line (see reconcile_admin_seats), not price_member.
+    # Without this filter we'd double-charge admins under team_pays
+    # — once on price_admin and once on price_member.
     count = int(
         db.query(func.count(Membership.id))
         .filter(
             Membership.tenant_id == tenant.id,
             Membership.disabled_at.is_(None),
+            ~Membership.roles.op("@>")(["admin"]),
         )
         .scalar()
         or 0

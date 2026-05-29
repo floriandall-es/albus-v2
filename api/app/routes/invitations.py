@@ -109,18 +109,18 @@ def create_invitation(
     # admin will trigger delivery later via the /admin/team "Enviar
     # invitación" button, which rotates the token + sends the email.
 
-    # Billing chunk 12 follow-up. Under team_pays the new
-    # membership counts toward the seat-billed Stripe Subscription;
-    # push the updated count. No-op for grandfathered / unpaid /
-    # members_pay tenants — reconciler short-circuits on those.
-    from app.services.billing import reconcile_team_pays_seats
+    # Billing reconciliation. Under team_pays the new membership
+    # counts toward whichever per-seat line matches its role; we
+    # push BOTH price_admin and price_member seat counts because
+    # the role decides which goes up. No-op under members_pay
+    # because the new pendiente has no personal sub yet — their
+    # billing is resolved when they activate + go through Portal.
+    from app.services.billing import (
+        reconcile_admin_seats,
+        reconcile_team_pays_seats,
+    )
+    reconcile_admin_seats(ctx.tenant, ctx.db)
     reconcile_team_pays_seats(ctx.tenant, ctx.db)
-    # Reconcile admin seats too if this invitation includes the
-    # admin role. The membership was just created with those roles
-    # via create_invitation_service, so the admin count has moved.
-    if "admin" in (payload.roles or []):
-        from app.services.billing import reconcile_admin_seats
-        reconcile_admin_seats(ctx.tenant, ctx.db)
 
     return InviteCreateResponse(
         invitation_id=created.invitation.id,

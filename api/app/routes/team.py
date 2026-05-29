@@ -187,44 +187,41 @@ def update_team_member(
     if allowed_slot_ids is not None:
         _sync_allowed_activities(ctx, m, set(allowed_slot_ids))
     ctx.db.flush()
-    # Billing reconciliation. Two seat counts can move:
-    #   - Member seats (team_pays only) — moves only on disabled flip.
-    #   - Admin seats (both billing models) — moves on disabled flip
-    #     when the membership IS an admin, OR on a roles change that
-    #     adds/removes "admin". A non-admin getting disabled doesn't
-    #     touch the admin count.
-    # Inline imports keep the Stripe stack out of module-load graph.
-    if disabled_state_changed:
-        from app.services.billing import reconcile_team_pays_seats
-        reconcile_team_pays_seats(ctx.tenant, ctx.db)
-    # m.roles was just mutated by the setattr loop above, so the
-    # "now" check reflects the post-write value.
+    # Billing reconciliation. The model determines who gets billed:
+    #
+    # team_pays — the tenant pays for everyone. Tenant sub has both
+    # price_admin × N_admins and price_member × N_non_admin_members.
+    # When a role flips OR a member's disabled state changes, both
+    # counts may move (a promoted member shifts from price_member
+    # to price_admin; a disabled admin drops both counts by one,
+    # etc.) so we call both reconcilers and let each query the
+    # current state. Idempotent + cheap (one Stripe call each).
+    #
+    # members_pay — each person pays for themselves via their own
+    # personal sub. The promoted admin's sub swaps from
+    # price_member to price_admin; the demoted admin's swaps back.
+    # The tenant sub stays at price_admin × 1 forever (the founder).
     is_admin_now = "admin" in (m.roles or [])
     role_admin_changed = was_admin != is_admin_now
-    admin_count_might_have_moved = (
-        role_admin_changed
-        or (disabled_state_changed and is_admin_now)
-    )
-    if admin_count_might_have_moved:
-        from app.services.billing import reconcile_admin_seats
-        reconcile_admin_seats(ctx.tenant, ctx.db)
-    # Under members_pay, role changes also drive a pause/resume of
-    # the affected person's personal price_member sub, so they
-    # aren't double-billed once the tenant starts paying for them
-    # as an admin. No-op under team_pays + no-op when the person
-    # doesn't have a Stripe sub yet (pendiente, never_subscribed).
-    if role_admin_changed:
-        from app.services.billing import (
-            reconcile_personal_sub_on_role_change,
-        )
-        affected_person = ctx.db.get(Person, m.person_id)
-        if affected_person is not None:
-            reconcile_personal_sub_on_role_change(
-                ctx.tenant,
-                affected_person,
-                was_admin=was_admin,
-                is_admin=is_admin_now,
+    if ctx.tenant.billing_model == "team_pays":
+        if disabled_state_changed or role_admin_changed:
+            from app.services.billing import (
+                reconcile_admin_seats,
+                reconcile_team_pays_seats,
             )
+            reconcile_admin_seats(ctx.tenant, ctx.db)
+            reconcile_team_pays_seats(ctx.tenant, ctx.db)
+    else:
+        # members_pay
+        if role_admin_changed:
+            from app.services.billing import swap_personal_sub_role
+            affected_person = ctx.db.get(Person, m.person_id)
+            if affected_person is not None:
+                swap_personal_sub_role(
+                    ctx.tenant,
+                    affected_person,
+                    is_admin=is_admin_now,
+                )
     person = ctx.db.get(Person, m.person_id)
     cat = ctx.db.get(Category, m.category_id) if m.category_id else None
     assert person is not None
