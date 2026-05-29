@@ -34,7 +34,10 @@ from sqlalchemy import text
 from app.models import Hospital, Membership, Person, Servicio, Tenant
 from app.routes.deps import RequestContext, get_current_context
 from app.schemas.servicio import (
+    BloqueoRoutingOut,
+    BloqueoRoutingUpdate,
     EquipoOut,
+    JefeInfo,
     PendingEquipoOut,
     ServicioOut,
     ServicioPersonOut,
@@ -445,3 +448,123 @@ def decline_equipo(
             send_email(admin_person["email"], subject, body)
         except Exception:  # noqa: BLE001
             pass
+
+
+# ---------------------------------------------------------------------------
+# Bloqueo routing mode (migration 0085)
+# ---------------------------------------------------------------------------
+
+
+def _require_jefe_admin(ctx: RequestContext) -> None:
+    """Authz gate for the bloqueo-routing endpoints.
+
+    Caller must be (a) an admin in the current tenant AND (b) carry
+    'Jefe de Servicio' in their person.cargos. We do not require
+    the caller to be the *deterministically-resolved* jefe — a
+    secondary jefe (if one exists) can still operate the toggle.
+    The cargo claim is the gate; the deterministic resolution
+    only decides who reviews at create-bloqueo time."""
+    _require_admin(ctx)
+    # Local import avoids a cycle with availability.py.
+    from app.routes.availability import _person_is_jefe_de_servicio
+
+    if not _person_is_jefe_de_servicio(ctx.person):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo el Jefe de Servicio puede modificar este ajuste.",
+        )
+
+
+def _build_jefe_info(ctx: RequestContext) -> JefeInfo | None:
+    """Read-only resolution for the GET response. Returns the
+    deterministically-picked Jefe de Servicio (own equipo first,
+    then lowest membership id) or None when nobody carries the
+    cargo on an admin membership of an approved equipo in the
+    caller's servicio."""
+    from app.routes.availability import _resolve_servicio_jefe
+
+    resolved = _resolve_servicio_jefe(ctx)
+    if resolved is None:
+        return None
+    m, p, t = resolved
+    return JefeInfo(
+        membership_id=m.id,
+        person_id=p.id,
+        person_name=p.name,
+        tenant_id=t.id,
+        tenant_name=t.name,
+    )
+
+
+@router.get(
+    "/servicios/me/bloqueo-routing",
+    response_model=BloqueoRoutingOut,
+)
+def get_my_bloqueo_routing(
+    ctx: RequestContext = Depends(get_current_context),
+) -> BloqueoRoutingOut:
+    """Read the bloqueo routing mode for the caller's servicio.
+
+    Gated to the Jefe de Servicio (admin + matching cargo) — only
+    they should see the toggle. The /me/servicio/admins endpoint
+    exposes the mode to every member but no jefe metadata, so a
+    non-jefe member who calls THIS endpoint to fish for who the
+    jefe is just gets a 403."""
+    _require_jefe_admin(ctx)
+    if ctx.tenant.servicio_id is None:
+        # Solo tenant — no servicio config to route through.
+        raise HTTPException(
+            status_code=404,
+            detail="Tu equipo no pertenece a ningún servicio.",
+        )
+    sv = ctx.db.get(Servicio, ctx.tenant.servicio_id)
+    if sv is None:
+        raise HTTPException(status_code=404, detail="Servicio no encontrado")
+    jefe = _build_jefe_info(ctx)
+    return BloqueoRoutingOut(
+        mode=sv.bloqueo_routing_mode,  # type: ignore[arg-type]
+        jefe=jefe,
+        caller_is_jefe=(
+            jefe is not None and jefe.membership_id == ctx.membership.id
+        ),
+    )
+
+
+@router.patch(
+    "/servicios/me/bloqueo-routing",
+    response_model=BloqueoRoutingOut,
+)
+def update_my_bloqueo_routing(
+    payload: BloqueoRoutingUpdate,
+    ctx: RequestContext = Depends(get_current_context),
+) -> BloqueoRoutingOut:
+    """Flip the servicio's bloqueo routing mode.
+
+    Jefe-only (cargo-gated). When the new mode is 'centralised'
+    but no jefe currently resolves, we still allow the write —
+    create_my_request silently falls back to delegated for that
+    one request until a jefe is in place. Avoids a chicken-and-
+    egg lock where the caller can't flip back to centralised
+    after their cargo gets cleared and re-set.
+
+    Existing pending bloqueos are untouched; the new mode only
+    affects bloqueos raised AFTER the write."""
+    _require_jefe_admin(ctx)
+    if ctx.tenant.servicio_id is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Tu equipo no pertenece a ningún servicio.",
+        )
+    sv = ctx.db.get(Servicio, ctx.tenant.servicio_id)
+    if sv is None:
+        raise HTTPException(status_code=404, detail="Servicio no encontrado")
+    sv.bloqueo_routing_mode = payload.mode
+    ctx.db.flush()
+    jefe = _build_jefe_info(ctx)
+    return BloqueoRoutingOut(
+        mode=sv.bloqueo_routing_mode,  # type: ignore[arg-type]
+        jefe=jefe,
+        caller_is_jefe=(
+            jefe is not None and jefe.membership_id == ctx.membership.id
+        ),
+    )

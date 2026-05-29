@@ -16,6 +16,8 @@ from pydantic import BaseModel
 
 SharePolicy = Literal["none", "selected", "full"]
 ApprovalState = Literal["pending", "approved"]
+# Migration 0085. Servicio-wide routing for new bloqueos.
+BloqueoRoutingMode = Literal["delegated", "centralised"]
 
 
 class EquipoOut(BaseModel):
@@ -108,6 +110,50 @@ class SharePolicyUpdateRequest(BaseModel):
     just the top-level enum."""
 
     share_policy: SharePolicy
+
+
+class JefeInfo(BaseModel):
+    """Who the Jefe de Servicio is, when one exists. Returned as
+    part of the bloqueo-routing GET so the toggle UI can show
+    "centralizado en Dr. X" without a second fetch. NULL when
+    no member of the servicio carries the cargo."""
+
+    membership_id: int
+    person_id: int
+    person_name: str
+    tenant_id: int
+    tenant_name: str
+
+
+class BloqueoRoutingOut(BaseModel):
+    """Snapshot of how bloqueos route in the caller's servicio.
+
+    `mode` = 'delegated' is the default and means every member
+    picks an admin on /me/bloqueos. `mode` = 'centralised' means
+    bloqueos auto-route to the Jefe de Servicio when one exists
+    (when none exists, create_my_request transparently falls back
+    to delegated for that one request).
+
+    `jefe` is non-null when at least one admin of an approved
+    equipo in the servicio carries the "Jefe de Servicio" cargo.
+    When multiple exist, the deterministic pick is returned (see
+    _resolve_servicio_jefe in routes/availability.py)."""
+
+    mode: BloqueoRoutingMode
+    jefe: JefeInfo | None = None
+    # True when the caller themselves is the resolved jefe — the
+    # UI uses it to switch the toggle copy from "Centralizar en
+    # {Name}" to "Centralizar en mí".
+    caller_is_jefe: bool = False
+
+
+class BloqueoRoutingUpdate(BaseModel):
+    """Jefe-only PATCH on the servicio routing mode. The mode is
+    the only mutable field — when 'centralised', the reviewer is
+    by definition the resolved Jefe at create-bloqueo time, not
+    a separately-named admin."""
+
+    mode: BloqueoRoutingMode
 
 
 class PendingEquipoOut(BaseModel):

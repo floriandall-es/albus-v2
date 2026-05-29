@@ -34,6 +34,7 @@ from app.schemas.availability import (
     BlockStatus,
     ConflictingShift,
     ServicioAdminOut,
+    ServicioAdminPickerOut,
 )
 
 router = APIRouter()
@@ -621,16 +622,36 @@ def create_my_request(
     payload: AvailabilityRequestCreate,
     ctx: RequestContext = Depends(get_current_context),
 ) -> AvailabilityBlockOut:
-    # Migration 0083: required reviewer routing. Members must pick
-    # exactly which admin reviews their bloqueo — no more "any admin
-    # of the tenant" path on new requests. Validated against the
-    # servicio-wide admin list so we can't accept a stale or out-of-
-    # servicio membership id. (Pre-0083 rows still have NULL in the
-    # column and follow legacy semantics; that's only a read-side
-    # concern.)
-    reviewer_membership_id = _validate_servicio_admin(
-        ctx, payload.reviewer_membership_id
-    )
+    """Member raises a bloqueo.
+
+    Reviewer routing branches on servicio.bloqueo_routing_mode
+    (migration 0085):
+
+      - 'centralised' + a Jefe de Servicio exists: ignore the
+        client's `reviewer_membership_id` and force-assign the
+        jefe. Picker on /me/bloqueos has already collapsed to the
+        jefe so the client is sending the right id anyway — we
+        still override server-side to defend against a stale or
+        bypassed UI.
+      - 'centralised' + NO Jefe exists (cargo not set on anyone or
+        the previous Jefe lost the cargo): silently fall back to
+        delegated for this one request, validating the client's
+        chosen reviewer like normal. Self-healing — the system
+        never blocks bloqueos because of a missing config.
+      - 'delegated' (the historical behaviour): the client's choice
+        wins, validated against the servicio-wide admin list.
+    """
+    forced_reviewer = _resolve_centralised_reviewer(ctx)
+    if forced_reviewer is not None:
+        reviewer_membership_id = forced_reviewer
+    else:
+        # Migration 0083 path. Members must pick exactly which admin
+        # reviews their bloqueo. Validated against the servicio-wide
+        # admin list so we can't accept a stale or out-of-servicio
+        # membership id.
+        reviewer_membership_id = _validate_servicio_admin(
+            ctx, payload.reviewer_membership_id
+        )
     block = AvailabilityBlock(
         tenant_id=ctx.tenant.id,
         person_id=ctx.person.id,
@@ -690,6 +711,114 @@ def _validate_servicio_admin(ctx: RequestContext, membership_id: int) -> int:
             ),
         )
     return membership_id
+
+
+# ---------------------------------------------------------------------------
+# Jefe de Servicio resolution (migration 0085)
+# ---------------------------------------------------------------------------
+
+
+# Canonical lowercase form of the cargo we look for. Matched against
+# each entry of person.cargos with stripped lowercase comparison so
+# capitalisation differences (presets store "Jefe de servicio",
+# migrations show "Jefe de Servicio") and stray whitespace don't
+# silently disqualify the title-holder. The "Adjunto" suffix etc.
+# get filtered out by the strict equality.
+_JEFE_DE_SERVICIO_CARGO = "jefe de servicio"
+
+
+def _person_is_jefe_de_servicio(p: Person) -> bool:
+    """True iff any of `p.cargos` equals 'Jefe de Servicio' once
+    trimmed and lowercased. Used both for resolving who the jefe
+    is (membership-side, see _resolve_servicio_jefe) and gating
+    the /admin/compartir toggle (caller-side, see servicios.py)."""
+    for raw in p.cargos or ():
+        if (raw or "").strip().lower() == _JEFE_DE_SERVICIO_CARGO:
+            return True
+    return False
+
+
+def _resolve_servicio_jefe(
+    ctx: RequestContext,
+) -> tuple[Membership, Person, Tenant] | None:
+    """The (Membership, Person, Tenant) of the Jefe de Servicio in
+    the caller's servicio, or None if nobody currently carries the
+    cargo on an admin membership of an approved equipo.
+
+    Selection rules when multiple jefes exist (rare — typically
+    one per servicio):
+      1. An admin whose person is jefe AND who lives in the
+         caller's own equipo, ordered by lowest membership id.
+      2. Otherwise the lowest-membership-id jefe-admin elsewhere
+         in the servicio.
+
+    This deterministic pick means the same servicio always
+    resolves to the same jefe across requests; we don't need a
+    separate "designated_jefe_membership_id" column."""
+    if ctx.tenant.servicio_id is None:
+        # Standalone tenant. Look only within own tenant.
+        with AdminSessionLocal() as adb:
+            rows = (
+                adb.query(Membership, Person, Tenant)
+                .join(Person, Person.id == Membership.person_id)
+                .join(Tenant, Tenant.id == Membership.tenant_id)
+                .filter(
+                    Membership.tenant_id == ctx.tenant.id,
+                    Membership.disabled_at.is_(None),
+                    Membership.roles.op("@>")(["admin"]),
+                )
+                .order_by(Membership.id.asc())
+                .all()
+            )
+        for m, p, t in rows:
+            if _person_is_jefe_de_servicio(p):
+                return m, p, t
+        return None
+
+    # Servicio-aware. AdminSessionLocal bypasses RLS so we can scan
+    # sibling equipos. Mirrors _list_servicio_admins filters.
+    with AdminSessionLocal() as adb:
+        rows = (
+            adb.query(Membership, Person, Tenant)
+            .join(Person, Person.id == Membership.person_id)
+            .join(Tenant, Tenant.id == Membership.tenant_id)
+            .filter(
+                Tenant.servicio_id == ctx.tenant.servicio_id,
+                Tenant.approval_state == "approved",
+                Membership.disabled_at.is_(None),
+                Membership.roles.op("@>")(["admin"]),
+            )
+            .order_by(Membership.id.asc())
+            .all()
+        )
+    # Two-pass: prefer own-equipo, then anything else. Lowest
+    # membership id within each bucket (matches the .order_by above).
+    jefe_rows = [(m, p, t) for m, p, t in rows if _person_is_jefe_de_servicio(p)]
+    own = [r for r in jefe_rows if r[2].id == ctx.tenant.id]
+    if own:
+        return own[0]
+    if jefe_rows:
+        return jefe_rows[0]
+    return None
+
+
+def _resolve_centralised_reviewer(ctx: RequestContext) -> int | None:
+    """When the caller's servicio has bloqueo_routing_mode =
+    'centralised' AND a jefe currently exists, return their
+    membership id (this is who will review every new bloqueo).
+    Returns None — meaning "fall back to delegated for this
+    request" — when the servicio is in delegated mode OR no jefe
+    is currently in place. Read at create-bloqueo time only;
+    existing pending bloqueos are not retargeted on mode flips."""
+    if ctx.tenant.servicio_id is None:
+        return None
+    from app.models import Servicio  # local to avoid cycle in module header
+
+    servicio = ctx.db.get(Servicio, ctx.tenant.servicio_id)
+    if servicio is None or servicio.bloqueo_routing_mode != "centralised":
+        return None
+    resolved = _resolve_servicio_jefe(ctx)
+    return resolved[0].id if resolved is not None else None
 
 
 def _list_servicio_admins(ctx: RequestContext) -> list[ServicioAdminOut]:
@@ -781,15 +910,59 @@ def _sort_picker(rows: list[ServicioAdminOut]) -> list[ServicioAdminOut]:
 
 @router.get(
     "/me/servicio/admins",
-    response_model=list[ServicioAdminOut],
+    response_model=ServicioAdminPickerOut,
 )
 def list_my_servicio_admins(
     ctx: RequestContext = Depends(get_current_context),
-) -> list[ServicioAdminOut]:
+) -> ServicioAdminPickerOut:
     """Picker source for the bloqueo reviewer dropdown on
-    /me/bloqueos. Returns every admin of every approved equipo in
-    the caller's servicio, with the caller's own equipo first."""
-    return _list_servicio_admins(ctx)
+    /me/bloqueos.
+
+    Returns the servicio's routing mode plus the candidate admin
+    list:
+      - 'delegated' (or no servicio): every admin across approved
+        equipos, caller's own equipo first.
+      - 'centralised' WITH a jefe currently in place: collapses to
+        just the jefe so the picker UI renders a read-only "Se
+        enviará a X" line.
+      - 'centralised' but no jefe currently in place: falls back
+        to the delegated list so the member can still raise a
+        bloqueo. The frontend treats mode='delegated' as the
+        canonical "show the picker" signal.
+    """
+    mode: str = "delegated"
+    if ctx.tenant.servicio_id is not None:
+        from app.models import Servicio  # local import to avoid cycle
+
+        servicio = ctx.db.get(Servicio, ctx.tenant.servicio_id)
+        if servicio is not None:
+            mode = servicio.bloqueo_routing_mode
+    if mode == "centralised":
+        resolved = _resolve_servicio_jefe(ctx)
+        if resolved is not None:
+            m, p, t = resolved
+            return ServicioAdminPickerOut(
+                mode="centralised",
+                admins=[
+                    ServicioAdminOut(
+                        membership_id=m.id,
+                        person_id=p.id,
+                        person_name=p.name,
+                        tenant_id=t.id,
+                        tenant_name=t.name,
+                        is_own_tenant=(t.id == ctx.tenant.id),
+                    )
+                ],
+            )
+        # Centralised but no jefe — UI sees mode='delegated' and
+        # the full picker reappears (matches the fall-back at
+        # create-bloqueo time).
+        return ServicioAdminPickerOut(
+            mode="delegated", admins=_list_servicio_admins(ctx)
+        )
+    return ServicioAdminPickerOut(
+        mode="delegated", admins=_list_servicio_admins(ctx)
+    )
 
 
 @router.delete(

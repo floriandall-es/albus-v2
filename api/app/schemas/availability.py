@@ -103,8 +103,8 @@ class AvailabilityRequestCreate(BaseModel):
 
 class ServicioAdminOut(BaseModel):
     """One row of the cross-equipo admin picker shown on
-    /me/bloqueos when raising a request. Returned by
-    GET /api/me/servicio/admins."""
+    /me/bloqueos when raising a request. Returned inside a
+    ServicioAdminPickerOut wrapper by GET /api/me/servicio/admins."""
 
     membership_id: int
     person_id: int
@@ -115,6 +115,20 @@ class ServicioAdminOut(BaseModel):
     # picker uses it to render "Tu equipo" / "Otros equipos del
     # servicio" group headers without needing the caller's tenant_id.
     is_own_tenant: bool
+
+
+class ServicioAdminPickerOut(BaseModel):
+    """Wrapper for GET /api/me/servicio/admins.
+
+    Carries both the picker list (`admins`) and the servicio's
+    bloqueo routing mode (migration 0085). The frontend uses
+    `mode` to decide whether to render a dropdown or a read-only
+    "Se enviará a X" line: in centralised mode with a resolved
+    jefe, `admins` collapses to that single membership and the
+    UI hides the picker."""
+
+    mode: Literal["delegated", "centralised"]
+    admins: list[ServicioAdminOut]
 
 
 class AvailabilityDenyRequest(BaseModel):
