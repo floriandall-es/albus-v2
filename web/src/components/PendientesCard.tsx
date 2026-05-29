@@ -10,10 +10,11 @@ import { Card } from "@/components/admin/ui";
  * deeplinks to the page that actions the items.
  *
  * Each Inicio surface picks its own tones per category so the eye
- * can sort cards at a glance without reading. Tone palette is
- * intentionally small (4 options) — adding more risks the cards
- * becoming a rainbow that competes for attention with the page
- * content underneath.
+ * can sort cards at a glance without reading. Tone palette is kept
+ * small on purpose — adding too many risks the cards becoming a
+ * rainbow that competes for attention with the page content.
+ * Rose was added for the pulse pendiente (migration 0090) so it
+ * reads as a "warm nudge" distinct from the operational categories.
  */
 export function PendientesCard({
   icon,
@@ -28,7 +29,7 @@ export function PendientesCard({
   label: string;
   sublabel: string;
   href: string;
-  tone: "amber" | "violet" | "sky" | "emerald";
+  tone: "amber" | "violet" | "sky" | "emerald" | "rose";
 }) {
   const toneClasses = {
     amber: {
@@ -46,6 +47,10 @@ export function PendientesCard({
     emerald: {
       chip: "bg-emerald-100 text-emerald-700 group-hover:bg-emerald-200",
       pill: "bg-emerald-600",
+    },
+    rose: {
+      chip: "bg-rose-100 text-rose-700 group-hover:bg-rose-200",
+      pill: "bg-rose-600",
     },
   }[tone];
   return (

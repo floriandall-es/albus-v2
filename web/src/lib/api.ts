@@ -902,6 +902,37 @@ export type DMMessage = {
   created_at: string;
 };
 
+/** Migration 0090. One question in this week's pulse survey.
+ * `scale_type` distinguishes pure numeric scales (render N
+ * buttons 1..scale_max) from labelled choice questions (render
+ * scale_max labelled buttons from `labels`). */
+export type PulseQuestion = {
+  key: string;
+  prompt: string;
+  scale_type: "scale" | "choice";
+  scale_max: number;
+  labels: string[];
+};
+
+/** Migration 0090. The user's view of this week's pulse. When
+ * `enabled` is false the tenant hasn't opted in — frontend shows
+ * a disabled state, no submission allowed. `my_answers` is the
+ * resume-state so a user who answered 2/5 then closed the tab
+ * comes back to a partially-filled form. */
+export type PulseCurrentWeek = {
+  week_iso: string;
+  enabled: boolean;
+  questions: PulseQuestion[];
+  my_answers: Record<string, number>;
+};
+
+/** Migration 0090. One row of self-history. */
+export type PulseHistoryItem = {
+  week_iso: string;
+  question_key: string;
+  score: number;
+};
+
 /** Migration 0089. One row of the caller's push subscription list.
  * Endpoint / encryption keys deliberately omitted — the panel only
  * needs to identify each device for revoke purposes. The "this
@@ -1730,6 +1761,29 @@ export const api = {
     request<void>(`/api/push/subscriptions/${subscriptionId}`, {
       method: "DELETE",
     }),
+  /** Migration 0090. Current ISO week's pulse questions + my
+   * partial answers. Always returns a question set even when
+   * pulse is disabled — the frontend uses `enabled` to gate the
+   * form. */
+  getPulseCurrentWeek: () =>
+    request<PulseCurrentWeek>("/api/pulse/current-week"),
+  /** Migration 0090. Upsert one or more answers for the current
+   * week. Server validates each (key, score) pair against the
+   * week's question catalogue. 410 if pulse is disabled. */
+  postPulseResponses: (
+    answers: { question_key: string; score: number }[],
+  ) =>
+    request<void>("/api/pulse/responses", {
+      method: "POST",
+      body: JSON.stringify({ answers }),
+    }),
+  /** Migration 0090. My historical responses for the self-history
+   * line chart at the bottom of /me/pulso. Default 12 weeks,
+   * capped at 52 server-side. */
+  getPulseHistory: (weeks: number = 12) =>
+    request<PulseHistoryItem[]>(
+      `/api/pulse/my-history?weeks=${weeks}`,
+    ),
   updateProfile: (body: {
     /** Legacy single-field name. Sprint 18+ clients should send
      * first_name + last_name instead; the server composes `name`

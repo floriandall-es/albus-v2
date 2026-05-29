@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  Activity,
   ArrowLeftRight,
   BarChart3,
   Building2,
@@ -34,6 +35,10 @@ const NAV: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/me/swaps", label: "Cambios", icon: ArrowLeftRight },
   { href: "/me/bloqueos", label: "Mis bloqueos", icon: CalendarOff },
   { href: "/me/estadisticas", label: "Mis estadísticas", icon: BarChart3 },
+  // Migration 0090: weekly team pulse. Hidden when the tenant
+  // has pulse disabled — same pattern as the directory/messages
+  // entries below. We do that via the NAV.filter() block.
+  { href: "/me/pulso", label: "Pulso", icon: Activity },
   // Phase C.2: cross-equipo Servicio view used to live here as a
   // dedicated nav entry. It got folded into /me/turnos as the third
   // "Servicio" scope option — the standalone page was redundant

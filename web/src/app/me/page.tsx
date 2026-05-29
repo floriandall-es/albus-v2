@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  Activity,
   ArrowLeftRight,
   ArrowRight,
   CalendarDays,
@@ -165,6 +166,13 @@ export default function MeHome() {
         upcomingMeetingsToIso,
       ),
   });
+  // Pulse — surfaced as a Pendiente when the cycle is open AND
+  // the user hasn't yet answered (or hasn't finished). Same
+  // query key the /me/pulso page uses so the cache is shared.
+  const pulse = useQuery({
+    queryKey: ["pulse-current-week"],
+    queryFn: api.getPulseCurrentWeek,
+  });
   const meetingsByDate = useMemo(() => {
     const map = new Map<string, MeetingInstance[]>();
     for (const m of meetings.data ?? []) {
@@ -222,23 +230,35 @@ export default function MeHome() {
       (b) => b.status === "pending",
     ).length;
     const upcomingMeetingsCount = (upcomingMeetings.data ?? []).length;
+    // Pulso pendiente: enabled tenant AND I haven't answered all
+    // questions yet. Counts as 1 regardless of how many questions
+    // remain — the user goes to /me/pulso to finish.
+    let pulseOpen = 0;
+    if (pulse.data?.enabled) {
+      const totalQ = pulse.data.questions.length;
+      const answeredQ = Object.keys(pulse.data.my_answers).length;
+      if (answeredQ < totalQ) pulseOpen = 1;
+    }
     return {
       toRespond,
       myWithResponses,
       bloqueosPending,
       upcomingMeetingsCount,
+      pulseOpen,
     };
   }, [
     me.data,
     openSwapOffers.data,
     myAvailability.data,
     upcomingMeetings.data,
+    pulse.data,
   ]);
   const totalPendientes =
     pendientesCounts.toRespond
     + pendientesCounts.myWithResponses
     + pendientesCounts.bloqueosPending
-    + pendientesCounts.upcomingMeetingsCount;
+    + pendientesCounts.upcomingMeetingsCount
+    + pendientesCounts.pulseOpen;
 
   if (me.isLoading) {
     return <p className="text-sm text-gray-500">Cargando…</p>;
@@ -375,6 +395,16 @@ export default function MeHome() {
                 sublabel="A las que estás invitado en los próximos 30 días"
                 href="/me/reuniones"
                 tone="emerald"
+              />
+            )}
+            {pendientesCounts.pulseOpen > 0 && (
+              <PendientesCard
+                icon={<Activity className="h-5 w-5" />}
+                count={1}
+                label="Pulso semanal"
+                sublabel="30 segundos · respuesta agregada"
+                href="/me/pulso"
+                tone="rose"
               />
             )}
           </div>
