@@ -39,15 +39,14 @@ from app.routes.deps import RequestContext, get_current_context
 logger = logging.getLogger("app.dms")
 
 
-# Phase 2B email-fallback knobs. The 2-day cooldown means a
+# Phase 2B email-fallback knob. The 2-day cooldown means a
 # member gets at most one "unread messages" email per
 # conversation every 48 hours regardless of message volume —
 # generous enough that an active chat doesn't generate multiple
-# inbox pings per day. The 5min "actively reading" window
-# suppresses emails for people who just had the conversation
-# open and saw the message live.
+# inbox pings per day. Push has no cooldown — frequency is
+# managed OS-side via the notification `tag`, which coalesces
+# repeat notifications for the same conversation into one banner.
 EMAIL_COOLDOWN = timedelta(days=2)
-ACTIVE_READ_WINDOW = timedelta(minutes=5)
 
 
 router = APIRouter()
@@ -494,16 +493,14 @@ def _maybe_notify_unread(
 
       1. Web Push (migration 0089). If the recipient has at least
          one active push subscription, fire push to all of them
-         and skip email. Push has its own OS-level frequency
-         control + the `tag` field collapses repeat notifications
-         for the same conversation.
+         and skip email. No frequency gating — the OS coalesces
+         repeats via the notification `tag`, and a missed push
+         is worse than an "extra" one for surgical scheduling.
 
       2. Email fallback. Only used when push isn't available — no
-         subscriptions on file, or all attempts failed. Still
-         gated by:
-           a. ACTIVE_READ_WINDOW: skip if they were just reading.
-           b. EMAIL_COOLDOWN: at most one email per recipient per
-              conversation per cooldown window (currently 2 days).
+         subscriptions on file, or all attempts failed. Gated by
+         EMAIL_COOLDOWN (currently 2 days) so a chatty thread
+         doesn't fan out an inbox-full.
 
     The two channels never double-notify the same person for the
     same event — the rule is "push when subscribed, email when
@@ -544,17 +541,12 @@ def _maybe_notify_unread(
     )
 
     for mem in other_members:
-        # Rule 1: actively reading right now? Applies to both
-        # channels — if they're literally on the page we don't need
-        # to notify at all.
-        if (
-            mem.last_read_at is not None
-            and now - mem.last_read_at < ACTIVE_READ_WINDOW
-        ):
-            continue
         # Push path: if they have any subscriptions, fire push and
         # don't email. Push has no cooldown — frequency is managed
-        # by the OS + the `tag` coalescing on the device.
+        # by the OS + the `tag` coalescing on the device. We fire
+        # even when the recipient was just reading; missing a push
+        # in a clinical-coordination chat is a worse failure mode
+        # than redundancy.
         if has_active_subscriptions(mem.person_id):
             sent = send_push_to_person(
                 mem.person_id,
