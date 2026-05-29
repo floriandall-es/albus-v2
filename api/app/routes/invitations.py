@@ -115,6 +115,12 @@ def create_invitation(
     # members_pay tenants — reconciler short-circuits on those.
     from app.services.billing import reconcile_team_pays_seats
     reconcile_team_pays_seats(ctx.tenant, ctx.db)
+    # Reconcile admin seats too if this invitation includes the
+    # admin role. The membership was just created with those roles
+    # via create_invitation_service, so the admin count has moved.
+    if "admin" in (payload.roles or []):
+        from app.services.billing import reconcile_admin_seats
+        reconcile_admin_seats(ctx.tenant, ctx.db)
 
     return InviteCreateResponse(
         invitation_id=created.invitation.id,

@@ -129,6 +129,9 @@ def update_team_member(
     #      team. The caller would also be locking themselves out
     #      since they ARE that last admin in most realistic flows,
     #      but we guard structurally rather than relying on (2).
+    # Snapshot the pre-write admin state so we can decide later
+    # whether to reconcile the admin seat count on Stripe.
+    was_admin = "admin" in (m.roles or [])
     if "roles" in data and data["roles"] is not None:
         next_roles = list(data["roles"])
         unknown = [r for r in next_roles if r not in {"admin"}]
@@ -184,14 +187,26 @@ def update_team_member(
     if allowed_slot_ids is not None:
         _sync_allowed_activities(ctx, m, set(allowed_slot_ids))
     ctx.db.flush()
-    # Billing chunk 12 follow-up. The seat count under team_pays
-    # only changes when the disabled flag flips, not on every
-    # PUT — so guard on that to avoid spamming Stripe with no-op
-    # quantity calls. Inline import to avoid bloating the module-
-    # level import graph for an opt-in feature.
+    # Billing reconciliation. Two seat counts can move:
+    #   - Member seats (team_pays only) — moves only on disabled flip.
+    #   - Admin seats (both billing models) — moves on disabled flip
+    #     when the membership IS an admin, OR on a roles change that
+    #     adds/removes "admin". A non-admin getting disabled doesn't
+    #     touch the admin count.
+    # Inline imports keep the Stripe stack out of module-load graph.
     if disabled_state_changed:
         from app.services.billing import reconcile_team_pays_seats
         reconcile_team_pays_seats(ctx.tenant, ctx.db)
+    # m.roles was just mutated by the setattr loop above, so the
+    # "now" check reflects the post-write value.
+    is_admin_now = "admin" in (m.roles or [])
+    admin_count_might_have_moved = (
+        was_admin != is_admin_now
+        or (disabled_state_changed and is_admin_now)
+    )
+    if admin_count_might_have_moved:
+        from app.services.billing import reconcile_admin_seats
+        reconcile_admin_seats(ctx.tenant, ctx.db)
     person = ctx.db.get(Person, m.person_id)
     cat = ctx.db.get(Category, m.category_id) if m.category_id else None
     assert person is not None

@@ -26,6 +26,12 @@ Impure (depends on Stripe + DB):
     (no Stripe sub) and for `members_pay` mode (the tenant sub
     only covers the admin in that mode).
 
+  - `reconcile_admin_seats(tenant, db)` — pushes the current
+    active-admin count as the `price_admin` quantity. Runs on
+    BOTH billing models since the admin item lives on the tenant
+    sub regardless of mode. Called when role or disabled state
+    changes for an admin membership.
+
 What's NOT here: Stripe SDK calls (those live in
 `app.services.stripe_client`), webhook dispatch
 (`app.routes.stripe_webhook`).
@@ -153,6 +159,61 @@ def can_generate_for(
     # hard-gate transition to 'unpaid' is what stops us) → unlimited
     # horizon.
     return True, None
+
+
+def reconcile_admin_seats(tenant: Tenant, db: Session) -> None:
+    """Push the current admin count to Stripe as the `price_admin`
+    quantity on the tenant's subscription.
+
+    Counts non-disabled memberships that carry the 'admin' role and
+    calls `stripe_client.update_admin_seats` with the new quantity.
+    Fires on BOTH billing models — the admin item lives on the
+    tenant subscription in `members_pay` AND `team_pays` (it's the
+    only item under members_pay; coexists with `price_member` under
+    team_pays).
+
+    Same silent-noop conditions as `reconcile_team_pays_seats` for
+    Stripe-less envs and grandfathered tenants without a sub id.
+
+    Call this from every route that changes the admin count:
+
+      - PUT  /api/team/{id}            (roles or disabled toggle changes)
+      - POST /api/invitations          (invite includes 'admin' role)
+      - POST /api/team/invite/bulk/commit  (bulk invites with admin roles)
+    """
+    if not settings.stripe_secret_key:
+        return
+    if not tenant.stripe_subscription_id:
+        return
+
+    count = int(
+        db.query(func.count(Membership.id))
+        .filter(
+            Membership.tenant_id == tenant.id,
+            Membership.disabled_at.is_(None),
+            Membership.roles.op("@>")(["admin"]),
+        )
+        .scalar()
+        or 0
+    )
+
+    try:
+        stripe_client.update_admin_seats(
+            subscription_id=tenant.stripe_subscription_id,
+            new_quantity=count,
+        )
+        logger.info(
+            "Reconciled admin seats tenant=%s subscription=%s count=%d",
+            tenant.id,
+            tenant.stripe_subscription_id,
+            count,
+        )
+    except Exception:
+        logger.exception(
+            "Stripe admin-seat reconcile failed for tenant=%s sub=%s",
+            tenant.id,
+            tenant.stripe_subscription_id,
+        )
 
 
 def reconcile_team_pays_seats(tenant: Tenant, db: Session) -> None:

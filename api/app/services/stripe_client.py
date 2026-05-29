@@ -175,6 +175,52 @@ def create_member_subscription(
     return stripe.Subscription.create(**kwargs)
 
 
+def update_admin_seats(
+    *,
+    subscription_id: str,
+    new_quantity: int,
+) -> dict[str, Any]:
+    """Set the `price_admin` SubscriptionItem quantity on a tenant's
+    subscription. Mirrors `update_member_seats` but locks onto the
+    admin item by `price.id == settings.stripe_price_admin`.
+
+    Used when an admin role flips on or off (promotion / demotion via
+    /admin/team, admin-role invitations, etc.). Every tenant has at
+    least one admin (the backend guards the last-admin demotion), so
+    we never expect new_quantity == 0 here — but we handle the
+    "delete the item" branch defensively, same shape as the member
+    helper, in case a future tenant model legitimately allows an
+    admin-less tenant."""
+    stripe = _with_stripe()
+    sub = stripe.Subscription.retrieve(subscription_id)
+    admin_item_id: str | None = None
+    for item in sub["items"]["data"]:
+        if item["price"]["id"] == settings.stripe_price_admin:
+            admin_item_id = item["id"]
+            break
+    if admin_item_id is None and new_quantity > 0:
+        # No existing admin item — add it. Shouldn't happen on any
+        # tenant created via signup (create_admin_subscription
+        # always includes admin × 1) but we handle it for robustness
+        # against hand-curated subs or future tenant kinds.
+        return stripe.SubscriptionItem.create(
+            subscription=subscription_id,
+            price=settings.stripe_price_admin,
+            quantity=new_quantity,
+            proration_behavior="create_prorations",
+        )
+    if admin_item_id and new_quantity == 0:
+        return stripe.SubscriptionItem.delete(
+            admin_item_id, proration_behavior="create_prorations"
+        )
+    assert admin_item_id is not None
+    return stripe.SubscriptionItem.modify(
+        admin_item_id,
+        quantity=new_quantity,
+        proration_behavior="create_prorations",
+    )
+
+
 def update_member_seats(
     *,
     subscription_id: str,
