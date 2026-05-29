@@ -49,6 +49,16 @@ services:
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
       VAPID_SUBJECT: ${VAPID_SUBJECT}
+      # Stripe (migration 0080). Filled in /srv/albus/.env once the
+      # Stripe Dashboard side is configured. Empty values are fine
+      # — stripe_client.py short-circuits with a RuntimeError on
+      # call, which never fires for the grandfathered alpha tenant
+      # (stripe_subscription_id IS NULL → reconcile paths exit
+      # early). New paying signups need these set.
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      STRIPE_PRICE_ADMIN: ${STRIPE_PRICE_ADMIN}
+      STRIPE_PRICE_MEMBER: ${STRIPE_PRICE_MEMBER}
     volumes:
       # Profile photos uploaded by users. Host directory is created by
       # bootstrap; back this up alongside the DB.
