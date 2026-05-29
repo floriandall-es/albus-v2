@@ -80,21 +80,76 @@ class ConversationPeerOut(BaseModel):
     tenant_name: str | None = None
 
 
+class ConversationMemberPreview(BaseModel):
+    """One row of the avatar stack rendered on group conversation
+    list entries. Three of these are surfaced; the rest are
+    summarised as "+N más" in the UI."""
+
+    person_id: int
+    name: str
+    first_name: str | None = None
+    last_name: str | None = None
+    avatar_url: str | None = None
+
+
 class ConversationOut(BaseModel):
     id: int
     hospital_id: int
     kind: str
     created_at: datetime
     last_message_at: datetime
-    # For DMs the peer is the other participant. For (future)
-    # channels this would be a list of members instead.
-    peer: ConversationPeerOut
+    # DMs: the other participant (always present, never null).
+    # Groups: null — the UI reads `title` + the member previews
+    # instead.
+    peer: ConversationPeerOut | None = None
+    # Migration 0088. Group-only fields. `title` is the group name
+    # (NULL for DMs, enforced by the title-per-kind CHECK).
+    # `member_count` is the live size; `member_previews` is the
+    # first 3 members (denormalised at read time for the avatar
+    # stack). `created_by_person_id` drives the "kick someone else"
+    # permission on the frontend; NULL on DMs and on legacy groups
+    # where the creator was later deleted.
+    title: str | None = None
+    member_count: int = 0
+    member_previews: list[ConversationMemberPreview] = Field(
+        default_factory=list
+    )
+    created_by_person_id: int | None = None
     # Computed per request: messages.id > last_read_message_id AND
     # author != self. Capped at 99 to keep the badge readable.
     unread_count: int
     # Latest message preview (body trimmed to 140 chars; null when
     # the conversation has no messages yet).
     last_message_preview: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# Group chat request schemas (migration 0088)
+# ---------------------------------------------------------------------------
+
+
+class GroupChatCreateRequest(BaseModel):
+    """Body for POST /api/group-chats. The caller is implicitly added
+    to the new conversation — we don't require them to include their
+    own person_id in member_person_ids, and we silently drop it if
+    they did."""
+
+    title: str = Field(min_length=1, max_length=120)
+    member_person_ids: list[int] = Field(min_length=1)
+
+
+class GroupChatRenameRequest(BaseModel):
+    """PATCH /api/conversations/{id} for groups. Only renames are
+    supported today; member changes have their own endpoints."""
+
+    title: str = Field(min_length=1, max_length=120)
+
+
+class GroupMembersAddRequest(BaseModel):
+    """Body for POST /api/conversations/{id}/members. Adding a member
+    they're already in is a silent no-op (idempotent)."""
+
+    person_ids: list[int] = Field(min_length=1)
 
 
 class MessageOut(BaseModel):
@@ -662,17 +717,17 @@ def _serialize_conversation(
     ctx: RequestContext, conv: Conversation
 ) -> ConversationOut:
     """Heavy lifter for both create + list. Computes:
-      - peer (the OTHER member of the DM)
+      - peer (DMs only; the OTHER member)
+      - title + member_count + member_previews (groups only;
+        migration 0088)
       - unread_count (messages after last_read, not authored by me)
       - last_message_preview (latest body, trimmed)
 
     Each call hits the DB ~3 more times. For the conversation list
     we accept the N+1 in Phase 2A — directories are small (max ~50
-    DMs per user in practice) and we'll batch this in Phase 2B if
-    the list page feels slow.
+    conversations per user in practice) and we'll batch this in
+    Phase 2B if the list page feels slow.
     """
-    # Find the peer (the other member). DMs always have exactly 2;
-    # if data drift ever puts us at 1 or 3, surface as "(unknown)".
     members = (
         ctx.db.query(ConversationMember)
         .filter(ConversationMember.conversation_id == conv.id)
@@ -681,51 +736,114 @@ def _serialize_conversation(
     me_member = next(
         (m for m in members if m.person_id == ctx.person.id), None
     )
-    peer_member = next(
-        (m for m in members if m.person_id != ctx.person.id), None
-    )
-    if peer_member is None:
-        peer = ConversationPeerOut(person_id=0, name="(desconocido)")
-    else:
-        # Hydrate peer details. Cross-tenant query — use raw SQL
-        # to avoid RLS quirks on memberships.
-        row = ctx.db.execute(
-            text(
-                """
-                SELECT
-                    p.id, p.name, p.first_name, p.last_name, p.avatar_url,
-                    c.name AS category_name,
-                    t.name AS tenant_name
-                FROM persons p
-                LEFT JOIN memberships m
-                  ON m.person_id = p.id
-                 AND m.tenant_id IN (
-                     SELECT id FROM tenants WHERE hospital_id = :hid
-                 )
-                 AND m.disabled_at IS NULL
-                LEFT JOIN categories c ON c.id = m.category_id
-                LEFT JOIN tenants t ON t.id = m.tenant_id
-                WHERE p.id = :pid
-                ORDER BY m.id ASC
-                LIMIT 1
-                """
-            ),
-            {"pid": peer_member.person_id, "hid": conv.hospital_id},
-        ).mappings().first()
-        if row is None:
-            peer = ConversationPeerOut(
-                person_id=peer_member.person_id, name="(desconocido)"
-            )
+
+    peer: ConversationPeerOut | None = None
+    member_previews: list[ConversationMemberPreview] = []
+    member_count = 0
+
+    if conv.kind == "dm":
+        # Find the peer (the OTHER member). DMs always have exactly
+        # 2 by construction; if data drift puts us at 1 or 3,
+        # surface as "(unknown)".
+        peer_member = next(
+            (m for m in members if m.person_id != ctx.person.id), None
+        )
+        if peer_member is None:
+            peer = ConversationPeerOut(person_id=0, name="(desconocido)")
         else:
-            peer = ConversationPeerOut(
-                person_id=row["id"],
-                name=row["name"],
-                first_name=row["first_name"],
-                last_name=row["last_name"],
-                avatar_url=row["avatar_url"],
-                category_name=row["category_name"],
-                tenant_name=row["tenant_name"],
+            # Hydrate peer details. Cross-tenant query — use raw SQL
+            # to avoid RLS quirks on memberships.
+            row = ctx.db.execute(
+                text(
+                    """
+                    SELECT
+                        p.id, p.name, p.first_name, p.last_name, p.avatar_url,
+                        c.name AS category_name,
+                        t.name AS tenant_name
+                    FROM persons p
+                    LEFT JOIN memberships m
+                      ON m.person_id = p.id
+                     AND m.tenant_id IN (
+                         SELECT id FROM tenants WHERE hospital_id = :hid
+                     )
+                     AND m.disabled_at IS NULL
+                    LEFT JOIN categories c ON c.id = m.category_id
+                    LEFT JOIN tenants t ON t.id = m.tenant_id
+                    WHERE p.id = :pid
+                    ORDER BY m.id ASC
+                    LIMIT 1
+                    """
+                ),
+                {
+                    "pid": peer_member.person_id,
+                    "hid": conv.hospital_id,
+                },
+            ).mappings().first()
+            if row is None:
+                peer = ConversationPeerOut(
+                    person_id=peer_member.person_id, name="(desconocido)"
+                )
+            else:
+                peer = ConversationPeerOut(
+                    person_id=row["id"],
+                    name=row["name"],
+                    first_name=row["first_name"],
+                    last_name=row["last_name"],
+                    avatar_url=row["avatar_url"],
+                    category_name=row["category_name"],
+                    tenant_name=row["tenant_name"],
+                )
+    else:
+        # Group. Fetch all members for the avatar-stack preview, in
+        # join order (so the same three faces stay on top across
+        # renders). Three is enough for the avatar stack; the UI
+        # renders "+N más" past that.
+        member_count = len(members)
+        preview_ids = [
+            m.person_id for m in members[:3] if m.person_id != ctx.person.id
+        ]
+        # If the caller is among the first three and we'd otherwise
+        # only return ≤2 previews, pull one more so the stack is
+        # full (3 faces is the visual target).
+        if len(preview_ids) < 3:
+            extra = [
+                m.person_id
+                for m in members
+                if m.person_id != ctx.person.id
+                and m.person_id not in preview_ids
+            ]
+            preview_ids = (preview_ids + extra)[:3]
+        if preview_ids:
+            rows = (
+                ctx.db.execute(
+                    text(
+                        """
+                        SELECT id, name, first_name, last_name, avatar_url
+                        FROM persons
+                        WHERE id = ANY(:ids)
+                        """
+                    ),
+                    {"ids": preview_ids},
+                )
+                .mappings()
+                .all()
             )
+            # Preserve preview_ids order even if the IN-list scan
+            # returned them shuffled.
+            by_id = {r["id"]: r for r in rows}
+            for pid in preview_ids:
+                r = by_id.get(pid)
+                if r is None:
+                    continue
+                member_previews.append(
+                    ConversationMemberPreview(
+                        person_id=r["id"],
+                        name=r["name"],
+                        first_name=r["first_name"],
+                        last_name=r["last_name"],
+                        avatar_url=r["avatar_url"],
+                    )
+                )
 
     # Unread = messages with id > last_read AND author != me.
     # Cap at 99 so the badge stays UI-friendly.
@@ -759,6 +877,274 @@ def _serialize_conversation(
         created_at=conv.created_at,
         last_message_at=conv.last_message_at,
         peer=peer,
+        title=conv.title,
+        member_count=member_count,
+        member_previews=member_previews,
+        created_by_person_id=conv.created_by_person_id,
         unread_count=unread_count,
         last_message_preview=preview,
     )
+
+
+# ---------------------------------------------------------------------------
+# Group chats (migration 0088)
+# ---------------------------------------------------------------------------
+
+
+def _validate_hospital_peers(
+    ctx: RequestContext, hospital_id: int, person_ids: list[int]
+) -> list[int]:
+    """Return the deduped subset of `person_ids` that are valid
+    peers in the caller's hospital. The caller's own id is dropped
+    silently — every group includes them by construction.
+
+    "Valid peer" matches the same definition as the directory:
+    person has at least one ACTIVE membership in a tenant under
+    the same hospital. 422 if any id fails (rather than silently
+    dropping) so the frontend can show a clear "this person isn't
+    available" error before the partial create lands.
+    """
+    deduped = sorted(
+        {pid for pid in person_ids if pid != ctx.person.id}
+    )
+    if not deduped:
+        raise HTTPException(
+            status_code=400,
+            detail="Un grupo necesita al menos un miembro además de ti.",
+        )
+    rows = (
+        ctx.db.execute(
+            text(
+                """
+                SELECT DISTINCT p.id
+                FROM persons p
+                JOIN memberships m ON m.person_id = p.id
+                JOIN tenants t ON t.id = m.tenant_id
+                WHERE p.id = ANY(:ids)
+                  AND t.hospital_id = :hid
+                  AND m.disabled_at IS NULL
+                """
+            ),
+            {"ids": deduped, "hid": hospital_id},
+        )
+        .mappings()
+        .all()
+    )
+    found = {r["id"] for r in rows}
+    missing = [pid for pid in deduped if pid not in found]
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Algunas personas no están disponibles en tu "
+                "hospital."
+            ),
+        )
+    return deduped
+
+
+@router.post(
+    "/group-chats",
+    response_model=ConversationOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_group_chat(
+    payload: GroupChatCreateRequest,
+    ctx: RequestContext = Depends(get_current_context),
+) -> ConversationOut:
+    """Create a new group conversation. Caller is automatically
+    added as a member (and stamped as `created_by_person_id`).
+
+    Validation:
+      - Title length 1..120 (Pydantic).
+      - At least one other member beyond the caller.
+      - Every member is reachable in the caller's hospital
+        (`directory`-grade visibility check).
+
+    No size cap — see migration 0088 docstring for the rationale.
+    """
+    hospital_id = _require_hospital(ctx)
+    peer_ids = _validate_hospital_peers(
+        ctx, hospital_id, payload.member_person_ids
+    )
+    conv = Conversation(
+        hospital_id=hospital_id,
+        kind="group",
+        title=payload.title.strip(),
+        created_by_person_id=ctx.person.id,
+    )
+    ctx.db.add(conv)
+    ctx.db.flush()
+    # Caller first, then peers in id order — the join order drives
+    # which 3 faces show up on the avatar stack.
+    ctx.db.add(
+        ConversationMember(
+            conversation_id=conv.id, person_id=ctx.person.id
+        )
+    )
+    for pid in peer_ids:
+        ctx.db.add(
+            ConversationMember(conversation_id=conv.id, person_id=pid)
+        )
+    ctx.db.flush()
+    return _serialize_conversation(ctx, conv)
+
+
+@router.patch(
+    "/conversations/{conversation_id}",
+    response_model=ConversationOut,
+)
+def rename_group_chat(
+    conversation_id: int,
+    payload: GroupChatRenameRequest,
+    ctx: RequestContext = Depends(get_current_context),
+) -> ConversationOut:
+    """Rename a group. Any current member can do this — renames
+    aren't disruptive enough to warrant a permissions gate. DMs
+    can't be renamed (they don't have a title) and 400 here."""
+    conv = _ensure_membership(ctx, conversation_id)
+    if conv.kind != "group":
+        raise HTTPException(
+            status_code=400, detail="Solo los grupos se pueden renombrar"
+        )
+    conv.title = payload.title.strip()
+    ctx.db.flush()
+    return _serialize_conversation(ctx, conv)
+
+
+@router.post(
+    "/conversations/{conversation_id}/members",
+    response_model=ConversationOut,
+)
+def add_group_members(
+    conversation_id: int,
+    payload: GroupMembersAddRequest,
+    ctx: RequestContext = Depends(get_current_context),
+) -> ConversationOut:
+    """Add one or more members to a group. Any current member can
+    add. Already-members are silently skipped so the frontend can
+    re-submit safely.
+
+    New members' `last_read_message_id` is initialised to the
+    current latest message's id (and `last_read_at` to now), so
+    they don't open the chat to a wall of "247 unread" — they
+    see history when they look, but the badge only counts
+    messages sent AFTER they joined.
+    """
+    conv = _ensure_membership(ctx, conversation_id)
+    if conv.kind != "group":
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se pueden añadir miembros a grupos",
+        )
+    peer_ids = _validate_hospital_peers(
+        ctx, conv.hospital_id, payload.person_ids
+    )
+    existing_ids = {
+        r[0]
+        for r in ctx.db.query(ConversationMember.person_id)
+        .filter(ConversationMember.conversation_id == conv.id)
+        .all()
+    }
+    to_add = [pid for pid in peer_ids if pid not in existing_ids]
+    if to_add:
+        latest_message_id = (
+            ctx.db.query(func.max(Message.id))
+            .filter(Message.conversation_id == conv.id)
+            .scalar()
+        )
+        now = datetime.now(timezone.utc)
+        for pid in to_add:
+            ctx.db.add(
+                ConversationMember(
+                    conversation_id=conv.id,
+                    person_id=pid,
+                    last_read_message_id=latest_message_id,
+                    last_read_at=now,
+                )
+            )
+        ctx.db.flush()
+    return _serialize_conversation(ctx, conv)
+
+
+@router.delete(
+    "/conversations/{conversation_id}/members/{person_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+def remove_group_member(
+    conversation_id: int,
+    person_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> None:
+    """Remove a member from a group. Permission model:
+      - Self-removal: always allowed (anyone can leave).
+      - Remove someone else: only the creator
+        (`conv.created_by_person_id`) can do it. If the creator
+        was deleted (created_by_person_id IS NULL), nobody can
+        remove anyone but themselves — by design, so an abandoned
+        group can't be hijacked.
+
+    Idempotent: removing someone who isn't a member is a 204
+    no-op so the frontend can re-submit safely.
+    """
+    conv = _ensure_membership(ctx, conversation_id)
+    if conv.kind != "group":
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se gestionan miembros en grupos",
+        )
+    is_self = person_id == ctx.person.id
+    if not is_self:
+        if (
+            conv.created_by_person_id is None
+            or conv.created_by_person_id != ctx.person.id
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Solo quien creó el grupo puede expulsar a otros "
+                    "miembros."
+                ),
+            )
+    target = (
+        ctx.db.query(ConversationMember)
+        .filter(
+            ConversationMember.conversation_id == conv.id,
+            ConversationMember.person_id == person_id,
+        )
+        .first()
+    )
+    if target is not None:
+        ctx.db.delete(target)
+        ctx.db.flush()
+
+
+@router.post(
+    "/conversations/{conversation_id}/leave",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
+def leave_group_chat(
+    conversation_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> None:
+    """Sugar for "DELETE .../members/{my_person_id}". Convenient
+    for the frontend's "Salir del grupo" button."""
+    conv = _ensure_membership(ctx, conversation_id)
+    if conv.kind != "group":
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se puede salir de grupos",
+        )
+    mem = (
+        ctx.db.query(ConversationMember)
+        .filter(
+            ConversationMember.conversation_id == conv.id,
+            ConversationMember.person_id == ctx.person.id,
+        )
+        .first()
+    )
+    if mem is not None:
+        ctx.db.delete(mem)
+        ctx.db.flush()

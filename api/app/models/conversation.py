@@ -26,23 +26,49 @@ from app.db.base import Base
 class Conversation(Base):
     __tablename__ = "conversations"
     __table_args__ = (
-        CheckConstraint("kind IN ('dm')", name="ck_conversations_kind"),
+        # Migration 0088 widened to include 'group'.
+        CheckConstraint(
+            "kind IN ('dm', 'group')",
+            name="ck_conversations_kind",
+        ),
+        # Groups must carry a title; DMs must not. Matches the SQL
+        # constraint installed by migration 0088.
+        CheckConstraint(
+            "(kind = 'dm' AND title IS NULL) "
+            "OR (kind = 'group' AND title IS NOT NULL AND length(title) > 0)",
+            name="ck_conversations_title_per_kind",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    # Scope boundary: conversation belongs to one hospital. Both
-    # members must have at least one active membership at this
-    # hospital — enforced at route level.
+    # Scope boundary: conversation belongs to one hospital. Every
+    # member must have at least one active membership at this
+    # hospital — enforced at the route layer.
     hospital_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("hospitals.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    # Today only 'dm'. Channels would add 'channel' here and a
-    # new set of routes that pivot on this discriminator. Phase 2A
-    # ships only DMs.
+    # 'dm' = 1:1; 'group' = N members with a title. The route
+    # serializer branches on this for display (peer vs title +
+    # member previews).
     kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    # Group title. NULL for DMs (enforced by ck_conversations_title_per_kind).
+    # Migration 0088.
+    title: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Person who created the group. Used by the route layer to gate
+    # "only the creator can remove someone else" — every other
+    # operation is flat. NULL on DMs (no creator concept) and on
+    # legacy groups whose creator was later deleted (ON DELETE SET
+    # NULL). When NULL, "kick someone else" is permanently disabled
+    # for that group; members can still self-leave or add others.
+    # Migration 0088.
+    created_by_person_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("persons.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
