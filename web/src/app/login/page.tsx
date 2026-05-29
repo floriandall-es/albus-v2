@@ -1,9 +1,9 @@
 "use client";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { api, isTenantSelectionResponse } from "@/lib/api";
+import { api, getToken, isTenantSelectionResponse } from "@/lib/api";
 import { finalizeLogin, PRE_AUTH_KEY } from "./_utils";
 
 export default function LoginPage() {
@@ -13,6 +13,49 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // True while we're checking whether an existing token is still
+  // valid (PWA launch path). Renders a blank placeholder instead of
+  // the login form so users don't see a flash of the form before
+  // being routed to /admin or /me.
+  const [bootstrapping, setBootstrapping] = useState(true);
+
+  // PWA launch path: if there's already a token in localStorage,
+  // resolve who the user is and route them straight to their app
+  // home. The manifest's start_url is /login (migration to fix the
+  // post-landing-page install regression), so without this every
+  // PWA launch would show the login form to a logged-in user.
+  // On 401 / network error we just clear the token and show the
+  // form — same flow as if they'd been logged out.
+  useEffect(() => {
+    const token = getToken();
+    if (!token) {
+      setBootstrapping(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const me = await api.me();
+        if (cancelled) return;
+        const isAdmin = me.memberships.some((m) => m.roles.includes("admin"));
+        const onboarded = me.current_tenant.onboarding_completed_at != null;
+        if (isAdmin && !onboarded) {
+          router.replace("/onboarding");
+        } else if (isAdmin) {
+          router.replace("/admin");
+        } else {
+          router.replace("/me");
+        }
+      } catch {
+        if (cancelled) return;
+        // Token rejected or network blew up — drop into the form.
+        setBootstrapping(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -39,6 +82,15 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (bootstrapping) {
+    // Blank screen during the token-check redirect. Matches the
+    // login screen's background so the launch transition reads as
+    // "the app is loading" instead of a content flash.
+    return (
+      <main className="min-h-screen bg-gradient-to-b from-brand-50/50 to-gray-50" />
+    );
   }
 
   return (

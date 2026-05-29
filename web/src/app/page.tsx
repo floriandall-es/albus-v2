@@ -656,6 +656,29 @@ export default function LandingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  // PWA-launch escape hatch. The manifest used to ship start_url="/"
+  // (back when "/" was a login redirect). Existing installs still
+  // carry that cached manifest, so when those users tap their home-
+  // screen icon they land here on the marketing page instead of the
+  // app — that's the regression we're patching. New installs get
+  // start_url="/login" via the updated manifest; for old installs
+  // we detect the standalone display mode at runtime and bounce
+  // them to /login (which itself routes a logged-in user straight
+  // to /admin or /me).
+  //
+  // Detection covers both engines:
+  //   - matchMedia('(display-mode: standalone)') — Chrome / Android
+  //   - navigator.standalone — iOS Safari home-screen launch
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const isStandalone =
+      window.matchMedia?.("(display-mode: standalone)").matches
+      || (window.navigator as { standalone?: boolean }).standalone === true;
+    if (isStandalone) {
+      router.replace("/login");
+    }
+  }, [router]);
+
   // Language resolution: explicit ?lang= wins; else localStorage;
   // else default to Spanish.
   const urlLang = searchParams.get("lang");

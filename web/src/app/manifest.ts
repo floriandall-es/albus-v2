@@ -17,10 +17,21 @@ import { ACCENT_COOKIE, accentHex, resolveAccent } from "@/lib/accent";
  *
  * Notes:
  *
- *   - `start_url` is "/" so the installed app boots straight into
- *     login (or whatever the auth redirect resolves to). The
- *     home redirect inside the app handles routing once a token
- *     is present.
+ *   - `start_url` is "/login" so the installed app skips the
+ *     marketing landing page on launch. /login auto-routes
+ *     already-logged-in users to their app home (admin / me /
+ *     onboarding), so for an authenticated user the launch is
+ *     a silent flash; for a logged-out user they see the form.
+ *     Before we shipped the marketing page at "/" the start_url
+ *     was "/" and that fed straight into login — now it would
+ *     dump every PWA launch onto the landing page. The
+ *     redirect inside app/page.tsx covers existing installs
+ *     whose browser still has the old manifest cached.
+ *
+ *   - `scope` is "/" (not the default of start_url's parent)
+ *     so navigation from /login into /me, /admin, etc. stays
+ *     inside the PWA window. Without this, some user agents
+ *     pop out to a regular browser tab on cross-scope nav.
  *
  *   - `display: "standalone"` opens in its own window without
  *     browser chrome on supported platforms. iOS respects this
@@ -42,7 +53,8 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: "Trivu",
     description:
       "Planificación de turnos y comunicación para servicios hospitalarios.",
-    start_url: "/",
+    start_url: "/login",
+    scope: "/",
     display: "standalone",
     background_color: "#ffffff",
     theme_color: accentHex(accent, 700),
