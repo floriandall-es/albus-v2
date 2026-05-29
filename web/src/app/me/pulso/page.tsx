@@ -250,6 +250,7 @@ function QuestionCard({
           {question.scale_type === "scale" ? (
             <ScaleButtons
               max={question.scale_max}
+              labels={question.labels}
               value={value}
               onChange={onChange}
             />
@@ -268,33 +269,53 @@ function QuestionCard({
 
 function ScaleButtons({
   max,
+  labels,
   value,
   onChange,
 }: {
   max: number;
+  /** Per-point semantic labels. Length should match `max`; if
+   * empty (legacy/older catalogue), buttons render number-only. */
+  labels: string[];
   value: number | undefined;
   onChange: (score: number) => void;
 }) {
   // 1..N as evenly spaced full-width pills. On narrow screens
-  // they wrap; on a laptop they sit in one row.
+  // they wrap; on a laptop they sit in one row. Two-line button:
+  // big number on top so it's the data the eye locks onto, small
+  // label below to disambiguate ("3 · Regular" instead of bare
+  // "3").
   const scale = Array.from({ length: max }, (_, i) => i + 1);
   return (
     <div className="flex flex-wrap gap-1.5">
       {scale.map((n) => {
         const selected = value === n;
+        const label = labels[n - 1] ?? "";
         return (
           <button
             key={n}
             type="button"
             onClick={() => onChange(n)}
             className={
-              "flex-1 min-w-[44px] rounded-md border px-3 py-2 text-sm font-medium transition-colors "
+              "flex flex-1 min-w-[56px] flex-col items-center gap-0.5 rounded-md border px-2 py-2 transition-colors "
               + (selected
                 ? "border-brand-500 bg-brand-50 text-brand-700"
                 : "border-gray-300 text-gray-700 hover:bg-gray-50")
             }
           >
-            {n}
+            <span className="text-base font-semibold leading-none">
+              {n}
+            </span>
+            {label && (
+              <span
+                className={
+                  "text-[10px] leading-tight "
+                  + (selected ? "text-brand-700" : "text-gray-500")
+                }
+              >
+                {label}
+              </span>
+            )}
           </button>
         );
       })}
@@ -314,7 +335,8 @@ function ChoiceButtons({
   // 4-point labelled choices. Scores are 1-indexed to match the
   // server (so "Ligera" = 1, "Insostenible" = 4 for the workload
   // question — higher = worse, consistent with admin chart
-  // direction).
+  // direction). Number prefix on each row so the underlying
+  // value is visible while the label disambiguates.
   return (
     <div className="flex flex-col gap-1.5">
       {labels.map((label, idx) => {
@@ -326,13 +348,23 @@ function ChoiceButtons({
             type="button"
             onClick={() => onChange(score)}
             className={
-              "w-full rounded-md border px-3 py-2 text-left text-sm font-medium transition-colors "
+              "flex w-full items-center gap-3 rounded-md border px-3 py-2 text-left text-sm font-medium transition-colors "
               + (selected
                 ? "border-brand-500 bg-brand-50 text-brand-700"
                 : "border-gray-300 text-gray-700 hover:bg-gray-50")
             }
           >
-            {label}
+            <span
+              className={
+                "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold "
+                + (selected
+                  ? "bg-brand-100 text-brand-700"
+                  : "bg-gray-100 text-gray-600")
+              }
+            >
+              {score}
+            </span>
+            <span>{label}</span>
           </button>
         );
       })}

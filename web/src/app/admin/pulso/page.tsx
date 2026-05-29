@@ -433,12 +433,19 @@ function QuestionRow({
   );
 }
 
-/** Plain-text description of how the question is answered. */
+/** Plain-text description of how the question is answered.
+ * Always shows the per-point labels alongside the numbers so the
+ * admin sees what their team is actually picking from. */
 function scaleDescription(q: PulseCatalogueQuestion): string {
-  if (q.scale_type === "scale") {
+  const labels = q.labels ?? [];
+  if (labels.length === 0) {
+    // Defensive — old catalogue rows without labels render as
+    // bare numbers. Should not happen in v1 since every question
+    // ships with labels now.
     return `Escala 1–${q.scale_max}`;
   }
-  return `Opciones: ${q.labels.join(" · ")}`;
+  // "1 Injusto · 2 Poco · 3 Regular · 4 Bien · 5 Muy bien"
+  return labels.map((l, i) => `${i + 1} ${l}`).join(" · ");
 }
 
 function StatsSection() {

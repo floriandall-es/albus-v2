@@ -82,6 +82,15 @@ CORE_QUESTIONS: tuple[PulseQuestion, ...] = (
         prompt_es="¿Sientes que el reparto de turnos esta semana ha sido justo contigo?",
         scale_type="scale",
         scale_max=5,
+        # Every scale question now ships with per-point labels so
+        # the survey button can render "3 · Regular" instead of a
+        # bare "3". The numbers are the data we chart; the labels
+        # are the UX. Labels are part of the time-series contract
+        # (along with scale_max) and are NOT tenant-customisable —
+        # only prompts are. Order is monotonic 1→N from "worst"
+        # to "best" so chart direction is consistent across
+        # questions.
+        labels_es=("Injusto", "Poco", "Regular", "Bien", "Muy bien"),
         default_enabled=True,
     ),
     PulseQuestion(
@@ -97,6 +106,7 @@ CORE_QUESTIONS: tuple[PulseQuestion, ...] = (
         prompt_es="¿Cómo de descansado/a te sientes ahora mismo?",
         scale_type="scale",
         scale_max=5,
+        labels_es=("Agotado", "Cansado", "Normal", "Bien", "Pleno"),
         default_enabled=True,
     ),
     PulseQuestion(
@@ -125,6 +135,7 @@ ROTATING_QUESTIONS: tuple[PulseQuestion, ...] = (
         prompt_es="¿Has sentido apoyo del equipo cuando lo necesitabas?",
         scale_type="scale",
         scale_max=5,
+        labels_es=("Ninguno", "Poco", "Algo", "Mucho", "Total"),
         default_enabled=False,
     ),
     PulseQuestion(
@@ -132,6 +143,11 @@ ROTATING_QUESTIONS: tuple[PulseQuestion, ...] = (
         prompt_es="¿Trivu te ha facilitado o complicado la semana?",
         scale_type="choice",
         scale_max=4,
+        # Order stays "facilitated → complicated" (higher = more
+        # friction) to match the directional convention workload
+        # and predictability already use for choice questions —
+        # the chart-direction hint reads consistently across all
+        # "higher = worse" metrics.
         labels_es=(
             "Facilitado mucho",
             "Algo facilitado",
@@ -145,6 +161,7 @@ ROTATING_QUESTIONS: tuple[PulseQuestion, ...] = (
         prompt_es="En general, ¿cómo estás esta semana?",
         scale_type="scale",
         scale_max=5,
+        labels_es=("Muy mal", "Mal", "Normal", "Bien", "Genial"),
         default_enabled=False,
     ),
     PulseQuestion(
@@ -152,6 +169,7 @@ ROTATING_QUESTIONS: tuple[PulseQuestion, ...] = (
         prompt_es="¿Recomendarías a un colega unirse a este equipo?",
         scale_type="scale",
         scale_max=5,
+        labels_es=("No", "Quizá no", "Tal vez", "Sí", "Seguro"),
         default_enabled=False,
     ),
 )
