@@ -124,6 +124,16 @@ export type PlanningGridProps = {
    * next to working days, and by Servicio scope so all bands share
    * the same windows regardless of which team has assignments. */
   forceDates?: string[];
+  /** True on member-facing views (/me/turnos), false on admin views
+   * (/admin/schedule…). Decides framing — uncovered cells read as
+   * "—" instead of the rose "Sin cubrir" pill, dismissed cells
+   * render as empty rather than as the strikethrough "No aplica"
+   * pill. Falls back to `sectionHighlight !== null` per-section
+   * when not set, so legacy callers that don't pass it (single
+   * /me section with a highlight) still behave correctly. The
+   * explicit prop is what fixes the case where /me/turnos shows
+   * sibling-team sections (no highlight, but still member view). */
+  memberView?: boolean;
 };
 
 export function PlanningGrid({
@@ -139,6 +149,7 @@ export function PlanningGrid({
   onEmptyCellClick,
   flaggedAssignmentIds,
   forceDates,
+  memberView,
 }: PlanningGridProps) {
   // Normalize: explicit sections, or wrap the legacy props as one
   // anonymous section. The legacy path keeps every existing call
@@ -207,6 +218,7 @@ export function PlanningGrid({
       holidayDates={holidayDates}
       flaggedAssignmentIds={flaggedAssignmentIds}
       onEmptyCellClick={onEmptyCellClick}
+      memberView={memberView}
     />
   );
 }
@@ -222,6 +234,7 @@ function PlanningGridInner({
   holidayDates,
   flaggedAssignmentIds,
   onEmptyCellClick,
+  memberView,
 }: {
   resolvedSections: PlanningGridSection[];
   sectionGrids: ReturnType<typeof buildGrid>[];
@@ -229,6 +242,7 @@ function PlanningGridInner({
   holidayDates: Set<string>;
   flaggedAssignmentIds?: Set<number>;
   onEmptyCellClick?: PlanningGridProps["onEmptyCellClick"];
+  memberView?: boolean;
 }) {
   // Today, computed once on mount. Used by both the cell-coloring
   // logic and the auto-scroll effect below. A page kept open past
@@ -426,20 +440,28 @@ function PlanningGridInner({
                       const isDismissed =
                         cell.length > 0
                         && cell.every((a) => a.dismissed_at !== null);
-                      // Member views (sectionHighlight set on /me
-                      // /turnos) collapse dismissed → "this day
-                      // doesn't apply" so the grid stays uncluttered.
-                      // Members don't need to see the admin's override
-                      // marker; they just need to know "no shift for
-                      // me today" — same outcome as a weekday the
-                      // slot doesn't run. Admin views keep the
-                      // explicit strikethrough "No aplica" pill so
-                      // the override is visible and clickable to
+                      // Member views (/me/turnos) collapse dismissed
+                      // → "this day doesn't apply" so the grid
+                      // stays uncluttered. Members don't need to
+                      // see the admin's override marker; they just
+                      // need to know "no shift for me today" —
+                      // same outcome as a weekday the slot doesn't
+                      // run. Admin views keep the explicit
+                      // strikethrough "No aplica" pill so the
+                      // override is visible and clickable to
                       // revert.
-                      const memberView = sectionHighlight !== null;
+                      //
+                      // Discriminator: the explicit top-level
+                      // `memberView` prop when callers pass it
+                      // (which fixes /me/turnos sibling sections
+                      // that have no highlight), falling back to
+                      // sectionHighlight for legacy single-section
+                      // callers that never pass the prop.
+                      const isMemberView =
+                        memberView ?? sectionHighlight !== null;
                       const isDismissedAdminPill =
-                        isDismissed && !memberView;
-                      const isDismissedAsEmpty = isDismissed && memberView;
+                        isDismissed && !isMemberView;
+                      const isDismissedAsEmpty = isDismissed && isMemberView;
                       const empty =
                         !isDismissed
                         && (cell.length === 0
@@ -567,14 +589,16 @@ function PlanningGridInner({
                                     <SwapIcon className="h-3 w-3 text-sky-600 shrink-0" />
                                   )}
                                   {a.person_id === null ? (
-                                    // Member views (sectionHighlight set on
-                                    // /me/turnos) render a subtle dash —
-                                    // "Sin cubrir" in rose is admin language
-                                    // and looks alarming to a member who
-                                    // can't act on it anyway. Admin views
-                                    // keep the explicit rose label since
-                                    // the admin DOES need to notice + fix.
-                                    sectionHighlight !== null ? (
+                                    // Member views (/me/turnos, including
+                                    // sibling-team sections on the
+                                    // Servicio scope) render a subtle
+                                    // dash — "Sin cubrir" in rose is
+                                    // admin language and looks alarming
+                                    // to a member who can't act on it
+                                    // anyway. Admin views keep the
+                                    // explicit rose label since the
+                                    // admin DOES need to notice + fix.
+                                    isMemberView ? (
                                       <span className="text-gray-400">—</span>
                                     ) : (
                                       <span className="text-rose-700 font-medium">

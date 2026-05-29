@@ -692,6 +692,15 @@ export default function TurnosPage() {
                   assignments={visibleAssignments}
                   holidayDates={holidayDates}
                   highlightPersonId={myPersonId}
+                  // /me/turnos is a member view top-to-bottom — uncovered
+                  // cells should read as "—" not "Sin cubrir", and
+                  // dismissed cells should collapse to empty. Passing
+                  // this explicitly (instead of relying on
+                  // sectionHighlight) means the same framing applies to
+                  // single-section views here AND to the multi-section
+                  // Servicio grid below where sibling sections have no
+                  // highlight.
+                  memberView
                   onCellClick={(a) => setSwapTarget(a)}
                   cellIsClickable={(a) =>
                     a.person_id === myPersonId
@@ -965,6 +974,12 @@ function ServicioSectionedGrid({
         sections={sections}
         holidayDates={holidayDates}
         forceDates={forceDates}
+        // /me/turnos Servicio scope is member-facing across both
+        // the caller's own band and the sibling-team bands. Without
+        // this prop the sibling bands would render uncovered cells
+        // as the rose "Sin cubrir" pill (because they have no
+        // highlightPersonId, falling back to the admin-view branch).
+        memberView
       />
     </>
   );
