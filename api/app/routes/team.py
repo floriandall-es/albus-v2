@@ -200,13 +200,31 @@ def update_team_member(
     # m.roles was just mutated by the setattr loop above, so the
     # "now" check reflects the post-write value.
     is_admin_now = "admin" in (m.roles or [])
+    role_admin_changed = was_admin != is_admin_now
     admin_count_might_have_moved = (
-        was_admin != is_admin_now
+        role_admin_changed
         or (disabled_state_changed and is_admin_now)
     )
     if admin_count_might_have_moved:
         from app.services.billing import reconcile_admin_seats
         reconcile_admin_seats(ctx.tenant, ctx.db)
+    # Under members_pay, role changes also drive a pause/resume of
+    # the affected person's personal price_member sub, so they
+    # aren't double-billed once the tenant starts paying for them
+    # as an admin. No-op under team_pays + no-op when the person
+    # doesn't have a Stripe sub yet (pendiente, never_subscribed).
+    if role_admin_changed:
+        from app.services.billing import (
+            reconcile_personal_sub_on_role_change,
+        )
+        affected_person = ctx.db.get(Person, m.person_id)
+        if affected_person is not None:
+            reconcile_personal_sub_on_role_change(
+                ctx.tenant,
+                affected_person,
+                was_admin=was_admin,
+                is_admin=is_admin_now,
+            )
     person = ctx.db.get(Person, m.person_id)
     cat = ctx.db.get(Category, m.category_id) if m.category_id else None
     assert person is not None

@@ -161,6 +161,72 @@ def can_generate_for(
     return True, None
 
 
+def reconcile_personal_sub_on_role_change(
+    tenant: Tenant,
+    person: Person,
+    *,
+    was_admin: bool,
+    is_admin: bool,
+) -> None:
+    """Under `members_pay`, pause / resume the affected person's
+    personal `price_member` sub when the admin role flips.
+
+    The economic logic: under members_pay, the tenant now pays
+    `price_admin × N` for each admin (see reconcile_admin_seats).
+    Without this helper, a promoted member would be double-billed —
+    once via the tenant's admin seat and once via their own member
+    sub. We pause the personal sub on promotion to leave only the
+    tenant charging, and resume on demotion so they go back to
+    paying for themselves.
+
+    Branches:
+      - promotion (was_admin=False → is_admin=True): pause
+      - demotion  (was_admin=True  → is_admin=False): resume
+      - no role change: no-op
+
+    Skips entirely under team_pays (no personal subs exist there)
+    and when the person doesn't have a stripe_subscription_id (a
+    pendiente or members_pay member who never set up payment via
+    the Customer Portal). The "promoted pendiente sets up payment
+    later" edge case is acknowledged but not handled here — when
+    they create their sub via Portal it'll be unpaused, and the
+    next role-change PUT will reconcile. Worst case: one billing
+    cycle of double-charge until someone notices.
+    """
+    if tenant.billing_model != "members_pay":
+        return
+    if not settings.stripe_secret_key:
+        return
+    if not person.stripe_subscription_id:
+        return
+    if was_admin == is_admin:
+        return
+    try:
+        if is_admin:
+            stripe_client.pause_subscription(person.stripe_subscription_id)
+            logger.info(
+                "Paused personal sub on admin promotion person=%s sub=%s tenant=%s",
+                person.id,
+                person.stripe_subscription_id,
+                tenant.id,
+            )
+        else:
+            stripe_client.resume_subscription(person.stripe_subscription_id)
+            logger.info(
+                "Resumed personal sub on admin demotion person=%s sub=%s tenant=%s",
+                person.id,
+                person.stripe_subscription_id,
+                tenant.id,
+            )
+    except Exception:
+        logger.exception(
+            "Stripe personal-sub pause/resume failed person=%s sub=%s tenant=%s",
+            person.id,
+            person.stripe_subscription_id,
+            tenant.id,
+        )
+
+
 def reconcile_admin_seats(tenant: Tenant, db: Session) -> None:
     """Push the current admin count to Stripe as the `price_admin`
     quantity on the tenant's subscription.
