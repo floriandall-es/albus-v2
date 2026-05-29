@@ -106,18 +106,6 @@ export function TenantSettingsCard() {
                 </p>
               )}
             </div>
-            <ReadOnlyField
-              label="Identificador (slug)"
-              value={settings.data.slug}
-              hint="Se queda fijo — los enlaces compartidos y la URL de tu equipo siguen funcionando aunque cambies el nombre."
-            />
-            {settings.data.hospital_name && (
-              <ReadOnlyField
-                label="Hospital"
-                value={settings.data.hospital_name}
-                hint="Se configura durante el alta del equipo."
-              />
-            )}
             {dirty && (
               <div className="flex items-center justify-end gap-2 pt-1">
                 <button
@@ -146,24 +134,3 @@ export function TenantSettingsCard() {
   );
 }
 
-function ReadOnlyField({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint: string;
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-medium text-gray-700">
-        {label}
-      </label>
-      <div className="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-        {value}
-      </div>
-      <p className="mt-1 text-[11px] text-gray-500">{hint}</p>
-    </div>
-  );
-}
