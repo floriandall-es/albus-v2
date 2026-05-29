@@ -118,6 +118,57 @@ def update_team_member(
         cat = ctx.db.get(Category, data["category_id"])
         if not cat or cat.tenant_id != ctx.tenant.id:
             raise HTTPException(status_code=422, detail="Unknown category_id")
+    # Role updates — only "admin" is recognised today. Three guards:
+    #   1. Reject unknown role strings so a typo doesn't silently
+    #      leak into the membership row and confuse later code.
+    #   2. Prevent an admin from removing 'admin' from their OWN
+    #      membership — they'd lock themselves out of /admin in one
+    #      click. They can ask another admin to demote them.
+    #   3. Prevent removing 'admin' from the LAST admin in the
+    #      tenant. Without at least one admin nobody can manage the
+    #      team. The caller would also be locking themselves out
+    #      since they ARE that last admin in most realistic flows,
+    #      but we guard structurally rather than relying on (2).
+    if "roles" in data and data["roles"] is not None:
+        next_roles = list(data["roles"])
+        unknown = [r for r in next_roles if r not in {"admin"}]
+        if unknown:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Rol desconocido: {', '.join(sorted(set(unknown)))}",
+            )
+        is_currently_admin = "admin" in (m.roles or [])
+        will_be_admin = "admin" in next_roles
+        is_demotion = is_currently_admin and not will_be_admin
+        if is_demotion and m.id == ctx.membership.id:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "No puedes quitarte el rol de admin a ti mismo. "
+                    "Pide a otro admin que lo haga."
+                ),
+            )
+        if is_demotion:
+            # Count remaining admins in the tenant — including
+            # disabled ones, because we don't want a tenant whose
+            # only admin is paused.
+            other_admin_count = (
+                ctx.db.query(Membership)
+                .filter(
+                    Membership.tenant_id == ctx.tenant.id,
+                    Membership.id != m.id,
+                    Membership.roles.op("@>")(["admin"]),
+                )
+                .count()
+            )
+            if other_admin_count == 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "No puedes quitar el rol de admin al único admin "
+                        "del equipo. Asigna primero el rol a otro miembro."
+                    ),
+                )
     for k, v in data.items():
         setattr(m, k, v)
     disabled_state_changed = False

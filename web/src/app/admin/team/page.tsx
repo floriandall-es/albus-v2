@@ -442,9 +442,26 @@ function TeamEditDialog({
   onClose: () => void;
 }) {
   const qc = useQueryClient();
+  // Pulled from cache when /admin pages have already fetched it
+  // (essentially always). The only thing the dialog needs is the
+  // caller's own membership id, to disable the admin-role toggle
+  // on their OWN row — self-demotion would lock them out of
+  // /admin in one click, and the backend rejects it anyway.
+  const me = useQuery({ queryKey: ["me"], queryFn: api.me });
+  const myMembershipId = me.data?.memberships.find(
+    (mm) => mm.tenant_id === me.data?.current_tenant.id,
+  )?.id ?? null;
+  const isSelf = myMembershipId !== null && member.id === myMembershipId;
+
   const [categoryId, setCategoryId] = useState<number | "">(member.category_id ?? "");
   const [ftePct, setFtePct] = useState<string>(member.fte_pct.toString());
   const [active, setActive] = useState<boolean>(!member.disabled_at);
+  // Admin role toggle. "admin" is the only role currently in use —
+  // see the backend validation in routes/team.py for the
+  // self-demote and last-admin guards.
+  const [isAdmin, setIsAdmin] = useState<boolean>(
+    member.roles.includes("admin"),
+  );
   // Admin email override — only honoured server-side for pendientes
   // (Person.hashed_password IS NULL). For activos we still render
   // the value but locked, with a hint pointing the member at their
@@ -523,6 +540,12 @@ function TeamEditDialog({
       const trimmedEmail = email.trim().toLowerCase();
       const emailChanged =
         member.is_pending && trimmedEmail !== member.person_email.toLowerCase();
+      // Roles diff: only send when the toggle actually moved. Saves
+      // a no-op write on every Categoría/FTE edit AND avoids
+      // re-triggering the backend's last-admin / self-demote guards
+      // on saves that aren't touching roles at all.
+      const wasAdmin = member.roles.includes("admin");
+      const rolesChanged = isAdmin !== wasAdmin;
       return api.updateTeamMember(member.id, {
         category_id: categoryId === "" ? null : Number(categoryId),
         fte_pct: Number(ftePct),
@@ -531,6 +554,7 @@ function TeamEditDialog({
           ? { allowed_slot_ids: allowedSlotIdsPayload }
           : {}),
         ...(emailChanged ? { email: trimmedEmail } : {}),
+        ...(rolesChanged ? { roles: isAdmin ? ["admin"] : [] } : {}),
       });
     },
     onSuccess: () => {
@@ -678,6 +702,42 @@ function TeamEditDialog({
               {!active && disabledSince && (
                 <span className="block text-xs text-gray-600 mt-1">
                   Desactivado desde {disabledSince}.
+                </span>
+              )}
+            </span>
+          </label>
+        </div>
+
+        {/* Admin role toggle. Disabled on the current admin's OWN
+            row to make the self-demote rule obvious — the backend
+            also rejects it with a clear message if somehow saved.
+            Pendientes are allowed to be flipped on: they become
+            admin the moment they activate the invitation. */}
+        <div className="rounded-md border border-gray-200 bg-gray-50/60 p-3">
+          <label
+            className={
+              "flex items-start gap-2 text-sm "
+              + (isSelf ? "cursor-not-allowed" : "cursor-pointer")
+            }
+          >
+            <input
+              type="checkbox"
+              checked={isAdmin}
+              onChange={(e) => setIsAdmin(e.target.checked)}
+              disabled={isSelf}
+              className="mt-0.5"
+            />
+            <span>
+              <span className="font-medium">Administrador del equipo</span>
+              <span className="block text-xs text-gray-500 mt-0.5">
+                Los administradores ven /admin y gestionan equipo,
+                actividades, reglas, bloqueos y cambios. Puedes tener
+                más de uno.
+              </span>
+              {isSelf && (
+                <span className="block text-xs text-amber-700 mt-1">
+                  No puedes quitarte el rol a ti mismo. Pide a otro
+                  admin si quieres dejar el rol.
                 </span>
               )}
             </span>
