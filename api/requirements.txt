@@ -43,6 +43,12 @@ APScheduler==3.10.4
 # Portal sessions, and verifying webhook signatures.
 stripe==10.10.0
 
+# Web Push (migration 0089). Signs the JWT VAPID auth header,
+# encrypts the JSON payload with the per-subscription public key
+# (curve25519), POSTs to the push endpoint. cryptography ships
+# transitively for the ECDSA signing.
+pywebpush==1.14.1
+
 pytest==8.2.0
 pytest-asyncio==0.23.6
 asgi-lifespan==2.1.0

@@ -105,6 +105,24 @@ class Settings(BaseSettings):
     stripe_price_admin: str = ""
     stripe_price_member: str = ""
 
+    # ---------------------------------------------------------------
+    # Web Push (migration 0089). VAPID keypair signs every push
+    # request; the public key is also handed to the browser via
+    # GET /api/push/vapid-public-key so the SW can subscribe.
+    # Subject is a mailto: or https:// URI the push services (FCM,
+    # Mozilla autopush, Apple) email/call if Trivu's traffic gets
+    # flagged for abuse. Generate via
+    # `npx web-push generate-vapid-keys`.
+    #
+    # All three default to empty so the API still boots without them
+    # — push code paths short-circuit silently when missing (see
+    # app/services/push.py::is_configured). In prod they MUST be set
+    # via /srv/albus/.env.
+    # ---------------------------------------------------------------
+    vapid_public_key: str = ""
+    vapid_private_key: str = ""
+    vapid_subject: str = ""
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

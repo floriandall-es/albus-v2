@@ -57,6 +57,7 @@ from app.models.periodo_especial import (
 from app.models.stripe_event import StripeEvent
 from app.models.billing_email_sent import BillingEmailSent
 from app.models.admin_promotion_request import AdminPromotionRequest
+from app.models.push import PushSubscription
 
 __all__ = [
     "Hospital",
@@ -112,4 +113,5 @@ __all__ = [
     "StripeEvent",
     "BillingEmailSent",
     "AdminPromotionRequest",
+    "PushSubscription",
 ]

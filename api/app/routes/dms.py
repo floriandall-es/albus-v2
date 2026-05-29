@@ -488,20 +488,29 @@ def send_message(
 def _maybe_notify_unread(
     ctx: RequestContext, conv: Conversation, msg: Message
 ) -> None:
-    """Email each non-author member when the cooldown + active-
-    reading rules say it's appropriate.
+    """Notify each non-author member when the rules say so.
 
-    Rules (Phase 2B):
-      1. Skip if member.last_read_at is within ACTIVE_READ_WINDOW.
-         Means they're actively watching; native UI update is
-         enough.
-      2. Skip if member.last_email_sent_at is within
-         EMAIL_COOLDOWN. Means we already nudged them for this
-         conversation recently — don't pile on.
-      3. Otherwise: send and stamp last_email_sent_at.
+    Two channels, picked per recipient:
 
-    Same patterns we already use elsewhere (auth.py uses lazy
-    email imports; this matches).
+      1. Web Push (migration 0089). If the recipient has at least
+         one active push subscription, fire push to all of them
+         and skip email. Push has its own OS-level frequency
+         control + the `tag` field collapses repeat notifications
+         for the same conversation.
+
+      2. Email fallback. Only used when push isn't available — no
+         subscriptions on file, or all attempts failed. Still
+         gated by:
+           a. ACTIVE_READ_WINDOW: skip if they were just reading.
+           b. EMAIL_COOLDOWN: at most one email per recipient per
+              conversation per cooldown window (currently 2 days).
+
+    The two channels never double-notify the same person for the
+    same event — the rule is "push when subscribed, email when
+    not."
+
+    Lazy imports per channel keep boot fast on tenants that don't
+    use one of them.
     """
     now = datetime.now(timezone.utc)
     other_members = (
@@ -517,18 +526,51 @@ def _maybe_notify_unread(
     sender_name = ctx.person.name
     sender_last = ctx.person.last_name or sender_name
     body_preview = msg.body[:200]
+    deep_link = (
+        f"{settings.public_base_url.rstrip('/')}/me/mensajes?c={conv.id}"
+    )
+    # Title varies for DM vs group so the recipient knows whether
+    # they're seeing a 1:1 or a group ping at a glance.
+    if conv.kind == "group" and conv.title:
+        push_title = f"{conv.title} · {sender_last}"
+    else:
+        push_title = sender_last
 
     from app.services.email import send_email, should_email_person
     from app.services.email_templates import dm_unread_email
+    from app.services.push import (
+        has_active_subscriptions,
+        send_push_to_person,
+    )
 
     for mem in other_members:
-        # Rule 1: actively reading right now?
+        # Rule 1: actively reading right now? Applies to both
+        # channels — if they're literally on the page we don't need
+        # to notify at all.
         if (
             mem.last_read_at is not None
             and now - mem.last_read_at < ACTIVE_READ_WINDOW
         ):
             continue
-        # Rule 2: cooldown?
+        # Push path: if they have any subscriptions, fire push and
+        # don't email. Push has no cooldown — frequency is managed
+        # by the OS + the `tag` coalescing on the device.
+        if has_active_subscriptions(mem.person_id):
+            sent = send_push_to_person(
+                mem.person_id,
+                title=push_title,
+                body=body_preview,
+                url=deep_link,
+                tag=f"conversation:{conv.id}",
+            )
+            if sent > 0:
+                # Successfully delivered to at least one device —
+                # skip the email path entirely.
+                continue
+            # All push attempts failed (every sub either errored
+            # or was already pruned as 410). Fall through to email
+            # so the recipient isn't silently missed.
+        # Email path: cooldown gate.
         if (
             mem.last_email_sent_at is not None
             and now - mem.last_email_sent_at < EMAIL_COOLDOWN
@@ -537,9 +579,6 @@ def _maybe_notify_unread(
         person = ctx.db.get(Person, mem.person_id)
         if person is None or not should_email_person(person):
             continue
-        deep_link = (
-            f"{settings.public_base_url.rstrip('/')}/me/mensajes?c={conv.id}"
-        )
         subject, body_html = dm_unread_email(
             recipient_first_name=person.first_name or person.name,
             sender_display_name=sender_last,
