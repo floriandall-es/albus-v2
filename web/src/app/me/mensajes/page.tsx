@@ -2,6 +2,7 @@
 import {
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -14,16 +15,25 @@ import {
 } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  LogOut,
   MessageCircle,
   MoreVertical,
+  Pencil,
+  Plus,
   Send,
   Trash2,
+  UserMinus,
+  UserPlus,
+  Users,
+  X,
 } from "lucide-react";
 import {
   api,
   personFullName,
-  type DMConversation,
+  type Conversation,
+  type ConversationMemberPreview,
   type DMMessage,
+  type HospitalDirectoryEntry,
 } from "@/lib/api";
 import { Avatar } from "@/components/schedule/planning-grid";
 
@@ -55,6 +65,13 @@ export default function MensajesPage() {
   const activeIdParam = searchParams?.get("c");
   const activeId = activeIdParam ? Number(activeIdParam) : null;
 
+  // We need our own person_id to identify "mine" message bubbles in
+  // groups (where we can't infer it from a single peer like DMs do)
+  // and to determine "am I the creator?" for the kick-someone-else
+  // controls on the member panel.
+  const me = useQuery({ queryKey: ["me"], queryFn: api.me });
+  const myPersonId = me.data?.person.id ?? null;
+
   const conversations = useQuery({
     queryKey: ["conversations"],
     queryFn: api.listMyConversations,
@@ -63,6 +80,8 @@ export default function MensajesPage() {
     // in via React Query's defaults.
     refetchInterval: LIST_POLL_INTERVAL_MS,
   });
+
+  const [composeOpen, setComposeOpen] = useState(false);
 
   // Auto-select the first conversation on FIRST load only, so the
   // right pane doesn't start blank.
@@ -104,6 +123,7 @@ export default function MensajesPage() {
             loading={conversations.isLoading}
             activeId={activeId}
             onPick={(id) => router.replace(`/me/mensajes?c=${id}`)}
+            onNewGroup={() => setComposeOpen(true)}
           />
         </div>
         <div className={activeId === null ? "hidden md:block min-h-[420px]" : "min-h-[420px]"}>
@@ -120,6 +140,7 @@ export default function MensajesPage() {
               conversation={conversations.data?.find(
                 (c) => c.id === activeId,
               )}
+              myPersonId={myPersonId}
               onBackToList={() => router.replace("/me/mensajes")}
               onMessageSent={() => {
                 qc.invalidateQueries({ queryKey: ["conversations"] });
@@ -138,6 +159,16 @@ export default function MensajesPage() {
           )}
         </div>
       </div>
+      {composeOpen && (
+        <NewGroupModal
+          onClose={() => setComposeOpen(false)}
+          onCreated={(created) => {
+            setComposeOpen(false);
+            qc.invalidateQueries({ queryKey: ["conversations"] });
+            router.replace(`/me/mensajes?c=${created.id}`);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -147,14 +178,33 @@ function ConversationList({
   loading,
   activeId,
   onPick,
+  onNewGroup,
 }: {
-  conversations: DMConversation[];
+  conversations: Conversation[];
   loading: boolean;
   activeId: number | null;
   onPick: (id: number) => void;
+  /** Opens the "Nuevo grupo" composer modal. DMs are still
+   * created from the directory ("Mensaje" button on the card) so
+   * this entry point is group-specific. */
+  onNewGroup: () => void;
 }) {
   return (
     <aside className="rounded-lg border border-gray-200 bg-white">
+      {/* "Nuevo grupo" is the only compose entry point on this
+          page. 1:1 DMs are started from the directory (find a
+          person, hit Mensaje). Keeping the entry point a single
+          button keeps the list header tidy. */}
+      <div className="border-b border-gray-100 px-2 py-2">
+        <button
+          type="button"
+          onClick={onNewGroup}
+          className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-gray-300 px-2 py-1.5 text-xs font-medium text-gray-700 hover:border-brand-500 hover:bg-brand-50 hover:text-brand-700"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Nuevo grupo
+        </button>
+      </div>
       {loading && (
         <p className="px-3 py-2 text-xs text-gray-500">Cargando…</p>
       )}
@@ -166,11 +216,6 @@ function ConversationList({
       <ul className="max-h-[70vh] overflow-y-auto divide-y divide-gray-100">
         {conversations.map((c) => {
           const isActive = c.id === activeId;
-          const peerLabel = personFullName({
-            name: c.peer.name,
-            first_name: c.peer.first_name,
-            last_name: c.peer.last_name,
-          });
           return (
             <li key={c.id}>
               <button
@@ -183,36 +228,9 @@ function ConversationList({
                     : "hover:bg-gray-50")
                 }
               >
-                <div className="flex items-center gap-3">
-                  <Avatar
-                    name={c.peer.name}
-                    mine={false}
-                    imageUrl={c.peer.avatar_url}
-                    size="lg"
-                  />
-                  <div className="min-w-0 flex-1 leading-tight">
-                    <div className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium text-gray-900">
-                        {peerLabel}
-                      </span>
-                      {c.unread_count > 0 && (
-                        <span className="ml-auto shrink-0 rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
-                          {c.unread_count >= 99 ? "99+" : c.unread_count}
-                        </span>
-                      )}
-                    </div>
-                    {c.peer.tenant_name && (
-                      <div className="truncate text-[11px] text-gray-500">
-                        {c.peer.tenant_name}
-                      </div>
-                    )}
-                    {c.last_message_preview && (
-                      <div className="truncate text-xs text-gray-600 mt-0.5">
-                        {c.last_message_preview}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                {c.kind === "group"
+                  ? <GroupConversationRow conv={c} />
+                  : <DMConversationRow conv={c} />}
               </button>
             </li>
           );
@@ -222,15 +240,141 @@ function ConversationList({
   );
 }
 
+function DMConversationRow({ conv }: { conv: Conversation }) {
+  // `peer` is always populated on DMs (server contract / migration
+  // 0088). The non-null assertion keeps the row code clean; if a
+  // future bug sends back a kind="dm" without a peer, we'd rather
+  // crash here loudly than render a half-empty row.
+  const peer = conv.peer!;
+  const peerLabel = personFullName({
+    name: peer.name,
+    first_name: peer.first_name,
+    last_name: peer.last_name,
+  });
+  return (
+    <div className="flex items-center gap-3">
+      <Avatar
+        name={peer.name}
+        mine={false}
+        imageUrl={peer.avatar_url}
+        size="lg"
+      />
+      <div className="min-w-0 flex-1 leading-tight">
+        <div className="flex items-center gap-2">
+          <span className="truncate text-sm font-medium text-gray-900">
+            {peerLabel}
+          </span>
+          {conv.unread_count > 0 && (
+            <span className="ml-auto shrink-0 rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+              {conv.unread_count >= 99 ? "99+" : conv.unread_count}
+            </span>
+          )}
+        </div>
+        {peer.tenant_name && (
+          <div className="truncate text-[11px] text-gray-500">
+            {peer.tenant_name}
+          </div>
+        )}
+        {conv.last_message_preview && (
+          <div className="truncate text-xs text-gray-600 mt-0.5">
+            {conv.last_message_preview}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GroupConversationRow({ conv }: { conv: Conversation }) {
+  const title = conv.title ?? "Grupo sin nombre";
+  return (
+    <div className="flex items-center gap-3">
+      <AvatarStack previews={conv.member_previews} />
+      <div className="min-w-0 flex-1 leading-tight">
+        <div className="flex items-center gap-2">
+          <span className="truncate text-sm font-medium text-gray-900">
+            {title}
+          </span>
+          {conv.unread_count > 0 && (
+            <span className="ml-auto shrink-0 rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+              {conv.unread_count >= 99 ? "99+" : conv.unread_count}
+            </span>
+          )}
+        </div>
+        <div className="truncate text-[11px] text-gray-500">
+          {conv.member_count} miembros
+        </div>
+        {conv.last_message_preview && (
+          <div className="truncate text-xs text-gray-600 mt-0.5">
+            {conv.last_message_preview}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Three overlapping avatars sized to match the lg avatar on a DM
+ * row so groups and DMs line up visually in the list. White ring
+ * on each so the stack reads as discrete circles, not a blob. */
+function AvatarStack({
+  previews,
+}: {
+  previews: ConversationMemberPreview[];
+}) {
+  // Three previews is the server contract — render them in reverse
+  // so the leftmost ends up on top of the stack (natural reading
+  // order). If the backend sends fewer (tiny group), the stack
+  // collapses gracefully.
+  const stack = previews.slice(0, 3);
+  return (
+    <div className="relative h-14 w-14 shrink-0">
+      {stack.length === 0 && (
+        // Fallback: empty group placeholder. Happens momentarily
+        // right after creation if the previews haven't streamed
+        // back yet.
+        <span className="inline-flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 text-gray-500">
+          <Users className="h-6 w-6" />
+        </span>
+      )}
+      {stack.map((p, i) => (
+        <span
+          key={p.person_id}
+          className="absolute rounded-full ring-2 ring-white"
+          style={{
+            top: i === 0 ? 0 : i === 1 ? 10 : 20,
+            left: i === 0 ? 0 : i === 1 ? 14 : 28,
+            zIndex: 3 - i,
+          }}
+        >
+          <Avatar
+            name={p.name}
+            mine={false}
+            imageUrl={p.avatar_url}
+            size="md"
+          />
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function ConversationPane({
   conversationId,
   conversation,
+  myPersonId,
   onBackToList,
   onMessageSent,
   onConversationDeleted,
 }: {
   conversationId: number;
-  conversation: DMConversation | undefined;
+  conversation: Conversation | undefined;
+  /** Caller's own person_id. Used to identify own messages in
+   * group chats (DMs can infer this from the peer; groups can't)
+   * and to gate creator-only "remove member" controls. Null
+   * during the initial /api/me load — we treat that as "not me"
+   * for safety. */
+  myPersonId: number | null;
   /** Mobile-only "back to conversation list" callback. The
    * desktop layout shows both panes simultaneously and ignores
    * this. */
@@ -246,6 +390,18 @@ function ConversationPane({
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Group-only modals. Members panel doubles as the entry point
+  // for "Añadir miembros" + "Salir del grupo" + creator-only
+  // kicks; rename is a separate tiny modal because it's a single
+  // text input.
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [addMembersOpen, setAddMembersOpen] = useState(false);
+  const isGroup = conversation?.kind === "group";
+  const amCreator =
+    isGroup
+    && myPersonId !== null
+    && conversation?.created_by_person_id === myPersonId;
   // Ref wrapping BOTH the kebab trigger and the popover panel so
   // the document-level click-outside check can ignore taps that
   // belong to either. Critical: React's onMouseDown stopPropagation
@@ -330,7 +486,7 @@ function ConversationPane({
       // 204 returns, even if the refetch is slow. Then force a
       // refetch (not just invalidate) so the server's filtered
       // list replaces our optimistic view.
-      qc.setQueryData<DMConversation[] | undefined>(
+      qc.setQueryData<Conversation[] | undefined>(
         ["conversations"],
         (prev) =>
           prev ? prev.filter((c) => c.id !== conversationId) : prev,
@@ -396,17 +552,30 @@ function ConversationPane({
   function onDeleteConversation() {
     setMenuOpen(false);
     if (!conversation) return;
-    const peerName = personFullName({
-      name: conversation.peer.name,
-      first_name: conversation.peer.first_name,
-      last_name: conversation.peer.last_name,
-    });
-    const ok = window.confirm(
-      `¿Borrar esta conversación con ${peerName}?\n\n`
-        + "Desaparecerá de tu lista. Si te escribe de nuevo, "
-        + "volverá a aparecer. La otra persona conserva su copia "
-        + "de los mensajes.",
-    );
+    // Confirm string varies per kind. DM = "with peer X"; group =
+    // "this group". For groups it also reads less like "leave" so
+    // we add a hint that the group keeps running for everyone else.
+    const promptLine =
+      conversation.kind === "group"
+        ? `¿Borrar este grupo de tu lista?\n\n`
+          + "Desaparecerá de tus mensajes pero el grupo sigue "
+          + "activo para los demás. Si te escriben de nuevo, "
+          + "volverá a aparecer. Si quieres salir del grupo "
+          + "definitivamente, usa «Salir del grupo»."
+        : (() => {
+            const peerName = personFullName({
+              name: conversation.peer!.name,
+              first_name: conversation.peer!.first_name,
+              last_name: conversation.peer!.last_name,
+            });
+            return (
+              `¿Borrar esta conversación con ${peerName}?\n\n`
+              + "Desaparecerá de tu lista. Si te escribe de nuevo, "
+              + "volverá a aparecer. La otra persona conserva su "
+              + "copia de los mensajes."
+            );
+          })();
+    const ok = window.confirm(promptLine);
     if (!ok) return;
     deleteConv.mutate();
   }
@@ -437,37 +606,20 @@ function ConversationPane({
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <Avatar
-            name={conversation.peer.name}
-            mine={false}
-            imageUrl={conversation.peer.avatar_url}
-            size="md"
-          />
-          <div className="min-w-0 flex-1 leading-tight">
-            <div className="truncate text-sm font-semibold text-gray-900">
-              {personFullName({
-                name: conversation.peer.name,
-                first_name: conversation.peer.first_name,
-                last_name: conversation.peer.last_name,
-              })}
-            </div>
-            <div className="truncate text-[11px] text-gray-500">
-              {[
-                conversation.peer.category_name,
-                conversation.peer.tenant_name,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </div>
-          </div>
-          {/* Kebab menu — currently a single action ("Borrar
-              conversación") but a real menu so the future
-              "Silenciar", "Bloquear", etc. land here without
-              re-plumbing the header. The wrapper div carries the
-              ref the document-level click-outside check uses; any
-              tap inside that subtree (kebab trigger OR popover
-              items) is treated as "still inside the menu" so it
-              doesn't auto-close. */}
+          {conversation.kind === "group"
+            ? <GroupHeaderTitle
+                conversation={conversation}
+                onOpenMembers={() => setMembersOpen(true)}
+              />
+            : <DMHeaderTitle conversation={conversation} />}
+          {/* Kebab menu. Items branch on kind: DMs get a single
+              "Borrar conversación" entry; groups get rename / add
+              members / leave + the same "Borrar conversación"
+              (which only hides for the caller, see deleteConv).
+              The wrapper div carries the ref the document-level
+              click-outside check uses; any tap inside that subtree
+              (kebab trigger OR popover items) is treated as
+              "still inside the menu" so it doesn't auto-close. */}
           <div ref={menuRootRef} className="relative">
             <button
               type="button"
@@ -480,8 +632,46 @@ function ConversationPane({
             {menuOpen && (
               <div
                 role="menu"
-                className="absolute right-0 top-full z-10 mt-1 w-56 rounded-md border border-gray-200 bg-white py-1 shadow-lg"
+                className="absolute right-0 top-full z-10 mt-1 w-60 rounded-md border border-gray-200 bg-white py-1 shadow-lg"
               >
+                {conversation.kind === "group" && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setRenameOpen(true);
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Renombrar grupo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setAddMembersOpen(true);
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      <UserPlus className="h-4 w-4" />
+                      Añadir miembros
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setMembersOpen(true);
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                    >
+                      <Users className="h-4 w-4" />
+                      Ver miembros
+                    </button>
+                    <div className="my-1 border-t border-gray-100" />
+                  </>
+                )}
                 <button
                   type="button"
                   onClick={onDeleteConversation}
@@ -491,7 +681,9 @@ function ConversationPane({
                   <Trash2 className="h-4 w-4" />
                   {deleteConv.isPending
                     ? "Borrando…"
-                    : "Borrar conversación"}
+                    : conversation.kind === "group"
+                      ? "Borrar de mi lista"
+                      : "Borrar conversación"}
                 </button>
               </div>
             )}
@@ -510,16 +702,39 @@ function ConversationPane({
             Aún no hay mensajes. Escribe el primero.
           </p>
         )}
-        {messages.data?.map((m) => {
+        {messages.data?.map((m, idx) => {
+          // "mine" identification:
+          //  - DMs: anyone whose author_person_id != peer.person_id
+          //    is me, even when myPersonId hasn't loaded yet.
+          //    Keeping the legacy check avoids a flash of incorrect
+          //    bubble alignment on first paint.
+          //  - Groups: explicit myPersonId comparison. Falls back
+          //    to "not mine" if /api/me hasn't resolved.
           const isMine =
             m.author_person_id !== null
-            && !!conversation
-            && conversation.peer.person_id !== m.author_person_id;
+            && (conversation?.kind === "group"
+              ? myPersonId !== null && m.author_person_id === myPersonId
+              : !!conversation
+                && conversation.peer!.person_id !== m.author_person_id);
+          // In a group chat, show the author's name above the
+          // bubble — but only on the first bubble in a run by the
+          // same author, and never on our own bubbles (you know
+          // who you are). For DMs the peer name is already in the
+          // header so we suppress it.
+          const prev = idx > 0 ? messages.data![idx - 1] : null;
+          const showAuthorLabel =
+            conversation?.kind === "group"
+            && !isMine
+            && m.author_person_id !== null
+            && m.author_person_id !== prev?.author_person_id;
           return (
             <MessageBubble
               key={m.id}
               message={m}
               mine={isMine}
+              authorLabel={
+                showAuthorLabel ? (m.author_name ?? "(eliminado)") : undefined
+              }
               // Only the author can delete, and only while the
               // message hasn't already been soft-deleted. The
               // server enforces both — the UI guard is just to
@@ -562,17 +777,140 @@ function ConversationPane({
           {send.isPending ? "Enviando…" : "Enviar"}
         </button>
       </form>
+      {isGroup && conversation && membersOpen && (
+        <GroupMembersPanel
+          conversation={conversation}
+          myPersonId={myPersonId}
+          amCreator={amCreator}
+          onClose={() => setMembersOpen(false)}
+          onAddMembers={() => {
+            setMembersOpen(false);
+            setAddMembersOpen(true);
+          }}
+          onLeft={() => {
+            setMembersOpen(false);
+            onConversationDeleted();
+          }}
+        />
+      )}
+      {isGroup && conversation && renameOpen && (
+        <RenameGroupModal
+          conversation={conversation}
+          onClose={() => setRenameOpen(false)}
+        />
+      )}
+      {isGroup && conversation && addMembersOpen && (
+        <AddMembersModal
+          conversation={conversation}
+          onClose={() => setAddMembersOpen(false)}
+        />
+      )}
     </div>
+  );
+}
+
+/** DM-flavoured chat header: peer avatar, full name, then a
+ * subtitle that tries category · tenant. Identical to the legacy
+ * single-kind header, factored out only so ConversationPane reads
+ * cleanly when branching on kind. */
+function DMHeaderTitle({
+  conversation,
+}: {
+  conversation: Conversation;
+}) {
+  const peer = conversation.peer!;
+  return (
+    <>
+      <Avatar
+        name={peer.name}
+        mine={false}
+        imageUrl={peer.avatar_url}
+        size="md"
+      />
+      <div className="min-w-0 flex-1 leading-tight">
+        <div className="truncate text-sm font-semibold text-gray-900">
+          {personFullName({
+            name: peer.name,
+            first_name: peer.first_name,
+            last_name: peer.last_name,
+          })}
+        </div>
+        <div className="truncate text-[11px] text-gray-500">
+          {[peer.category_name, peer.tenant_name]
+            .filter(Boolean)
+            .join(" · ")}
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** Group-flavoured chat header: avatar stack + title + member
+ * count. The whole title block is clickable to pop the member
+ * panel — Slack / WhatsApp pattern. */
+function GroupHeaderTitle({
+  conversation,
+  onOpenMembers,
+}: {
+  conversation: Conversation;
+  onOpenMembers: () => void;
+}) {
+  const title = conversation.title ?? "Grupo sin nombre";
+  return (
+    <button
+      type="button"
+      onClick={onOpenMembers}
+      className="flex min-w-0 flex-1 items-center gap-2 rounded-md py-1 pr-2 text-left hover:bg-gray-50"
+    >
+      {/* Stack uses md-size avatars to fit the header height. The
+          relative box has w/h tuned to roughly match the lg-size
+          single avatar used in DM headers so the row height
+          stays consistent. */}
+      <div className="relative h-9 w-12 shrink-0">
+        {conversation.member_previews.slice(0, 3).map((p, i) => (
+          <span
+            key={p.person_id}
+            className="absolute rounded-full ring-2 ring-white"
+            style={{
+              top: i === 0 ? 0 : i === 1 ? 4 : 8,
+              left: i === 0 ? 0 : i === 1 ? 8 : 16,
+              zIndex: 3 - i,
+            }}
+          >
+            <Avatar
+              name={p.name}
+              mine={false}
+              imageUrl={p.avatar_url}
+              size="sm"
+            />
+          </span>
+        ))}
+      </div>
+      <div className="min-w-0 flex-1 leading-tight">
+        <div className="truncate text-sm font-semibold text-gray-900">
+          {title}
+        </div>
+        <div className="truncate text-[11px] text-gray-500">
+          {conversation.member_count} miembros · toca para ver
+        </div>
+      </div>
+    </button>
   );
 }
 
 function MessageBubble({
   message,
   mine,
+  authorLabel,
   onDelete,
 }: {
   message: DMMessage;
   mine: boolean | undefined;
+  /** Group chats only: name of the author rendered above the
+   * bubble. Set on the first message of each run so consecutive
+   * messages from the same person stay tight. Undefined elides
+   * the line entirely. */
+  authorLabel?: string;
   /** When set (own, non-deleted message) renders a small trash
    * icon that appears on hover (and is always visible on touch
    * devices that don't fire hover). Calling it triggers the
@@ -583,37 +921,55 @@ function MessageBubble({
   return (
     <div
       className={
-        "group flex items-center gap-1 "
-        + (mine ? "justify-end" : "justify-start")
+        // When we render an author label we switch the outer flex
+        // to a column so the label sits ABOVE the bubble. Without
+        // this the label would render to the left of the bubble
+        // and the layout breaks for incoming group messages.
+        authorLabel
+          ? "group flex flex-col items-start gap-0.5"
+          : "group flex items-center gap-1 "
+            + (mine ? "justify-end" : "justify-start")
       }
     >
-      {/* Trash icon sits OUTSIDE the bubble, on the inside edge
-          (left side for own messages aligned right). Always
-          rendered for layout stability — opacity flip on
-          group-hover means the message stays in the same spot
-          and the icon doesn't jump in. Sized to a 32px touch
-          target which is enough for thumb-precise taps on
-          mobile without being awkwardly large on desktop. */}
-      {mine && onDelete && (
-        <button
-          type="button"
-          aria-label="Borrar mensaje"
-          onClick={onDelete}
-          className="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-red-600 focus:opacity-100 group-hover:opacity-100"
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+      {authorLabel && (
+        <span className="ml-1 text-[11px] font-medium text-gray-500">
+          {authorLabel}
+        </span>
       )}
       <div
         className={
-          "max-w-[75%] rounded-2xl px-3 py-2 text-sm leading-snug "
-          + (mine
-            ? "bg-brand-600 text-white"
-            : "bg-gray-100 text-gray-900")
-          + (message.deleted_at ? " italic opacity-70" : "")
+          "flex items-center gap-1 "
+          + (mine ? "self-end" : "self-start")
         }
       >
-        {text}
+        {/* Trash icon sits OUTSIDE the bubble, on the inside edge
+            (left side for own messages aligned right). Always
+            rendered for layout stability — opacity flip on
+            group-hover means the message stays in the same spot
+            and the icon doesn't jump in. Sized to a 32px touch
+            target which is enough for thumb-precise taps on
+            mobile without being awkwardly large on desktop. */}
+        {mine && onDelete && (
+          <button
+            type="button"
+            aria-label="Borrar mensaje"
+            onClick={onDelete}
+            className="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-red-600 focus:opacity-100 group-hover:opacity-100"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+        <div
+          className={
+            "max-w-[75%] rounded-2xl px-3 py-2 text-sm leading-snug "
+            + (mine
+              ? "bg-brand-600 text-white"
+              : "bg-gray-100 text-gray-900")
+            + (message.deleted_at ? " italic opacity-70" : "")
+          }
+        >
+          {text}
+        </div>
       </div>
     </div>
   );
@@ -625,5 +981,588 @@ function EmptyPane({ children }: { children: React.ReactNode }) {
       <MessageCircle className="h-8 w-8 text-gray-400" />
       <p className="mt-2 max-w-xs text-sm text-gray-500">{children}</p>
     </div>
+  );
+}
+
+/**
+ * Shared shell for the three group-management modals + the new-group
+ * composer. Centered card on desktop, full-screen sheet on mobile
+ * so the directory picker has room to breathe. The X button is
+ * always present; tapping the backdrop also dismisses.
+ */
+function ModalShell({
+  title,
+  children,
+  onClose,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/30 p-0 sm:p-4">
+      <div
+        className="absolute inset-0"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div className="relative z-50 flex h-full w-full max-w-md flex-col rounded-none bg-white shadow-xl sm:h-auto sm:max-h-[90vh] sm:rounded-lg">
+        <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+          <h2 className="text-sm font-semibold text-gray-900">
+            {title}
+          </h2>
+          <button
+            type="button"
+            aria-label="Cerrar"
+            onClick={onClose}
+            className="-mr-2 flex h-10 w-10 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="flex flex-1 min-h-0 flex-col overflow-y-auto">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Search + multi-select directory picker. Used by NewGroupModal
+ * (no exclusion set) and AddMembersModal (excludes existing
+ * members so the picker can't double-add). The list is the same
+ * /api/hospital/directory the directory page uses, filtered by a
+ * substring `q`. Selection is a Set<person_id> — caller controls
+ * the state so this is a controlled component.
+ */
+function DirectoryPicker({
+  selected,
+  onToggle,
+  excludePersonIds,
+}: {
+  selected: Set<number>;
+  onToggle: (e: HospitalDirectoryEntry) => void;
+  /** Persons already in the group — hidden from the list rather
+   * than greyed out, so the picker doesn't grow indefinitely as
+   * members accumulate. Empty set for the new-group flow. */
+  excludePersonIds: Set<number>;
+}) {
+  const [q, setQ] = useState("");
+  // Debounce-free for now: the directory list is small (one
+  // hospital) and the substring match is server-side. If the
+  // hospital ever grows past a few hundred members we'll add a
+  // 200ms debounce here.
+  const directory = useQuery({
+    queryKey: ["hospital-directory", q],
+    queryFn: () => api.listHospitalDirectory(q ? { q } : undefined),
+  });
+  const list = useMemo(() => {
+    const rows = directory.data ?? [];
+    return rows.filter((r) => !excludePersonIds.has(r.person_id));
+  }, [directory.data, excludePersonIds]);
+  return (
+    <div className="flex flex-1 min-h-0 flex-col">
+      <div className="border-b border-gray-100 px-3 py-2">
+        <input
+          type="text"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Buscar por nombre…"
+          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+        />
+      </div>
+      <ul className="flex-1 overflow-y-auto">
+        {directory.isLoading && (
+          <li className="px-3 py-2 text-xs text-gray-500">
+            Cargando directorio…
+          </li>
+        )}
+        {!directory.isLoading && list.length === 0 && (
+          <li className="px-3 py-2 text-xs text-gray-500">
+            Sin resultados.
+          </li>
+        )}
+        {list.map((p) => {
+          const isSelected = selected.has(p.person_id);
+          const label = personFullName({
+            name: p.person_name,
+            first_name: p.person_first_name,
+            last_name: p.person_last_name,
+          });
+          return (
+            <li key={p.person_id}>
+              <button
+                type="button"
+                onClick={() => onToggle(p)}
+                className={
+                  "flex w-full items-center gap-3 border-b border-gray-50 px-3 py-2 text-left "
+                  + (isSelected
+                    ? "bg-brand-50"
+                    : "hover:bg-gray-50")
+                }
+              >
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  readOnly
+                  className="h-4 w-4 shrink-0 accent-brand-600"
+                />
+                <Avatar
+                  name={p.person_name}
+                  mine={false}
+                  imageUrl={p.person_avatar_url}
+                  size="md"
+                />
+                <div className="min-w-0 flex-1 leading-tight">
+                  <div className="truncate text-sm font-medium text-gray-900">
+                    {label}
+                  </div>
+                  <div className="truncate text-[11px] text-gray-500">
+                    {[p.category_name, p.tenant_name]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </div>
+                </div>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Two-pane modal for creating a group: title input + directory
+ * picker. The "Crear" CTA is disabled until both a non-empty title
+ * and at least one other person are chosen. On success the parent
+ * navigates to the new conversation.
+ */
+function NewGroupModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (created: Conversation) => void;
+}) {
+  const [title, setTitle] = useState("");
+  // Persisting the full directory entry (not just person_id) so
+  // the selection chips below the search can render the name +
+  // avatar without re-querying the directory. Map keyed by id for
+  // O(1) toggle.
+  const [selected, setSelected] = useState<
+    Map<number, HospitalDirectoryEntry>
+  >(new Map());
+  const selectedIds = useMemo(
+    () => new Set(selected.keys()),
+    [selected],
+  );
+  const create = useMutation({
+    mutationFn: () =>
+      api.createGroupChat({
+        title: title.trim(),
+        member_person_ids: Array.from(selected.keys()),
+      }),
+    onSuccess: (created) => onCreated(created),
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      window.alert(`No se pudo crear el grupo: ${msg}`);
+    },
+  });
+  const canCreate =
+    title.trim().length > 0
+    && selected.size >= 1
+    && !create.isPending;
+  return (
+    <ModalShell title="Nuevo grupo" onClose={onClose}>
+      <div className="border-b border-gray-100 px-3 py-3">
+        <label className="block text-xs font-medium text-gray-700">
+          Nombre del grupo
+        </label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="p. ej. Turno de noche"
+          maxLength={120}
+          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+        />
+        {selected.size > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {Array.from(selected.values()).map((p) => (
+              <span
+                key={p.person_id}
+                className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[11px] text-brand-700"
+              >
+                {personFullName({
+                  name: p.person_name,
+                  first_name: p.person_first_name,
+                  last_name: p.person_last_name,
+                })}
+                <button
+                  type="button"
+                  aria-label="Quitar"
+                  onClick={() =>
+                    setSelected((prev) => {
+                      const next = new Map(prev);
+                      next.delete(p.person_id);
+                      return next;
+                    })
+                  }
+                  className="rounded-full hover:bg-brand-100"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      <DirectoryPicker
+        selected={selectedIds}
+        excludePersonIds={new Set()}
+        onToggle={(p) =>
+          setSelected((prev) => {
+            const next = new Map(prev);
+            if (next.has(p.person_id)) {
+              next.delete(p.person_id);
+            } else {
+              next.set(p.person_id, p);
+            }
+            return next;
+          })
+        }
+      />
+      <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-3 py-3">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          disabled={!canCreate}
+          onClick={() => create.mutate()}
+          className="inline-flex items-center gap-1 rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white shadow-soft hover:bg-brand-700 disabled:opacity-50"
+        >
+          <Users className="h-4 w-4" />
+          {create.isPending ? "Creando…" : "Crear grupo"}
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+/**
+ * Member list for an open group. Always shows:
+ *  - Every member as a row (we re-fetch on open so we don't
+ *    need a separate "members" endpoint; the previews on the
+ *    conversation are first three, full list comes via another
+ *    serializer-derived field — see notes below)
+ *  - "Añadir miembros" button at top
+ *  - "Salir del grupo" button at bottom (red)
+ *  - Creator-only kick button (UserMinus) next to non-creator
+ *    rows
+ *
+ * Member list shape: we don't have a dedicated GET endpoint, so
+ * the panel uses the `member_previews` from the conversation
+ * itself — which is only the first three. For groups of ≤3 that's
+ * already complete; for larger groups we show "+N más" and direct
+ * the user to "Añadir miembros" / "Salir" without enumerating
+ * every member. Building a full "list members" endpoint is on
+ * the roadmap but not critical for v1.
+ */
+function GroupMembersPanel({
+  conversation,
+  myPersonId,
+  amCreator,
+  onClose,
+  onAddMembers,
+  onLeft,
+}: {
+  conversation: Conversation;
+  myPersonId: number | null;
+  amCreator: boolean;
+  onClose: () => void;
+  onAddMembers: () => void;
+  /** Caller successfully left the group (or was the last member
+   * and removed themselves). Parent treats this like a
+   * "conversation deleted" and clears the active id. */
+  onLeft: () => void;
+}) {
+  const qc = useQueryClient();
+  const leave = useMutation({
+    mutationFn: () => api.leaveGroupChat(conversation.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      onLeft();
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      window.alert(`No se pudo salir del grupo: ${msg}`);
+    },
+  });
+  const kick = useMutation({
+    mutationFn: (personId: number) =>
+      api.removeGroupMember(conversation.id, personId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      window.alert(`No se pudo quitar al miembro: ${msg}`);
+    },
+  });
+  function onLeave() {
+    const ok = window.confirm(
+      "¿Salir del grupo?\n\n"
+        + "No volverás a recibir mensajes. Otro miembro podrá "
+        + "añadirte de nuevo si lo necesitas.",
+    );
+    if (!ok) return;
+    leave.mutate();
+  }
+  function onKick(personId: number, name: string) {
+    const ok = window.confirm(
+      `¿Quitar a ${name} del grupo?\n\n`
+        + "Dejará de recibir mensajes. Podrás volver a añadirle "
+        + "más tarde si lo necesitas.",
+    );
+    if (!ok) return;
+    kick.mutate(personId);
+  }
+  const previews = conversation.member_previews;
+  const extra = conversation.member_count - previews.length;
+  return (
+    <ModalShell title="Miembros" onClose={onClose}>
+      <div className="border-b border-gray-100 px-3 py-3">
+        <button
+          type="button"
+          onClick={onAddMembers}
+          className="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          <UserPlus className="h-4 w-4" />
+          Añadir miembros
+        </button>
+      </div>
+      <ul className="flex-1 overflow-y-auto divide-y divide-gray-100">
+        {previews.map((p) => {
+          const isMe = p.person_id === myPersonId;
+          const label = personFullName({
+            name: p.name,
+            first_name: p.first_name,
+            last_name: p.last_name,
+          });
+          const isCreatorRow =
+            conversation.created_by_person_id === p.person_id;
+          return (
+            <li
+              key={p.person_id}
+              className="flex items-center gap-3 px-3 py-2"
+            >
+              <Avatar
+                name={p.name}
+                mine={isMe}
+                imageUrl={p.avatar_url}
+                size="md"
+              />
+              <div className="min-w-0 flex-1 leading-tight">
+                <div className="truncate text-sm font-medium text-gray-900">
+                  {label}
+                  {isMe && (
+                    <span className="ml-1 text-[11px] font-normal text-gray-500">
+                      (tú)
+                    </span>
+                  )}
+                </div>
+                {isCreatorRow && (
+                  <div className="truncate text-[11px] text-gray-500">
+                    Creador
+                  </div>
+                )}
+              </div>
+              {amCreator && !isMe && (
+                <button
+                  type="button"
+                  aria-label={`Quitar a ${label}`}
+                  onClick={() => onKick(p.person_id, label)}
+                  disabled={kick.isPending}
+                  className="flex h-9 w-9 items-center justify-center rounded-md text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                >
+                  <UserMinus className="h-4 w-4" />
+                </button>
+              )}
+            </li>
+          );
+        })}
+        {extra > 0 && (
+          <li className="px-3 py-2 text-xs text-gray-500">
+            + {extra} miembro{extra === 1 ? "" : "s"} más
+          </li>
+        )}
+      </ul>
+      <div className="border-t border-gray-100 px-3 py-3">
+        <button
+          type="button"
+          onClick={onLeave}
+          disabled={leave.isPending}
+          className="inline-flex items-center gap-1.5 rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+        >
+          <LogOut className="h-4 w-4" />
+          {leave.isPending ? "Saliendo…" : "Salir del grupo"}
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+/**
+ * Single-input modal for renaming a group. Any member can do it —
+ * matches the agreed permission model.
+ */
+function RenameGroupModal({
+  conversation,
+  onClose,
+}: {
+  conversation: Conversation;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [title, setTitle] = useState(conversation.title ?? "");
+  const rename = useMutation({
+    mutationFn: () =>
+      api.renameGroupChat(conversation.id, title.trim()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      onClose();
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      window.alert(`No se pudo renombrar: ${msg}`);
+    },
+  });
+  const canSave =
+    title.trim().length > 0
+    && title.trim() !== conversation.title
+    && !rename.isPending;
+  return (
+    <ModalShell title="Renombrar grupo" onClose={onClose}>
+      <div className="px-3 py-3">
+        <label className="block text-xs font-medium text-gray-700">
+          Nombre del grupo
+        </label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          maxLength={120}
+          autoFocus
+          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+        />
+      </div>
+      <div className="mt-auto flex items-center justify-end gap-2 border-t border-gray-100 px-3 py-3">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          disabled={!canSave}
+          onClick={() => rename.mutate()}
+          className="rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white shadow-soft hover:bg-brand-700 disabled:opacity-50"
+        >
+          {rename.isPending ? "Guardando…" : "Guardar"}
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+/**
+ * Directory picker scoped to the group: existing members are
+ * excluded from the list so the same person can't be added twice.
+ * New members see the full conversation history once added — we
+ * lean on the in-modal hint to make that obvious.
+ */
+function AddMembersModal({
+  conversation,
+  onClose,
+}: {
+  conversation: Conversation;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const existingIds = useMemo(
+    () =>
+      new Set(conversation.member_previews.map((p) => p.person_id)),
+    [conversation.member_previews],
+  );
+  const [selected, setSelected] = useState<
+    Map<number, HospitalDirectoryEntry>
+  >(new Map());
+  const selectedIds = useMemo(
+    () => new Set(selected.keys()),
+    [selected],
+  );
+  const add = useMutation({
+    mutationFn: () =>
+      api.addGroupMembers(
+        conversation.id,
+        Array.from(selected.keys()),
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      onClose();
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      window.alert(`No se pudo añadir: ${msg}`);
+    },
+  });
+  return (
+    <ModalShell title="Añadir miembros" onClose={onClose}>
+      <p className="border-b border-gray-100 px-3 py-2 text-xs text-gray-500">
+        Verán todo el historial del grupo desde su entrada.
+      </p>
+      <DirectoryPicker
+        selected={selectedIds}
+        excludePersonIds={existingIds}
+        onToggle={(p) =>
+          setSelected((prev) => {
+            const next = new Map(prev);
+            if (next.has(p.person_id)) {
+              next.delete(p.person_id);
+            } else {
+              next.set(p.person_id, p);
+            }
+            return next;
+          })
+        }
+      />
+      <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-3 py-3">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          disabled={selected.size === 0 || add.isPending}
+          onClick={() => add.mutate()}
+          className="inline-flex items-center gap-1 rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white shadow-soft hover:bg-brand-700 disabled:opacity-50"
+        >
+          <UserPlus className="h-4 w-4" />
+          {add.isPending ? "Añadiendo…" : "Añadir"}
+        </button>
+      </div>
+    </ModalShell>
   );
 }

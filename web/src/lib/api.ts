@@ -850,18 +850,44 @@ export type DMPeer = {
   tenant_name: string | null;
 };
 
-/** A conversation as returned by /api/conversations and
- * /api/dms. Today only `kind = 'dm'` exists. */
-export type DMConversation = {
+/** Migration 0088. One row of the avatar stack on a group
+ * conversation entry. Three are surfaced; the rest are summarised
+ * as "+N más" in the UI. */
+export type ConversationMemberPreview = {
+  person_id: number;
+  name: string;
+  first_name: string | null;
+  last_name: string | null;
+  avatar_url: string | null;
+};
+
+/** Migration 0088. Unified DM + group conversation type. `peer`
+ * is non-null only for DMs (kind="dm"); group fields (`title`,
+ * `member_count`, `member_previews`, `created_by_person_id`) are
+ * populated only for groups. UI branches on `kind`. */
+export type Conversation = {
   id: number;
   hospital_id: number;
-  kind: "dm";
+  kind: "dm" | "group";
   created_at: string;
   last_message_at: string;
-  peer: DMPeer;
+  peer: DMPeer | null;
+  title: string | null;
+  member_count: number;
+  member_previews: ConversationMemberPreview[];
+  /** Migration 0088. The person who created the group; null on
+   * DMs and on groups whose creator was deleted (`ON DELETE SET
+   * NULL`). When the caller IS this person, the UI lets them
+   * remove other members. */
+  created_by_person_id: number | null;
   unread_count: number;
   last_message_preview: string | null;
 };
+
+/** @deprecated Use `Conversation` instead. Kept as an alias so
+ * existing call sites still compile during the migration to
+ * group chats. */
+export type DMConversation = Conversation;
 
 /** Single message in a conversation. `body` is null when the
  * message has been soft-deleted (deleted_at non-null); UI
@@ -1623,6 +1649,45 @@ export const api = {
       `/api/conversations/${conversationId}/messages/${messageId}`,
       { method: "DELETE" },
     ),
+  /** Migration 0088. Create a group conversation. Caller is
+   * implicitly added; `member_person_ids` is at least 1 other
+   * person from the caller's hospital. Returns the new
+   * conversation (kind="group"). */
+  createGroupChat: (body: { title: string; member_person_ids: number[] }) =>
+    request<Conversation>("/api/group-chats", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  /** Migration 0088. Rename a group. Any member can do it. 400 on
+   * DMs (they don't have a title). */
+  renameGroupChat: (conversationId: number, title: string) =>
+    request<Conversation>(
+      `/api/conversations/${conversationId}`,
+      { method: "PATCH", body: JSON.stringify({ title }) },
+    ),
+  /** Migration 0088. Add members to a group. Any member can add.
+   * Idempotent on already-members. New members start with the
+   * unread counter at zero — they see history but no badge spike. */
+  addGroupMembers: (conversationId: number, personIds: number[]) =>
+    request<Conversation>(
+      `/api/conversations/${conversationId}/members`,
+      {
+        method: "POST",
+        body: JSON.stringify({ person_ids: personIds }),
+      },
+    ),
+  /** Migration 0088. Remove a member from a group. Self-removal
+   * always allowed; removing someone else is creator-only. 204. */
+  removeGroupMember: (conversationId: number, personId: number) =>
+    request<void>(
+      `/api/conversations/${conversationId}/members/${personId}`,
+      { method: "DELETE" },
+    ),
+  /** Migration 0088. Sugar for self-removal. 204. */
+  leaveGroupChat: (conversationId: number) =>
+    request<void>(`/api/conversations/${conversationId}/leave`, {
+      method: "POST",
+    }),
   updateProfile: (body: {
     /** Legacy single-field name. Sprint 18+ clients should send
      * first_name + last_name instead; the server composes `name`
