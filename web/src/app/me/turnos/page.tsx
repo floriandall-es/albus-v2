@@ -455,6 +455,31 @@ export default function TurnosPage() {
     return (absences.data ?? []).filter((b) => b.person_id === myPid);
   }, [absences.data, me.data]);
 
+  // Flatten my absences into the YYYY-MM-DD strings they cover,
+  // for the planning grid's column shading. An absence is a half-
+  // open range (start, end inclusive); we walk day-by-day so the
+  // set is sparse and the grid lookup stays O(1) per column.
+  const myAbsenceDates = useMemo(() => {
+    const out = new Set<string>();
+    for (const a of myAbsences) {
+      // Parse as local-date (no timezone math). The backend stores
+      // bloqueos as dates, not timestamps, so date-string arithmetic
+      // is the safe path — no UTC drift at midnight.
+      const [sy, sm, sd] = a.start_date.split("-").map(Number);
+      const [ey, em, ed] = a.end_date.split("-").map(Number);
+      const cur = new Date(sy, sm - 1, sd);
+      const end = new Date(ey, em - 1, ed);
+      while (cur <= end) {
+        const y = cur.getFullYear();
+        const m = String(cur.getMonth() + 1).padStart(2, "0");
+        const d = String(cur.getDate()).padStart(2, "0");
+        out.add(`${y}-${m}-${d}`);
+        cur.setDate(cur.getDate() + 1);
+      }
+    }
+    return out;
+  }, [myAbsences]);
+
   // Combined Servicio Lista feed: caller's own filtered assignments
   // PLUS every sibling cell upcast to an Assignment. Sibling rows are
   // tagged with their tenant_name so ShiftRow can render an equipo
@@ -679,6 +704,7 @@ export default function TurnosPage() {
               holidayDates={holidayDates}
               forceDates={allDatesInRange}
               onSwapTarget={setSwapTarget}
+              myAbsenceDates={myAbsenceDates}
             />
           ) : (
             <>
@@ -701,6 +727,11 @@ export default function TurnosPage() {
                   // Servicio grid below where sibling sections have no
                   // highlight.
                   memberView
+                  // Shade columns where I'm libre (vacation, baja,
+                  // etc.) with the same emerald palette as the Libre
+                  // row, so the column reads as a vertical band "you're
+                  // off this day."
+                  highlightAbsenceDates={myAbsenceDates}
                   onCellClick={(a) => setSwapTarget(a)}
                   cellIsClickable={(a) =>
                     a.person_id === myPersonId
@@ -876,6 +907,7 @@ function ServicioSectionedGrid({
   holidayDates,
   forceDates,
   onSwapTarget,
+  myAbsenceDates,
 }: {
   me: MeResponse;
   visibleAssignments: Assignment[];
@@ -885,6 +917,7 @@ function ServicioSectionedGrid({
   servicioCells: ServicioTimelineCell[];
   servicioLoading: boolean;
   holidayDates: Set<string>;
+  myAbsenceDates: Set<string>;
   forceDates: string[];
   onSwapTarget: (a: Assignment) => void;
 }) {
@@ -980,6 +1013,7 @@ function ServicioSectionedGrid({
         // as the rose "Sin cubrir" pill (because they have no
         // highlightPersonId, falling back to the admin-view branch).
         memberView
+        highlightAbsenceDates={myAbsenceDates}
       />
     </>
   );

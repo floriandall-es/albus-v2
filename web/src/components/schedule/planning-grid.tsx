@@ -134,6 +134,14 @@ export type PlanningGridProps = {
    * explicit prop is what fixes the case where /me/turnos shows
    * sibling-team sections (no highlight, but still member view). */
   memberView?: boolean;
+  /** Dates on which the highlighted member is libre (vacation, baja,
+   * etc.). When set, those columns get an emerald tint across the
+   * header and all rows — same palette as the Libre row — so it
+   * reads as a continuous vertical band "you're off this day".
+   * Caller responsibility (it's per-section semantically, but we
+   * pass it at the top level because /me/turnos's grid has a single
+   * highlighted person and we don't want to bloat every section). */
+  highlightAbsenceDates?: Set<string>;
 };
 
 export function PlanningGrid({
@@ -150,6 +158,7 @@ export function PlanningGrid({
   flaggedAssignmentIds,
   forceDates,
   memberView,
+  highlightAbsenceDates,
 }: PlanningGridProps) {
   // Normalize: explicit sections, or wrap the legacy props as one
   // anonymous section. The legacy path keeps every existing call
@@ -219,6 +228,7 @@ export function PlanningGrid({
       flaggedAssignmentIds={flaggedAssignmentIds}
       onEmptyCellClick={onEmptyCellClick}
       memberView={memberView}
+      highlightAbsenceDates={highlightAbsenceDates}
     />
   );
 }
@@ -235,6 +245,7 @@ function PlanningGridInner({
   flaggedAssignmentIds,
   onEmptyCellClick,
   memberView,
+  highlightAbsenceDates,
 }: {
   resolvedSections: PlanningGridSection[];
   sectionGrids: ReturnType<typeof buildGrid>[];
@@ -243,6 +254,7 @@ function PlanningGridInner({
   flaggedAssignmentIds?: Set<number>;
   onEmptyCellClick?: PlanningGridProps["onEmptyCellClick"];
   memberView?: boolean;
+  highlightAbsenceDates?: Set<string>;
 }) {
   // Today, computed once on mount. Used by both the cell-coloring
   // logic and the auto-scroll effect below. A page kept open past
@@ -308,6 +320,8 @@ function PlanningGridInner({
               const wd = dt.getDay();
               const isWeekend = wd === 0 || wd === 6;
               const isToday = d === today;
+              const isMyAbsence =
+                highlightAbsenceDates?.has(d) ?? false;
               return (
                 <th
                   key={d}
@@ -316,11 +330,13 @@ function PlanningGridInner({
                     "px-1 py-2.5 text-center min-w-[84px] border-b "
                     + (isToday
                       ? "bg-brand-50 border-brand-200 "
-                      : isHoliday
-                        ? "bg-amber-50 border-amber-200 "
-                        : isWeekend
-                          ? "bg-slate-100 border-gray-200 "
-                          : "border-gray-200 ")
+                      : isMyAbsence
+                        ? "bg-emerald-50 border-emerald-200 "
+                        : isHoliday
+                          ? "bg-amber-50 border-amber-200 "
+                          : isWeekend
+                            ? "bg-slate-100 border-gray-200 "
+                            : "border-gray-200 ")
                   }
                 >
                   <div
@@ -328,11 +344,13 @@ function PlanningGridInner({
                       "text-sm font-semibold "
                       + (isToday
                         ? "text-brand-700"
-                        : isHoliday
-                          ? "text-amber-900"
-                          : isWeekend
-                            ? "text-gray-500"
-                            : "text-gray-900")
+                        : isMyAbsence
+                          ? "text-emerald-900"
+                          : isHoliday
+                            ? "text-amber-900"
+                            : isWeekend
+                              ? "text-gray-500"
+                              : "text-gray-900")
                     }
                   >
                     {d.slice(8)}
@@ -342,11 +360,13 @@ function PlanningGridInner({
                       "font-medium text-[10px] uppercase tracking-wide "
                       + (isToday
                         ? "text-brand-600"
-                        : isHoliday
-                          ? "text-amber-700"
-                          : isWeekend
-                            ? "text-gray-400"
-                            : "text-gray-500")
+                        : isMyAbsence
+                          ? "text-emerald-700"
+                          : isHoliday
+                            ? "text-amber-700"
+                            : isWeekend
+                              ? "text-gray-400"
+                              : "text-gray-500")
                     }
                   >
                     {["dom", "lun", "mar", "mié", "jue", "vie", "sáb"][wd]}
@@ -475,6 +495,8 @@ function PlanningGridInner({
                       const wd = new Date(d).getDay();
                       const isWeekend = wd === 0 || wd === 6;
                       const isHoliday = holidayDates.has(d);
+                      const isMyAbsence =
+                        highlightAbsenceDates?.has(d) ?? false;
                       const isFlagged =
                         flaggedAssignmentIds
                         && cell.some((a) =>
@@ -496,11 +518,13 @@ function PlanningGridInner({
                                   ? "bg-brand-50/70"
                                   : isToday
                                     ? "bg-brand-50/30"
-                                    : isHoliday
-                                      ? "bg-amber-50"
-                                      : isWeekend
-                                        ? "bg-slate-100"
-                                        : "")
+                                    : isMyAbsence
+                                      ? "bg-emerald-50"
+                                      : isHoliday
+                                        ? "bg-amber-50"
+                                        : isWeekend
+                                          ? "bg-slate-100"
+                                          : "")
                           }
                         >
                           {isDismissedAdminPill ? (
@@ -687,6 +711,8 @@ function PlanningGridInner({
                       const wd = new Date(d).getDay();
                       const isWeekend = wd === 0 || wd === 6;
                       const isHoliday = holidayDates.has(d);
+                      const isMyAbsence =
+                        highlightAbsenceDates?.has(d) ?? false;
                       return (
                         <td
                           key={d}
@@ -694,11 +720,13 @@ function PlanningGridInner({
                             "align-top px-1.5 py-2 border-b border-t-2 border-b-gray-100 border-t-gray-200 "
                             + (isToday
                               ? "bg-brand-50/20 "
-                              : isHoliday
-                                ? "bg-amber-50 "
-                                : isWeekend
-                                  ? "bg-slate-100 "
-                                  : "")
+                              : isMyAbsence
+                                ? "bg-emerald-50 "
+                                : isHoliday
+                                  ? "bg-amber-50 "
+                                  : isWeekend
+                                    ? "bg-slate-100 "
+                                    : "")
                           }
                         >
                           {items.length === 0 ? (
