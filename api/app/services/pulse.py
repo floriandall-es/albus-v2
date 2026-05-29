@@ -55,7 +55,13 @@ class PulseQuestion:
     `scale_type` distinguishes pure 1-N numeric scales ("scale")
     from labelled multi-choice ("choice"). The labels are sent to
     the frontend in `labels_es` for "choice" types; numeric scales
-    just render N buttons."""
+    just render N buttons.
+
+    `default_enabled` decides whether a tenant that hasn't set an
+    explicit override gets this question asked. The first four
+    "recommended" questions ship with default_enabled=True; the
+    rest are off by default and the admin opts them in. Tenant
+    overrides always win — see apply_overrides()."""
 
     key: str
     prompt_es: str
@@ -64,17 +70,19 @@ class PulseQuestion:
     scale_type: Literal["scale", "choice"]
     scale_max: int
     labels_es: tuple[str, ...] = ()
+    default_enabled: bool = True
 
 
-# The four questions every Friday. These are the time-series the
-# admin's correlation insights are built on — adding/removing one
-# breaks historical comparability, so treat the set as stable.
+# Recommended-on questions — the proven core for week-over-week
+# wellbeing tracking. New tenants get these four on by default;
+# admins can still toggle them off from /admin/pulso.
 CORE_QUESTIONS: tuple[PulseQuestion, ...] = (
     PulseQuestion(
         key="fairness",
         prompt_es="¿Sientes que el reparto de turnos esta semana ha sido justo contigo?",
         scale_type="scale",
         scale_max=5,
+        default_enabled=True,
     ),
     PulseQuestion(
         key="workload",
@@ -82,12 +90,14 @@ CORE_QUESTIONS: tuple[PulseQuestion, ...] = (
         scale_type="choice",
         scale_max=4,
         labels_es=("Ligera", "Adecuada", "Pesada", "Insostenible"),
+        default_enabled=True,
     ),
     PulseQuestion(
         key="recovery",
         prompt_es="¿Cómo de descansado/a te sientes ahora mismo?",
         scale_type="scale",
         scale_max=5,
+        default_enabled=True,
     ),
     PulseQuestion(
         key="predictability",
@@ -95,18 +105,27 @@ CORE_QUESTIONS: tuple[PulseQuestion, ...] = (
         scale_type="choice",
         scale_max=4,
         labels_es=("Ninguno", "Pocos", "Bastantes", "Demasiados"),
+        default_enabled=True,
     ),
 )
 
-# Rotating slot — one of these lands as the 5th question, picked by
-# ISO week mod len. Keeps surveys feeling less repetitive without
-# losing the core 4-question time-series.
+# Opt-in extras — admin enables the ones they care about. Each
+# week's survey includes every enabled question (no rotation
+# anymore — the rotation made surveys feel arbitrary, and admins
+# preferred curating the question set themselves). New tenants
+# start with all of these OFF.
+#
+# Name "ROTATING_QUESTIONS" kept in the codebase so existing
+# imports don't churn — but conceptually these are now just
+# "additional questions, default off". Renaming in a later pass
+# if it bothers anyone.
 ROTATING_QUESTIONS: tuple[PulseQuestion, ...] = (
     PulseQuestion(
         key="team_support",
         prompt_es="¿Has sentido apoyo del equipo cuando lo necesitabas?",
         scale_type="scale",
         scale_max=5,
+        default_enabled=False,
     ),
     PulseQuestion(
         key="tool_friction",
@@ -119,18 +138,21 @@ ROTATING_QUESTIONS: tuple[PulseQuestion, ...] = (
             "Algo complicado",
             "Complicado mucho",
         ),
+        default_enabled=False,
     ),
     PulseQuestion(
         key="wellbeing",
         prompt_es="En general, ¿cómo estás esta semana?",
         scale_type="scale",
         scale_max=5,
+        default_enabled=False,
     ),
     PulseQuestion(
         key="recommend",
         prompt_es="¿Recomendarías a un colega unirse a este equipo?",
         scale_type="scale",
         scale_max=5,
+        default_enabled=False,
     ),
 )
 
@@ -151,18 +173,15 @@ def week_iso_for(d: date) -> str:
 
 
 def questions_for_week(week_iso: str) -> list[PulseQuestion]:
-    """Compose the week's question set: 4 core + 1 rotating picked
-    deterministically from the week's ISO number. Deterministic
-    means a given week always yields the same rotating question —
-    so a member who answers Monday and one who answers Friday see
-    the same five things."""
-    try:
-        week_num = int(week_iso.split("W")[-1])
-    except (ValueError, IndexError):
-        # Defensive — caller already validated week_iso is current.
-        week_num = 0
-    rotating = ROTATING_QUESTIONS[week_num % len(ROTATING_QUESTIONS)]
-    return [*CORE_QUESTIONS, rotating]
+    """Return every question in the catalogue, in display order.
+    No week-based filtering — that's apply_overrides()'s job.
+
+    `week_iso` is accepted for API symmetry with the older
+    rotation-based signature; it's unused today and may be
+    re-introduced if we ship a "rotate disabled questions back
+    in on slow weeks" feature later."""
+    del week_iso  # silence linters; kept in signature for symmetry
+    return [*CORE_QUESTIONS, *ROTATING_QUESTIONS]
 
 
 def question_by_key(key: str) -> PulseQuestion | None:
@@ -185,19 +204,21 @@ def apply_overrides(
     overrides: dict[str, dict] | None,
 ) -> PulseQuestion | None:
     """Return the question with the tenant's override applied, or
-    None if the override disables it. Scale / scale_max / labels
-    are never overridden — those are the time-series contract and
-    must stay stable across all tenants.
+    None if either the override disables it or there's no override
+    and the question's default_enabled is False.
 
-    The `enabled` flag defaults to True when absent. `prompt`
-    falls through to the default when absent or empty after trim.
+    Scale / scale_max / labels are never overridden — those are
+    the time-series contract and must stay stable across all
+    tenants. Only prompt + enabled are tenant-configurable.
+
+    Effective `enabled`:
+      - present override → use whatever the tenant set
+      - absent override → fall back to question.default_enabled
+        (True for the core 4, False for the additional 4)
     """
-    if not overrides:
-        return question
-    o = overrides.get(question.key)
-    if not o:
-        return question
-    if o.get("enabled", True) is False:
+    o = (overrides or {}).get(question.key, {})
+    enabled = o.get("enabled", question.default_enabled)
+    if not enabled:
         return None
     custom_prompt = (o.get("prompt") or "").strip()
     if not custom_prompt:
@@ -208,6 +229,7 @@ def apply_overrides(
         scale_type=question.scale_type,
         scale_max=question.scale_max,
         labels_es=question.labels_es,
+        default_enabled=question.default_enabled,
     )
 
 

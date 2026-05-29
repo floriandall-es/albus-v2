@@ -389,36 +389,53 @@ def get_admin_catalogue(
     _ensure_settings_row(ctx)
     overrides = _load_overrides(ctx)
     week_iso = current_week_iso()
-    week_keys = {q.key for q in questions_for_week(week_iso)}
-
-    def to_out(q, *, is_core: bool, in_week_set: bool) -> PulseCatalogueQuestion:
-        o = overrides.get(q.key, {})
-        is_enabled = o.get("enabled", True) is not False
-        custom_prompt = (o.get("prompt") or "").strip()
-        effective_prompt = custom_prompt or q.prompt_es
-        return PulseCatalogueQuestion(
-            key=q.key,
-            prompt=effective_prompt,
-            default_prompt=q.prompt_es,
-            scale_type=q.scale_type,
-            scale_max=q.scale_max,
-            labels=list(q.labels_es),
-            is_core=is_core,
-            is_this_week=is_enabled and in_week_set,
-            enabled=is_enabled,
-            is_customized=bool(custom_prompt) or not is_enabled,
-        )
-
     return PulseCatalogueOut(
         current_week_iso=week_iso,
         core=[
-            to_out(q, is_core=True, in_week_set=True)
-            for q in CORE_QUESTIONS
+            _to_catalogue_out(q, overrides) for q in CORE_QUESTIONS
         ],
         rotating=[
-            to_out(q, is_core=False, in_week_set=q.key in week_keys)
-            for q in ROTATING_QUESTIONS
+            _to_catalogue_out(q, overrides) for q in ROTATING_QUESTIONS
         ],
+    )
+
+
+def _to_catalogue_out(
+    q,
+    overrides: dict[str, dict],
+) -> PulseCatalogueQuestion:
+    """Render one question for the admin catalogue. Computes the
+    effective enabled state (override wins over default_enabled)
+    and the customised flag (custom prompt OR explicit override
+    that disagrees with the default)."""
+    o = overrides.get(q.key, {})
+    has_enabled_override = "enabled" in o
+    effective_enabled = (
+        o["enabled"] if has_enabled_override else q.default_enabled
+    )
+    custom_prompt = (o.get("prompt") or "").strip()
+    effective_prompt = custom_prompt or q.prompt_es
+    # "Customised" = anything different from the in-code default.
+    # Custom prompt always counts. An explicit enabled-override
+    # only counts if it disagrees with default_enabled.
+    customised = bool(custom_prompt) or (
+        has_enabled_override and o["enabled"] != q.default_enabled
+    )
+    return PulseCatalogueQuestion(
+        key=q.key,
+        prompt=effective_prompt,
+        default_prompt=q.prompt_es,
+        scale_type=q.scale_type,
+        scale_max=q.scale_max,
+        labels=list(q.labels_es),
+        # is_core kept on the wire so existing frontends that
+        # split into two sections still work; it now means
+        # "recommended-on by default" rather than "asked every
+        # week" (which is true of every enabled question now).
+        is_core=q.default_enabled,
+        is_this_week=effective_enabled,
+        enabled=effective_enabled,
+        is_customized=customised,
     )
 
 
@@ -522,35 +539,13 @@ def patch_admin_catalogue_question(
     # Build the response in the same shape get_admin_catalogue
     # uses, but with fresh_overrides already in hand — avoids a
     # second RLS query after commit.
-    week_keys = {q.key for q in questions_for_week(week_iso)}
-
-    def to_out(q, *, is_core: bool, in_week_set: bool) -> PulseCatalogueQuestion:
-        o = fresh_overrides.get(q.key, {})
-        is_enabled = o.get("enabled", True) is not False
-        custom_prompt = (o.get("prompt") or "").strip()
-        effective_prompt = custom_prompt or q.prompt_es
-        return PulseCatalogueQuestion(
-            key=q.key,
-            prompt=effective_prompt,
-            default_prompt=q.prompt_es,
-            scale_type=q.scale_type,
-            scale_max=q.scale_max,
-            labels=list(q.labels_es),
-            is_core=is_core,
-            is_this_week=is_enabled and in_week_set,
-            enabled=is_enabled,
-            is_customized=bool(custom_prompt) or not is_enabled,
-        )
-
     return PulseCatalogueOut(
         current_week_iso=week_iso,
         core=[
-            to_out(q, is_core=True, in_week_set=True)
-            for q in CORE_QUESTIONS
+            _to_catalogue_out(q, fresh_overrides) for q in CORE_QUESTIONS
         ],
         rotating=[
-            to_out(q, is_core=False, in_week_set=q.key in week_keys)
-            for q in ROTATING_QUESTIONS
+            _to_catalogue_out(q, fresh_overrides) for q in ROTATING_QUESTIONS
         ],
     )
 

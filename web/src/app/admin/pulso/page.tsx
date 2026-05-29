@@ -137,9 +137,10 @@ function SettingsSection() {
               <p className="mt-1 text-xs text-gray-500">
                 Cuando está activa, cada viernes a las 14:00 el
                 equipo recibe una notificación (push si tienen la
-                app instalada, email si no) con 5 preguntas. La
-                semana cierra el domingo a medianoche; las
-                respuestas pasadas son inmutables.
+                app instalada, email si no) con las preguntas que
+                tengas activas abajo. La semana cierra el domingo
+                a medianoche; las respuestas pasadas son
+                inmutables.
               </p>
               {settings.data?.last_notified_week_iso && (
                 <p className="mt-2 text-[11px] text-gray-500">
@@ -222,7 +223,6 @@ function CatalogueSection() {
   }
   if (!catalogue.data) return null;
   const { core, rotating, current_week_iso } = catalogue.data;
-  const thisWeekRotating = rotating.find((q) => q.is_this_week);
   return (
     <div className="mb-8 max-w-2xl">
       <Card>
@@ -234,17 +234,18 @@ function CatalogueSection() {
                 Preguntas
               </h3>
               <p className="mt-1 text-xs text-gray-500">
-                Estas son las preguntas que verá tu equipo. Las 4
-                preguntas «fijas» se piden todas las semanas para
-                construir series temporales comparables. La 5ª va
-                rotando entre 4 opciones.
+                Estas son todas las preguntas disponibles. Cada
+                semana se piden todas las que tengas activas.
+                Recomendamos empezar con las 4 que vienen
+                preactivadas y añadir más cuando tengas curiosidad
+                por nuevos ángulos.
               </p>
             </div>
           </div>
           <div className="mt-5">
             <SectionLabel
               icon={<Star className="h-3.5 w-3.5" />}
-              text="Fijas · cada semana"
+              text="Recomendadas · activas por defecto"
             />
             <ul className="mt-2 divide-y divide-gray-100 rounded-md border border-gray-200">
               {core.map((q) => (
@@ -255,23 +256,19 @@ function CatalogueSection() {
           <div className="mt-5">
             <SectionLabel
               icon={<Activity className="h-3.5 w-3.5" />}
-              text={`Rotativas · una por semana${thisWeekRotating ? ` (esta semana: ${prettyQuestionLabel(thisWeekRotating.key)})` : ""}`}
+              text="Opcionales · desactivadas por defecto"
             />
             <ul className="mt-2 divide-y divide-gray-100 rounded-md border border-gray-200">
               {rotating.map((q) => (
-                <QuestionRow
-                  key={q.key}
-                  q={q}
-                  highlight={q.is_this_week}
-                />
+                <QuestionRow key={q.key} q={q} />
               ))}
             </ul>
           </div>
           <p className="mt-4 text-[11px] text-gray-500">
-            Puedes reescribir cualquier pregunta para que suene a tu
-            equipo, o desactivar las que no encajen. La escala se
-            queda fija para que las gráficas históricas sigan
-            comparándose como deben. (Semana actual:{" "}
+            Reescribe cualquier pregunta para que suene a tu equipo,
+            o cambia su interruptor para activarla o desactivarla.
+            La escala se queda fija para que las gráficas históricas
+            sigan comparándose como deben. (Semana actual:{" "}
             {prettyWeek(current_week_iso)}.)
           </p>
         </div>
@@ -297,10 +294,8 @@ function SectionLabel({
 
 function QuestionRow({
   q,
-  highlight,
 }: {
   q: PulseCatalogueQuestion;
-  highlight?: boolean;
 }) {
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -333,7 +328,6 @@ function QuestionRow({
     <li
       className={
         "px-3 py-2 transition-colors "
-        + (highlight ? "bg-brand-50/60 " : "")
         + (!q.enabled ? "opacity-60" : "")
       }
     >
@@ -410,11 +404,6 @@ function QuestionRow({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            {highlight && (
-              <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-medium text-brand-700">
-                Esta semana
-              </span>
-            )}
             <button
               type="button"
               aria-label="Editar pregunta"
@@ -450,23 +439,6 @@ function scaleDescription(q: PulseCatalogueQuestion): string {
     return `Escala 1–${q.scale_max}`;
   }
   return `Opciones: ${q.labels.join(" · ")}`;
-}
-
-/** Short label for the "this week" hint. Mirrors the same key
- * map used on /me/pulso for consistency. */
-function prettyQuestionLabel(key: string): string {
-  switch (key) {
-    case "team_support":
-      return "Apoyo del equipo";
-    case "tool_friction":
-      return "Trivu";
-    case "wellbeing":
-      return "Bienestar general";
-    case "recommend":
-      return "Recomendarías el equipo";
-    default:
-      return key;
-  }
 }
 
 function StatsSection() {
