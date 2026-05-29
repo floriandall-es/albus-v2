@@ -31,6 +31,7 @@ from sqlalchemy import text
 from app.routes.deps import RequestContext, get_current_context
 from app.services.pulse import (
     CORE_QUESTIONS,
+    ROTATING_QUESTIONS,
     current_week_iso,
     question_by_key,
     questions_for_week,
@@ -106,6 +107,30 @@ class PulseStatsOut(BaseModel):
     # week — surfaced as a separate line on the admin chart.
     eligible_count: int
     weekly: list[PulseQuestionStat]
+
+
+class PulseCatalogueQuestion(BaseModel):
+    """Admin-facing view of one question. Same shape as
+    PulseQuestionOut on the member side, plus a flag indicating
+    whether this question is in the current week's rotation
+    (always true for core questions)."""
+
+    key: str
+    prompt: str
+    scale_type: str
+    scale_max: int
+    labels: list[str] = []
+    is_core: bool
+    is_this_week: bool
+
+
+class PulseCatalogueOut(BaseModel):
+    """All questions the admin's team could see. Split into core
+    (always asked) and rotating (one of N picked per week)."""
+
+    current_week_iso: str
+    core: list[PulseCatalogueQuestion]
+    rotating: list[PulseCatalogueQuestion]
 
 
 # ---------------------------------------------------------------------------
@@ -297,6 +322,55 @@ def get_my_history(
 # ---------------------------------------------------------------------------
 # Admin-facing routes
 # ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/admin/pulse/catalogue", response_model=PulseCatalogueOut
+)
+def get_admin_catalogue(
+    ctx: RequestContext = Depends(get_current_context),
+) -> PulseCatalogueOut:
+    """Return every question in the catalogue so the admin can see
+    what their team is being asked. Core questions are always
+    asked; rotating questions cycle one-per-week. The
+    `is_this_week` flag marks which questions WILL appear in the
+    current ISO week's survey.
+
+    No tenant-customisation yet — the catalogue lives in code
+    (services/pulse.py). When we ship per-tenant overrides, this
+    endpoint becomes the read-side of that editor."""
+    _require_admin(ctx)
+    week_iso = current_week_iso()
+    week_keys = {q.key for q in questions_for_week(week_iso)}
+    core = [
+        PulseCatalogueQuestion(
+            key=q.key,
+            prompt=q.prompt_es,
+            scale_type=q.scale_type,
+            scale_max=q.scale_max,
+            labels=list(q.labels_es),
+            is_core=True,
+            is_this_week=True,
+        )
+        for q in CORE_QUESTIONS
+    ]
+    rotating = [
+        PulseCatalogueQuestion(
+            key=q.key,
+            prompt=q.prompt_es,
+            scale_type=q.scale_type,
+            scale_max=q.scale_max,
+            labels=list(q.labels_es),
+            is_core=False,
+            is_this_week=q.key in week_keys,
+        )
+        for q in ROTATING_QUESTIONS
+    ]
+    return PulseCatalogueOut(
+        current_week_iso=week_iso,
+        core=core,
+        rotating=rotating,
+    )
 
 
 @router.get("/admin/pulse/settings", response_model=PulseSettingsOut)

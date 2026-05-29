@@ -958,6 +958,27 @@ export type PulseAdminStats = {
   weekly: PulseQuestionStat[];
 };
 
+/** Migration 0090. Admin view of one question in the catalogue.
+ * `is_core` distinguishes the 4 always-asked questions from the
+ * rotating slot; `is_this_week` flags which ones land in the
+ * current week's survey (always true for core, true for exactly
+ * one of the rotating questions). */
+export type PulseCatalogueQuestion = {
+  key: string;
+  prompt: string;
+  scale_type: "scale" | "choice";
+  scale_max: number;
+  labels: string[];
+  is_core: boolean;
+  is_this_week: boolean;
+};
+
+export type PulseCatalogue = {
+  current_week_iso: string;
+  core: PulseCatalogueQuestion[];
+  rotating: PulseCatalogueQuestion[];
+};
+
 /** Migration 0089. One row of the caller's push subscription list.
  * Endpoint / encryption keys deliberately omitted — the panel only
  * needs to identify each device for revoke purposes. The "this
@@ -1820,6 +1841,12 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
+  /** Migration 0090. Full question catalogue — every core + every
+   * rotating question, with flags marking which ones land in the
+   * current ISO week. Read-only for v1; future per-tenant
+   * overrides will arrive via PATCH on this endpoint. */
+  getAdminPulseCatalogue: () =>
+    request<PulseCatalogue>("/api/admin/pulse/catalogue"),
   /** Migration 0090. Aggregated stats for the admin dashboard.
    * Server defaults to a trailing 26-week window when neither
    * from/to is supplied. */

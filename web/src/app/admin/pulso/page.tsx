@@ -33,7 +33,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Activity, Users } from "lucide-react";
+import { Activity, HelpCircle, Star, Users } from "lucide-react";
 import {
   CartesianGrid,
   Line,
@@ -45,7 +45,11 @@ import {
 } from "recharts";
 
 import { Card } from "@/components/admin/ui";
-import { api, type PulseQuestionStat } from "@/lib/api";
+import {
+  api,
+  type PulseCatalogueQuestion,
+  type PulseQuestionStat,
+} from "@/lib/api";
 
 /** Core question keys, fixed in the order we want them on the
  * dashboard. Kept in sync with services/pulse.py::CORE_QUESTIONS —
@@ -87,6 +91,7 @@ export default function AdminPulsoPage() {
         distribución, nunca quién contestó qué.
       </p>
       <SettingsSection />
+      <CatalogueSection />
       <StatsSection />
     </div>
   );
@@ -179,6 +184,148 @@ function ToggleSwitch({
       />
     </button>
   );
+}
+
+function CatalogueSection() {
+  const catalogue = useQuery({
+    queryKey: ["admin-pulse-catalogue"],
+    queryFn: api.getAdminPulseCatalogue,
+  });
+  if (catalogue.isLoading) {
+    return (
+      <div className="mb-8 max-w-2xl">
+        <p className="text-sm text-gray-500">Cargando preguntas…</p>
+      </div>
+    );
+  }
+  if (!catalogue.data) return null;
+  const { core, rotating, current_week_iso } = catalogue.data;
+  const thisWeekRotating = rotating.find((q) => q.is_this_week);
+  return (
+    <div className="mb-8 max-w-2xl">
+      <Card>
+        <div className="p-4">
+          <div className="flex items-start gap-2">
+            <HelpCircle className="mt-0.5 h-5 w-5 shrink-0 text-gray-500" />
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-medium text-gray-900">
+                Preguntas
+              </h3>
+              <p className="mt-1 text-xs text-gray-500">
+                Estas son las preguntas que verá tu equipo. Las 4
+                preguntas «fijas» se piden todas las semanas para
+                construir series temporales comparables. La 5ª va
+                rotando entre 4 opciones.
+              </p>
+            </div>
+          </div>
+          <div className="mt-5">
+            <SectionLabel
+              icon={<Star className="h-3.5 w-3.5" />}
+              text="Fijas · cada semana"
+            />
+            <ul className="mt-2 divide-y divide-gray-100 rounded-md border border-gray-200">
+              {core.map((q) => (
+                <QuestionRow key={q.key} q={q} />
+              ))}
+            </ul>
+          </div>
+          <div className="mt-5">
+            <SectionLabel
+              icon={<Activity className="h-3.5 w-3.5" />}
+              text={`Rotativas · una por semana${thisWeekRotating ? ` (esta semana: ${prettyQuestionLabel(thisWeekRotating.key)})` : ""}`}
+            />
+            <ul className="mt-2 divide-y divide-gray-100 rounded-md border border-gray-200">
+              {rotating.map((q) => (
+                <QuestionRow
+                  key={q.key}
+                  q={q}
+                  highlight={q.is_this_week}
+                />
+              ))}
+            </ul>
+          </div>
+          <p className="mt-4 text-[11px] text-gray-500">
+            Próximamente: podrás reescribir las preguntas con
+            palabras de tu equipo y desactivar las rotativas que
+            no encajen. La escala y el orden seguirán fijos para
+            que las gráficas históricas comparen como debe.
+            (Semana actual: {prettyWeek(current_week_iso)}.)
+          </p>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function SectionLabel({
+  icon,
+  text,
+}: {
+  icon: React.ReactNode;
+  text: string;
+}) {
+  return (
+    <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-gray-500">
+      {icon}
+      {text}
+    </div>
+  );
+}
+
+function QuestionRow({
+  q,
+  highlight,
+}: {
+  q: PulseCatalogueQuestion;
+  highlight?: boolean;
+}) {
+  return (
+    <li
+      className={
+        "px-3 py-2 " + (highlight ? "bg-brand-50/60" : "")
+      }
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm text-gray-900">{q.prompt}</p>
+          <p className="mt-0.5 text-[11px] text-gray-500">
+            {scaleDescription(q)}
+          </p>
+        </div>
+        {highlight && (
+          <span className="shrink-0 rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-medium text-brand-700">
+            Esta semana
+          </span>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/** Plain-text description of how the question is answered. */
+function scaleDescription(q: PulseCatalogueQuestion): string {
+  if (q.scale_type === "scale") {
+    return `Escala 1–${q.scale_max}`;
+  }
+  return `Opciones: ${q.labels.join(" · ")}`;
+}
+
+/** Short label for the "this week" hint. Mirrors the same key
+ * map used on /me/pulso for consistency. */
+function prettyQuestionLabel(key: string): string {
+  switch (key) {
+    case "team_support":
+      return "Apoyo del equipo";
+    case "tool_friction":
+      return "Trivu";
+    case "wellbeing":
+      return "Bienestar general";
+    case "recommend":
+      return "Recomendarías el equipo";
+    default:
+      return key;
+  }
 }
 
 function StatsSection() {
