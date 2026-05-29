@@ -82,6 +82,7 @@ export default function MensajesPage() {
   });
 
   const [composeOpen, setComposeOpen] = useState(false);
+  const [composeDmOpen, setComposeDmOpen] = useState(false);
 
   // Auto-select the first conversation on FIRST load only, so the
   // right pane doesn't start blank.
@@ -123,6 +124,7 @@ export default function MensajesPage() {
             loading={conversations.isLoading}
             activeId={activeId}
             onPick={(id) => router.replace(`/me/mensajes?c=${id}`)}
+            onNewDM={() => setComposeDmOpen(true)}
             onNewGroup={() => setComposeOpen(true)}
           />
         </div>
@@ -169,6 +171,16 @@ export default function MensajesPage() {
           }}
         />
       )}
+      {composeDmOpen && (
+        <NewDMModal
+          onClose={() => setComposeDmOpen(false)}
+          onOpened={(conv) => {
+            setComposeDmOpen(false);
+            qc.invalidateQueries({ queryKey: ["conversations"] });
+            router.replace(`/me/mensajes?c=${conv.id}`);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -178,24 +190,38 @@ function ConversationList({
   loading,
   activeId,
   onPick,
+  onNewDM,
   onNewGroup,
 }: {
   conversations: Conversation[];
   loading: boolean;
   activeId: number | null;
   onPick: (id: number) => void;
-  /** Opens the "Nuevo grupo" composer modal. DMs are still
-   * created from the directory ("Mensaje" button on the card) so
-   * this entry point is group-specific. */
+  /** Opens the "Nueva conversación" picker — single-select from
+   * the hospital directory. Find-or-create semantics (if a DM
+   * already exists we just reopen it). Mirrors the directory's
+   * "Mensaje" button but lets users start a 1:1 without leaving
+   * the chat surface. */
+  onNewDM: () => void;
+  /** Opens the "Nuevo grupo" composer — multi-select + title. */
   onNewGroup: () => void;
 }) {
   return (
     <aside className="rounded-lg border border-gray-200 bg-white">
-      {/* "Nuevo grupo" is the only compose entry point on this
-          page. 1:1 DMs are started from the directory (find a
-          person, hit Mensaje). Keeping the entry point a single
-          button keeps the list header tidy. */}
-      <div className="border-b border-gray-100 px-2 py-2">
+      {/* Two compose entry points, stacked. Side-by-side at this
+          sidebar width (260px on desktop) cramps the labels and
+          forces truncation; the extra vertical line is worth the
+          legibility. Same dashed-border treatment so they read as
+          a matched pair, not "primary + secondary". */}
+      <div className="space-y-1.5 border-b border-gray-100 px-2 py-2">
+        <button
+          type="button"
+          onClick={onNewDM}
+          className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-gray-300 px-2 py-1.5 text-xs font-medium text-gray-700 hover:border-brand-500 hover:bg-brand-50 hover:text-brand-700"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Nueva conversación
+        </button>
         <button
           type="button"
           onClick={onNewGroup}
@@ -981,6 +1007,113 @@ function EmptyPane({ children }: { children: React.ReactNode }) {
       <MessageCircle className="h-8 w-8 text-gray-400" />
       <p className="mt-2 max-w-xs text-sm text-gray-500">{children}</p>
     </div>
+  );
+}
+
+/**
+ * "Nueva conversación" — find-or-create a 1:1 DM. Tapping a row
+ * fires `createOrGetDM` and navigates immediately; no confirm
+ * step (DMs are idempotent on the sorted pair, so this is safe).
+ * Mirrors the /me/directorio Mensaje button so users can start a
+ * 1:1 without leaving the chat surface.
+ */
+function NewDMModal({
+  onClose,
+  onOpened,
+}: {
+  onClose: () => void;
+  onOpened: (conv: Conversation) => void;
+}) {
+  const [q, setQ] = useState("");
+  // Track which row is "in flight" so we can grey it out and
+  // prevent double-taps without disabling the whole list.
+  const [pending, setPending] = useState<number | null>(null);
+  const directory = useQuery({
+    queryKey: ["hospital-directory", q],
+    queryFn: () => api.listHospitalDirectory(q ? { q } : undefined),
+  });
+  const open = useMutation({
+    mutationFn: (personId: number) => api.createOrGetDM(personId),
+    onMutate: (personId) => setPending(personId),
+    onSuccess: (conv) => onOpened(conv),
+    onError: (err) => {
+      setPending(null);
+      const msg = err instanceof Error ? err.message : String(err);
+      window.alert(`No se pudo abrir la conversación: ${msg}`);
+    },
+  });
+  const list = directory.data ?? [];
+  return (
+    <ModalShell title="Nueva conversación" onClose={onClose}>
+      <div className="border-b border-gray-100 px-3 py-2">
+        <input
+          type="text"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Buscar por nombre…"
+          autoFocus
+          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+        />
+      </div>
+      <ul className="flex-1 overflow-y-auto">
+        {directory.isLoading && (
+          <li className="px-3 py-2 text-xs text-gray-500">
+            Cargando directorio…
+          </li>
+        )}
+        {!directory.isLoading && list.length === 0 && (
+          <li className="px-3 py-2 text-xs text-gray-500">
+            Sin resultados.
+          </li>
+        )}
+        {list.map((p) => {
+          const isPending = pending === p.person_id;
+          const isDisabled = open.isPending;
+          const label = personFullName({
+            name: p.person_name,
+            first_name: p.person_first_name,
+            last_name: p.person_last_name,
+          });
+          return (
+            <li key={p.person_id}>
+              <button
+                type="button"
+                disabled={isDisabled}
+                onClick={() => open.mutate(p.person_id)}
+                className={
+                  "flex w-full items-center gap-3 border-b border-gray-50 px-3 py-2 text-left transition-colors "
+                  + (isPending
+                    ? "bg-brand-50"
+                    : "hover:bg-gray-50 disabled:opacity-50")
+                }
+              >
+                <Avatar
+                  name={p.person_name}
+                  mine={false}
+                  imageUrl={p.person_avatar_url}
+                  size="md"
+                />
+                <div className="min-w-0 flex-1 leading-tight">
+                  <div className="truncate text-sm font-medium text-gray-900">
+                    {label}
+                  </div>
+                  <div className="truncate text-[11px] text-gray-500">
+                    {[p.category_name, p.tenant_name]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </div>
+                </div>
+                {isPending && (
+                  <span className="text-[11px] text-brand-700">
+                    Abriendo…
+                  </span>
+                )}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </ModalShell>
   );
 }
 
