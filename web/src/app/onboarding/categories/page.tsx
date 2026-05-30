@@ -45,7 +45,21 @@ const DEFAULT_GROUPS: { title: string; items: string[] }[] = [
   },
 ];
 
-const ALL_DEFAULTS = new Set(DEFAULT_GROUPS.flatMap((g) => g.items));
+// Pre-rename masculine variants that should still match the
+// inclusive label above when an existing tenant carries them.
+// Without this, a tenant seeded with "Jefe de servicio" (pre-
+// rename) would see the "Jefe/a de servicio" row as unchecked
+// and the legacy name would leak into "Otras categorías".
+const LEGACY_ALIASES: Record<string, string> = {
+  "Jefe/a de servicio": "Jefe de servicio",
+  "Jefe/a de sección": "Jefe de sección",
+  "Adjunto/a": "Adjunto",
+};
+
+const ALL_DEFAULTS = new Set([
+  ...DEFAULT_GROUPS.flatMap((g) => g.items),
+  ...Object.values(LEGACY_ALIASES),
+]);
 
 export default function CategoriesStep() {
   const qc = useQueryClient();
@@ -66,11 +80,26 @@ export default function CategoriesStep() {
   const byName = new Map(existing.map((c) => [c.name, c]));
   const customCategories = existing.filter((c) => !ALL_DEFAULTS.has(c.name));
 
+  // Returns the existing Category that matches either the inclusive
+  // label or its legacy masculine alias. Lets the page work across
+  // tenants seeded before and after the rename without showing
+  // duplicates or losing checkbox state.
+  function findExisting(name: string): Category | undefined {
+    const direct = byName.get(name);
+    if (direct) return direct;
+    const legacy = LEGACY_ALIASES[name];
+    return legacy ? byName.get(legacy) : undefined;
+  }
+
   async function toggleDefault(name: string, checked: boolean) {
     if (checked) {
+      // If a legacy alias already covers this row, leave it alone —
+      // toggling on a row that's already "on" via the masculine
+      // variant would create a duplicate inclusive copy.
+      if (findExisting(name)) return;
       await create.mutateAsync(name);
     } else {
-      const cat = byName.get(name);
+      const cat = findExisting(name);
       if (cat) await del.mutateAsync(cat.id);
     }
   }
@@ -91,10 +120,11 @@ export default function CategoriesStep() {
             </div>
             <ul className="divide-y">
               {group.items.map((d) => {
-                const checked = byName.has(d);
+                const match = findExisting(d);
+                const checked = !!match;
                 const isPending =
                   (create.isPending && create.variables === d) ||
-                  (del.isPending && del.variables === byName.get(d)?.id);
+                  (del.isPending && del.variables === match?.id);
                 return (
                   <li key={d} className="flex items-center px-4 py-2 text-sm">
                     <input
