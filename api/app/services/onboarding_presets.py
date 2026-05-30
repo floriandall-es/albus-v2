@@ -40,7 +40,7 @@ PRESETS: dict[str, PresetDef] = {
         sublabel="Hospital, con quirófano + consulta + guardia",
         default_categories=[
             "Jefe de servicio",
-            "Jefe clínico",
+            "Jefe de sección",
             "Adjunto",
             "Residente R5",
             "Residente R4",
@@ -55,7 +55,7 @@ PRESETS: dict[str, PresetDef] = {
         sublabel="Hospital, sin quirófano (planta, consulta, guardia)",
         default_categories=[
             "Jefe de servicio",
-            "Jefe clínico",
+            "Jefe de sección",
             "Adjunto",
             "Residente R5",
             "Residente R4",
