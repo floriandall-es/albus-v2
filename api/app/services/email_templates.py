@@ -28,17 +28,96 @@ def format_spanish_date(dt: datetime) -> str:
     return f"{dt.day} de {SPANISH_MONTHS[dt.month - 1]} de {dt.year}"
 
 
+# ---------------------------------------------------------------------------
+# HTML shell — shared by the transactional emails that carry a token URL.
+# ---------------------------------------------------------------------------
+# Token-bearing URLs (verify / accept / reset) are intrinsically long
+# because the JWT lives in the query string, and Microsoft 365 wraps every
+# href through safelinks.protection.outlook.com on inbox arrival —
+# inflating them to ~600 chars. We can't strip the safelinks wrap, but we
+# can stop printing the raw URL in the body. These helpers render a clean
+# card with a CTA button instead.
+#
+# Plain inline styles only — Gmail strips <style> blocks and corporate
+# mail filters often quarantine emails with external CSS. Tested with
+# Outlook (web + native), Gmail, and Apple Mail.
+
+
+def _html_button(href: str, label: str, *, outline: bool = False) -> str:
+    """Inline-styled CTA button. Two variants: solid (primary) and
+    outline (secondary). Brand teal (#0d9488)."""
+    if outline:
+        return (
+            f"<a href='{href}' "
+            f"style='display:inline-block;background:#ffffff;color:#0d9488;"
+            f"text-decoration:none;padding:10px 20px;border-radius:8px;"
+            f"font-weight:600;font-size:14px;border:1px solid #0d9488;'>"
+            f"{label}"
+            f"</a>"
+        )
+    return (
+        f"<a href='{href}' "
+        f"style='display:inline-block;background:#0d9488;color:#ffffff;"
+        f"text-decoration:none;padding:12px 24px;border-radius:8px;"
+        f"font-weight:600;font-size:14px;'>"
+        f"{label}"
+        f"</a>"
+    )
+
+
+def _html_shell(*, title: str, inner: str, footer_links: list[tuple[str, str]] | None = None) -> str:
+    """Wrap inner HTML in the standard Trivu email card.
+
+    `inner` is the card body — paragraphs, headings, buttons composed
+    by the caller. `footer_links` is a list of (href, label) pairs
+    rendered as a small centred line under the card (typically
+    Términos · Privacidad).
+    """
+    footer = ""
+    if footer_links:
+        parts = [
+            f"<a href='{href}' style='color:#9ca3af;text-decoration:underline;'>{label}</a>"
+            for href, label in footer_links
+        ]
+        footer = (
+            f"<p style='margin:16px 0 0;font-size:11px;color:#9ca3af;text-align:center;'>"
+            + " · ".join(parts)
+            + "</p>"
+        )
+    return (
+        f"<!doctype html>"
+        f"<html lang='es'><head><meta charset='utf-8'>"
+        f"<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        f"<title>{title}</title></head>"
+        f"<body style=\"margin:0;padding:0;background:#f5f7fa;"
+        f"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"
+        f"color:#111827;line-height:1.55;\">"
+        f"<div style='max-width:560px;margin:0 auto;padding:32px 20px;'>"
+        f"<div style='background:#ffffff;border-radius:12px;padding:32px;"
+        f"border:1px solid #e5e7eb;'>"
+        + inner
+        + "</div>"
+        + footer
+        + "</div></body></html>"
+    )
+
+
 def invitation_email(
     *,
     person_name: str,
     tenant_name: str,
     accept_url: str,
     expires_at: datetime,
-) -> tuple[str, str]:
-    """Returns (subject, body_text)."""
+) -> tuple[str, str, str]:
+    """Returns (subject, body_text, body_html).
+
+    Sent to every person an admin adds to their equipo, so it
+    earns the HTML treatment — same pattern as the welcome
+    email (clickable button instead of raw token URL).
+    """
     subject = f"Te han invitado a unirte a {tenant_name} en Trivu"
     expires_str = format_spanish_date(expires_at)
-    body = (
+    body_text = (
         f"Hola {person_name},\n\n"
         f"{tenant_name} te ha invitado a unirte a su equipo en Trivu.\n\n"
         f"Acepta la invitación abriendo el siguiente enlace y eligiendo una contraseña:\n"
@@ -47,7 +126,26 @@ def invitation_email(
         f"Si no esperabas esta invitación, puedes ignorar este mensaje.\n\n"
         f"— El equipo de Trivu\n"
     )
-    return subject, body
+    inner = (
+        f"<p style='margin:0 0 16px;font-size:15px;'>Hola {person_name},</p>"
+        f"<p style='margin:0 0 24px;font-size:15px;'>"
+        f"<strong>{tenant_name}</strong> te ha invitado a unirte a su equipo en Trivu."
+        f"</p>"
+        f"<p style='margin:0 0 20px;font-size:14px;color:#4b5563;'>"
+        f"Acepta la invitación y elige una contraseña para empezar:"
+        f"</p>"
+        f"<p style='margin:0 0 20px;'>"
+        + _html_button(accept_url, "Aceptar invitación →")
+        + "</p>"
+        f"<p style='margin:0 0 8px;font-size:12px;color:#6b7280;'>"
+        f"El enlace caduca el {expires_str}."
+        f"</p>"
+        f"<p style='margin:0;font-size:12px;color:#6b7280;'>"
+        f"Si no esperabas esta invitación, puedes ignorar este mensaje."
+        f"</p>"
+    )
+    body_html = _html_shell(title=subject, inner=inner)
+    return subject, body_text, body_html
 
 
 # ---------------------------------------------------------------------------
@@ -445,17 +543,7 @@ def welcome_and_verify_email(
         f"Términos: {terms_url}\n"
         f"Privacidad: {privacy_url}\n"
     )
-    body_html = (
-        f"<!doctype html>"
-        f"<html lang='es'><head><meta charset='utf-8'>"
-        f"<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        f"<title>{subject}</title></head>"
-        f"<body style=\"margin:0;padding:0;background:#f5f7fa;"
-        f"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"
-        f"color:#111827;line-height:1.55;\">"
-        f"<div style='max-width:560px;margin:0 auto;padding:32px 20px;'>"
-        f"<div style='background:#ffffff;border-radius:12px;padding:32px;"
-        f"border:1px solid #e5e7eb;'>"
+    inner = (
         f"<p style='margin:0 0 16px;font-size:15px;'>Hola {greeting_name},</p>"
         f"<p style='margin:0 0 24px;font-size:15px;'>"
         f"Hemos creado <strong>«{tenant_name}»</strong> en Trivu y tú eres su "
@@ -468,13 +556,8 @@ def welcome_and_verify_email(
         f"Para mantener la cuenta activa, pulsa el botón:"
         f"</p>"
         f"<p style='margin:0 0 20px;'>"
-        f"<a href='{confirm_url}' "
-        f"style='display:inline-block;background:#0d9488;color:#ffffff;"
-        f"text-decoration:none;padding:12px 24px;border-radius:8px;"
-        f"font-weight:600;font-size:14px;'>"
-        f"Confirma tu correo →"
-        f"</a>"
-        f"</p>"
+        + _html_button(confirm_url, "Confirma tu correo →")
+        + "</p>"
         f"<p style='margin:0 0 28px;font-size:12px;color:#6b7280;'>"
         f"Caduca en {when}. Si no fuiste tú, ignora este mensaje."
         f"</p>"
@@ -492,27 +575,19 @@ def welcome_and_verify_email(
         f"<li>Invita a tus compañeros</li>"
         f"</ol>"
         f"<p style='margin:0 0 24px;'>"
-        f"<a href='{onboarding_url}' "
-        f"style='display:inline-block;background:#ffffff;color:#0d9488;"
-        f"text-decoration:none;padding:10px 20px;border-radius:8px;"
-        f"font-weight:600;font-size:14px;border:1px solid #0d9488;'>"
-        f"Empieza aquí →"
-        f"</a>"
-        f"</p>"
+        + _html_button(onboarding_url, "Empieza aquí →", outline=True)
+        + "</p>"
         f"<p style='margin:0 0 8px;font-size:13px;color:#6b7280;'>"
         f"Para cualquier duda, responde a este correo."
         f"</p>"
         f"<p style='margin:0;font-size:13px;color:#6b7280;'>"
         f"— El equipo de Trivu"
         f"</p>"
-        f"</div>"
-        f"<p style='margin:16px 0 0;font-size:11px;color:#9ca3af;text-align:center;'>"
-        f"<a href='{terms_url}' style='color:#9ca3af;text-decoration:underline;'>Términos</a>"
-        f" · "
-        f"<a href='{privacy_url}' style='color:#9ca3af;text-decoration:underline;'>Privacidad</a>"
-        f"</p>"
-        f"</div>"
-        f"</body></html>"
+    )
+    body_html = _html_shell(
+        title=subject,
+        inner=inner,
+        footer_links=[(terms_url, "Términos"), (privacy_url, "Privacidad")],
     )
     return subject, body_text, body_html
 

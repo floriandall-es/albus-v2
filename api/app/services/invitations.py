@@ -272,13 +272,18 @@ def send_invitation_email(
     try:
         tenant = db.get(Tenant, tenant_id)
         tenant_name = tenant.name if tenant else "tu equipo"
-        subject, body = invitation_email(
+        subject, body_text, body_html = invitation_email(
             person_name=inv.person_name,
             tenant_name=tenant_name,
             accept_url=created.accept_url,
             expires_at=inv.expires_at,
         )
-        send_email(to=inv.email, subject=subject, body_text=body)
+        send_email(
+            to=inv.email,
+            subject=subject,
+            body_text=body_text,
+            body_html=body_html,
+        )
     except Exception as exc:  # pragma: no cover
         err = f"{type(exc).__name__}: {exc}"
         logger.error(
