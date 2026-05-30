@@ -316,6 +316,20 @@ export default function AdminDashboard() {
           className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
           data-tour-id="setup-checklist"
         >
+          {/* Order matters: equipo first because actividades reference
+              categorías and people, then actividades, then reglas
+              which build on top of both. Primary highlight tracks
+              the same dependency chain — each card lights up once
+              its prerequisites are done. */}
+          <StepCard
+            done={state.teamDone}
+            icon={<Users className="h-5 w-5" />}
+            title="Revisa tu equipo"
+            description="Estos son los miembros que añadiste durante el alta. Asigna a cada uno su categoría profesional y, cuando estés listo, pulsa Enviar invitación para que reciban el email de activación."
+            ctaLabel="Ir al equipo"
+            href="/admin/team"
+            primary={!state.teamDone}
+          />
           <StepCard
             done={state.activitiesDone}
             icon={<Stethoscope className="h-5 w-5" />}
@@ -323,7 +337,7 @@ export default function AdminDashboard() {
             description="Define cada actividad (consulta, guardia, quirófano…) que utiliza tu servicio."
             ctaLabel="Ir a Actividades"
             href="/admin/slots"
-            primary={!state.activitiesDone}
+            primary={state.teamDone && !state.activitiesDone}
           />
           <StepCard
             done={state.rulesDone}
@@ -332,19 +346,10 @@ export default function AdminDashboard() {
             description="Incompatibilidades del mismo día, sucesión entre actividades y límites por persona."
             ctaLabel="Ir a Reglas"
             href="/admin/rules"
-            primary={state.activitiesDone && !state.rulesDone}
-          />
-          <StepCard
-            done={state.teamDone}
-            icon={<Users className="h-5 w-5" />}
-            title="Revisa tu equipo"
-            description="Estos son los miembros que añadiste durante el alta. Asigna a cada uno su categoría profesional y, cuando estés listo, pulsa Enviar invitación para que reciban el email de activación."
-            ctaLabel="Ir al equipo"
-            href="/admin/team"
             primary={
-              state.activitiesDone
-              && state.rulesDone
-              && !state.teamDone
+              state.teamDone
+              && state.activitiesDone
+              && !state.rulesDone
             }
           />
         </section>
