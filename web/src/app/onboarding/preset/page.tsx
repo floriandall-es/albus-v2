@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -7,8 +8,10 @@ import {
   ScissorsLineDashed,
   Check,
   MapPin,
+  PartyPopper,
   Sparkles,
   HeartPulse,
+  X,
 } from "lucide-react";
 import { api, type PresetKind } from "@/lib/api";
 import { ErrorText, Select } from "@/components/admin/ui";
@@ -133,6 +136,37 @@ export default function PresetStep() {
   const currentTransplants =
     me.data?.current_tenant.transplants_enabled ?? false;
   const busyKind = choose.isPending ? choose.variables : null;
+
+  // First-visit welcome modal — congratulates the user on creating
+  // their servicio (which they just did in the 4-step signup) and
+  // sets expectations for this wizard. Gated on a per-tenant
+  // localStorage key so revisiting the page later doesn't re-show
+  // it. Different tenant → different key, so an admin who creates
+  // a second equipo sees it again (intended).
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
+  const tenantId = me.data?.current_tenant.id;
+  useEffect(() => {
+    if (!tenantId) return;
+    try {
+      const key = `onboarding-welcome-shown-${tenantId}`;
+      if (!localStorage.getItem(key)) {
+        setWelcomeOpen(true);
+      }
+    } catch {
+      // localStorage can be blocked (incognito, strict modes).
+      // Silently skip the modal — it's a delighter, not critical.
+    }
+  }, [tenantId]);
+  const closeWelcome = () => {
+    setWelcomeOpen(false);
+    if (tenantId) {
+      try {
+        localStorage.setItem(`onboarding-welcome-shown-${tenantId}`, "1");
+      } catch {
+        // ignore
+      }
+    }
+  };
 
   return (
     <div>
@@ -284,6 +318,107 @@ export default function PresetStep() {
       </div>
 
       <StepNav currentSlug="preset" />
+
+      <WelcomeModal
+        open={welcomeOpen}
+        onClose={closeWelcome}
+        servicioName={me.data?.current_tenant.servicio_name ?? null}
+        equipoName={me.data?.current_tenant.name ?? null}
+      />
+    </div>
+  );
+}
+
+// ===========================================================================
+// First-visit welcome modal
+// ===========================================================================
+// Florian's observation: by the time the user lands here they've
+// just walked through the 4-step signup wizard (persona → hospital
+// → servicio → equipo). Jumping straight to "Paso 1 — Tipo de
+// equipo" can feel jarring with no acknowledgement of what they
+// just did. A short modal congratulates them on the servicio they
+// created and frames this wizard as the second leg of getting set
+// up. Gated on a per-tenant localStorage flag so it only appears
+// once.
+function WelcomeModal({
+  open,
+  onClose,
+  servicioName,
+  equipoName,
+}: {
+  open: boolean;
+  onClose: () => void;
+  servicioName: string | null;
+  equipoName: string | null;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Bienvenida"
+    >
+      <button
+        type="button"
+        aria-label="Cerrar"
+        onClick={onClose}
+        className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm"
+      />
+      <div className="relative w-full max-w-md rounded-2xl bg-white shadow-soft ring-1 ring-gray-200">
+        <button
+          type="button"
+          aria-label="Cerrar"
+          onClick={onClose}
+          className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"
+        >
+          <X className="h-4 w-4" />
+        </button>
+        <div className="p-6">
+          <div className="mb-3 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
+            <PartyPopper className="h-5 w-5" />
+          </div>
+          <h3 className="pr-8 text-lg font-semibold text-gray-900">
+            {servicioName ? `¡${servicioName} ya está en marcha!` : "¡Servicio creado!"}
+          </h3>
+          <p className="mt-2 text-sm text-gray-600 leading-relaxed">
+            Acabas de dar de alta el servicio
+            {servicioName ? <> <strong className="text-gray-800">{servicioName}</strong></> : null}
+            {equipoName ? <> con tu equipo <strong className="text-gray-800">{equipoName}</strong></> : null}.
+            {" "}
+            Este asistente te ayuda con la configuración inicial en
+            5 pasos cortos: tipo de equipo, categorías, actividades,
+            equipo y resumen.
+          </p>
+          <p className="mt-3 text-xs text-gray-500 leading-relaxed">
+            Puedes saltarte pasos y volver más tarde — los valores
+            por defecto son razonables para empezar.
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 shadow-soft transition-colors"
+          >
+            Empezar
+            <Sparkles className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
