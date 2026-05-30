@@ -431,32 +431,37 @@ def accept_invitation(
             person.cargos = [
                 c.strip()[:120] for c in payload.cargos if c and c.strip()
             ]
-        # Migration 0080 / billing chunk 8. Three branches:
+        # Migration 0080 / billing chunk 8. Two branches now:
         #
         # 1. team_pays:  tenant subscription covers everyone — flip
         #                straight to 'active'. Future Stripe seat
         #                reconciliation will bump the member quantity
         #                on the admin's sub item.
-        # 2. members_pay + start_trial=True:  start a personal
-        #                30-day trial. The Stripe Customer +
+        # 2. members_pay:  every accepted invitation starts a 30-day
+        #                personal trial. The Stripe Customer +
         #                Subscription get created lazily on first
-        #                Portal click (no card required up front);
-        #                the row carries 'trialing' + trial_end so
-        #                the banner countdown + billing surface
-        #                already work.
-        # 3. members_pay + start_trial in (False, None):  stay on
-        #                paper. The invitee accepted to be in the
-        #                planning but doesn't want the app. They
-        #                can flip later from /me/billing.
+        #                /me/billing portal click (no card required
+        #                up front); the row carries 'trialing' +
+        #                trial_end so the banner countdown + billing
+        #                surface already work.
+        #
+        # The legacy "stay on paper" branch (start_trial in (False,
+        # None) -> 'never_subscribed') was dropped — it left ghost
+        # accounts in the system for users who didn't actually want
+        # the app. Admins now cover the paper case by simply not
+        # sending the invitation: the row stays PENDIENTE in the
+        # roster, schedulable but accountless. We still accept the
+        # start_trial field on the payload (older clients send
+        # False) but it's ignored under members_pay.
         if tenant.billing_model == "team_pays":
             person.subscription_status = "active"
             # Mirror the tenant trial_end so the banner countdown
             # on /me reads the same date the admin sees on /admin.
             person.trial_end_at = tenant.trial_end_at
-        elif payload.start_trial:
+        else:
+            # members_pay → unconditional trial.
             person.subscription_status = "trialing"
             person.trial_end_at = now_utc + timedelta(days=30)
-        # else: leave as 'never_subscribed' (the column default).
         created_person = True
     else:
         # Cross-tenant accept: the Person already has a password from

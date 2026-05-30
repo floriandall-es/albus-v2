@@ -25,11 +25,14 @@ export default function AcceptInvitePage() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [acceptTerms, setAcceptTerms] = useState(false);
-  // Billing chunk 8. Null until the invitee picks under
-  // members_pay — we gate submit on a non-null value so they
-  // can't accidentally skip the question. Under team_pays the
-  // picker is hidden entirely and submit ignores this value.
-  const [startTrial, setStartTrial] = useState<boolean | null>(null);
+  // Every accepted invitation under members_pay starts a 30-day
+  // free trial — the previous "No gracias, sigo en papel" choice
+  // was dropped because it left ghost accounts in the system for
+  // users who never wanted the app. Admins still cover the
+  // "paper" case by simply not inviting that person (the row
+  // stays PENDIENTE in the roster and can be scheduled without
+  // an account). Under team_pays the admin pays for everyone
+  // and the trial concept doesn't apply.
   // Optional cargos picked at first activation — same UI as the
   // settings page. Empty by default; the invitee can pick zero,
   // one, or several. Backend treats omission as "leave alone"
@@ -82,15 +85,10 @@ export default function AcceptInvitePage() {
         // it server-side, but no point sending noise).
         cargos: cargos.length > 0 ? cargos : undefined,
         accept_terms: acceptTerms,
-        // Billing chunk 8. Only send when the picker is active
-        // (members_pay) AND the invitee chose. Under team_pays
-        // the server flips the invitee to 'active' regardless,
-        // so this field is meaningless.
-        start_trial:
-          preview.data?.tenant_billing_model === "members_pay"
-            && startTrial !== null
-            ? startTrial
-            : undefined,
+        // members_pay invites always start a 30-day trial server-
+        // side now — the field is retained for backward compat
+        // with older clients but the server ignores any value
+        // other than the implicit "true".
       }),
     onSuccess: (data) => {
       setToken(data.access_token);
@@ -115,16 +113,10 @@ export default function AcceptInvitePage() {
 
   const inv = preview.data!;
   const passwordsMatch = password === confirm;
-  // Under members_pay we require the invitee to pick a trial
-  // option explicitly — the question is too important to default-
-  // through. Under team_pays the picker doesn't render and the
-  // value stays null without blocking submit.
-  const needsTrialPick = inv.tenant_billing_model === "members_pay";
   const canSubmit =
     password.length >= 8
     && passwordsMatch
     && acceptTerms
-    && (!needsTrialPick || startTrial !== null)
     && !accept.isPending;
 
   return (
@@ -214,58 +206,23 @@ export default function AcceptInvitePage() {
           <ErrorText>Las contraseñas no coinciden.</ErrorText>
         )}
 
-        {/* Billing chunk 8. Under members_pay, the invitee chooses
-            between starting a 30-day trial or staying on paper.
-            Under team_pays we render a short courtesy note instead
-            — the admin covers their access automatically. */}
+        {/* members_pay invites always start a 30-day trial — no
+            picker. Make the price/timeline obvious before they
+            click Aceptar so the future charge isn't a surprise.
+            Under team_pays the admin pays for everyone and the
+            invitee just gets a courtesy heads-up below. */}
         {inv.tenant_billing_model === "members_pay" && (
-          <div className="rounded-md border border-gray-200 bg-gray-50/60 p-3">
-            <div className="text-sm font-medium text-gray-800">
-              Acceso a la app móvil
+          <div className="rounded-md border border-brand-200 bg-brand-50/40 p-3">
+            <div className="text-sm font-semibold text-gray-900">
+              30 días gratis
             </div>
-            <p className="mt-1 text-xs text-gray-500">
-              Tu admin sigue imprimiendo la planificación, así que esto
-              es opcional. Si quieres recibirla en el móvil con tus
-              cambios y avisos, prueba 30 días gratis.
+            <p className="mt-1 text-xs text-gray-700 leading-relaxed">
+              Al aceptar, empiezas una prueba de 30 días sin tarjeta.
+              Después, el acceso a la app cuesta{" "}
+              <strong>4,90 €/mes</strong>. Puedes cancelar cuando
+              quieras desde tu cuenta — si lo haces antes de que
+              acaben los 30 días no se te cobra nada.
             </p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => setStartTrial(true)}
-                aria-pressed={startTrial === true}
-                className={
-                  "text-left rounded-md border p-3 transition-colors "
-                  + (startTrial === true
-                    ? "border-brand-500 ring-2 ring-brand-500/30 bg-brand-50/40"
-                    : "border-gray-200 bg-white hover:bg-gray-50")
-                }
-              >
-                <div className="text-sm font-semibold text-gray-900">
-                  Probar 30 días gratis
-                </div>
-                <div className="mt-1 text-xs text-gray-600">
-                  Sin tarjeta. Luego 4,90 €/mes si decides quedarte.
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => setStartTrial(false)}
-                aria-pressed={startTrial === false}
-                className={
-                  "text-left rounded-md border p-3 transition-colors "
-                  + (startTrial === false
-                    ? "border-gray-400 ring-2 ring-gray-300 bg-white"
-                    : "border-gray-200 bg-white hover:bg-gray-50")
-                }
-              >
-                <div className="text-sm font-semibold text-gray-900">
-                  No, gracias — seguiré en papel
-                </div>
-                <div className="mt-1 text-xs text-gray-600">
-                  Puedes activarlo más tarde desde tu cuenta.
-                </div>
-              </button>
-            </div>
           </div>
         )}
         {inv.tenant_billing_model === "team_pays" && (
