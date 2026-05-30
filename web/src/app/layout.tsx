@@ -27,9 +27,10 @@ export const metadata: Metadata = {
   // <link rel="manifest"> tag lands in <head>.
   manifest: "/manifest.webmanifest",
   icons: {
-    // The 192/512 PNGs in /public/icons/ are derived from the
-    // 1254px logo via sips. apple-touch-icon is a 180×180 PNG
-    // — Safari's preferred size for the home-screen icon.
+    // The 192/512 PNGs in /public/icons/ are derived from
+    // /public/icons/icon_trivu.png (the 585px master) via PIL.
+    // apple-touch-icon is a 180×180 PNG — Safari's preferred
+    // size for the home-screen icon.
     icon: [
       { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
       { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
