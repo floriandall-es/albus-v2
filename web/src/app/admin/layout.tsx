@@ -14,6 +14,7 @@ import {
   Heart,
   Home,
   LogOut,
+  Menu,
   MessageSquare,
   PartyPopper,
   Settings,
@@ -21,8 +22,10 @@ import {
   Sparkles,
   Tag,
   Users,
+  X,
   type LucideIcon,
 } from "lucide-react";
+import Image from "next/image";
 import { api, getToken } from "@/lib/api";
 import { useLogout } from "@/lib/use-logout";
 import { EmailVerifyBanner } from "@/components/email-verify-banner";
@@ -129,6 +132,17 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   const logout = useLogout();
   const pathname = usePathname();
   const [authChecked, setAuthChecked] = useState(false);
+  // Mobile drawer state. Sidebar collapses to a hamburger on
+  // small viewports because the 240px fixed column would otherwise
+  // eat 60% of a phone screen. Auto-closes on route change so
+  // tapping a nav link doesn't leave the drawer hanging open.
+  // Same pattern as /me/layout.tsx — the admin layout was the
+  // last surface still rendering sidebar-as-permanent on mobile,
+  // making the whole /admin tree unusable on phone.
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     if (!getToken()) {
@@ -188,7 +202,23 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen bg-gray-50">
-      <aside className="w-60 shrink-0 border-r border-gray-200 bg-white flex flex-col">
+      {/* Mobile backdrop: dims the page when the drawer is open
+          and dismisses on tap. Hidden on md+ where the sidebar
+          is always visible. */}
+      {drawerOpen && (
+        <button
+          type="button"
+          aria-label="Cerrar menú"
+          onClick={() => setDrawerOpen(false)}
+          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+        />
+      )}
+      <aside
+        className={
+          "fixed inset-y-0 left-0 z-40 w-60 shrink-0 border-r border-gray-200 bg-white flex flex-col transform transition-transform duration-200 md:static md:translate-x-0 "
+          + (drawerOpen ? "translate-x-0" : "-translate-x-full")
+        }
+      >
         <div className="px-4 py-4 border-b border-gray-100">
           {/* Top row: logo + tenant name. Tenant is line-clamped
               to 2 because that column is narrow (sidebar width
@@ -206,6 +236,16 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             >
               {me.data?.current_tenant.name}
             </div>
+            {/* Mobile-only close button. 44×44 touch target so
+                soft-cased or sweaty fingers still hit it. */}
+            <button
+              type="button"
+              aria-label="Cerrar menú"
+              onClick={() => setDrawerOpen(false)}
+              className="-mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 active:bg-gray-200 md:hidden"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
           {/* Hospital roll-up label on its own row below — gets
               the full sidebar width so a long official name like
@@ -341,9 +381,45 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           fit. Same fix below in /lead and /me layouts.
           See https://defensivecss.dev/tip/flexbox-min-content-size/ */}
       <div className="flex-1 flex flex-col min-w-0">
+        {/* Mobile top bar: hamburger + logo + tenant name + a
+            compact Pendientes badge so the admin sees there's
+            something needing attention without having to open
+            the drawer. Hidden on md+ where the sidebar shows
+            everything. */}
+        <div className="flex items-center gap-2 border-b border-gray-200 bg-white px-3 py-2 md:hidden">
+          <button
+            type="button"
+            aria-label="Abrir menú"
+            onClick={() => setDrawerOpen(true)}
+            className="-ml-2 flex h-11 w-11 items-center justify-center rounded-md text-gray-700 hover:bg-gray-100 active:bg-gray-200"
+          >
+            <Menu className="h-5 w-5" />
+            {pendientesTotal > 0 && (
+              <span
+                aria-hidden
+                className="absolute mt-[-18px] ml-[18px] h-2 w-2 rounded-full bg-brand-600 ring-2 ring-white"
+              />
+            )}
+          </button>
+          <Image
+            src="/logo.jpeg"
+            alt="Trivu"
+            width={28}
+            height={28}
+            className="rounded-md object-cover"
+          />
+          <div className="min-w-0 flex-1 truncate text-sm font-medium text-gray-800">
+            {me.data?.current_tenant.name}
+          </div>
+        </div>
         <EmailVerifyBanner />
         <BillingBanner />
-        <main className="flex-1 p-8">{children}</main>
+        {/* Tighter horizontal padding on mobile (where 8px·2 =
+            16px is plenty) and the existing p-8 on md+. Without
+            this every page was inheriting the laptop-sized p-8,
+            which left ~280px of content room on a 393px phone
+            even after the sidebar fix. */}
+        <main className="flex-1 p-4 md:p-8">{children}</main>
       </div>
     </div>
   );
