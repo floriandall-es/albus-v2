@@ -228,7 +228,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             <img
               src="/logo-icon.png"
               alt="Trivu"
-              className="h-14 w-14 shrink-0 rounded-lg object-cover shadow-soft"
+              className="h-14 w-14 shrink-0"
             />
             <div
               className="min-w-0 flex-1 text-sm font-medium text-gray-700 leading-tight line-clamp-2"

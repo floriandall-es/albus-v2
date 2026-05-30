@@ -168,7 +168,7 @@ export default function MeLayout({ children }: { children: ReactNode }) {
             <img
               src="/logo-icon.png"
               alt="Trivu"
-              className="h-14 w-14 shrink-0 rounded-lg object-cover shadow-soft"
+              className="h-14 w-14 shrink-0"
             />
             <div
               className="min-w-0 flex-1 text-sm font-medium text-gray-700 leading-tight line-clamp-2"
@@ -196,16 +196,16 @@ export default function MeLayout({ children }: { children: ReactNode }) {
           )}
         </div>
 
-        {/* "You are signed in as X" card. Lives below the
+        {/* "You are signed in as X" anchor. Lives below the
             tenant/hospital header but above the InstallButton
-            + ViewSwitcher block. Card chrome (light bg + ring)
-            sets it apart so the user identity reads as a
-            self-contained element rather than another header
-            row. Doubles as a quick anchor to the profile page. */}
+            + ViewSwitcher block. Card chrome dropped (was
+            bg-gray-50 + ring) so the header feels lighter —
+            hover-only bg keeps the click affordance. Doubles
+            as a quick anchor to the profile page. */}
         {me.data && (
           <Link
             href="/me/settings"
-            className="mx-3 mt-3 flex items-center gap-2.5 rounded-lg bg-gray-50 px-3 py-2.5 ring-1 ring-inset ring-gray-200 hover:bg-gray-100 transition-colors"
+            className="mx-3 mt-3 flex items-center gap-2.5 rounded-lg px-3 py-2.5 hover:bg-gray-50 transition-colors"
           >
             <Avatar
               name={me.data.person.name}
