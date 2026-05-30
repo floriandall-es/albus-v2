@@ -218,10 +218,9 @@ export default function AcceptInvitePage() {
             </div>
             <p className="mt-1 text-xs text-gray-700 leading-relaxed">
               Al aceptar, empiezas una prueba de 30 días sin tarjeta.
-              Después, el acceso a la app cuesta{" "}
-              <strong>4,90 €/mes</strong>. Puedes cancelar cuando
-              quieras desde tu cuenta — si lo haces antes de que
-              acaben los 30 días no se te cobra nada.
+              Pasados los 30 días, si quieres seguir usando la app,
+              activas tú la suscripción (<strong>4,90 €/mes</strong>)
+              desde tu cuenta. No se cobra nada automáticamente.
             </p>
           </div>
         )}
