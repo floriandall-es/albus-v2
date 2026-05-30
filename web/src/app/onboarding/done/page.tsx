@@ -112,15 +112,15 @@ export default function DoneStep() {
             selected={billingModel === "members_pay"}
             onSelect={() => pickBilling("members_pay")}
             title="Cada persona paga su acceso"
-            price="29,90 €/mes"
-            body="Tú pagas tu cuenta. Cada miembro decide si quiere activar su acceso y paga su propia suscripción (4,90 €/mes)."
+            price="Admin 29,90 €/mes · Miembro 4,90 €/mes"
+            body="Tú pagas tu cuenta. Cada miembro decide si quiere activar su acceso y paga su propia suscripción."
             badge="Más flexible"
           />
           <BillingOption
             selected={billingModel === "team_pays"}
             onSelect={() => pickBilling("team_pays")}
             title="El administrador paga todo el equipo"
-            price="29,90 € + 4,90 €/miembro/mes"
+            price="Admin 29,90 €/mes · Miembro 4,90 €/mes"
             body="Una única factura. El administrador asume el coste de todos los miembros y estos tienen acceso automáticamente."
             badge="Una factura"
           />
