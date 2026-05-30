@@ -89,7 +89,9 @@ export default function MeBillingPage() {
                         Tu suscripción
                       </h2>
                       <p className="mt-1 text-xs text-gray-500">
-                        4,90 €/mes. Cancela cuando quieras desde el portal.
+                        {billing.data.subscription_status === "active"
+                          ? "4,90 €/mes. Cancela cuando quieras desde el portal."
+                          : "4,90 €/mes cuando actives la suscripción."}
                       </p>
                     </div>
                     <MyStatusBadge status={billing.data.subscription_status} />
@@ -99,7 +101,8 @@ export default function MeBillingPage() {
                     && trialDaysLeft !== null && (
                       <div className="mt-4 rounded-md bg-brand-50 px-3 py-2 text-xs text-brand-800">
                         Te quedan <strong>{trialDaysLeft} días</strong> de
-                        prueba gratis. Tras la prueba se renueva
+                        prueba gratis. Tras la prueba, activa la suscripción
+                        para seguir usando la app — no se cobra nada
                         automáticamente.
                       </div>
                     )}
@@ -149,7 +152,7 @@ export default function MeBillingPage() {
                     </Button>
                     {!billing.data.has_stripe_customer && (
                       <span className="text-xs text-gray-500">
-                        Disponible cuando actives tu prueba.
+                        Disponible cuando actives la suscripción.
                       </span>
                     )}
                   </div>
