@@ -100,10 +100,10 @@ export default function LoginPage() {
           <Image
             src="/logo.png"
             alt="Trivu"
-            width={112}
-            height={112}
+            width={200}
+            height={80}
             priority
-            className="h-24 w-24 rounded-2xl shadow-soft"
+            className="h-20 w-auto"
           />
         </div>
         <div className="rounded-2xl bg-white shadow-soft ring-1 ring-gray-200 p-6">

@@ -63,14 +63,11 @@ export default function SelectTenantPage() {
           <Image
             src="/logo.png"
             alt="Trivu"
-            width={96}
-            height={96}
+            width={160}
+            height={64}
             priority
-            className="h-20 w-20 rounded-2xl shadow-soft"
+            className="h-16 w-auto"
           />
-          <div className="mt-3 text-2xl font-bold tracking-tight text-brand-700">
-            Trivu
-          </div>
         </div>
         <div className="rounded-2xl bg-white shadow-soft ring-1 ring-gray-200 p-6">
           <h1 className="mb-1 text-lg font-semibold text-center text-gray-900">

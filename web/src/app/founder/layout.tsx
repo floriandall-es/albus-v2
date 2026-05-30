@@ -84,11 +84,11 @@ export default function FounderLayout({ children }: { children: ReactNode }) {
             <img
               src="/logo.png"
               alt="Trivu"
-              className="h-9 w-9 rounded-md object-cover shadow-soft"
+              className="h-9 w-auto"
             />
             <div>
               <div className="text-sm font-semibold text-gray-900">
-                Trivu · Founder dashboard
+                Founder dashboard
               </div>
               <div className="text-[11px] text-gray-500">
                 {me.data.person.email}

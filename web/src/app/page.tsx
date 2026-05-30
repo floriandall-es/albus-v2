@@ -740,18 +740,18 @@ export default function LandingPage() {
           ----------------------------------------------------------- */}
       <nav className="sticky top-0 z-30 backdrop-blur supports-[backdrop-filter]:bg-white/70 bg-white/90 border-b border-gray-200">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 py-3 flex items-center gap-3 sm:gap-5">
-          <Link href="/" className="flex items-center gap-2.5 shrink-0">
+          <Link href="/" className="flex items-center shrink-0">
+            {/* Wordmark + icon are both inside the cropped PNG now, so
+                no sibling text needed. 2.5:1 aspect ratio (841×337),
+                rendered at h-8 → ~80px wide. */}
             <Image
               src="/logo.png"
               alt="Trivu"
-              width={32}
+              width={80}
               height={32}
               priority
-              className="h-8 w-8 rounded-lg shadow-soft"
+              className="h-8 w-auto"
             />
-            <span className="text-lg font-semibold tracking-tight">
-              Trivu
-            </span>
           </Link>
           <div className="hidden md:flex items-center gap-1 ml-4">
             <a
@@ -1181,18 +1181,15 @@ export default function LandingPage() {
           ----------------------------------------------------------- */}
       <footer className="bg-gray-50 border-t border-gray-200">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 py-10 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-3">
             <Image
               src="/logo.png"
               alt="Trivu"
-              width={28}
+              width={70}
               height={28}
-              className="h-7 w-7 rounded-md shadow-soft"
+              className="h-7 w-auto"
             />
-            <div>
-              <div className="text-sm font-semibold text-gray-900">Trivu</div>
-              <div className="text-xs text-gray-500">{c.footer.tagline}</div>
-            </div>
+            <div className="text-xs text-gray-500">{c.footer.tagline}</div>
           </div>
           <div className="flex-1" />
           <nav className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-gray-600">

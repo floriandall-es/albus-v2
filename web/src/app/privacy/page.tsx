@@ -21,15 +21,14 @@ export default function PrivacyPage() {
   return (
     <main className="min-h-screen px-4 py-12 bg-gradient-to-b from-brand-50/50 to-gray-50">
       <div className="mx-auto max-w-2xl">
-        <Link href="/" className="inline-flex items-center gap-2 mb-6">
+        <Link href="/" className="inline-flex items-center mb-6">
           <Image
             src="/logo.png"
             alt="Trivu"
-            width={48}
-            height={48}
-            className="h-10 w-10 rounded-lg shadow-soft"
+            width={100}
+            height={40}
+            className="h-10 w-auto"
           />
-          <span className="font-semibold text-brand-700">Trivu</span>
         </Link>
 
         <article className="rounded-2xl bg-white shadow-soft ring-1 ring-gray-200 p-8 prose prose-sm max-w-none">

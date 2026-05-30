@@ -62,10 +62,10 @@ export default function OnboardingLayout({ children }: { children: ReactNode }) 
             <Image
               src="/logo.png"
               alt="Trivu"
-              width={48}
+              width={120}
               height={48}
               priority
-              className="h-12 w-12 rounded-xl shadow-soft shrink-0"
+              className="h-12 w-auto shrink-0"
             />
             <div className="min-w-0">
               <div className="text-xs uppercase tracking-wider text-brand-700 font-semibold">
