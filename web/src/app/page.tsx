@@ -743,14 +743,16 @@ export default function LandingPage() {
           <Link href="/" className="flex items-center shrink-0">
             {/* Wordmark + icon are both inside the cropped PNG now, so
                 no sibling text needed. 2.5:1 aspect ratio (841×337),
-                rendered at h-8 → ~80px wide. */}
+                rendered at h-10 → ~100px wide so the brand mark sits
+                a notch above the nav link row instead of competing
+                with it. */}
             <Image
               src="/logo.png"
               alt="Trivu"
-              width={80}
-              height={32}
+              width={100}
+              height={40}
               priority
-              className="h-8 w-auto"
+              className="h-10 w-auto"
             />
           </Link>
           <div className="hidden md:flex items-center gap-1 ml-4">
