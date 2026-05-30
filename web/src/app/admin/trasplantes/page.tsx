@@ -100,13 +100,16 @@ export default function TrasplantesPage() {
   // Surgeon picker pool: only members with categoría Adjunto, plus
   // the disabled Pastor (so editing a historical case can still
   // attribute him). Keep the list small — neumólogos and residents
-  // never appear on the surgeries table.
+  // never appear on the surgeries table. Match both "Adjunto" (old
+  // tenants seeded before the inclusive rename) and "Adjunto/a"
+  // (new tenants).
   const surgeonOptions = useMemo(() => {
     return (team.data ?? [])
       .filter(
         (m) =>
-          m.category_name === "Adjunto" ||
-            m.person_name === "Pastor (inactivo)",
+          m.category_name === "Adjunto"
+            || m.category_name === "Adjunto/a"
+            || m.person_name === "Pastor (inactivo)",
       )
       .map((m) => ({
         ...m,

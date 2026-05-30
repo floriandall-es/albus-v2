@@ -13,11 +13,11 @@ import { StepHeader } from "../_step-header";
 // ones at the bottom.
 const DEFAULT_GROUPS: { title: string; items: string[] }[] = [
   {
-    title: "Médicos",
+    title: "Médicos/as",
     items: [
-      "Jefe de servicio",
-      "Jefe de sección",
-      "Adjunto",
+      "Jefe/a de servicio",
+      "Jefe/a de sección",
+      "Adjunto/a",
       "Residente R5",
       "Residente R4",
       "Residente R3",

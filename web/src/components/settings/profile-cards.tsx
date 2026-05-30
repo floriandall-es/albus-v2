@@ -630,16 +630,22 @@ function AvatarSection({
  * Exported so the invite-accept page (/invite/[token]) can offer
  * the same multi-select on first-time activation without
  * duplicating the list. */
+// Inclusive forms (`/a`) match the style of every other gendered
+// label in the app — categorías de onboarding, enfermería, etc.
+// Backend matchers (e.g. _person_is_jefe_de_servicio in
+// availability.py) accept both the old and new forms so users
+// who picked the masculine variants before this rename don't
+// lose their gating.
 export const CARGO_OPTIONS = [
-  "Jefe de Servicio",
-  "Jefe de Sección",
-  "Adjunto",
-  "Tutor de Residentes",
+  "Jefe/a de Servicio",
+  "Jefe/a de Sección",
+  "Adjunto/a",
+  "Tutor/a de Residentes",
   "Residente",
   "Rotante Externo",
-  "Profesor",
-  "Investigador",
-  "Becario",
+  "Profesor/a",
+  "Investigador/a",
+  "Becario/a",
 ];
 
 function ProfileSection({

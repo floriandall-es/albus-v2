@@ -801,22 +801,30 @@ def _validate_servicio_admin(ctx: RequestContext, membership_id: int) -> int:
 # ---------------------------------------------------------------------------
 
 
-# Canonical lowercase form of the cargo we look for. Matched against
-# each entry of person.cargos with stripped lowercase comparison so
-# capitalisation differences (presets store "Jefe de servicio",
-# migrations show "Jefe de Servicio") and stray whitespace don't
-# silently disqualify the title-holder. The "Adjunto" suffix etc.
-# get filtered out by the strict equality.
-_JEFE_DE_SERVICIO_CARGO = "jefe de servicio"
+# Canonical lowercase forms of the cargo we look for. Matched
+# against each entry of person.cargos with stripped lowercase
+# comparison so capitalisation differences (presets store
+# "Jefe de servicio", migrations show "Jefe de Servicio") and
+# stray whitespace don't silently disqualify the title-holder.
+# Both the masculine ("jefe de servicio", from before the
+# inclusive rename) and inclusive ("jefe/a de servicio", from
+# the current CARGO_OPTIONS list) variants count — anyone who
+# already had the masculine form on their profile keeps their
+# gating without having to re-pick.
+_JEFE_DE_SERVICIO_CARGOS: frozenset[str] = frozenset({
+    "jefe de servicio",
+    "jefe/a de servicio",
+})
 
 
 def _person_is_jefe_de_servicio(p: Person) -> bool:
-    """True iff any of `p.cargos` equals 'Jefe de Servicio' once
-    trimmed and lowercased. Used both for resolving who the jefe
-    is (membership-side, see _resolve_servicio_jefe) and gating
-    the /admin/compartir toggle (caller-side, see servicios.py)."""
+    """True iff any of `p.cargos` equals 'Jefe de Servicio' (in
+    either masculine or inclusive form) once trimmed and lowercased.
+    Used both for resolving who the jefe is (membership-side, see
+    _resolve_servicio_jefe) and gating the /admin/compartir toggle
+    (caller-side, see servicios.py)."""
     for raw in p.cargos or ():
-        if (raw or "").strip().lower() == _JEFE_DE_SERVICIO_CARGO:
+        if (raw or "").strip().lower() in _JEFE_DE_SERVICIO_CARGOS:
             return True
     return False
 
