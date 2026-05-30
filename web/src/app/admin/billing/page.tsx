@@ -103,9 +103,13 @@ export default function AdminBillingPage() {
                   Estado de la suscripción
                 </h2>
                 <p className="mt-1 text-xs text-gray-500">
-                  Tu equipo paga {billingModel === "team_pays"
-                    ? "una sola factura para todos."
-                    : "29,90 €/mes. Cada miembro decide si quiere activar su acceso al móvil por 4,90 €/mes."}
+                  {status === "active"
+                    ? (billingModel === "team_pays"
+                      ? "Tu equipo paga una sola factura para todos."
+                      : "Tu equipo paga 29,90 €/mes. Cada miembro decide si quiere activar su acceso al móvil por 4,90 €/mes.")
+                    : (billingModel === "team_pays"
+                      ? "Cuando actives la suscripción, pagarás una sola factura para todo el equipo (29,90 € + 4,90 €/miembro/mes)."
+                      : "Cuando actives la suscripción, pagarás 29,90 €/mes. Cada miembro decide si quiere activar su acceso al móvil por 4,90 €/mes.")}
                 </p>
               </div>
               <StatusBadge status={status} />
@@ -114,13 +118,14 @@ export default function AdminBillingPage() {
             {status === "trialing" && trialDaysLeft !== null && (
               <div className="mt-4 rounded-md bg-brand-50 px-3 py-2 text-xs text-brand-800">
                 Te quedan <strong>{trialDaysLeft} días</strong> de prueba
-                gratis. {trialEnd && (
-                  <>Termina el {new Date(trialEnd).toLocaleDateString("es-ES", {
+                gratis{trialEnd && (
+                  <> (hasta el {new Date(trialEnd).toLocaleDateString("es-ES", {
                     day: "numeric",
                     month: "long",
                     year: "numeric",
-                  })}.</>
-                )}
+                  })})</>
+                )}. Tras la prueba, activa la suscripción para seguir
+                usando la app — no se cobra nada automáticamente.
               </div>
             )}
             {status === "past_due" && (
@@ -231,7 +236,7 @@ export default function AdminBillingPage() {
               </Button>
               {!summary.data?.has_stripe_customer && (
                 <span className="text-xs text-gray-500">
-                  Disponible cuando finalice tu primera suscripción.
+                  Disponible cuando actives la suscripción.
                 </span>
               )}
             </div>

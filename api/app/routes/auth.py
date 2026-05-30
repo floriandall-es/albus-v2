@@ -2,7 +2,7 @@ import logging
 import re
 import secrets
 import unicodedata
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -328,6 +328,14 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthRespons
     # None is fine if a CNH variant slips through; the user can set
     # it later from /admin/holidays and we add the variant to the map.
     derived_region = cnh_aac_to_iso(hospital.autonomous_community)
+    # New tenants start on a 30-day trial. Mirrors what we do for
+    # invited members at /api/invitations/{token}/accept — the admin
+    # gets the same opt-in shape, no Stripe Customer is created
+    # until they explicitly click Activar suscripción on
+    # /admin/billing. Without this the tenant would land at
+    # subscription_status=NULL and surface as "Sin configurar",
+    # which is confusing on day one.
+    trial_end_at = datetime.now(timezone.utc) + timedelta(days=30)
     tenant = Tenant(
         slug=tenant_slug,
         name=payload.equipo_name.strip(),
@@ -338,6 +346,8 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthRespons
         approval_state=approval_state,
         share_policy="none",
         transplants_enabled=payload.transplants_enabled,
+        subscription_status="trialing",
+        trial_end_at=trial_end_at,
     )
     db.add(tenant)
     db.flush()
