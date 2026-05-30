@@ -29,6 +29,7 @@ const DEFAULT_GROUPS: { title: string; items: string[] }[] = [
     title: "Enfermería",
     items: [
       "Supervisor/a de enfermería",
+      "Adjunto/a de enfermería",
       "Enfermero/a",
       "Auxiliar de enfermería (TCAE)",
       "Matrona",
