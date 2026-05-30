@@ -447,6 +447,20 @@ function Step2Hospital({
         </div>
       )}
 
+      {/* Escape hatch — the CNH catalogue is comprehensive but
+          not infallible (private clinics, new openings, name
+          variants). Always-visible so users don't have to hit
+          the empty-results state to discover it. */}
+      <p className="text-center text-xs text-gray-500">
+        ¿No encuentras tu hospital?{" "}
+        <a
+          href="mailto:hola@trivu.net?subject=Hospital%20que%20no%20aparece%20en%20Trivu"
+          className="font-medium text-brand-700 hover:underline"
+        >
+          Escríbenos a hola@trivu.net
+        </a>
+      </p>
+
       <NavButtons
         onBack={onBack}
         onContinue={onContinue}
