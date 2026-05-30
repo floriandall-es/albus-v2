@@ -105,6 +105,10 @@ class TenantOut(BaseModel):
     # frontend reads this to gate the "Servicio" sidebar entry and
     # the /admin/servicio page.
     servicio_id: int | None = None
+    # Populated server-side from the joined servicio relationship so
+    # the frontend can render "Servicio · Equipo" labels (onboarding
+    # header, breadcrumbs, etc.) without a second fetch.
+    servicio_name: str | None = None
     # 'none' / 'selected' / 'full' — what this equipo shares with
     # other peers in its servicio. The /admin/servicio page reads
     # and updates this.

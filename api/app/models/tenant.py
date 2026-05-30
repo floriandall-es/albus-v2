@@ -13,6 +13,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.models.hospital import Hospital
+from app.models.servicio import Servicio
 
 
 class Tenant(Base):
@@ -48,6 +49,12 @@ class Tenant(Base):
         nullable=True,
         index=True,
     )
+    # Joined-load so TenantOut.model_validate can read .servicio_name
+    # without a second roundtrip — mirrors the hospital pattern just
+    # above. Cheap join, one small row per tenant.
+    servicio: Mapped["Servicio | None"] = relationship(
+        "Servicio", lazy="joined"
+    )
     # What this Equipo exposes to other Equipos in its Servicio:
     #   'none'     → nothing (default for new signups).
     #   'selected' → only slots flagged shared_with_servicio=true.
@@ -71,6 +78,10 @@ class Tenant(Base):
     @property
     def hospital_name(self) -> str | None:
         return self.hospital.name if self.hospital else None
+
+    @property
+    def servicio_name(self) -> str | None:
+        return self.servicio.name if self.servicio else None
     country: Mapped[str | None] = mapped_column(String(8), nullable=True)
     locale: Mapped[str | None] = mapped_column(String(16), nullable=True)
     country_code: Mapped[str | None] = mapped_column(String(8), nullable=True)

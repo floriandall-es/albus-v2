@@ -63,6 +63,10 @@ export type Tenant = {
    * only for legacy tenants (pre-Phase-A). Drives the "Servicio"
    * sidebar entry and the /admin/servicio page. */
   servicio_id: number | null;
+  /** Servicio name pulled server-side via the joined relationship,
+   * so the frontend can render "Servicio · Equipo" labels without
+   * a second fetch. Null whenever servicio_id is null. */
+  servicio_name: string | null;
   /** What this equipo exposes to other equipos in its servicio.
    * Default 'none' for new signups; 'full' both ways for the
    * alpha customer's existing equipos. */
