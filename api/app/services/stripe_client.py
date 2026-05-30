@@ -413,6 +413,10 @@ def create_tenant_checkout_session(
         # checkout.session.completed event can resolve back without
         # round-tripping through the Subscription.
         metadata={"tenant_id": str(tenant_id), "kind": "tenant"},
+        # Force Spanish — the rest of the app is Spanish and
+        # Stripe's auto-detection sometimes lands on English for
+        # multilingual browsers.
+        locale="es",
     )
     return session["url"]
 
@@ -452,6 +456,8 @@ def create_person_checkout_session(
         success_url=success_url,
         cancel_url=cancel_url,
         metadata={"person_id": str(person_id), "kind": "person"},
+        # Force Spanish — same reasoning as in the tenant helper.
+        locale="es",
     )
     return session["url"]
 
