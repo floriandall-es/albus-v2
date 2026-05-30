@@ -28,6 +28,7 @@ See docs/billing-plan.md, chunk 3.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from app.core.config import settings
@@ -336,6 +337,123 @@ def cancel_subscription(subscription_id: str, *, at_period_end: bool = True) -> 
             subscription_id, cancel_at_period_end=True
         )
     return stripe.Subscription.cancel(subscription_id)
+
+
+# ---------------------------------------------------------------------------
+# Checkout — first-time activation (card collection + Customer + Sub)
+# ---------------------------------------------------------------------------
+# Used when an admin or member clicks Activar suscripción on their
+# billing surface. Stripe Checkout in `subscription` mode creates the
+# Customer AND the Subscription atomically, collecting the card on a
+# Stripe-hosted page so we never touch PCI data. The metadata we
+# stamp on `subscription_data` lets the webhook handler resolve the
+# resulting `customer.subscription.created` event back to our row.
+#
+# If the caller is still inside their trial window we pass
+# `subscription_data.trial_end` so Stripe honors the days they were
+# already promised — no charge until the original trial would have
+# ended. Outside the window (trial already lapsed / never granted)
+# we omit it and charging starts immediately.
+
+
+def _maybe_trial_end(trial_end_at: datetime | None) -> dict[str, Any]:
+    """Return a {trial_end: unix_ts} dict to splice into
+    subscription_data when the caller still has trial days left,
+    else an empty dict. Centralised so the admin + member checkout
+    helpers stay short."""
+    if trial_end_at and trial_end_at > datetime.now(timezone.utc):
+        return {"trial_end": int(trial_end_at.timestamp())}
+    return {}
+
+
+def create_tenant_checkout_session(
+    *,
+    tenant_id: int,
+    email: str,
+    name: str,
+    billing_model: str,
+    member_quantity: int,
+    trial_end_at: datetime | None,
+    success_url: str,
+    cancel_url: str,
+) -> str:
+    """Create a Stripe Checkout Session for the admin's first
+    activation. Returns the URL to redirect the browser to.
+
+    Adds a `price_admin × 1` line item always; under `team_pays`
+    appends `price_member × member_quantity` so the admin also
+    pays for the active member roster. The Subscription that
+    results carries our tenant_id in metadata so the webhook flips
+    the status correctly."""
+    stripe = _with_stripe()
+    line_items: list[dict[str, Any]] = [
+        {"price": settings.stripe_price_admin, "quantity": 1}
+    ]
+    if billing_model == "team_pays" and member_quantity > 0:
+        line_items.append(
+            {"price": settings.stripe_price_member, "quantity": member_quantity}
+        )
+    subscription_data: dict[str, Any] = {
+        "metadata": {
+            "tenant_id": str(tenant_id),
+            "kind": "tenant",
+            "billing_model": billing_model,
+        },
+        **_maybe_trial_end(trial_end_at),
+    }
+    session = stripe.checkout.Session.create(
+        mode="subscription",
+        customer_email=email,
+        client_reference_id=f"tenant:{tenant_id}",
+        line_items=line_items,
+        subscription_data=subscription_data,
+        success_url=success_url,
+        cancel_url=cancel_url,
+        # Persist the metadata at the session level too so the
+        # checkout.session.completed event can resolve back without
+        # round-tripping through the Subscription.
+        metadata={"tenant_id": str(tenant_id), "kind": "tenant"},
+    )
+    return session["url"]
+
+
+def create_person_checkout_session(
+    *,
+    person_id: int,
+    tenant_id: int,
+    email: str,
+    name: str,
+    trial_end_at: datetime | None,
+    success_url: str,
+    cancel_url: str,
+) -> str:
+    """Create a Stripe Checkout Session for a member's personal
+    activation under members_pay. One `price_member × 1` line.
+    person_id + tenant_id in metadata so the webhook can resolve
+    back AND so the auto-pause-when-admin-lapses sweep can find
+    member subs of a given tenant."""
+    stripe = _with_stripe()
+    subscription_data: dict[str, Any] = {
+        "metadata": {
+            "person_id": str(person_id),
+            "tenant_id": str(tenant_id),
+            "kind": "person",
+        },
+        **_maybe_trial_end(trial_end_at),
+    }
+    session = stripe.checkout.Session.create(
+        mode="subscription",
+        customer_email=email,
+        client_reference_id=f"person:{person_id}",
+        line_items=[
+            {"price": settings.stripe_price_member, "quantity": 1}
+        ],
+        subscription_data=subscription_data,
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata={"person_id": str(person_id), "kind": "person"},
+    )
+    return session["url"]
 
 
 # ---------------------------------------------------------------------------

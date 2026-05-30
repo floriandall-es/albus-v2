@@ -212,6 +212,58 @@ def billing_portal(
     return PortalResponse(url=url)
 
 
+class CheckoutResponse(BaseModel):
+    url: str
+
+
+@router.post("/billing/activate", response_model=CheckoutResponse)
+def billing_activate(
+    ctx: RequestContext = Depends(get_current_context),
+) -> CheckoutResponse:
+    """Open a Stripe Checkout Session for the admin's first
+    activation. The Session creates Customer + Subscription
+    atomically once the admin completes payment; webhook flips
+    `tenant.subscription_status` to 'active' (or keeps 'trialing'
+    if there are remaining trial days). Returns the Checkout URL
+    for the frontend to redirect to.
+
+    409 if the tenant already has a Stripe Customer — they should
+    use the Portal instead. 402 if Stripe isn't configured (caller
+    can show a friendly "we'll be in touch" message)."""
+    _require_admin(ctx)
+    if ctx.tenant.stripe_customer_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ya tienes una cuenta de facturación activa. Usa el portal.",
+        )
+    if not settings.stripe_secret_key:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="El cobro automático no está configurado todavía. Escríbenos a hola@trivu.net y lo activamos manualmente.",
+        )
+    success_url = (
+        f"{settings.public_base_url}/admin/billing?activated=1"
+        f"&session_id={{CHECKOUT_SESSION_ID}}"
+    )
+    cancel_url = f"{settings.public_base_url}/admin/billing"
+    url = stripe_client.create_tenant_checkout_session(
+        tenant_id=ctx.tenant.id,
+        email=ctx.person.email,
+        name=ctx.tenant.name,
+        billing_model=ctx.tenant.billing_model,
+        member_quantity=_active_member_count(ctx),
+        trial_end_at=ctx.tenant.trial_end_at,
+        success_url=success_url,
+        cancel_url=cancel_url,
+    )
+    logger.info(
+        "Tenant checkout session created tenant=%s by person=%s",
+        ctx.tenant.slug,
+        ctx.person.email,
+    )
+    return CheckoutResponse(url=url)
+
+
 # ---------------------------------------------------------------------------
 # Member self-service (chunk 10)
 # ---------------------------------------------------------------------------
@@ -268,3 +320,55 @@ def my_billing_portal(
         return_url=f"{settings.public_base_url}/me/billing",
     )
     return PortalResponse(url=url)
+
+
+@router.post("/billing/me/activate", response_model=CheckoutResponse)
+def my_billing_activate(
+    ctx: RequestContext = Depends(get_current_context),
+) -> CheckoutResponse:
+    """Open a Stripe Checkout Session for the member's first
+    activation under members_pay. Stripe creates Customer +
+    Subscription atomically; webhook flips
+    `person.subscription_status`. If the member still has trial
+    days left, Stripe honors them and only starts charging when
+    they expire — no surprise immediate charge for someone who
+    activates on day 5.
+
+    409 if the person already has a Stripe Customer (use the
+    Portal). 402 if Stripe isn't configured. 409 also if the
+    tenant is on team_pays (the admin pays — no personal sub)."""
+    if ctx.tenant.billing_model == "team_pays":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Tu equipo paga tu acceso — no tienes que activar nada.",
+        )
+    if ctx.person.stripe_customer_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ya tienes una cuenta de facturación activa. Usa el portal.",
+        )
+    if not settings.stripe_secret_key:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="El cobro automático no está configurado todavía. Escríbenos a hola@trivu.net y lo activamos manualmente.",
+        )
+    success_url = (
+        f"{settings.public_base_url}/me/billing?activated=1"
+        f"&session_id={{CHECKOUT_SESSION_ID}}"
+    )
+    cancel_url = f"{settings.public_base_url}/me/billing"
+    url = stripe_client.create_person_checkout_session(
+        person_id=ctx.person.id,
+        tenant_id=ctx.tenant.id,
+        email=ctx.person.email,
+        name=ctx.person.name,
+        trial_end_at=ctx.person.trial_end_at,
+        success_url=success_url,
+        cancel_url=cancel_url,
+    )
+    logger.info(
+        "Person checkout session created person=%s tenant=%s",
+        ctx.person.email,
+        ctx.tenant.slug,
+    )
+    return CheckoutResponse(url=url)

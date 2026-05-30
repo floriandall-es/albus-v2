@@ -2197,11 +2197,23 @@ export const api = {
   // checked-out trial).
   openBillingPortal: () =>
     request<{ url: string }>("/api/billing/portal", { method: "POST" }),
+  /** Activate the tenant subscription for the first time. Returns
+   * the Stripe Checkout URL the frontend redirects to; Stripe
+   * collects the card, creates Customer + Subscription, then
+   * sends the admin back to /admin/billing?activated=1. */
+  activateBilling: () =>
+    request<{ url: string }>("/api/billing/activate", { method: "POST" }),
   // /me/billing payload. Any role; reports the person's own
   // subscription state in the current tenant context.
   getMyBilling: () => request<MyBilling>("/api/billing/me"),
   openMyBillingPortal: () =>
     request<{ url: string }>("/api/billing/me/portal", { method: "POST" }),
+  /** Member's first activation under members_pay. Returns the
+   * Stripe Checkout URL to redirect to; Stripe handles the card +
+   * Customer + Subscription and sends the member back to
+   * /me/billing?activated=1. */
+  activateMyBilling: () =>
+    request<{ url: string }>("/api/billing/me/activate", { method: "POST" }),
 
   // Onboarding
   completeOnboarding: () =>

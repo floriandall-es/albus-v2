@@ -1,7 +1,8 @@
 "use client";
-import { useMemo } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { CreditCard, ExternalLink } from "lucide-react";
+import { useEffect, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { CreditCard, ExternalLink, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 import {
   Button,
@@ -22,6 +23,9 @@ import {
  * Stripe-side work goes through /api/billing/me + /api/billing/me/portal.
  * This page never calls Stripe directly. */
 export default function MeBillingPage() {
+  const qc = useQueryClient();
+  const searchParams = useSearchParams();
+  const justActivated = searchParams.get("activated") === "1";
   const billing = useQuery({
     queryKey: ["my-billing"],
     queryFn: api.getMyBilling,
@@ -32,6 +36,29 @@ export default function MeBillingPage() {
       window.location.href = url;
     },
   });
+  const activate = useMutation({
+    mutationFn: () => api.activateMyBilling(),
+    onSuccess: ({ url }) => {
+      window.location.href = url;
+    },
+  });
+
+  // After Stripe redirects back with ?activated=1, the webhook
+  // may take a couple of seconds to flip our DB row. Re-fetch
+  // every 2s for ~10s so the page transitions from "trialing"
+  // → "active" without the user having to refresh.
+  useEffect(() => {
+    if (!justActivated) return;
+    qc.invalidateQueries({ queryKey: ["my-billing"] });
+    const id = setInterval(() => {
+      qc.invalidateQueries({ queryKey: ["my-billing"] });
+    }, 2000);
+    const stop = setTimeout(() => clearInterval(id), 10_000);
+    return () => {
+      clearInterval(id);
+      clearTimeout(stop);
+    };
+  }, [justActivated, qc]);
 
   const trialDaysLeft = useMemo(() => {
     if (
@@ -57,6 +84,13 @@ export default function MeBillingPage() {
 
       {billing.isLoading && (
         <p className="text-sm text-gray-500">Cargando…</p>
+      )}
+
+      {justActivated && (
+        <div className="mb-6 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          <strong>Suscripción activada.</strong> Gracias por confiar en
+          Trivu — verás el estado actualizado en unos segundos.
+        </div>
       )}
 
       {billing.data && (
@@ -128,36 +162,67 @@ export default function MeBillingPage() {
                 </div>
               </Card>
 
-              <Card>
-                <div className="p-5">
-                  <h2 className="text-sm font-semibold text-gray-900">
-                    Método de pago y facturas
-                  </h2>
-                  <p className="mt-1 text-xs text-gray-500">
-                    Se abre el portal de Stripe con tu tarjeta, facturas e
-                    información fiscal.
-                  </p>
-                  <div className="mt-4 flex items-center gap-3">
-                    <Button
-                      onClick={() => openPortal.mutate()}
-                      disabled={
-                        !billing.data.has_stripe_customer
-                        || openPortal.isPending
-                      }
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                      {openPortal.isPending
-                        ? "Abriendo…"
-                        : "Gestionar facturación"}
-                    </Button>
-                    {!billing.data.has_stripe_customer && (
-                      <span className="text-xs text-gray-500">
-                        Disponible cuando actives la suscripción.
-                      </span>
+              {/* Two states sharing a card slot:
+                  - No Stripe Customer yet → primary CTA is "Activar
+                    suscripción" (sends to Checkout).
+                  - Has a Customer → primary CTA is the Portal
+                    launcher (card / invoices / cancel from
+                    Stripe-hosted page). */}
+              {!billing.data.has_stripe_customer && (
+                <Card>
+                  <div className="p-5">
+                    <h2 className="text-sm font-semibold text-gray-900">
+                      Activar suscripción
+                    </h2>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Te llevamos a Stripe para introducir la tarjeta. Si
+                      todavía tienes días de prueba, los respetamos —
+                      empezarás a pagar cuando acabe la prueba.
+                    </p>
+                    <div className="mt-4 flex items-center gap-3">
+                      <Button
+                        onClick={() => activate.mutate()}
+                        disabled={activate.isPending}
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        {activate.isPending
+                          ? "Abriendo…"
+                          : "Activar suscripción"}
+                      </Button>
+                    </div>
+                    {activate.isError && (
+                      <p className="mt-2 text-xs text-rose-700">
+                        {(activate.error as Error).message}
+                      </p>
                     )}
                   </div>
-                </div>
-              </Card>
+                </Card>
+              )}
+
+              {billing.data.has_stripe_customer && (
+                <Card>
+                  <div className="p-5">
+                    <h2 className="text-sm font-semibold text-gray-900">
+                      Método de pago y facturas
+                    </h2>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Se abre el portal de Stripe con tu tarjeta, facturas e
+                      información fiscal.
+                    </p>
+                    <div className="mt-4 flex items-center gap-3">
+                      <Button
+                        onClick={() => openPortal.mutate()}
+                        disabled={openPortal.isPending}
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        {openPortal.isPending
+                          ? "Abriendo…"
+                          : "Gestionar facturación"}
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              )}
             </>
           )}
         </div>

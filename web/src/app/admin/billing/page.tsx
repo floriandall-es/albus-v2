@@ -1,7 +1,8 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CreditCard, ExternalLink } from "lucide-react";
+import { CreditCard, ExternalLink, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 import {
   Button,
@@ -55,6 +56,32 @@ export default function AdminBillingPage() {
       window.location.href = url;
     },
   });
+  const activate = useMutation({
+    mutationFn: () => api.activateBilling(),
+    onSuccess: ({ url }) => {
+      window.location.href = url;
+    },
+  });
+
+  // Post-Checkout return path. Stripe sends the admin back with
+  // ?activated=1; the webhook arrives a beat later and flips
+  // subscription_status. Re-fetch every 2s for ~10s so the UI
+  // catches up without a manual refresh.
+  const searchParams = useSearchParams();
+  const justActivated = searchParams.get("activated") === "1";
+  useEffect(() => {
+    if (!justActivated) return;
+    qc.invalidateQueries({ queryKey: ["billing-summary"] });
+    qc.invalidateQueries({ queryKey: ["me"] });
+    const id = setInterval(() => {
+      qc.invalidateQueries({ queryKey: ["billing-summary"] });
+    }, 2000);
+    const stop = setTimeout(() => clearInterval(id), 10_000);
+    return () => {
+      clearInterval(id);
+      clearTimeout(stop);
+    };
+  }, [justActivated, qc]);
 
   const tenant = me.data?.current_tenant;
   const billingModel = summary.data?.billing_model ?? tenant?.billing_model;
@@ -92,6 +119,13 @@ export default function AdminBillingPage() {
           </span>
         }
       />
+
+      {justActivated && (
+        <div className="mb-6 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          <strong>Suscripción activada.</strong> Gracias por confiar en
+          Trivu — verás el estado actualizado en unos segundos.
+        </div>
+      )}
 
       <div className="space-y-6">
         {/* ---------- 1. Estado de la suscripción ---------- */}
@@ -214,34 +248,65 @@ export default function AdminBillingPage() {
           </div>
         </Card>
 
-        {/* ---------- 4. Facturación + portal ---------- */}
-        <Card>
-          <div className="p-5">
-            <h2 className="text-sm font-semibold text-gray-900">
-              Método de pago y facturas
-            </h2>
-            <p className="mt-1 text-xs text-gray-500">
-              Se abre el portal de Stripe en una pestaña nueva con tu tarjeta,
-              historial de facturas y dirección fiscal.
-            </p>
-            <div className="mt-4 flex items-center gap-3">
-              <Button
-                onClick={() => openPortal.mutate()}
-                disabled={
-                  !summary.data?.has_stripe_customer || openPortal.isPending
-                }
-              >
-                <ExternalLink className="h-4 w-4" />
-                {openPortal.isPending ? "Abriendo…" : "Gestionar facturación"}
-              </Button>
-              {!summary.data?.has_stripe_customer && (
-                <span className="text-xs text-gray-500">
-                  Disponible cuando actives la suscripción.
-                </span>
+        {/* ---------- 4. Facturación: Activar O Gestionar ---------- */}
+        {/* Until the admin has a Stripe Customer, surface the
+            Activar primary CTA — clicking it sends them to a
+            Stripe Checkout that collects the card and creates
+            Customer + Subscription. Once activated, the same
+            slot becomes the Customer Portal launcher. */}
+        {!summary.data?.has_stripe_customer && (
+          <Card>
+            <div className="p-5">
+              <h2 className="text-sm font-semibold text-gray-900">
+                Activar suscripción
+              </h2>
+              <p className="mt-1 text-xs text-gray-500">
+                Te llevamos a Stripe para introducir la tarjeta. Si todavía
+                tienes días de prueba, los respetamos — empezarás a pagar
+                cuando acabe la prueba.
+              </p>
+              <div className="mt-4 flex items-center gap-3">
+                <Button
+                  onClick={() => activate.mutate()}
+                  disabled={activate.isPending}
+                >
+                  <Sparkles className="h-4 w-4" />
+                  {activate.isPending
+                    ? "Abriendo…"
+                    : "Activar suscripción"}
+                </Button>
+              </div>
+              {activate.isError && (
+                <p className="mt-2 text-xs text-rose-700">
+                  {(activate.error as Error).message}
+                </p>
               )}
             </div>
-          </div>
-        </Card>
+          </Card>
+        )}
+
+        {summary.data?.has_stripe_customer && (
+          <Card>
+            <div className="p-5">
+              <h2 className="text-sm font-semibold text-gray-900">
+                Método de pago y facturas
+              </h2>
+              <p className="mt-1 text-xs text-gray-500">
+                Se abre el portal de Stripe en una pestaña nueva con tu
+                tarjeta, historial de facturas y dirección fiscal.
+              </p>
+              <div className="mt-4 flex items-center gap-3">
+                <Button
+                  onClick={() => openPortal.mutate()}
+                  disabled={openPortal.isPending}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  {openPortal.isPending ? "Abriendo…" : "Gestionar facturación"}
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
       </div>
 
       {/* ---------- Confirmation modal for team→members switch ---------- */}

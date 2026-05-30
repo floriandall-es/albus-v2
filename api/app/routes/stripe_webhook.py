@@ -213,6 +213,13 @@ def _handle_subscription_state(db, sub: dict[str, Any]) -> None:
         tenant.stripe_subscription_id = sub_id
         tenant.subscription_status = new_status
         tenant.trial_end_at = trial_end_at
+        # First-time activation comes through Checkout, which
+        # creates the Customer for us. Persist its id the first
+        # time we see it so the Portal launcher on /admin/billing
+        # becomes usable (it gates on stripe_customer_id).
+        sub_customer_id = sub.get("customer")
+        if sub_customer_id and not tenant.stripe_customer_id:
+            tenant.stripe_customer_id = sub_customer_id
         db.flush()
         _fire_admin_transition_emails(db, tenant, old_status, new_status)
         return
@@ -234,6 +241,12 @@ def _handle_subscription_state(db, sub: dict[str, Any]) -> None:
         person.stripe_subscription_id = sub_id
         person.subscription_status = new_status
         person.trial_end_at = trial_end_at
+        # First-time activation: capture the Customer id Stripe
+        # created during Checkout so the Portal launcher on
+        # /me/billing becomes usable.
+        sub_customer_id = sub.get("customer")
+        if sub_customer_id and not person.stripe_customer_id:
+            person.stripe_customer_id = sub_customer_id
         db.flush()
         # Person subs are members_pay only; find their tenant via
         # the metadata.tenant_id we stamp at sub creation, then fire
