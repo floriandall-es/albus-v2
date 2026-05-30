@@ -32,7 +32,7 @@ const DEFAULT_GROUPS: { title: string; items: string[] }[] = [
       "Adjunto/a de enfermería",
       "Enfermero/a",
       "Auxiliar de enfermería (TCAE)",
-      "Matrona",
+      "Enfermería Obstétrico-Ginecológica",
     ],
   },
   {
@@ -54,6 +54,11 @@ const LEGACY_ALIASES: Record<string, string> = {
   "Jefe/a de servicio": "Jefe de servicio",
   "Jefe/a de sección": "Jefe de sección",
   "Adjunto/a": "Adjunto",
+  // "Matrona" was the colloquial name — the official EIR-recognised
+  // specialty is "Enfermería Obstétrico-Ginecológica". Map the old
+  // colloquial form to the new official one so tenants seeded
+  // before this rename don't lose the checkbox state.
+  "Enfermería Obstétrico-Ginecológica": "Matrona",
 };
 
 const ALL_DEFAULTS = new Set([
