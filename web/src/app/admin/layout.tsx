@@ -226,7 +226,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/logo.png"
+              src="/logo-icon.png"
               alt="Trivu"
               className="h-14 w-14 shrink-0 rounded-lg object-cover shadow-soft"
             />
@@ -402,7 +402,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             )}
           </button>
           <Image
-            src="/logo.png"
+            src="/logo-icon.png"
             alt="Trivu"
             width={28}
             height={28}
