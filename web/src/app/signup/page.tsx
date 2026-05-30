@@ -680,7 +680,7 @@ function Step4Equipo({
         label="Nombre de tu equipo"
         value={equipoName}
         onChange={setEquipoName}
-        placeholder="ej. Residentes, Adjuntos, Enfermería…"
+        placeholder="ej. Adjuntos, Residentes, Unidad de Trasplante…"
         autoComplete="off"
         name="equipo-name"
       />
