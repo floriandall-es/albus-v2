@@ -88,10 +88,15 @@ def search_hospitals(
 ) -> list[PublicHospitalOut]:
     """Typeahead search over the CNH-seeded `hospitals` table.
 
-    Matches on accent-stripped, lowercased name OR city. Limited
-    to 20 rows so the dropdown stays usable. Hospitals without a
-    public_code are excluded — those are legacy / demo rows that
-    Phase D's signup deliberately won't accept.
+    Tokenises the query on whitespace and requires every token to
+    appear somewhere in the (accent-stripped, lowercased) name OR
+    city. So "general valencia" matches "Consorcio Hospital
+    General Universitario de Valencia" even though the two words
+    aren't adjacent — what users actually expect from a search.
+
+    Limited to 20 rows so the dropdown stays usable. Hospitals
+    without a public_code are excluded — those are legacy / demo
+    rows that Phase D's signup deliberately won't accept.
     """
     # `unaccent` extension isn't installed by default in our
     # Postgres image, so we strip accents on both sides via
@@ -103,29 +108,47 @@ def search_hospitals(
         "áéíóúàèìòùâêîôûäëïöüñç",
         "aeiouaeiouaeiouaeioonc",
     )
-    pattern = f"%{q.lower().strip().translate(accent_map)}%"
+    # Split, normalise, drop empties. LIKE-wildcards inside the
+    # token are escaped so a literal % or _ in user input doesn't
+    # become a wildcard (the public catalog is unlikely to have
+    # either, but we belt-and-brace).
+    tokens = [
+        t.translate(accent_map).replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+        for t in q.lower().strip().split()
+        if t
+    ]
+    if not tokens:
+        return []
+
+    # Build one (name LIKE :tok_N OR city LIKE :tok_N) clause per
+    # token, joined with AND so every token has to match somewhere.
+    where_clauses = []
+    params: dict[str, str] = {}
+    for i, tok in enumerate(tokens):
+        key = f"tok_{i}"
+        params[key] = f"%{tok}%"
+        where_clauses.append(
+            f"""(
+                translate(lower(name),
+                          'áéíóúàèìòùâêîôûäëïöüñç',
+                          'aeiouaeiouaeiouaeioonc') LIKE :{key} ESCAPE '\\'
+                OR translate(lower(coalesce(city, '')),
+                            'áéíóúàèìòùâêîôûäëïöüñç',
+                            'aeiouaeiouaeiouaeioonc') LIKE :{key} ESCAPE '\\'
+            )"""
+        )
+    where_sql = " AND ".join(where_clauses)
+    sql = f"""
+        SELECT id, name, city, province, autonomous_community
+        FROM hospitals
+        WHERE public_code IS NOT NULL
+          AND {where_sql}
+        ORDER BY name
+        LIMIT 20
+    """
     db = _admin_db()
     try:
-        rows = db.execute(
-            text(
-                """
-                SELECT id, name, city, province, autonomous_community
-                FROM hospitals
-                WHERE public_code IS NOT NULL
-                  AND (
-                    translate(lower(name),
-                              'áéíóúàèìòùâêîôûäëïöüñç',
-                              'aeiouaeiouaeiouaeioonc') LIKE :pattern
-                    OR translate(lower(coalesce(city, '')),
-                                'áéíóúàèìòùâêîôûäëïöüñç',
-                                'aeiouaeiouaeiouaeioonc') LIKE :pattern
-                  )
-                ORDER BY name
-                LIMIT 20
-                """
-            ),
-            {"pattern": pattern},
-        ).mappings().all()
+        rows = db.execute(text(sql), params).mappings().all()
         return [PublicHospitalOut(**dict(r)) for r in rows]
     finally:
         db.close()
