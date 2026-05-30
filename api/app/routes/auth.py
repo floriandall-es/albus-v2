@@ -64,7 +64,7 @@ def _send_welcome_and_verify_email(person: Person, tenant_name: str) -> None:
     from app.services.email import send_email
     from app.services.email_templates import welcome_and_verify_email
 
-    subject, body = welcome_and_verify_email(
+    subject, body_text, body_html = welcome_and_verify_email(
         recipient_name=person.name,
         recipient_first_name=person.first_name,
         tenant_name=tenant_name,
@@ -72,7 +72,12 @@ def _send_welcome_and_verify_email(person: Person, tenant_name: str) -> None:
         app_base_url=settings.public_base_url,
         ttl_hours=settings.email_verify_ttl_hours,
     )
-    send_email(to=person.email, subject=subject, body_text=body)
+    send_email(
+        to=person.email,
+        subject=subject,
+        body_text=body_text,
+        body_html=body_html,
+    )
 
 
 def _notify_sibling_admins_of_pending(

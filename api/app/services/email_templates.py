@@ -391,7 +391,7 @@ def welcome_and_verify_email(
     confirm_url: str,
     app_base_url: str,
     ttl_hours: int,
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     """The single email a new admin gets after signup.
 
     Doubles as (a) welcome — "tu servicio está listo, esto es lo
@@ -402,6 +402,11 @@ def welcome_and_verify_email(
     crowd the inbox; merging them is friendlier and the
     verification link still does its job. The /admin banner keeps
     nagging until they click, so the verify CTA isn't buried.
+
+    Returns (subject, body_text, body_html). The HTML variant
+    hides the long verification URL behind a clickable button —
+    Outlook's safelinks wrapper still bloats the href, but the
+    user no longer sees the raw 600-char string in the body.
     """
     days = ttl_hours // 24
     when = (
@@ -414,7 +419,7 @@ def welcome_and_verify_email(
     privacy_url = f"{base}/privacy"
 
     subject = f"Bienvenido a Trivu — confirma tu email"
-    body = (
+    body_text = (
         f"Hola {greeting_name},\n\n"
         f"Hemos creado «{tenant_name}» en Trivu y tú eres su "
         f"primer administrador. Gracias por probarnos.\n\n"
@@ -440,7 +445,76 @@ def welcome_and_verify_email(
         f"Términos: {terms_url}\n"
         f"Privacidad: {privacy_url}\n"
     )
-    return subject, body
+    body_html = (
+        f"<!doctype html>"
+        f"<html lang='es'><head><meta charset='utf-8'>"
+        f"<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        f"<title>{subject}</title></head>"
+        f"<body style=\"margin:0;padding:0;background:#f5f7fa;"
+        f"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;"
+        f"color:#111827;line-height:1.55;\">"
+        f"<div style='max-width:560px;margin:0 auto;padding:32px 20px;'>"
+        f"<div style='background:#ffffff;border-radius:12px;padding:32px;"
+        f"border:1px solid #e5e7eb;'>"
+        f"<p style='margin:0 0 16px;font-size:15px;'>Hola {greeting_name},</p>"
+        f"<p style='margin:0 0 24px;font-size:15px;'>"
+        f"Hemos creado <strong>«{tenant_name}»</strong> en Trivu y tú eres su "
+        f"primer administrador. Gracias por probarnos."
+        f"</p>"
+        f"<h2 style='margin:0 0 12px;font-size:17px;color:#111827;'>"
+        f"Confirma tu correo"
+        f"</h2>"
+        f"<p style='margin:0 0 20px;font-size:14px;color:#4b5563;'>"
+        f"Para mantener la cuenta activa, pulsa el botón:"
+        f"</p>"
+        f"<p style='margin:0 0 20px;'>"
+        f"<a href='{confirm_url}' "
+        f"style='display:inline-block;background:#0d9488;color:#ffffff;"
+        f"text-decoration:none;padding:12px 24px;border-radius:8px;"
+        f"font-weight:600;font-size:14px;'>"
+        f"Confirma tu correo →"
+        f"</a>"
+        f"</p>"
+        f"<p style='margin:0 0 28px;font-size:12px;color:#6b7280;'>"
+        f"Caduca en {when}. Si no fuiste tú, ignora este mensaje."
+        f"</p>"
+        f"<h2 style='margin:0 0 12px;font-size:17px;color:#111827;'>"
+        f"Qué sigue"
+        f"</h2>"
+        f"<p style='margin:0 0 12px;font-size:14px;color:#4b5563;'>"
+        f"Si todavía no lo has hecho, sigue el asistente de configuración "
+        f"para dejar tu servicio listo en unos minutos:"
+        f"</p>"
+        f"<ol style='margin:0 0 20px;padding-left:20px;font-size:14px;color:#374151;'>"
+        f"<li style='margin-bottom:4px;'>Elige el tipo de equipo (médico, quirúrgico u otro)</li>"
+        f"<li style='margin-bottom:4px;'>Revisa las categorías profesionales</li>"
+        f"<li style='margin-bottom:4px;'>Define las actividades (turnos) del equipo</li>"
+        f"<li>Invita a tus compañeros</li>"
+        f"</ol>"
+        f"<p style='margin:0 0 24px;'>"
+        f"<a href='{onboarding_url}' "
+        f"style='display:inline-block;background:#ffffff;color:#0d9488;"
+        f"text-decoration:none;padding:10px 20px;border-radius:8px;"
+        f"font-weight:600;font-size:14px;border:1px solid #0d9488;'>"
+        f"Empieza aquí →"
+        f"</a>"
+        f"</p>"
+        f"<p style='margin:0 0 8px;font-size:13px;color:#6b7280;'>"
+        f"Para cualquier duda, responde a este correo."
+        f"</p>"
+        f"<p style='margin:0;font-size:13px;color:#6b7280;'>"
+        f"— El equipo de Trivu"
+        f"</p>"
+        f"</div>"
+        f"<p style='margin:16px 0 0;font-size:11px;color:#9ca3af;text-align:center;'>"
+        f"<a href='{terms_url}' style='color:#9ca3af;text-decoration:underline;'>Términos</a>"
+        f" · "
+        f"<a href='{privacy_url}' style='color:#9ca3af;text-decoration:underline;'>Privacidad</a>"
+        f"</p>"
+        f"</div>"
+        f"</body></html>"
+    )
+    return subject, body_text, body_html
 
 
 def email_change_confirm_email(
