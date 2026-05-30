@@ -570,9 +570,16 @@ function Step3Servicio({
       )}
 
       <div className="space-y-2">
-        <div className="text-xs uppercase tracking-wider text-gray-500">
-          {hasExisting ? "O crea uno nuevo" : "Crea el primer servicio"}
-        </div>
+        {/* Section header only when there are existing servicios
+            to differentiate this option from. With no existing
+            list above, the radio stands on its own — no need
+            to call out "first" framing (nobody wants to be
+            first). */}
+        {hasExisting && (
+          <div className="text-xs uppercase tracking-wider text-gray-500">
+            O crea uno nuevo
+          </div>
+        )}
         <label
           className={
             "flex cursor-pointer items-start gap-3 rounded-md border p-3 "
@@ -594,9 +601,6 @@ function Step3Servicio({
           <div className="min-w-0 flex-1">
             <div className="text-sm font-medium text-gray-900">
               Crear nuevo servicio
-            </div>
-            <div className="mt-0.5 text-xs text-gray-600">
-              Tu equipo será el primero — quedará aprobado automáticamente.
             </div>
             {mode === "new" && (
               <input
