@@ -246,16 +246,32 @@ def billing_activate(
         f"&session_id={{CHECKOUT_SESSION_ID}}"
     )
     cancel_url = f"{settings.public_base_url}/admin/billing"
-    url = stripe_client.create_tenant_checkout_session(
-        tenant_id=ctx.tenant.id,
-        email=ctx.person.email,
-        name=ctx.tenant.name,
-        billing_model=ctx.tenant.billing_model,
-        member_quantity=_active_member_count(ctx),
-        trial_end_at=ctx.tenant.trial_end_at,
-        success_url=success_url,
-        cancel_url=cancel_url,
-    )
+    try:
+        url = stripe_client.create_tenant_checkout_session(
+            tenant_id=ctx.tenant.id,
+            email=ctx.person.email,
+            name=ctx.tenant.name,
+            billing_model=ctx.tenant.billing_model,
+            member_quantity=_active_member_count(ctx),
+            trial_end_at=ctx.tenant.trial_end_at,
+            success_url=success_url,
+            cancel_url=cancel_url,
+        )
+    except Exception as exc:
+        # Surface Stripe API errors with the real message so the
+        # frontend doesn't get a generic 500 / "load failed". Most
+        # common cause is a test/live-mode mismatch between
+        # STRIPE_SECRET_KEY and the STRIPE_PRICE_* IDs — the body
+        # of the Stripe error makes that obvious if we forward it.
+        logger.error(
+            "Stripe checkout creation failed tenant=%s err=%s",
+            ctx.tenant.slug,
+            exc,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"No se pudo abrir el checkout de Stripe: {exc}",
+        ) from exc
     logger.info(
         "Tenant checkout session created tenant=%s by person=%s",
         ctx.tenant.slug,
@@ -357,15 +373,29 @@ def my_billing_activate(
         f"&session_id={{CHECKOUT_SESSION_ID}}"
     )
     cancel_url = f"{settings.public_base_url}/me/billing"
-    url = stripe_client.create_person_checkout_session(
-        person_id=ctx.person.id,
-        tenant_id=ctx.tenant.id,
-        email=ctx.person.email,
-        name=ctx.person.name,
-        trial_end_at=ctx.person.trial_end_at,
-        success_url=success_url,
-        cancel_url=cancel_url,
-    )
+    try:
+        url = stripe_client.create_person_checkout_session(
+            person_id=ctx.person.id,
+            tenant_id=ctx.tenant.id,
+            email=ctx.person.email,
+            name=ctx.person.name,
+            trial_end_at=ctx.person.trial_end_at,
+            success_url=success_url,
+            cancel_url=cancel_url,
+        )
+    except Exception as exc:
+        # See twin handler in billing_activate above — surface Stripe
+        # errors with their real message instead of letting the
+        # frontend land on a generic 500.
+        logger.error(
+            "Stripe checkout creation failed person=%s err=%s",
+            ctx.person.email,
+            exc,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"No se pudo abrir el checkout de Stripe: {exc}",
+        ) from exc
     logger.info(
         "Person checkout session created person=%s tenant=%s",
         ctx.person.email,
