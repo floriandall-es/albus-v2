@@ -368,7 +368,18 @@ function PendingInvitations() {
     },
   });
 
-  if (!invs.data || invs.data.length === 0) return null;
+  // Only show invitations that have actually been dispatched.
+  // Never-sent rows (the onboarding bulk-import path: admin adds
+  // people without firing an email) belong in the main Equipo
+  // table above — they have their own "Enviar invitación" button
+  // next to the PENDIENTE pill. Surfacing them here too, with a
+  // "Reenviar" button next to "No enviado", read as "you've sent
+  // these and the email may have failed" — exactly the opposite
+  // of what's true.
+  const dispatched = (invs.data ?? []).filter(
+    (inv) => inv.last_email_sent_at != null,
+  );
+  if (dispatched.length === 0) return null;
   return (
     <section className="mt-8">
       <h2 className="text-lg font-semibold mb-3">Invitaciones pendientes</h2>
@@ -384,7 +395,7 @@ function PendingInvitations() {
             </tr>
           </thead>
           <tbody>
-            {invs.data.map((inv: Invitation) => (
+            {dispatched.map((inv: Invitation) => (
               <tr key={inv.id} className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors">
                 <td className="px-4 py-2">{inv.email}</td>
                 <td className="px-4 py-2">{inv.person_name}</td>
