@@ -262,12 +262,6 @@ export default function PresetStep() {
         </div>
       )}
 
-      <p className="mt-6 text-xs text-gray-500">
-        Tu elección sólo afecta a los valores por defecto en los siguientes
-        pasos. Cualquier categoría que añadamos por ti la puedes quitar en
-        el paso siguiente.
-      </p>
-
       {/* Region picker used to live here. Now we derive region_code
           server-side from the hospital's autonomous_community at
           signup, and fan-out the holiday import implicitly on first
@@ -392,10 +386,6 @@ function WelcomeModal({
             Este asistente te ayuda con la configuración inicial en
             5 pasos cortos: tipo de equipo, categorías, actividades,
             equipo y resumen.
-          </p>
-          <p className="mt-3 text-xs text-gray-500 leading-relaxed">
-            Puedes saltarte pasos y volver más tarde — los valores
-            por defecto son razonables para empezar.
           </p>
           <button
             type="button"

@@ -68,20 +68,21 @@ export default function OnboardingLayout({ children }: { children: ReactNode }) 
               className="h-12 w-auto shrink-0"
             />
             <div className="min-w-0">
-              {/* Show "Servicio · Equipo" when both are known so
-                  the user sees the full org context, not just
-                  the equipo name (Residentes / Adjuntos alone
-                  is ambiguous across a hospital). Falls back to
-                  equipo-only on legacy tenants without a
-                  servicio link. */}
-              <div className="text-xs uppercase tracking-wider text-brand-700 font-semibold">
+              {/* Page title on top, org-context line below. The
+                  inverse felt heavy: the small uppercase line
+                  competed visually with the h1 sitting under it.
+                  Now the page identity reads first and the
+                  context anchors it. Show "Servicio · Equipo"
+                  when both are known, fall back to equipo-only
+                  for legacy tenants without a servicio link. */}
+              <h1 className="text-xl font-semibold text-gray-900 leading-tight">
+                Configuración inicial
+              </h1>
+              <div className="mt-0.5 text-xs uppercase tracking-wider text-brand-700 font-semibold">
                 {me.data?.current_tenant.servicio_name
                   ? `${me.data.current_tenant.servicio_name} · ${me.data.current_tenant.name}`
                   : me.data?.current_tenant.name}
               </div>
-              <h1 className="text-xl font-semibold text-gray-900 leading-tight">
-                Configuración inicial
-              </h1>
             </div>
           </div>
           <button
