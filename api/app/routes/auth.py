@@ -26,6 +26,7 @@ from app.core.security import (
 from app.db.session import get_db, set_tenant
 from app.models import Hospital, Membership, Person, Servicio, Tenant
 from app.routes.deps import RequestContext, get_current_context
+from app.services.cnh_regions import cnh_aac_to_iso
 from app.schemas.auth import (
     AuthResponse,
     ForgotPasswordRequest,
@@ -315,10 +316,18 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthRespons
     tenant_slug = _generate_unique_slug(
         db, f"{payload.equipo_name} {servicio.slug}"
     )
+    # The hospital row carries the CNH autonomous_community label
+    # (e.g. "C. Foral de Navarra") — map it to the ISO region code
+    # that the holiday-import flow expects, so the wizard doesn't
+    # have to ask the user a question we already know the answer to.
+    # None is fine if a CNH variant slips through; the user can set
+    # it later from /admin/holidays and we add the variant to the map.
+    derived_region = cnh_aac_to_iso(hospital.autonomous_community)
     tenant = Tenant(
         slug=tenant_slug,
         name=payload.equipo_name.strip(),
         country_code="ES",
+        region_code=derived_region,
         hospital_id=hospital.id,
         servicio_id=servicio.id,
         approval_state=approval_state,

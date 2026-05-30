@@ -7,15 +7,13 @@ import {
   Stethoscope,
   ScissorsLineDashed,
   Check,
-  MapPin,
   PartyPopper,
   Sparkles,
   HeartPulse,
   X,
 } from "lucide-react";
 import { api, type PresetKind } from "@/lib/api";
-import { ErrorText, Select } from "@/components/admin/ui";
-import { ES_REGIONS } from "@/lib/regions";
+import { ErrorText } from "@/components/admin/ui";
 import { StepNav } from "../_nav";
 import { StepHeader } from "../_step-header";
 
@@ -86,36 +84,33 @@ export default function PresetStep() {
     },
   });
 
-  // Region picker — saves region_code on the tenant and triggers a
-  // best-effort holiday import for the current + next year. Both
-  // calls are fire-and-forget from the UI's perspective (we
-  // invalidate /me on success); the admin can still fix things via
-  // /admin/holidays after onboarding.
-  const setRegion = useMutation({
-    mutationFn: async (regionCode: string) => {
-      await api.updateTenantDefaults({ region_code: regionCode });
-      const country =
-        me.data?.current_tenant.country_code
-        ?? me.data?.current_tenant.country
-        ?? "ES";
+  // Holiday import — used to be triggered by an explicit region
+  // picker on this step. Now the region is derived server-side
+  // from the picked hospital's autonomous_community, so we just
+  // fan-out the import once on mount (current + next year). The
+  // endpoint dedupes on (tenant, date, name) so re-running is
+  // harmless if the user navigates back. Gated on a per-tenant
+  // localStorage flag so we don't hit the endpoint on every visit.
+  const runHolidayImport = useMutation({
+    mutationFn: async ({
+      country,
+      region,
+    }: { country: string; region: string }) => {
       const year = new Date().getFullYear();
-      // Two years: current + next. The import endpoint dedupes on
-      // (tenant, date, name) so re-running it is harmless.
       await Promise.allSettled([
         api.importHolidays({
           country_code: country,
-          region_code: regionCode,
+          region_code: region,
           year,
         }),
         api.importHolidays({
           country_code: country,
-          region_code: regionCode,
+          region_code: region,
           year: year + 1,
         }),
       ]);
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["me"] });
       qc.invalidateQueries({ queryKey: ["holidays"] });
     },
   });
@@ -131,11 +126,42 @@ export default function PresetStep() {
   });
 
   const currentKind = me.data?.current_tenant.preset_kind ?? null;
-  const currentRegion =
-    me.data?.current_tenant.region_code ?? "";
   const currentTransplants =
     me.data?.current_tenant.transplants_enabled ?? false;
   const busyKind = choose.isPending ? choose.variables : null;
+
+  // Fire the holiday import once per tenant on first visit, now
+  // that region_code is set implicitly at signup. Idempotent on
+  // the server, but the localStorage gate keeps us from hammering
+  // the endpoint on every revisit.
+  const tenantIdForHolidays = me.data?.current_tenant.id;
+  const regionForHolidays = me.data?.current_tenant.region_code;
+  const countryForHolidays =
+    me.data?.current_tenant.country_code
+    ?? me.data?.current_tenant.country
+    ?? "ES";
+  useEffect(() => {
+    if (!tenantIdForHolidays || !regionForHolidays) return;
+    const key = `onboarding-holidays-imported-${tenantIdForHolidays}`;
+    try {
+      if (localStorage.getItem(key)) return;
+    } catch {
+      // ignore localStorage errors; we'll just retry next mount.
+    }
+    runHolidayImport.mutate(
+      { country: countryForHolidays, region: regionForHolidays },
+      {
+        onSettled: () => {
+          try {
+            localStorage.setItem(key, "1");
+          } catch {
+            // ignore
+          }
+        },
+      },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantIdForHolidays, regionForHolidays, countryForHolidays]);
 
   // First-visit welcome modal — congratulates the user on creating
   // their servicio (which they just did in the 4-step signup) and
@@ -242,50 +268,12 @@ export default function PresetStep() {
         el paso siguiente.
       </p>
 
-      {/* Region picker — kept on this step so the regional festivos
-          import happens before the admin gets to the planning. Placed
-          after the preset cards (so it doesn't visually interrupt the
-          question → cards flow) but reachable because picking a card
-          no longer auto-advances. Optional: the explicit Continuar
-          button below doesn't require a region to be set. */}
-      <div className="mt-8 rounded-xl border border-gray-200 bg-white p-4 flex items-start gap-3">
-        <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-brand-50 text-brand-700 shrink-0">
-          <MapPin className="h-5 w-5" />
-        </span>
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold text-gray-900">
-            Comunidad autónoma
-          </div>
-          <p className="text-xs text-gray-500 mb-2">
-            Lo usamos para cargar los festivos regionales junto con los
-            nacionales. Lo puedes cambiar luego en Festivos.
-          </p>
-          <div className="max-w-xs">
-            <Select
-              label=""
-              value={currentRegion}
-              onChange={(v) => {
-                if (v && v !== currentRegion) setRegion.mutate(String(v));
-              }}
-              options={[
-                { value: "", label: "— Selecciona —" },
-                ...ES_REGIONS.map((r) => ({ value: r.code, label: r.label })),
-              ]}
-            />
-          </div>
-          {setRegion.isPending && (
-            <p className="mt-1 text-xs text-brand-700">Cargando festivos…</p>
-          )}
-          {setRegion.isSuccess && !setRegion.isPending && (
-            <p className="mt-1 text-xs text-emerald-700">Festivos cargados.</p>
-          )}
-          {setRegion.isError && (
-            <p className="mt-1 text-xs text-rose-700">
-              {(setRegion.error as Error).message}
-            </p>
-          )}
-        </div>
-      </div>
+      {/* Region picker used to live here. Now we derive region_code
+          server-side from the hospital's autonomous_community at
+          signup, and fan-out the holiday import implicitly on first
+          mount (see runHolidayImport useEffect above). The admin
+          can still override the region from /admin/holidays if the
+          CNH mapping misses a variant or they want a different one. */}
 
       {/* Trasplantes opt-in module — same source as the signup
           checkbox used to be. Tenants that don't run a transplant
