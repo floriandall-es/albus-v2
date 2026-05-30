@@ -358,6 +358,15 @@ def my_billing_activate(
             status_code=status.HTTP_409_CONFLICT,
             detail="Tu equipo paga tu acceso — no tienes que activar nada.",
         )
+    # Admins of this tenant get app access bundled into the
+    # tenant subscription they manage from /admin/billing. Without
+    # this guard an admin could open a second personal Checkout on
+    # top of the tenant one and end up double-charged.
+    if "admin" in (ctx.membership.roles or []):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Tu acceso ya está incluido en la suscripción del servicio. Gestiónala desde /admin/billing.",
+        )
     if ctx.person.stripe_customer_id:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

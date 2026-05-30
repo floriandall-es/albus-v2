@@ -363,6 +363,14 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthRespons
     composed_name = f"{first_name} {last_name}".strip() if last_name else first_name
     if not composed_name:
         raise HTTPException(status_code=422, detail="Indica al menos el nombre")
+    # The admin's app access is bundled into the tenant subscription
+    # they pay (29,90 €/mes), so mirror the tenant's trial state on
+    # the Person row. Without this they'd land at the default
+    # 'never_subscribed' status, see the personal Activar flow on
+    # /me/billing, and could end up double-charged on top of the
+    # tenant sub. Whenever the tenant transitions (trial → active →
+    # past_due → canceled) we sync the admin person too, so this
+    # mirror stays accurate over the subscription lifetime.
     person = Person(
         email=payload.email.lower(),
         hashed_password=hash_password(payload.password),
@@ -371,6 +379,8 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthRespons
         last_name=last_name,
         terms_accepted_at=datetime.now(timezone.utc),
         terms_accepted_version=settings.terms_current_version,
+        subscription_status="trialing",
+        trial_end_at=trial_end_at,
     )
     db.add(person)
     db.flush()

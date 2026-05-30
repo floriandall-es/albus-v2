@@ -26,6 +26,15 @@ export default function MeBillingPage() {
   const qc = useQueryClient();
   const searchParams = useSearchParams();
   const justActivated = searchParams.get("activated") === "1";
+  const me = useQuery({ queryKey: ["me"], queryFn: api.me });
+  // The admin's app access is bundled into the tenant subscription
+  // they manage from /admin/billing — exposing the personal
+  // Activar flow here would create a second sub on top of the
+  // tenant one (double-charge).
+  const currentMembership = me.data?.memberships.find(
+    (m) => m.tenant_id === me.data?.current_tenant.id,
+  );
+  const isAdminHere = (currentMembership?.roles ?? []).includes("admin");
   const billing = useQuery({
     queryKey: ["my-billing"],
     queryFn: api.getMyBilling,
@@ -95,8 +104,36 @@ export default function MeBillingPage() {
 
       {billing.data && (
         <div className="space-y-6">
+          {/* Admin shortcut: their app access is bundled into the
+              tenant subscription (price_admin), so they never need
+              the personal Activar flow. Send them to /admin/billing
+              and short-circuit the rest of this page. */}
+          {isAdminHere && (
+            <Card>
+              <div className="p-5">
+                <h2 className="text-sm font-semibold text-gray-900">
+                  Tu acceso está incluido en la suscripción del servicio
+                </h2>
+                <p className="mt-2 text-sm text-gray-600">
+                  Como administrador del servicio, tu acceso a la app está
+                  cubierto por la suscripción del equipo. Gestiona tarjeta,
+                  facturas y modelo de cobro desde Facturación admin.
+                </p>
+                <div className="mt-4">
+                  <a
+                    href="/admin/billing"
+                    className="inline-flex items-center gap-2 rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
+                  >
+                    Ir a Facturación admin →
+                  </a>
+                </div>
+              </div>
+            </Card>
+          )}
+
           {/* Team_pays: short courtesy card and nothing else. */}
-          {billing.data.tenant_billing_model === "team_pays" && (
+          {!isAdminHere
+            && billing.data.tenant_billing_model === "team_pays" && (
             <Card>
               <div className="p-5">
                 <h2 className="text-sm font-semibold text-gray-900">
@@ -112,8 +149,12 @@ export default function MeBillingPage() {
             </Card>
           )}
 
-          {/* Members_pay: the full personal billing flow. */}
-          {billing.data.tenant_billing_model === "members_pay" && (
+          {/* Members_pay: the full personal billing flow.
+              Skipped for admins via the !isAdminHere guard so we
+              never expose a second Activar button on top of the
+              tenant sub. */}
+          {!isAdminHere
+            && billing.data.tenant_billing_model === "members_pay" && (
             <>
               <Card>
                 <div className="p-5">
