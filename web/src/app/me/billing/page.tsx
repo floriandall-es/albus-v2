@@ -71,8 +71,8 @@ export default function MeBillingPage() {
                 <p className="mt-2 text-sm text-gray-600">
                   No tienes que hacer nada. El admin de tu equipo cubre el
                   acceso a la app para todos los miembros. Cuando el admin
-                  decida cambiar a «Cada miembro decide», recibirás un correo
-                  con 30 días para activar la tuya.
+                  decida cambiar a «Cada persona paga su acceso», recibirás
+                  un correo con 30 días para activar la tuya.
                 </p>
               </div>
             </Card>

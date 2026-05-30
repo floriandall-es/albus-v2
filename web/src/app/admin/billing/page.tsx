@@ -105,7 +105,7 @@ export default function AdminBillingPage() {
                 <p className="mt-1 text-xs text-gray-500">
                   Tu equipo paga {billingModel === "team_pays"
                     ? "una sola factura para todos."
-                    : "29,90 €/mes. Cada miembro decide si quiere acceso al móvil por 4,90 €."}
+                    : "29,90 €/mes. Cada miembro decide si quiere activar su acceso al móvil por 4,90 €/mes."}
                 </p>
               </div>
               <StatusBadge status={status} />
@@ -152,17 +152,17 @@ export default function AdminBillingPage() {
               <ModelOption
                 selected={billingModel === "members_pay"}
                 onSelect={() => pickModel("members_pay")}
-                title="Cada miembro decide"
+                title="Cada persona paga su acceso"
                 price="29,90 €/mes"
-                body="Tú pagas tu cuenta. Cada compañero elige si quiere acceso al móvil por 4,90 €."
+                body="Tú pagas tu cuenta. Cada miembro decide si quiere activar su acceso y paga su propia suscripción (4,90 €/mes)."
                 badge="Más flexible"
               />
               <ModelOption
                 selected={billingModel === "team_pays"}
                 onSelect={() => pickModel("team_pays")}
-                title="El equipo paga por todos"
-                price="29,90 € + 4,90 €/miembro"
-                body="Una sola factura. Todos los miembros tienen acceso desde que entran al equipo."
+                title="El administrador paga todo el equipo"
+                price="29,90 € + 4,90 €/miembro/mes"
+                body="Una única factura. El administrador asume el coste de todos los miembros y estos tienen acceso automáticamente."
                 badge="Una factura"
               />
             </div>
@@ -183,7 +183,7 @@ export default function AdminBillingPage() {
             <p className="mt-1 text-xs text-gray-500">
               {billingModel === "team_pays"
                 ? "Pagas por cada miembro activo. Las suscripciones individuales no aplican."
-                : "Cada miembro decide si quiere acceso al móvil. Tú no pagas por nadie más."}
+                : "Cada miembro decide si activa su acceso al móvil. Tú no pagas por nadie más."}
             </p>
             <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
               <SeatStat
@@ -371,7 +371,7 @@ function ConfirmSwitchModal({
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-base font-semibold text-gray-900">
-          Cambiar a «Cada miembro decide»
+          Cambiar a «Cada persona paga su acceso»
         </h3>
         <p className="mt-2 text-sm text-gray-600">
           Tu equipo ya no tendrá la suscripción cubierta. Cada miembro
