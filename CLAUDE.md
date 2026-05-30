@@ -108,3 +108,69 @@ available — keep delivering work until he explicitly says stop.
 When a chunk of work finishes, the right response is "what's
 next?" or a short summary plus a concrete suggested next action
 — never a "you should rest now" beat.
+
+## Mobile-friendliness backlog (parked 2026-05-29)
+
+Audit notes after porting the drawer pattern from /me to /admin
+(commit `1c3fcb9`). Picking these up in priority order — they're
+the concrete findings from actually reading the code, not
+guesses.
+
+### ✅ Done
+- **#1 Admin drawer** (`1c3fcb9`) — `/admin` was rendering the
+  240px sidebar as a permanent column. Now uses the same
+  drawer/backdrop/hamburger pattern as `/me/layout.tsx`. Mobile
+  top bar shows a small brand dot when Pendientes > 0.
+
+### 🔜 Up next
+- **#2 `viewport-fit=cover` + safe-area utilities** (~30 min, biggest single cascade fix)
+  - `src/app/layout.tsx` doesn't declare an explicit `viewport`.
+    Next.js auto-generates `width=device-width, initial-scale=1`
+    but NOT `viewport-fit=cover` — so `env(safe-area-inset-*)`
+    returns 0 and the iPhone notch + home indicator are
+    ignored. Add `export const viewport: Viewport = { ... }`
+    with `viewportFit: "cover"`.
+  - `tailwind.config.js` has no safe-area helpers. Either install
+    `tailwindcss-safe-area` or add custom utilities for
+    `pt/pb/px-safe`. Apply to any sticky-bottom buttons.
+
+- **#3 Card-stack alternative for admin tables on `<md`** (~2–3h per surface)
+  - `/admin/team` `src/app/admin/team/page.tsx:204` — 6-col table
+  - `/admin/swaps` `src/app/admin/swaps/page.tsx:86`
+  - `/admin/availability` `src/app/admin/availability/page.tsx:122` + `:380`
+  - Pattern: keep the `<table>` for `md:` and up, render a
+    `<ul>` of cards on `<md`. Could extract a `TableOrCards`
+    helper if all three surfaces start to share shape.
+
+- **#4 DateRangeField mobile bottom-sheet mode** (~1h)
+  - `src/components/admin/date-range.tsx:127–137`. Popover is
+    `absolute left-0` with `<DayPicker numberOfMonths={2}>` —
+    660px wide, overflows on 393px phones.
+  - On `<md`: switch to `fixed inset-x-0 bottom-0` bottom-sheet,
+    `numberOfMonths={1}`. Used by bloqueo create + period editor.
+
+- **#5 Tap-target sweep on admin pages** (~1h)
+  - Many list-row buttons are `h-7`/`h-8` (28–32px) → bump to
+    `h-11` (44px) below `md`. Grep `h-7\|h-8` in `src/app/admin/`.
+
+- **#6 `inputmode` codemod** (~30 min)
+  - Zero hits across `src/`. Every `<input type="number">` (FTE,
+    headcount, quota fields) defaults to QWERTY on iOS. Sweep
+    them to add `inputMode="numeric"` (or `decimal` for FTE).
+
+### Known structural — defer / discuss before touching
+- **Planning grid** (`src/components/schedule/planning-grid.tsx`)
+  — fundamentally a wide horizontally-scrolling table. Sticky
+  first column already shipped (task #81). Going truly
+  mobile-native would mean inverting to one-date-per-card
+  vertical layout below `md` — that's a redesign, not a tweak.
+  Don't start without product-side input.
+
+### What's already good (don't redo)
+- `/me/layout.tsx` drawer (the donor pattern for #1)
+- DM kebab + back arrow: 44×44 (`src/app/me/mensajes/page.tsx`)
+- Group chat modals: full-screen on mobile via `ModalShell`
+- React-day-picker (not native `<input type="date">`) — works
+  correctly on iOS, just needs the bottom-sheet wrapping
+- Pulse `ScaleButtons`/`ChoiceButtons`: mobile-first by design
+- `/me` Inicio: card grids that stack cleanly
