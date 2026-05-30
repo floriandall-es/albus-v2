@@ -100,7 +100,7 @@ export default function SignupPage() {
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center mb-6">
           <Image
-            src="/logo.jpeg"
+            src="/logo.png"
             alt="Trivu"
             width={96}
             height={96}

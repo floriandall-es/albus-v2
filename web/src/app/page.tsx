@@ -742,7 +742,7 @@ export default function LandingPage() {
         <div className="mx-auto max-w-6xl px-4 sm:px-6 py-3 flex items-center gap-3 sm:gap-5">
           <Link href="/" className="flex items-center gap-2.5 shrink-0">
             <Image
-              src="/logo.jpeg"
+              src="/logo.png"
               alt="Trivu"
               width={32}
               height={32}
@@ -1183,7 +1183,7 @@ export default function LandingPage() {
         <div className="mx-auto max-w-6xl px-4 sm:px-6 py-10 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8">
           <div className="flex items-center gap-2.5">
             <Image
-              src="/logo.jpeg"
+              src="/logo.png"
               alt="Trivu"
               width={28}
               height={28}

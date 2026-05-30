@@ -82,7 +82,7 @@ export default function FounderLayout({ children }: { children: ReactNode }) {
           <div className="flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/logo.jpeg"
+              src="/logo.png"
               alt="Trivu"
               className="h-9 w-9 rounded-md object-cover shadow-soft"
             />

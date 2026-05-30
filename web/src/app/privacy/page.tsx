@@ -23,7 +23,7 @@ export default function PrivacyPage() {
       <div className="mx-auto max-w-2xl">
         <Link href="/" className="inline-flex items-center gap-2 mb-6">
           <Image
-            src="/logo.jpeg"
+            src="/logo.png"
             alt="Trivu"
             width={48}
             height={48}

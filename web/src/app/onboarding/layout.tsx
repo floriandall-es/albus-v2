@@ -60,7 +60,7 @@ export default function OnboardingLayout({ children }: { children: ReactNode }) 
           <div className="flex items-center gap-3 min-w-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <Image
-              src="/logo.jpeg"
+              src="/logo.png"
               alt="Trivu"
               width={48}
               height={48}
