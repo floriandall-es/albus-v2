@@ -11,11 +11,14 @@ import {
   Bell,
   CalendarCheck2,
   CalendarRange,
+  Check,
   ChevronDown,
   ChevronRight,
+  Copy,
   FileSpreadsheet,
   Globe,
   Hospital,
+  Mail,
   MessageCircle,
   PhoneCall,
   Plus,
@@ -349,6 +352,19 @@ const COPY = {
       ctaSecondary: "hola@trivu.net",
       finePrint: "Sin tarjeta hasta probarlo · Cancela cuando quieras",
     },
+    share: {
+      title: "Pídeselo a tu jefe",
+      subtitle:
+        "Trivu lo da de alta el jefe del servicio. Mándale esto y deja que decida.",
+      message:
+        "Hola! He visto Trivu, una herramienta para planificar los turnos del servicio. Parece que nos podría ahorrar bastante tiempo y los cambios entre compañeros serían mucho más fáciles. Tienen 30 días gratis para probarlo: https://trivu.net",
+      emailSubject: "Trivu — planificación de turnos para el servicio",
+      whatsapp: "Enviar por WhatsApp",
+      email: "Enviar por email",
+      copy: "Copiar mensaje",
+      copied: "¡Copiado!",
+      close: "Cerrar",
+    },
     footer: {
       tagline: "La planificación de tu equipo, en una sola herramienta.",
       terms: "Condiciones",
@@ -640,6 +656,19 @@ const COPY = {
       ctaSecondary: "hola@trivu.net",
       finePrint: "No card until you try it · Cancel anytime",
     },
+    share: {
+      title: "Send it to your chief",
+      subtitle:
+        "The department chief is the one who signs up. Send them this and let them decide.",
+      message:
+        "Hi! I came across Trivu, a tool to plan our department's shifts. Looks like it could save us a lot of time and make swaps with colleagues much easier. They offer 30 days free to try it: https://trivu.net",
+      emailSubject: "Trivu — shift planning for the department",
+      whatsapp: "Send via WhatsApp",
+      email: "Send via email",
+      copy: "Copy message",
+      copied: "Copied!",
+      close: "Close",
+    },
     footer: {
       tagline: "Your team's planning, in a single tool.",
       terms: "Terms",
@@ -732,6 +761,11 @@ export default function LandingPage() {
   // opening a FAQ row tells the visitor "this is interactive too".
   const [audienceTab, setAudienceTab] = useState<"jefe" | "equipo">("jefe");
   const [openFaq, setOpenFaq] = useState<number | null>(0);
+  // Share-with-boss modal. Opens from any CTA aimed at members
+  // (audience equipo tab, Miembro pricing card). Members can't
+  // create a servicio themselves — the admin does — so the
+  // useful action is "forward this to your boss".
+  const [shareOpen, setShareOpen] = useState(false);
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-gradient-to-b from-brand-50/40 via-white to-gray-50 text-gray-900">
@@ -1011,15 +1045,29 @@ export default function LandingPage() {
                 ))}
               </ul>
               <div className="mt-7">
-                <Link
-                  href="/signup"
-                  className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 shadow-soft transition-colors"
-                >
-                  {audienceTab === "jefe"
-                    ? c.audience.jefe.ctaLabel
-                    : c.audience.equipo.ctaLabel}
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
+                {/* Equipo tab targets members, who can't create
+                    a servicio themselves — only the admin can.
+                    So instead of /signup it opens the share-
+                    with-boss modal. The jefe tab keeps the
+                    direct signup link. */}
+                {audienceTab === "jefe" ? (
+                  <Link
+                    href="/signup"
+                    className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 shadow-soft transition-colors"
+                  >
+                    {c.audience.jefe.ctaLabel}
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShareOpen(true)}
+                    className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 shadow-soft transition-colors"
+                  >
+                    {c.audience.equipo.ctaLabel}
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </div>
             <div>
@@ -1112,6 +1160,10 @@ export default function LandingPage() {
                 key={plan.name}
                 plan={plan}
                 primary={idx === 0}
+                // The Miembro plan (idx 1) CTA opens the share-
+                // with-boss modal instead of going to /signup —
+                // members can't create the servicio themselves.
+                onShare={idx === 0 ? undefined : () => setShareOpen(true)}
               />
             ))}
           </div>
@@ -1210,6 +1262,14 @@ export default function LandingPage() {
           </nav>
         </div>
       </footer>
+
+      {/* Mounted last so the backdrop overlays everything. The
+          modal handles its own visibility based on `open`. */}
+      <ShareWithBossModal
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        copy={c.share}
+      />
     </main>
   );
 }
@@ -1984,6 +2044,7 @@ function FeatureCard({
 function PricingCard({
   plan,
   primary,
+  onShare,
 }: {
   plan: {
     name: string;
@@ -1994,6 +2055,10 @@ function PricingCard({
     cta: string;
   };
   primary: boolean;
+  /** When set, the CTA opens this callback instead of routing
+   *  to /signup. Used for the Miembro plan, since members can't
+   *  create a servicio themselves. */
+  onShare?: () => void;
 }) {
   return (
     <div
@@ -2032,18 +2097,178 @@ function PricingCard({
         ))}
       </ul>
       <div className="mt-7">
-        <Link
-          href="/signup"
-          className={
-            "inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors w-full justify-center "
-            + (primary
-              ? "bg-brand-600 text-white hover:bg-brand-700 shadow-soft"
-              : "bg-white text-gray-800 ring-1 ring-gray-300 hover:bg-gray-50")
-          }
+        {onShare ? (
+          <button
+            type="button"
+            onClick={onShare}
+            className={
+              "inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors w-full justify-center "
+              + (primary
+                ? "bg-brand-600 text-white hover:bg-brand-700 shadow-soft"
+                : "bg-white text-gray-800 ring-1 ring-gray-300 hover:bg-gray-50")
+            }
+          >
+            {plan.cta}
+            <ArrowRight className="h-4 w-4" />
+          </button>
+        ) : (
+          <Link
+            href="/signup"
+            className={
+              "inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors w-full justify-center "
+              + (primary
+                ? "bg-brand-600 text-white hover:bg-brand-700 shadow-soft"
+                : "bg-white text-gray-800 ring-1 ring-gray-300 hover:bg-gray-50")
+            }
+          >
+            {plan.cta}
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ===========================================================================
+// Share-with-boss modal
+// ===========================================================================
+// Members can't sign up themselves — only the admin/jefe creates the
+// servicio. The two member-facing CTAs ("Pídeselo a tu jefe" + the
+// Miembro pricing card) open this modal instead of /signup. Three
+// share paths cover how nurses and residents actually forward stuff:
+// WhatsApp (the dominant channel inside Spanish hospitals), email,
+// and plain copy for everything else.
+function ShareWithBossModal({
+  open,
+  onClose,
+  copy,
+}: {
+  open: boolean;
+  onClose: () => void;
+  copy: {
+    title: string;
+    subtitle: string;
+    message: string;
+    emailSubject: string;
+    whatsapp: string;
+    email: string;
+    copy: string;
+    copied: string;
+    close: string;
+  };
+}) {
+  const [copied, setCopied] = useState(false);
+
+  // Close on Esc + restore body scroll while open.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const waHref =
+    "https://wa.me/?text=" + encodeURIComponent(copy.message);
+  const mailHref =
+    "mailto:?subject="
+    + encodeURIComponent(copy.emailSubject)
+    + "&body="
+    + encodeURIComponent(copy.message);
+
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(copy.message);
+      setCopied(true);
+      // Revert after a beat so the user can reopen the modal and
+      // copy again without a stuck "Copiado!" state.
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API can fail (insecure context, denied perms).
+      // Silent failure is fine — the textarea below still lets
+      // the user select+copy manually.
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6"
+      role="dialog"
+      aria-modal="true"
+      aria-label={copy.title}
+    >
+      <button
+        type="button"
+        aria-label={copy.close}
+        onClick={onClose}
+        className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm"
+      />
+      <div className="relative w-full max-w-md rounded-2xl bg-white shadow-soft ring-1 ring-gray-200">
+        <button
+          type="button"
+          aria-label={copy.close}
+          onClick={onClose}
+          className="absolute right-3 top-3 flex h-9 w-9 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100"
         >
-          {plan.cta}
-          <ArrowRight className="h-4 w-4" />
-        </Link>
+          <X className="h-4 w-4" />
+        </button>
+        <div className="p-6">
+          <h3 className="pr-8 text-lg font-semibold text-gray-900">
+            {copy.title}
+          </h3>
+          <p className="mt-1.5 text-sm text-gray-600 leading-relaxed">
+            {copy.subtitle}
+          </p>
+          {/* Read-only preview of the message so the user can
+              eyeball what they're about to send. */}
+          <div className="mt-4 rounded-lg bg-gray-50 ring-1 ring-inset ring-gray-200 px-3 py-2.5 text-[13px] text-gray-700 leading-relaxed whitespace-pre-wrap">
+            {copy.message}
+          </div>
+          <div className="mt-5 space-y-2">
+            <a
+              href={waHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#1ebe5a] transition-colors"
+            >
+              <MessageCircle className="h-4 w-4" />
+              {copy.whatsapp}
+            </a>
+            <a
+              href={mailHref}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 ring-1 ring-gray-300 hover:bg-gray-50 transition-colors"
+            >
+              <Mail className="h-4 w-4" />
+              {copy.email}
+            </a>
+            <button
+              type="button"
+              onClick={onCopy}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 ring-1 ring-gray-300 hover:bg-gray-50 transition-colors"
+            >
+              {copied ? (
+                <>
+                  <Check className="h-4 w-4 text-emerald-600" />
+                  {copy.copied}
+                </>
+              ) : (
+                <>
+                  <Copy className="h-4 w-4" />
+                  {copy.copy}
+                </>
+              )}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
