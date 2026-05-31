@@ -34,6 +34,14 @@ class TeamComparison(BaseModel):
     avg_total_shifts: float
     # Same, restricted to weekend-or-holiday assignments.
     avg_weekend_or_holiday_shifts: float
+    # Shift swaps. "requested" = offers the caller created; "covered"
+    # = times the caller accepted to cover a colleague. Each carries
+    # the caller's own count plus the team mean. Swap engagement is
+    # low-sensitivity (unlike absences), so comparing it is fine.
+    my_swaps_requested: int
+    avg_swaps_requested: float
+    my_swaps_covered: int
+    avg_swaps_covered: float
 
 
 class StatsResponse(BaseModel):

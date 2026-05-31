@@ -401,6 +401,12 @@ export type TeamComparison = {
   team_member_count: number;
   avg_total_shifts: number;
   avg_weekend_or_holiday_shifts: number;
+  /** Swap offers the caller created, + team mean. */
+  my_swaps_requested: number;
+  avg_swaps_requested: number;
+  /** Times the caller accepted to cover a colleague, + team mean. */
+  my_swaps_covered: number;
+  avg_swaps_covered: number;
 };
 
 export type StatsResponse = {

@@ -156,6 +156,36 @@ export default function MyStatsPage() {
     return acc;
   }, [libreDaysByMonth]);
 
+  // Same day-expansion as libreDaysByMonth, but bucketed by reason
+  // (block_type) for the "Días libres por motivo" breakdown. Personal
+  // only — we deliberately do NOT compare absences to the team
+  // average: surfacing "you took more sick leave than average" is a
+  // privacy / morale landmine.
+  const libreDaysByReason = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!myAbsences.data) return map;
+    const rangeStart = new Date(`${fromDate}T00:00:00`);
+    const rangeEnd = new Date(`${toDate}T00:00:00`);
+    for (const b of myAbsences.data) {
+      if (b.status !== "approved") continue;
+      const [sy, sm, sd] = b.start_date.split("-").map(Number);
+      const [ey, em, ed] = b.end_date.split("-").map(Number);
+      const start = new Date(sy, sm - 1, sd);
+      const end = new Date(ey, em - 1, ed);
+      const cur = new Date(Math.max(start.getTime(), rangeStart.getTime()));
+      const stop = new Date(Math.min(end.getTime(), rangeEnd.getTime()));
+      let days = 0;
+      while (cur <= stop) {
+        days += 1;
+        cur.setDate(cur.getDate() + 1);
+      }
+      if (days > 0) {
+        map.set(b.block_type, (map.get(b.block_type) ?? 0) + days);
+      }
+    }
+    return map;
+  }, [myAbsences.data, fromDate, toDate]);
+
   const palette = useAccentPalette(FALLBACK_PALETTE);
   const accentHex = useAccentHex(600);
 
@@ -409,6 +439,12 @@ export default function MyStatsPage() {
             />
           )}
 
+          {/* Días libres por motivo — personal breakdown (no team
+              comparison; see libreDaysByReason note). */}
+          {totalLibre > 0 && (
+            <DaysOffByReasonCard byReason={libreDaysByReason} total={totalLibre} />
+          )}
+
           {/* Per-actividad horizontal bars */}
           <Card>
             <div className="p-5">
@@ -612,6 +648,18 @@ function TeamComparisonCard({
             avg={comparison.avg_weekend_or_holiday_shifts}
             accent="#f59e0b"
           />
+          <ComparisonMetric
+            label="Cambios solicitados"
+            mine={comparison.my_swaps_requested}
+            avg={comparison.avg_swaps_requested}
+            accent="#0ea5e9"
+          />
+          <ComparisonMetric
+            label="Coberturas a compañeros"
+            mine={comparison.my_swaps_covered}
+            avg={comparison.avg_swaps_covered}
+            accent="#8b5cf6"
+          />
         </div>
       </div>
     </Card>
@@ -705,6 +753,79 @@ function ComparisonBar({
         {display}
       </span>
     </div>
+  );
+}
+
+// Reason → label + color for the days-off breakdown. Order is the
+// render order (filtered to reasons with >0 days). Matches the
+// block_type values + the palette used elsewhere for bloqueos.
+const ABSENCE_REASON: { key: string; label: string; color: string }[] = [
+  { key: "vacation", label: "Vacaciones", color: "#0d9488" },
+  { key: "sick", label: "Baja médica", color: "#f43f5e" },
+  { key: "training", label: "Formación", color: "#3b82f6" },
+  { key: "personal", label: "Personal", color: "#8b5cf6" },
+  { key: "other", label: "Otro", color: "#64748b" },
+];
+
+/** "Días libres por motivo" — the caller's own approved absence days
+ *  in the range, split by reason. Personal only; no team comparison
+ *  (absences are sensitive — see libreDaysByReason). */
+function DaysOffByReasonCard({
+  byReason,
+  total,
+}: {
+  byReason: Map<string, number>;
+  total: number;
+}) {
+  const rows = ABSENCE_REASON.map((r) => ({
+    ...r,
+    days: byReason.get(r.key) ?? 0,
+  })).filter((r) => r.days > 0);
+  // Any block_types not in our known list (future-proofing) — bucket
+  // them under "Otro" rather than dropping silently.
+  let known = 0;
+  for (const r of rows) known += r.days;
+  const leftover = total - known;
+  if (leftover > 0) {
+    const other = rows.find((r) => r.key === "other");
+    if (other) other.days += leftover;
+    else rows.push({ key: "other", label: "Otro", color: "#64748b", days: leftover });
+  }
+  rows.sort((a, b) => b.days - a.days);
+  const max = Math.max(1, ...rows.map((r) => r.days));
+  return (
+    <Card>
+      <div className="p-5">
+        <h3 className="mb-1 text-sm font-semibold text-gray-800">
+          Días libres por motivo
+        </h3>
+        <p className="mb-4 text-xs text-gray-500">
+          Días de ausencia aprobada en el rango, repartidos por motivo.
+          Solo tú ves este desglose.
+        </p>
+        <div className="space-y-2.5">
+          {rows.map((r) => {
+            const pct = (r.days / max) * 100;
+            return (
+              <div key={r.key} className="flex items-center gap-3">
+                <span className="w-28 shrink-0 text-sm text-gray-700">
+                  {r.label}
+                </span>
+                <div className="relative h-5 flex-1 overflow-hidden rounded bg-gray-100">
+                  <div
+                    className="h-full rounded"
+                    style={{ width: `${pct}%`, backgroundColor: r.color }}
+                  />
+                </div>
+                <span className="w-12 shrink-0 text-right text-xs font-semibold tabular-nums text-gray-900">
+                  {r.days} {r.days === 1 ? "día" : "días"}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </Card>
   );
 }
 

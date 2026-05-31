@@ -37,6 +37,7 @@ from app.models import (
     Person,
     Schedule,
     ShiftSwapOffer,
+    ShiftSwapResponse,
     Slot,
     SlotTeamRole,
 )
@@ -217,10 +218,55 @@ def _team_comparison(
     weekend = sum(
         1 for (d,) in dates if d.weekday() >= 5 or d in holiday_dates
     )
+
+    # Swaps — counted by the moment the action happened (offer
+    # created / response accepted) falling in the range. +1 day on
+    # the upper bound because these are timestamps, not dates.
+    upper = to + timedelta(days=1)
+    my_membership_id = ctx.membership.id
+    total_requested = (
+        ctx.db.query(func.count(ShiftSwapOffer.id))
+        .filter(ShiftSwapOffer.created_at.between(from_, upper))
+        .scalar()
+        or 0
+    )
+    my_requested = (
+        ctx.db.query(func.count(ShiftSwapOffer.id))
+        .filter(
+            ShiftSwapOffer.requested_by_membership_id == my_membership_id,
+            ShiftSwapOffer.created_at.between(from_, upper),
+        )
+        .scalar()
+        or 0
+    )
+    total_covered = (
+        ctx.db.query(func.count(ShiftSwapResponse.id))
+        .filter(
+            ShiftSwapResponse.status == "accepted",
+            ShiftSwapResponse.created_at.between(from_, upper),
+        )
+        .scalar()
+        or 0
+    )
+    my_covered = (
+        ctx.db.query(func.count(ShiftSwapResponse.id))
+        .filter(
+            ShiftSwapResponse.responder_membership_id == my_membership_id,
+            ShiftSwapResponse.status == "accepted",
+            ShiftSwapResponse.created_at.between(from_, upper),
+        )
+        .scalar()
+        or 0
+    )
+
     return TeamComparison(
         team_member_count=member_count,
         avg_total_shifts=round(total / member_count, 1),
         avg_weekend_or_holiday_shifts=round(weekend / member_count, 1),
+        my_swaps_requested=my_requested,
+        avg_swaps_requested=round(total_requested / member_count, 1),
+        my_swaps_covered=my_covered,
+        avg_swaps_covered=round(total_covered / member_count, 1),
     )
 
 
