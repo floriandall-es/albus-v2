@@ -98,15 +98,22 @@ function lastDayOfMonthIso(yyyyMm01: string): string {
 // single-scroll layout interleaved answers to all three and made the
 // page feel undifferentiated. Tab state syncs to ?tab=… so deep-links
 // from emails / shared URLs land on the right view.
-type TabKey = "resumen" | "equidad" | "cobertura" | "detalle";
+type TabKey = "resumen" | "carga" | "equidad" | "cobertura" | "detalle";
 const TABS: { key: TabKey; label: string }[] = [
   { key: "resumen", label: "Resumen" },
+  { key: "carga", label: "Carga" },
   { key: "equidad", label: "Equidad" },
   { key: "cobertura", label: "Cobertura" },
   { key: "detalle", label: "Detalle" },
 ];
 function isTabKey(s: string | null): s is TabKey {
-  return s === "resumen" || s === "equidad" || s === "cobertura" || s === "detalle";
+  return (
+    s === "resumen"
+    || s === "carga"
+    || s === "equidad"
+    || s === "cobertura"
+    || s === "detalle"
+  );
 }
 
 export default function StatsPage() {
@@ -474,92 +481,38 @@ export default function StatsPage() {
                 onPersonClick={setSelectedPersonId}
               />
             )}
-          {/* Weekend / festivos burden — was previously down with
-              the per-slot detail, but it's really an equity question
-              ("who's getting hit with weekends?"), not a coverage
-              one. Lives here now. */}
-          {q.data && scopedRows.length > 0 && (
-            <ChartCard
-              title={
-                <span className="inline-flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
-                  Fines de semana y festivos
-                </span>
-              }
-              subtitle="Sábado, domingo o festivo · barras apiladas por mes (más oscuro = mes más reciente)."
-            >
-            {weekendData.list.length === 0 ? (
-              <p className="text-sm text-gray-500">
-                Nadie ha trabajado fines de semana o festivos en este rango.
-              </p>
-            ) : (
-              <ResponsiveContainer
-                width="100%"
-                height={Math.max(180, weekendData.list.length * 36 + 60)}
-              >
-                <BarChart
-                  data={weekendData.list}
-                  layout="vertical"
-                  // Right margin bumped to leave room for the per-row
-                  // total label past the bar end.
-                  margin={{ top: 8, right: 44, left: 60, bottom: 4 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis
-                    type="number"
-                    tick={{ fontSize: 11, fill: "#4b5563" }}
-                    allowDecimals={false}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="person"
-                    tick={{ fontSize: 11, fill: "#4b5563" }}
-                    width={120}
-                  />
-                  <Tooltip
-                    cursor={{ fill: "rgba(245,158,11,0.08)" }}
-                    contentStyle={{
-                      fontSize: 12,
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 8,
-                    }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 11 }} />
-                  {weekendData.months.map((m, i) => (
-                    <Bar
-                      key={m}
-                      dataKey={m}
-                      stackId="we"
-                      fill={weekendShades[i]}
-                      name={m}
-                    >
-                      <LabelList
-                        dataKey={m}
-                        position="center"
-                        fill={textColorForBg(weekendShades[i])}
-                        formatter={labelFormatter}
-                        style={{ fontSize: 11, fontWeight: 600 }}
-                      />
-                      {i === weekendLastIdx && (
-                        <LabelList
-                          dataKey="total"
-                          position="right"
-                          fill="#1f2937"
-                          formatter={labelFormatter}
-                          style={{ fontSize: 11, fontWeight: 700 }}
-                        />
-                      )}
-                    </Bar>
-                  ))}
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-            </ChartCard>
+        </div>
+      )}
+
+      {/* ----- CARGA ------------------------------------------- */}
+      {/* "¿Cuánta carga?" — volume-focused views distinct from
+          Equidad (which is fairness-focused). Raw counts per
+          person, libranzas breakdown, and the weekend/festivos
+          burden chart (moved here because volume "who works
+          which weekends" reads as Carga, not Equidad). */}
+      {(tab === "carga" || printAll) && (
+        <div className="space-y-6">
+          {ov.data && (
+            <>
+              <TurnosPorPersona
+                workload={ov.data.workload}
+                accent={palette[0]}
+                onPersonClick={setSelectedPersonId}
+              />
+              <BloqueosPorTipo
+                byType={ov.data.kpis.bloqueos_days_by_type}
+                total={ov.data.kpis.bloqueos_days_total}
+              />
+            </>
           )}
-          {/* Loading state for the weekend chart specifically — the
-              equity / heatmap loads from ov.data + cal.data, which
-              may finish before scopedRows from q.data. */}
-          {q.isLoading && (
+          {q.data && scopedRows.length > 0 && (
+            <WeekendChart
+              data={weekendData}
+              shades={weekendShades}
+              lastIdx={weekendLastIdx}
+            />
+          )}
+          {(q.isLoading || !ov.data) && (
             <p className="text-sm text-gray-500">Cargando…</p>
           )}
         </div>
@@ -801,7 +754,9 @@ function computeInsights(
           icon: "Calendar",
           headline: `${personLastName({ name: top.name })} concentra fines de semana y festivos`,
           sub: `${top.total} en el periodo · media: ${avg.toFixed(1)}.`,
-          jumpTab: "equidad",
+          // Carga now owns the weekend chart (volume question);
+          // Equidad keeps the fairness histogram + heatmap.
+          jumpTab: "carga",
         });
       }
     }
@@ -943,6 +898,244 @@ const ICON_MAP = {
   CheckCircle2,
   Sparkles,
 } as const;
+
+// ===========================================================================
+// Carga tab — volume-focused (distinct from Equidad which is fairness)
+// ===========================================================================
+
+/** Horizontal-bar leaderboard of total shifts per person in the
+ *  selected range. Raw counts (NOT FTE-normalised) — the point
+ *  here is volume: "who did how much". Equidad answers the
+ *  comparable fairness question with FTE normalisation. */
+function TurnosPorPersona({
+  workload,
+  accent,
+  onPersonClick,
+}: {
+  workload: StatsWorkloadRow[];
+  accent: string;
+  onPersonClick?: (id: number) => void;
+}) {
+  const sorted = useMemo(
+    () =>
+      [...workload].sort((a, b) => b.total_shifts - a.total_shifts),
+    [workload],
+  );
+  const max = Math.max(1, ...sorted.map((w) => w.total_shifts));
+  if (sorted.length === 0) {
+    return (
+      <ChartCard
+        title="Turnos totales por persona"
+        subtitle="Recuento absoluto en el rango seleccionado."
+      >
+        <p className="text-sm text-gray-500">
+          Sin asignaciones en el periodo.
+        </p>
+      </ChartCard>
+    );
+  }
+  return (
+    <ChartCard
+      title="Turnos totales por persona"
+      subtitle="Recuento absoluto en el rango. Pulsa una fila para ver el detalle de la persona."
+    >
+      <div className="space-y-1">
+        {sorted.map((w) => {
+          const pct = (w.total_shifts / max) * 100;
+          return (
+            <button
+              key={w.person_id}
+              type="button"
+              onClick={() => onPersonClick?.(w.person_id)}
+              className="flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left hover:bg-gray-50 transition-colors"
+            >
+              <span className="w-36 shrink-0 truncate text-sm text-gray-800">
+                {personLastName({ name: w.person_name })}
+                {w.category_name && (
+                  <span className="ml-1 text-[11px] text-gray-500">
+                    · {w.category_name}
+                  </span>
+                )}
+              </span>
+              <div className="relative h-5 flex-1 overflow-hidden rounded bg-gray-100">
+                <div
+                  className="h-full"
+                  style={{ width: `${pct}%`, backgroundColor: accent }}
+                />
+              </div>
+              <span className="w-12 shrink-0 text-right text-sm font-semibold tabular-nums text-gray-800">
+                {w.total_shifts.toLocaleString("es-ES")}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </ChartCard>
+  );
+}
+
+/** Horizontal-bar breakdown of libranza days by type (vacaciones,
+ *  baja, formación, personal, otros). Reads from the existing
+ *  kpis.bloqueos_days_by_type — no new backend work. */
+function BloqueosPorTipo({
+  byType,
+  total,
+}: {
+  byType: Record<string, number>;
+  total: number;
+}) {
+  const entries = useMemo(
+    () =>
+      Object.entries(byType)
+        .filter(([, n]) => n > 0)
+        .sort((a, b) => b[1] - a[1]),
+    [byType],
+  );
+  const max = Math.max(1, ...entries.map(([, n]) => n));
+  // Color per type so admins recognise them at a glance — matched
+  // to the rest of the app's bloqueo treatments (sick=rose, etc.).
+  const TYPE_COLOR: Record<string, string> = {
+    vacation: "#0d9488", // teal
+    sick: "#f43f5e", // rose
+    training: "#3b82f6", // blue
+    personal: "#8b5cf6", // violet
+    other: "#64748b", // slate
+  };
+  return (
+    <ChartCard
+      title="Libranzas por tipo"
+      subtitle={
+        total > 0
+          ? `${total} días en total en el rango.`
+          : "Sin libranzas aprobadas en el periodo."
+      }
+    >
+      {entries.length === 0 ? (
+        <p className="text-sm text-gray-500">
+          No hay días de libranza registrados en el rango.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {entries.map(([type, days]) => {
+            const pct = (days / max) * 100;
+            const color = TYPE_COLOR[type] ?? "#64748b";
+            const label = BLOQUEO_LABEL_BY_TYPE[type] ?? type;
+            return (
+              <div
+                key={type}
+                className="flex items-center gap-3"
+              >
+                <span className="w-32 shrink-0 text-sm capitalize text-gray-800">
+                  {label}
+                </span>
+                <div className="relative h-5 flex-1 overflow-hidden rounded bg-gray-100">
+                  <div
+                    className="h-full"
+                    style={{ width: `${pct}%`, backgroundColor: color }}
+                  />
+                </div>
+                <span className="w-16 shrink-0 text-right text-sm font-semibold tabular-nums text-gray-800">
+                  {days} {days === 1 ? "día" : "días"}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </ChartCard>
+  );
+}
+
+/** Weekend / festivos burden — extracted out of the old inline
+ *  block in the page so it can render on Carga (volume) without
+ *  duplicating ~80 lines of Recharts wiring. Data shape is the
+ *  weekendData useMemo built at the top of the page. */
+function WeekendChart({
+  data,
+  shades,
+  lastIdx,
+}: {
+  data: { list: Record<string, string | number>[]; months: string[] };
+  shades: string[];
+  lastIdx: number;
+}) {
+  return (
+    <ChartCard
+      title={
+        <span className="inline-flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+          Fines de semana y festivos
+        </span>
+      }
+      subtitle="Sábado, domingo o festivo · barras apiladas por mes (más oscuro = mes más reciente)."
+    >
+      {data.list.length === 0 ? (
+        <p className="text-sm text-gray-500">
+          Nadie ha trabajado fines de semana o festivos en este rango.
+        </p>
+      ) : (
+        <ResponsiveContainer
+          width="100%"
+          height={Math.max(180, data.list.length * 36 + 60)}
+        >
+          <BarChart
+            data={data.list}
+            layout="vertical"
+            margin={{ top: 8, right: 44, left: 60, bottom: 4 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <XAxis
+              type="number"
+              tick={{ fontSize: 11, fill: "#4b5563" }}
+              allowDecimals={false}
+            />
+            <YAxis
+              type="category"
+              dataKey="person"
+              tick={{ fontSize: 11, fill: "#4b5563" }}
+              width={120}
+            />
+            <Tooltip
+              cursor={{ fill: "rgba(245,158,11,0.08)" }}
+              contentStyle={{
+                fontSize: 12,
+                border: "1px solid #e5e7eb",
+                borderRadius: 8,
+              }}
+            />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            {data.months.map((m, i) => (
+              <Bar
+                key={m}
+                dataKey={m}
+                stackId="we"
+                fill={shades[i]}
+                name={m}
+              >
+                <LabelList
+                  dataKey={m}
+                  position="center"
+                  fill={textColorForBg(shades[i])}
+                  formatter={labelFormatter}
+                  style={{ fontSize: 11, fontWeight: 600 }}
+                />
+                {i === lastIdx && (
+                  <LabelList
+                    dataKey="total"
+                    position="right"
+                    fill="#1f2937"
+                    formatter={labelFormatter}
+                    style={{ fontSize: 11, fontWeight: 700 }}
+                  />
+                )}
+              </Bar>
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      )}
+    </ChartCard>
+  );
+}
 
 // ===========================================================================
 // SlotOverviewAccordion — per-slot overview + click-to-expand
