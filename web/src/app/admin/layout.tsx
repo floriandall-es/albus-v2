@@ -215,7 +215,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
       )}
       <aside
         className={
-          "fixed inset-y-0 left-0 z-40 w-60 shrink-0 border-r border-gray-200 bg-white flex flex-col transform transition-transform duration-200 md:static md:translate-x-0 "
+          "fixed inset-y-0 left-0 z-40 w-60 shrink-0 border-r border-gray-200 bg-white flex flex-col transform transition-transform duration-200 md:static md:translate-x-0 print:hidden "
           + (drawerOpen ? "translate-x-0" : "-translate-x-full")
         }
       >
@@ -386,7 +386,7 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
             something needing attention without having to open
             the drawer. Hidden on md+ where the sidebar shows
             everything. */}
-        <div className="flex items-center gap-2 border-b border-gray-200 bg-white px-3 py-2 md:hidden">
+        <div className="flex items-center gap-2 border-b border-gray-200 bg-white px-3 py-2 md:hidden print:hidden">
           <button
             type="button"
             aria-label="Abrir menú"

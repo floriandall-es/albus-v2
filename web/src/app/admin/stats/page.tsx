@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -46,6 +46,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Printer,
   RefreshCw,
   Sparkles,
   TrendingUp,
@@ -136,6 +137,32 @@ export default function StatsPage() {
     );
     params.set("tab", next);
     router.replace(`?${params.toString()}`, { scroll: false });
+  };
+
+  // Print flow. Clicking the Imprimir button stages every tab's
+  // content (the gate becomes `tab === "xxx" || printAll`), waits
+  // a frame for React to render, then opens the browser's native
+  // print/save-as-PDF dialog. The `afterprint` event flips
+  // printAll back so the page returns to single-tab view. Print
+  // CSS in admin/layout.tsx already hides the sidebar + mobile
+  // top bar so the printed pages start with the page header.
+  const [printAll, setPrintAll] = useState(false);
+  useEffect(() => {
+    const onAfter = () => setPrintAll(false);
+    window.addEventListener("afterprint", onAfter);
+    return () => window.removeEventListener("afterprint", onAfter);
+  }, []);
+  const onPrint = () => {
+    setPrintAll(true);
+    // Two RAFs + a small timeout so React commits the all-tabs
+    // render before window.print() captures the layout. Without
+    // this delay the print dialog opens with only the currently-
+    // active tab.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setTimeout(() => window.print(), 50);
+      });
+    });
   };
 
   const q = useQuery({
@@ -337,6 +364,20 @@ export default function StatsPage() {
             · planificaciones publicadas y archivadas.
           </div>
         )}
+        {/* Push the print button to the right of whatever else
+            sits in the toolbar. Hidden in print itself so the
+            output doesn't carry the button. */}
+        <div className="ml-auto pb-1 print:hidden">
+          <button
+            type="button"
+            onClick={onPrint}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"
+            title="Abre el diálogo del navegador para imprimir o guardar como PDF"
+          >
+            <Printer className="h-4 w-4" />
+            Imprimir / PDF
+          </button>
+        </div>
       </div>
 
       {/* Categoría filter — sits at the top so it reads as a
@@ -371,15 +412,19 @@ export default function StatsPage() {
       {/* Tab nav. Lives between the page-wide filters and the
           tab content so the date range + categoría chip read as
           global scope, and the tab nav reads as "pick which
-          question I'm answering". */}
-      <StatsTabNav active={tab} onChange={setTab} />
+          question I'm answering". Hidden in print — the printed
+          output stacks every tab's content top to bottom so the
+          nav is meaningless on paper. */}
+      <div className="print:hidden">
+        <StatsTabNav active={tab} onChange={setTab} />
+      </div>
 
       {/* ----- RESUMEN ------------------------------------------ */}
       {/* Landing tab — three hero KPIs + "Lo que destaca"
           auto-curated highlights. The insights panel ranks
           warnings above neutrals above positives so the first
           thing an admin reads is whatever needs their attention. */}
-      {tab === "resumen" && ov.data && (
+      {(tab === "resumen" || printAll) && ov.data && (
         <div className="mb-8 space-y-6">
           <KpiStrip kpis={ov.data.kpis} />
           <InsightsPanel insights={insights} onJumpTab={setTab} />
@@ -391,7 +436,7 @@ export default function StatsPage() {
           calendar heatmap. The weekend/festivos chart also lives
           here because it answers the same question (is the
           weekend burden distributed fairly?). */}
-      {tab === "equidad" && (
+      {(tab === "equidad" || printAll) && (
         <div className="space-y-6">
           {ov.data && (
             <>
@@ -522,7 +567,7 @@ export default function StatsPage() {
           Service-level views; the categoría chip doesn't scope
           these by design (a jefe filtering to Adjuntos still
           wants the operational tempo across the whole service). */}
-      {tab === "cobertura" && (
+      {(tab === "cobertura" || printAll) && (
         <div className="space-y-6">
           {ov.data && (
             <>
@@ -540,7 +585,7 @@ export default function StatsPage() {
       {/* "¿Quién hizo qué?" — per-slot charts + full detail
           table. Drives the per-person side panel when the admin
           clicks a person bar in any of the charts. */}
-      {tab === "detalle" && (
+      {(tab === "detalle" || printAll) && (
         <div className="space-y-6">
           {q.isLoading && (
             <p className="text-sm text-gray-500">Cargando…</p>
