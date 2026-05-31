@@ -426,7 +426,10 @@ export default function StatsPage() {
           thing an admin reads is whatever needs their attention. */}
       {(tab === "resumen" || printAll) && ov.data && (
         <div className="mb-8 space-y-6">
-          <KpiStrip kpis={ov.data.kpis} />
+          <KpiStrip
+            kpis={ov.data.kpis}
+            monthsCount={monthsBetween(fromDate, toDate).length}
+          />
           <InsightsPanel insights={insights} onJumpTab={setTab} />
         </div>
       )}
@@ -1436,18 +1439,31 @@ function DetailTable({
  * - Tiles render even when their value is 0 — absence of swap traffic
  *   is information.
  */
-function KpiStrip({ kpis }: { kpis: StatsKpis }) {
+function KpiStrip({
+  kpis,
+  monthsCount,
+}: {
+  kpis: StatsKpis;
+  /** Number of calendar months in the selected date range. Used
+   *  to express the load metric as a per-month rate so a Jan-Jun
+   *  selection and a YTD-Dec selection give comparable numbers. */
+  monthsCount: number;
+}) {
   // Eight tiles was too many to scan — eyes glazed by the sixth.
   // Hero strip surfaces the three numbers admins care about
   // operationally: "is anything broken" (sin cubrir), "how
   // turbulent is this" (cambios de turno), and "what's the load
-  // per person" (asignación / FTE — also the fairness narrative
+  // per person" (turnos / FTE / mes — also the fairness narrative
   // in one number). Everything else goes behind "Más métricas".
   const [expanded, setExpanded] = useState(false);
   const totalSwaps =
     kpis.swap_offers_open
     + kpis.swap_offers_fulfilled
     + kpis.swap_offers_cancelled;
+  const shiftsPerFtePerMonth =
+    kpis.total_fte > 0 && monthsCount > 0
+      ? (kpis.total_assignments / kpis.total_fte / monthsCount).toFixed(1)
+      : "—";
   return (
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-3">
@@ -1467,13 +1483,9 @@ function KpiStrip({ kpis }: { kpis: StatsKpis }) {
           hint={`${kpis.swap_offers_fulfilled} cubiertos · ${kpis.swap_offers_open} abiertos · ${kpis.swap_offers_cancelled} cancelados`}
         />
         <HeroKpiTile
-          label="Asignación / FTE"
-          value={
-            kpis.total_fte > 0
-              ? (kpis.total_assignments / kpis.total_fte).toFixed(1)
-              : "—"
-          }
-          hint="Turnos medios por miembro a tiempo completo."
+          label="Turnos / FTE / mes"
+          value={shiftsPerFtePerMonth}
+          hint="Turnos medios por miembro a tiempo completo cada mes."
         />
       </div>
 
