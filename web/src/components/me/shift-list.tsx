@@ -1,5 +1,5 @@
 "use client";
-import { Users } from "lucide-react";
+import { ArrowLeftRight, Users } from "lucide-react";
 import {
   personLastName,
   type Assignment,
@@ -292,8 +292,18 @@ function ShiftRow({
         </div>
       )}
       {isInteractive && (
-        <span className="hidden sm:inline text-xs text-brand-700 group-hover:underline shrink-0">
-          Pedir cobertura →
+        // Quiet swap-icon affordance, replacing the old "Pedir
+        // cobertura →" text. Visible on every breakpoint (the text
+        // was hidden on mobile, so phones had no cue the row did
+        // anything). aria-hidden because the row <button> already
+        // carries the full "Pedir cobertura para …" label; the
+        // title gives a desktop hover tooltip.
+        <span
+          aria-hidden="true"
+          title="Pedir cobertura"
+          className="shrink-0 flex h-8 w-8 items-center justify-center rounded-full text-brand-600 transition-colors group-hover:bg-brand-50"
+        >
+          <ArrowLeftRight className="h-4 w-4" />
         </span>
       )}
     </div>
@@ -542,8 +552,12 @@ function ShiftEntry({
       )}
       <ShiftTimeBadge a={a} />
       {isInteractive && (
-        <span className="ml-auto hidden sm:inline text-xs text-brand-700 group-hover:underline">
-          Pedir cobertura →
+        <span
+          aria-hidden="true"
+          title="Pedir cobertura"
+          className="ml-auto shrink-0 flex h-7 w-7 items-center justify-center rounded-full text-brand-600 transition-colors group-hover:bg-brand-50"
+        >
+          <ArrowLeftRight className="h-4 w-4" />
         </span>
       )}
     </div>
