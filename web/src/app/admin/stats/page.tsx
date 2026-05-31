@@ -39,7 +39,7 @@ import {
   isoFromMonthYear,
 } from "@/components/admin/month-picker";
 import { useAccentPalette } from "@/lib/use-accent";
-import { BarChart3 } from "lucide-react";
+import { BarChart3, ChevronDown } from "lucide-react";
 
 // Slot palette fallback — slots without an admin-picked color rotate
 // through this for chart legibility. The teal entry gets swapped at
@@ -978,62 +978,124 @@ function DetailTable({
  *   is information.
  */
 function KpiStrip({ kpis }: { kpis: StatsKpis }) {
+  // Eight tiles was too many to scan — eyes glazed by the sixth.
+  // Hero strip surfaces the three numbers admins care about
+  // operationally: "is anything broken" (sin cubrir), "how
+  // turbulent is this" (cambios de turno), and "what's the load
+  // per person" (asignación / FTE — also the fairness narrative
+  // in one number). Everything else goes behind "Más métricas".
+  const [expanded, setExpanded] = useState(false);
+  const totalSwaps =
+    kpis.swap_offers_open
+    + kpis.swap_offers_fulfilled
+    + kpis.swap_offers_cancelled;
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      <KpiTile
-        label="Total turnos"
-        value={kpis.total_assignments.toLocaleString("es-ES")}
-        hint="En planificaciones publicadas y archivadas."
-      />
-      <KpiTile
-        label="Sin cubrir"
-        value={kpis.uncovered_count.toLocaleString("es-ES")}
-        hint={
-          kpis.total_assignments > 0
-            ? `${kpis.uncovered_pct}% de los turnos del periodo.`
-            : "Sin actividad en el periodo."
-        }
-        tone={kpis.uncovered_count > 0 ? "warning" : "neutral"}
-      />
-      <KpiTile
-        label="Cambios de turno"
-        value={(
-          kpis.swap_offers_open
-          + kpis.swap_offers_fulfilled
-          + kpis.swap_offers_cancelled
-        ).toLocaleString("es-ES")}
-        hint={`${kpis.swap_offers_fulfilled} cubiertos · ${kpis.swap_offers_open} abiertos · ${kpis.swap_offers_cancelled} cancelados`}
-      />
-      <KpiTile
-        label="Bloqueos"
-        value={`${kpis.bloqueos_days_total} días`}
-        hint={formatBloqueoBreakdown(kpis.bloqueos_days_by_type)}
-      />
-      <KpiTile
-        label="Equipo"
-        value={`${kpis.active_members} activos`}
-        hint={`${kpis.total_fte.toLocaleString("es-ES")} FTE total`}
-      />
-      <KpiTile
-        label="Incidencias"
-        value={kpis.incidents_count.toLocaleString("es-ES")}
-        hint="Registradas en el periodo."
-      />
-      <KpiTile
-        label="Reabiertas"
-        value={kpis.reopened_schedules_count.toLocaleString("es-ES")}
-        hint="Planificaciones reabiertas tras publicar."
-        tone={kpis.reopened_schedules_count > 0 ? "warning" : "neutral"}
-      />
-      <KpiTile
-        label="Asignación / FTE"
-        value={
-          kpis.total_fte > 0
-            ? (kpis.total_assignments / kpis.total_fte).toFixed(1)
-            : "—"
-        }
-        hint="Turnos medios por miembro a tiempo completo."
-      />
+    <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <HeroKpiTile
+          label="Sin cubrir"
+          value={kpis.uncovered_count.toLocaleString("es-ES")}
+          hint={
+            kpis.total_assignments > 0
+              ? `${kpis.uncovered_pct}% de los turnos del periodo.`
+              : "Sin actividad en el periodo."
+          }
+          tone={kpis.uncovered_count > 0 ? "warning" : "neutral"}
+        />
+        <HeroKpiTile
+          label="Cambios de turno"
+          value={totalSwaps.toLocaleString("es-ES")}
+          hint={`${kpis.swap_offers_fulfilled} cubiertos · ${kpis.swap_offers_open} abiertos · ${kpis.swap_offers_cancelled} cancelados`}
+        />
+        <HeroKpiTile
+          label="Asignación / FTE"
+          value={
+            kpis.total_fte > 0
+              ? (kpis.total_assignments / kpis.total_fte).toFixed(1)
+              : "—"
+          }
+          hint="Turnos medios por miembro a tiempo completo."
+        />
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="inline-flex items-center gap-1 text-xs font-medium text-brand-700 hover:text-brand-900"
+      >
+        {expanded ? "Menos métricas" : "Más métricas"}
+        <ChevronDown
+          className={
+            "h-3.5 w-3.5 transition-transform "
+            + (expanded ? "rotate-180" : "")
+          }
+        />
+      </button>
+
+      {expanded && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <KpiTile
+            label="Total turnos"
+            value={kpis.total_assignments.toLocaleString("es-ES")}
+            hint="En planificaciones publicadas y archivadas."
+          />
+          <KpiTile
+            label="Bloqueos"
+            value={`${kpis.bloqueos_days_total} días`}
+            hint={formatBloqueoBreakdown(kpis.bloqueos_days_by_type)}
+          />
+          <KpiTile
+            label="Equipo"
+            value={`${kpis.active_members} activos`}
+            hint={`${kpis.total_fte.toLocaleString("es-ES")} FTE total`}
+          />
+          <KpiTile
+            label="Incidencias"
+            value={kpis.incidents_count.toLocaleString("es-ES")}
+            hint="Registradas en el periodo."
+          />
+          <KpiTile
+            label="Reabiertas"
+            value={kpis.reopened_schedules_count.toLocaleString("es-ES")}
+            hint="Planificaciones reabiertas tras publicar."
+            tone={kpis.reopened_schedules_count > 0 ? "warning" : "neutral"}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Bigger sibling of KpiTile for the hero strip on Resumen.
+// Same shape, larger padding + value text, so the three weekly-
+// scan metrics get visual weight against the collapsible row of
+// secondary tiles below.
+function HeroKpiTile({
+  label,
+  value,
+  hint,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: "neutral" | "warning";
+}) {
+  const valueColour =
+    tone === "warning" ? "text-amber-700" : "text-gray-900";
+  return (
+    <div className="rounded-xl bg-white p-5 shadow-soft ring-1 ring-gray-200">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+        {label}
+      </div>
+      <div className={`mt-1.5 text-3xl font-semibold tabular-nums ${valueColour}`}>
+        {value}
+      </div>
+      {hint && (
+        <div className="mt-1.5 text-xs leading-snug text-gray-500">
+          {hint}
+        </div>
+      )}
     </div>
   );
 }
