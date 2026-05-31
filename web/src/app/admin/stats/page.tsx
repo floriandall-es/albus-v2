@@ -39,7 +39,16 @@ import {
   isoFromMonthYear,
 } from "@/components/admin/month-picker";
 import { useAccentPalette } from "@/lib/use-accent";
-import { BarChart3, ChevronDown } from "lucide-react";
+import {
+  AlertTriangle,
+  BarChart3,
+  Calendar,
+  CheckCircle2,
+  ChevronDown,
+  RefreshCw,
+  Sparkles,
+  TrendingUp,
+} from "lucide-react";
 
 // Slot palette fallback — slots without an admin-picked color rotate
 // through this for chart legibility. The teal entry gets swapped at
@@ -299,6 +308,17 @@ export default function StatsPage() {
     [scopedRows],
   );
 
+  // "Lo que destaca" insights for the Resumen landing — a small
+  // hard-coded rules engine that converts raw stats into 1-4
+  // ranked headlines an admin can act on. Warnings rank above
+  // neutrals which rank above positives; the slice(0,4) keeps the
+  // panel scannable. Recomputed only when overview or per-row
+  // data changes.
+  const insights = useMemo(
+    () => computeInsights(ov.data, q.data?.rows ?? []),
+    [ov.data, q.data],
+  );
+
   return (
     <>
       <PageHeader title="Estadísticas" />
@@ -354,12 +374,14 @@ export default function StatsPage() {
       <StatsTabNav active={tab} onChange={setTab} />
 
       {/* ----- RESUMEN ------------------------------------------ */}
-      {/* Landing tab — at-a-glance KPI strip. #2 in the overhaul
-          will trim this from 8 tiles to 3 hero + collapsible
-          rest; for now we keep all 8 so nothing regresses. */}
+      {/* Landing tab — three hero KPIs + "Lo que destaca"
+          auto-curated highlights. The insights panel ranks
+          warnings above neutrals above positives so the first
+          thing an admin reads is whatever needs their attention. */}
       {tab === "resumen" && ov.data && (
         <div className="mb-8 space-y-6">
           <KpiStrip kpis={ov.data.kpis} />
+          <InsightsPanel insights={insights} onJumpTab={setTab} />
         </div>
       )}
 
@@ -600,6 +622,277 @@ function StatsTabNav({
     </div>
   );
 }
+
+// ===========================================================================
+// "Lo que destaca" — auto-curated insights on the Resumen tab
+// ===========================================================================
+// Small rules engine that converts raw overview/per-row data into
+// 1-4 ranked headlines an admin can act on. Each rule emits at most
+// one insight; the panel renders the top 4 by priority.
+//
+// Priorities (lower = shown higher):
+//   10  uncovered_count > 0           — warning
+//   20  reopened_schedules_count > 0  — warning
+//   30  workload outlier (top > 1.3× avg) — warning
+//   40  weekend outlier (top > 1.4× avg)  — neutral
+//   50  swap_offers_fulfilled > 0     — success
+//   90  fallback "nothing remarkable" — neutral
+//
+// Adding a new rule = bump priorities to leave room and append.
+
+type InsightTone = "warning" | "success" | "neutral";
+type InsightIcon =
+  | "AlertTriangle"
+  | "RefreshCw"
+  | "TrendingUp"
+  | "Calendar"
+  | "CheckCircle2"
+  | "Sparkles";
+
+type Insight = {
+  priority: number;
+  tone: InsightTone;
+  icon: InsightIcon;
+  headline: string;
+  sub?: string;
+  /** If set, the panel renders a "Ver →" link that switches to
+   *  the named tab so admins can act on the insight in one click. */
+  jumpTab?: TabKey;
+};
+
+function computeInsights(
+  ov: { kpis: StatsKpis; workload: StatsWorkloadRow[] } | undefined,
+  rows: StatsRow[],
+): Insight[] {
+  if (!ov) return [];
+  const out: Insight[] = [];
+
+  // Uncovered shifts — operational alarm.
+  if (ov.kpis.uncovered_count > 0) {
+    out.push({
+      priority: 10,
+      tone: "warning",
+      icon: "AlertTriangle",
+      headline: `${ov.kpis.uncovered_count} turnos sin cubrir en el periodo`,
+      sub:
+        ov.kpis.total_assignments > 0
+          ? `${ov.kpis.uncovered_pct}% del total. Revisa en Cobertura qué actividades concentran los huecos.`
+          : undefined,
+      jumpTab: "cobertura",
+    });
+  }
+
+  // Reopened schedules — process smell.
+  if (ov.kpis.reopened_schedules_count > 0) {
+    out.push({
+      priority: 20,
+      tone: "warning",
+      icon: "RefreshCw",
+      headline: `${ov.kpis.reopened_schedules_count} planificaciones reabiertas tras publicar`,
+      sub: "Las reaperturas indican cambios reactivos. Mira el detalle por mes en Cobertura.",
+      jumpTab: "cobertura",
+    });
+  }
+
+  // Workload outlier — top loaded person > 1.3× equipo avg.
+  // Compare on normalized_total (FTE-adjusted, what each person
+  // WOULD do at 100% FTE) so a part-timer working their fair
+  // share doesn't get flagged as overloaded against full-timers,
+  // and a full-timer working part-time's load doesn't get a free
+  // pass. Threshold is empirical: under 1.3× and the histogram
+  // still looks balanced enough that calling someone out is noise.
+  if (ov.workload.length >= 3) {
+    const sorted = [...ov.workload].sort(
+      (a, b) => b.normalized_total - a.normalized_total,
+    );
+    const top = sorted[0];
+    const avg =
+      ov.workload.reduce((s, w) => s + w.normalized_total, 0)
+      / ov.workload.length;
+    if (avg > 0 && top.normalized_total > avg * 1.3) {
+      const pct = Math.round((top.normalized_total / avg - 1) * 100);
+      out.push({
+        priority: 30,
+        tone: "warning",
+        icon: "TrendingUp",
+        headline: `${personLastName({ name: top.person_name })} tiene ${pct}% más carga que la media (ajustada por FTE)`,
+        sub: `${top.total_shifts} turnos. Mira el histograma completo en Equidad.`,
+        jumpTab: "equidad",
+      });
+    }
+  }
+
+  // Weekend / festivos outlier — same shape as workload but on the
+  // weekend_or_holiday_count axis. Threshold a touch higher (1.4×)
+  // because weekend distribution is naturally lumpier than total
+  // workload (some people genuinely volunteer for more).
+  if (rows.length > 0) {
+    const weMap = new Map<number, { name: string; total: number }>();
+    for (const r of rows) {
+      if (r.weekend_or_holiday_count === 0) continue;
+      const cur = weMap.get(r.person_id);
+      if (cur) cur.total += r.weekend_or_holiday_count;
+      else
+        weMap.set(r.person_id, {
+          name: r.person_name,
+          total: r.weekend_or_holiday_count,
+        });
+    }
+    const weList = Array.from(weMap.values()).sort(
+      (a, b) => b.total - a.total,
+    );
+    if (weList.length >= 3) {
+      const top = weList[0];
+      const avg = weList.reduce((s, w) => s + w.total, 0) / weList.length;
+      if (avg > 0 && top.total > avg * 1.4) {
+        out.push({
+          priority: 40,
+          tone: "neutral",
+          icon: "Calendar",
+          headline: `${personLastName({ name: top.name })} concentra fines de semana y festivos`,
+          sub: `${top.total} en el periodo · media: ${avg.toFixed(1)}.`,
+          jumpTab: "equidad",
+        });
+      }
+    }
+  }
+
+  // Positive: swap activity. Fulfilled swaps = team self-organising
+  // without escalating to admin, which is a health signal worth
+  // celebrating.
+  if (ov.kpis.swap_offers_fulfilled > 0) {
+    out.push({
+      priority: 50,
+      tone: "success",
+      icon: "CheckCircle2",
+      headline: `${ov.kpis.swap_offers_fulfilled} cambios de turno resueltos entre compañeros`,
+      sub: "El equipo resolviendo cambios sin pasar por ti es señal de salud operativa.",
+    });
+  }
+
+  // Fallback when no rule fires — keeps the panel from being empty
+  // on a brand-new tenant or a quiet period.
+  if (out.length === 0) {
+    out.push({
+      priority: 90,
+      tone: "neutral",
+      icon: "Sparkles",
+      headline: "Sin nada destacable en este periodo",
+      sub: "No hay huecos sin cubrir, reaperturas ni desequilibrios fuertes.",
+    });
+  }
+
+  return out.sort((a, b) => a.priority - b.priority).slice(0, 4);
+}
+
+function InsightsPanel({
+  insights,
+  onJumpTab,
+}: {
+  insights: Insight[];
+  onJumpTab: (tab: TabKey) => void;
+}) {
+  if (insights.length === 0) return null;
+  return (
+    <div>
+      <h2 className="mb-2 text-sm font-semibold text-gray-800">
+        Lo que destaca
+      </h2>
+      <div className="space-y-2">
+        {insights.map((ins, i) => (
+          <InsightRow key={i} insight={ins} onJumpTab={onJumpTab} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function InsightRow({
+  insight,
+  onJumpTab,
+}: {
+  insight: Insight;
+  onJumpTab: (tab: TabKey) => void;
+}) {
+  const tone = TONE_STYLES[insight.tone];
+  const Icon = ICON_MAP[insight.icon];
+  return (
+    <div
+      className={`flex items-start gap-3 rounded-xl border ${tone.border} ${tone.bg} px-4 py-3`}
+    >
+      <div
+        className={`mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${tone.iconBg} ${tone.iconFg}`}
+      >
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className={`text-sm font-medium ${tone.headline}`}>
+          {insight.headline}
+        </div>
+        {insight.sub && (
+          <div className="mt-0.5 text-xs text-gray-600 leading-relaxed">
+            {insight.sub}
+          </div>
+        )}
+      </div>
+      {insight.jumpTab && (
+        <button
+          type="button"
+          onClick={() => onJumpTab(insight.jumpTab as TabKey)}
+          className={`shrink-0 text-xs font-medium ${tone.link} hover:underline`}
+        >
+          Ver →
+        </button>
+      )}
+    </div>
+  );
+}
+
+const TONE_STYLES: Record<
+  InsightTone,
+  {
+    border: string;
+    bg: string;
+    iconBg: string;
+    iconFg: string;
+    headline: string;
+    link: string;
+  }
+> = {
+  warning: {
+    border: "border-amber-200",
+    bg: "bg-amber-50/70",
+    iconBg: "bg-amber-100",
+    iconFg: "text-amber-700",
+    headline: "text-amber-900",
+    link: "text-amber-800",
+  },
+  success: {
+    border: "border-emerald-200",
+    bg: "bg-emerald-50/70",
+    iconBg: "bg-emerald-100",
+    iconFg: "text-emerald-700",
+    headline: "text-emerald-900",
+    link: "text-emerald-800",
+  },
+  neutral: {
+    border: "border-gray-200",
+    bg: "bg-gray-50",
+    iconBg: "bg-gray-100",
+    iconFg: "text-gray-600",
+    headline: "text-gray-800",
+    link: "text-brand-700",
+  },
+};
+
+const ICON_MAP = {
+  AlertTriangle,
+  RefreshCw,
+  TrendingUp,
+  Calendar,
+  CheckCircle2,
+  Sparkles,
+} as const;
 
 function ChartCard({
   title,
