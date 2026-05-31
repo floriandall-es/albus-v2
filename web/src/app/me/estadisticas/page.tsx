@@ -13,7 +13,7 @@ import {
   YAxis,
 } from "recharts";
 import { BarChart3 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, type TeamComparison } from "@/lib/api";
 import { Card, EmptyState, PageHeader } from "@/components/admin/ui";
 import {
   MonthPicker,
@@ -395,6 +395,20 @@ export default function MyStatsPage() {
             />
           </div>
 
+          {/* Comparison vs the team average. Aggregate-only data
+              (mean per member) so no colleague's individual numbers
+              are exposed. Hidden until the API returns the block and
+              the team has at least one member. */}
+          {q.data.team_comparison
+            && q.data.team_comparison.team_member_count > 0 && (
+            <TeamComparisonCard
+              comparison={q.data.team_comparison}
+              myTotal={totalTurnos}
+              myWeekend={totalWeekendOrHoliday}
+              accent={accentHex}
+            />
+          )}
+
           {/* Per-actividad horizontal bars */}
           <Card>
             <div className="p-5">
@@ -557,6 +571,140 @@ function KpiCard({
         )}
       </div>
     </Card>
+  );
+}
+
+/** "Tú vs media del equipo" card. Two metrics (total shifts +
+ *  weekend/holiday shifts), each a pair of bars (you / team mean) on
+ *  a shared scale plus a neutral delta chip. The average is an
+ *  aggregate only — never exposes a colleague's individual number. */
+function TeamComparisonCard({
+  comparison,
+  myTotal,
+  myWeekend,
+  accent,
+}: {
+  comparison: TeamComparison;
+  myTotal: number;
+  myWeekend: number;
+  accent: string;
+}) {
+  return (
+    <Card>
+      <div className="p-5">
+        <h3 className="mb-1 text-sm font-semibold text-gray-800">
+          Comparativa con el equipo
+        </h3>
+        <p className="mb-4 text-xs text-gray-500">
+          Tu actividad frente a la media de las {comparison.team_member_count}{" "}
+          personas del equipo en el mismo rango.
+        </p>
+        <div className="space-y-5">
+          <ComparisonMetric
+            label="Turnos cubiertos"
+            mine={myTotal}
+            avg={comparison.avg_total_shifts}
+            accent={accent}
+          />
+          <ComparisonMetric
+            label="Fines de semana o festivos"
+            mine={myWeekend}
+            avg={comparison.avg_weekend_or_holiday_shifts}
+            accent="#f59e0b"
+          />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function ComparisonMetric({
+  label,
+  mine,
+  avg,
+  accent,
+}: {
+  label: string;
+  mine: number;
+  avg: number;
+  accent: string;
+}) {
+  // Shared scale so the two bars are visually comparable. Guard the
+  // zero-data case so we never divide by zero.
+  const max = Math.max(mine, avg, 1);
+  const delta = Math.round((mine - avg) * 10) / 10;
+  // Neutral framing: more shifts isn't inherently "good" or "bad",
+  // so the chip stays gray rather than green/red. It just states the
+  // gap so the member can read it however they like.
+  const deltaLabel =
+    delta === 0
+      ? "en la media"
+      : delta > 0
+        ? `+${delta} vs media`
+        : `${delta} vs media`;
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-sm text-gray-700">{label}</span>
+        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+          {deltaLabel}
+        </span>
+      </div>
+      <div className="mt-2 space-y-1.5">
+        <ComparisonBar
+          caption="Tú"
+          value={mine}
+          display={String(mine)}
+          max={max}
+          color={accent}
+          emphasis
+        />
+        <ComparisonBar
+          caption="Media"
+          value={avg}
+          display={avg.toFixed(1)}
+          max={max}
+          color="#cbd5e1"
+        />
+      </div>
+    </div>
+  );
+}
+
+function ComparisonBar({
+  caption,
+  value,
+  display,
+  max,
+  color,
+  emphasis = false,
+}: {
+  caption: string;
+  value: number;
+  display: string;
+  max: number;
+  color: string;
+  emphasis?: boolean;
+}) {
+  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-12 shrink-0 text-[11px] text-gray-500">{caption}</span>
+      <div className="relative h-5 flex-1 overflow-hidden rounded bg-gray-100">
+        <div
+          className="h-full rounded"
+          style={{ width: `${pct}%`, backgroundColor: color }}
+        />
+      </div>
+      <span
+        className={
+          "w-10 shrink-0 text-right text-xs tabular-nums "
+          + (emphasis ? "font-semibold text-gray-900" : "text-gray-600")
+        }
+      >
+        {display}
+      </span>
+    </div>
   );
 }
 

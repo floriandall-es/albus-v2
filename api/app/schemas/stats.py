@@ -21,10 +21,28 @@ class StatsRow(BaseModel):
     weekend_or_holiday_count: int = 0
 
 
+class TeamComparison(BaseModel):
+    """Privacy-safe team aggregate for the /me/estadisticas "vs team
+    average" card. Only means + a head count — never per-person rows,
+    so a member can see where they stand without seeing colleagues'
+    individual numbers."""
+
+    # Distinct active (non-disabled) members in the tenant — the
+    # denominator for the averages below.
+    team_member_count: int
+    # Mean assignments per member across the range (team total / members).
+    avg_total_shifts: float
+    # Same, restricted to weekend-or-holiday assignments.
+    avg_weekend_or_holiday_shifts: float
+
+
 class StatsResponse(BaseModel):
     from_date: date
     to_date: date
     rows: list[StatsRow]
+    # Only populated by the /me/stats endpoint — admin callers leave it
+    # null (they have the full overview instead).
+    team_comparison: TeamComparison | None = None
 
 
 # ---------------------------------------------------------------------------

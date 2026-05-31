@@ -394,10 +394,20 @@ export type StatsRow = {
   weekend_or_holiday_count: number;
 };
 
+/** Privacy-safe team aggregate on the /me/stats response — means
+ *  only, no per-person data. Drives the "vs media del equipo" card
+ *  on /me/estadisticas. Null on the admin /stats endpoint. */
+export type TeamComparison = {
+  team_member_count: number;
+  avg_total_shifts: number;
+  avg_weekend_or_holiday_shifts: number;
+};
+
 export type StatsResponse = {
   from_date: string;
   to_date: string;
   rows: StatsRow[];
+  team_comparison: TeamComparison | null;
 };
 
 // --- /api/stats/overview — Commit 1 of the stats dashboard overhaul ---

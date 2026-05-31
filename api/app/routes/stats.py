@@ -25,7 +25,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func
+from sqlalchemy import distinct, func
 
 from app.models import (
     Assignment,
@@ -50,6 +50,7 @@ from app.schemas.stats import (
     StatsOverviewResponse,
     StatsResponse,
     StatsRow,
+    TeamComparison,
     WorkloadRow,
 )
 
@@ -170,6 +171,59 @@ def stats_assignments(
     return _aggregate_assignments(ctx, from_, to)
 
 
+def _team_comparison(
+    ctx: RequestContext, from_: date, to: date
+) -> TeamComparison | None:
+    """Privacy-safe team aggregate for /me/estadisticas: the mean
+    assignments per active member over the range, plus the same for
+    weekend/holiday shifts. Returns ONLY means + a head count — never
+    per-person rows — so a member can see where they stand without
+    seeing colleagues' individual numbers.
+
+    Denominator: distinct non-disabled membership persons in the
+    tenant (matches the admin equity view's population). RLS scopes
+    every query to the caller's tenant automatically.
+    """
+    member_count = (
+        ctx.db.query(func.count(distinct(Membership.person_id)))
+        .filter(Membership.disabled_at.is_(None))
+        .scalar()
+        or 0
+    )
+    if member_count == 0:
+        return None
+
+    holiday_dates: set[date] = {
+        h.date
+        for h in ctx.db.query(Holiday)
+        .filter(Holiday.date.between(from_, to))
+        .all()
+    }
+    # One row per assignment (date only) across the whole team — same
+    # published+archived + person-assigned filters the per-person
+    # aggregator uses, so "my total" and "team average" are computed
+    # on identical grounds.
+    dates = (
+        ctx.db.query(Assignment.date)
+        .join(Schedule, Schedule.id == Assignment.schedule_id)
+        .filter(
+            Schedule.status.in_(["published", "archived"]),
+            Assignment.date.between(from_, to),
+            Assignment.person_id.isnot(None),
+        )
+        .all()
+    )
+    total = len(dates)
+    weekend = sum(
+        1 for (d,) in dates if d.weekday() >= 5 or d in holiday_dates
+    )
+    return TeamComparison(
+        team_member_count=member_count,
+        avg_total_shifts=round(total / member_count, 1),
+        avg_weekend_or_holiday_shifts=round(weekend / member_count, 1),
+    )
+
+
 @router.get("/me/stats/assignments", response_model=StatsResponse)
 def my_stats_assignments(
     from_: date = Query(..., alias="from"),
@@ -178,8 +232,15 @@ def my_stats_assignments(
 ) -> StatsResponse:
     """Same shape as /stats/assignments but scoped to the caller —
     every row belongs to ctx.person.id. No admin gate: any member
-    can see their own performed shifts. Drives /me/estadisticas."""
-    return _aggregate_assignments(ctx, from_, to, person_id_filter=ctx.person.id)
+    can see their own performed shifts. Drives /me/estadisticas.
+
+    Also attaches a `team_comparison` aggregate so the page can show
+    "you vs the team average" without a second round-trip."""
+    resp = _aggregate_assignments(
+        ctx, from_, to, person_id_filter=ctx.person.id
+    )
+    resp.team_comparison = _team_comparison(ctx, from_, to)
+    return resp
 
 
 # ---------------------------------------------------------------------------
