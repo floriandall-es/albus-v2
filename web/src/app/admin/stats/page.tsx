@@ -377,6 +377,32 @@ export default function StatsPage() {
     [scopedRows],
   );
 
+  // Per-month per-categoría aggregate. q.rows is (person, slot,
+  // month) so we resolve categoría by joining on workload and
+  // then sum counts. Output is shaped for MonthlyLineChart:
+  // one entry per categoría with a points map {YYYY-MM → count}.
+  // Categorías sorted alphabetically so the legend is stable.
+  const cargaPorCategoriaPorMes = useMemo(() => {
+    if (!q.data || !ov.data) return null;
+    const personCategory = new Map<number, string>();
+    for (const w of ov.data.workload) {
+      personCategory.set(w.person_id, w.category_name ?? "Sin categoría");
+    }
+    const seen = new Set<string>();
+    const pointsByCategory: Record<string, Record<string, number>> = {};
+    for (const r of q.data.rows) {
+      const cat = personCategory.get(r.person_id) ?? "Sin categoría";
+      seen.add(cat);
+      if (!pointsByCategory[cat]) pointsByCategory[cat] = {};
+      pointsByCategory[cat][r.year_month] =
+        (pointsByCategory[cat][r.year_month] ?? 0) + r.count;
+    }
+    const categories = Array.from(seen).sort((a, b) =>
+      a.localeCompare(b, "es"),
+    );
+    return { categories, pointsByCategory };
+  }, [q.data, ov.data]);
+
   // "Lo que destaca" insights for the Resumen landing — a small
   // hard-coded rules engine that converts raw stats into 1-4
   // ranked headlines an admin can act on. Warnings rank above
@@ -535,28 +561,65 @@ export default function StatsPage() {
       )}
 
       {/* ----- CARGA ------------------------------------------- */}
-      {/* "¿Cuánta carga tiene el equipo?" — team-level totals
-          and breakdowns. No per-person rows here (those answer
-          a fairness question and live on Equidad). Three
-          aggregate views: monthly volume trends, breakdown by
-          categoría profesional, and libranzas by type. */}
+      {/* "¿Cuánta carga tiene el equipo a lo largo del tiempo?"
+          — three full-size line charts, all month-by-month so
+          admins can read tempo, peaks, and trends at a glance.
+          Per-categoría breakdown surfaces whether one tier is
+          carrying more than another over time. */}
       {(tab === "carga" || printAll) && (
         <div className="space-y-6">
           {ov.data && (
-            <>
-              <MonthlyTrendsPanel
-                monthly={ov.data.monthly}
-                accent={palette[0]}
-              />
-              <CargaPorCategoria
-                workload={ov.data.workload}
-                palette={palette}
-              />
-              <BloqueosPorTipo
-                byType={ov.data.kpis.bloqueos_days_by_type}
-                total={ov.data.kpis.bloqueos_days_total}
-              />
-            </>
+            <MonthlyLineChart
+              title="Turnos del equipo por mes"
+              subtitle="Total de asignaciones publicadas / archivadas en cada mes."
+              months={monthsBetween(fromDate, toDate)}
+              series={[
+                {
+                  key: "total",
+                  label: "Turnos",
+                  color: palette[0],
+                  points: Object.fromEntries(
+                    ov.data.monthly.map((m) => [
+                      m.year_month,
+                      m.total_assignments,
+                    ]),
+                  ),
+                },
+              ]}
+            />
+          )}
+          {q.data && ov.data && cargaPorCategoriaPorMes && (
+            <MonthlyLineChart
+              title="Turnos por categoría profesional, por mes"
+              subtitle="Una línea por categoría — quién carga con la actividad cada mes."
+              months={monthsBetween(fromDate, toDate)}
+              series={cargaPorCategoriaPorMes.categories.map((cat, i) => ({
+                key: cat,
+                label: cat,
+                color: palette[i % palette.length],
+                points: cargaPorCategoriaPorMes.pointsByCategory[cat],
+              }))}
+            />
+          )}
+          {ov.data && (
+            <MonthlyLineChart
+              title="Bloqueos del equipo por mes"
+              subtitle="Días de libranza aprobados (vacaciones, baja, formación...) en cada mes."
+              months={monthsBetween(fromDate, toDate)}
+              series={[
+                {
+                  key: "bloqueos",
+                  label: "Días bloqueados",
+                  color: "#f59e0b",
+                  points: Object.fromEntries(
+                    ov.data.monthly.map((m) => [
+                      m.year_month,
+                      m.bloqueos_days,
+                    ]),
+                  ),
+                },
+              ]}
+            />
           )}
           {!ov.data && (
             <p className="text-sm text-gray-500">Cargando…</p>
@@ -976,6 +1039,136 @@ const ICON_MAP = {
   CheckCircle2,
   Sparkles,
 } as const;
+
+// ===========================================================================
+// MonthlyLineChart — generic over-time chart used across Carga
+// ===========================================================================
+// Single or multi-line line chart over a fixed list of YYYY-MM
+// months. Caller supplies one or more series (key/label/color
+// plus a {month → value} map); component handles axis, tooltip,
+// legend, and missing-month gaps (treated as 0).
+
+type MonthlySeries = {
+  key: string;
+  label: string;
+  color: string;
+  /** Map of YYYY-MM → numeric value. Missing months render as 0. */
+  points: Record<string, number>;
+};
+
+function MonthlyLineChart({
+  title,
+  subtitle,
+  months,
+  series,
+}: {
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  months: string[];
+  series: MonthlySeries[];
+}) {
+  // Pivot to Recharts shape: one row per month, one column per
+  // series. Months come pre-sorted from monthsBetween().
+  const data = useMemo(
+    () =>
+      months.map((m) => {
+        const row: Record<string, string | number> = { month: m };
+        for (const s of series) row[s.key] = s.points[m] ?? 0;
+        return row;
+      }),
+    [months, series],
+  );
+  // Hide legend for single-series charts — the title already
+  // describes what's plotted, and the legend swatch is just noise.
+  const showLegend = series.length > 1;
+  return (
+    <ChartCard title={title} subtitle={subtitle}>
+      <ResponsiveContainer width="100%" height={260}>
+        <LineChart
+          data={data}
+          margin={{ top: 12, right: 20, left: 0, bottom: 4 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+          <XAxis
+            dataKey="month"
+            tick={{ fontSize: 11, fill: "#4b5563" }}
+            tickFormatter={shortMonthLabel}
+          />
+          <YAxis
+            tick={{ fontSize: 11, fill: "#4b5563" }}
+            allowDecimals={false}
+            width={40}
+          />
+          <Tooltip
+            contentStyle={{
+              fontSize: 12,
+              border: "1px solid #e5e7eb",
+              borderRadius: 8,
+            }}
+            labelFormatter={(v) => longMonthLabel(String(v))}
+          />
+          {showLegend && (
+            <Legend wrapperStyle={{ fontSize: 11 }} iconType="line" />
+          )}
+          {series.map((s) => (
+            <Line
+              key={s.key}
+              type="monotone"
+              dataKey={s.key}
+              name={s.label}
+              stroke={s.color}
+              strokeWidth={2}
+              dot={{ r: 3 }}
+              activeDot={{ r: 5 }}
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  );
+}
+
+// Short axis label: "ene 26" — fits in a tight bottom axis.
+function shortMonthLabel(yyyyMm: string): string {
+  const [y, m] = yyyyMm.split("-");
+  const months = [
+    "ene",
+    "feb",
+    "mar",
+    "abr",
+    "may",
+    "jun",
+    "jul",
+    "ago",
+    "sep",
+    "oct",
+    "nov",
+    "dic",
+  ];
+  const idx = Number(m) - 1;
+  return `${months[idx] ?? m} ${y.slice(2)}`;
+}
+
+// Longer label for tooltip: "enero 2026".
+function longMonthLabel(yyyyMm: string): string {
+  const [y, m] = yyyyMm.split("-");
+  const months = [
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
+  ];
+  const idx = Number(m) - 1;
+  return `${months[idx] ?? m} ${y}`;
+}
 
 // ===========================================================================
 // Carga tab — volume-focused (distinct from Equidad which is fairness)
