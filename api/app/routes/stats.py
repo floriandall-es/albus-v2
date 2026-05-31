@@ -327,6 +327,13 @@ def stats_overview(
     bloqueos_days_total = 0
     bloqueos_days_by_type: dict[str, int] = defaultdict(int)
     monthly_bloqueos_days: dict[str, int] = defaultdict(int)
+    # month → block_type → days. Powers the "Libranzas por mes"
+    # multi-line chart in the Carga tab so the admin can see at a
+    # glance whether a spike is vacation (expected in August) or
+    # baja (worth a conversation with the team).
+    monthly_bloqueos_by_type: dict[str, dict[str, int]] = defaultdict(
+        lambda: defaultdict(int)
+    )
     for b in blocks:
         days = _block_days_in_range(b.start_date, b.end_date, from_, to)
         bloqueos_days_total += days
@@ -338,7 +345,9 @@ def stats_overview(
         cur = max(b.start_date, from_)
         end = min(b.end_date, to)
         while cur <= end:
-            monthly_bloqueos_days[cur.strftime("%Y-%m")] += 1
+            ym = cur.strftime("%Y-%m")
+            monthly_bloqueos_days[ym] += 1
+            monthly_bloqueos_by_type[ym][b.block_type] += 1
             cur += timedelta(days=1)
 
     # -----------------------------------------------------------------
@@ -417,6 +426,7 @@ def stats_overview(
             swap_offers_created=monthly_swap_created.get(ym, 0),
             swap_offers_fulfilled=monthly_swap_fulfilled.get(ym, 0),
             bloqueos_days=monthly_bloqueos_days.get(ym, 0),
+            bloqueos_days_by_type=dict(monthly_bloqueos_by_type.get(ym, {})),
             incidents_count=monthly_incidents.get(ym, 0),
         )
         for ym in months

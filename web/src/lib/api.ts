@@ -450,6 +450,10 @@ export type StatsMonthlyRow = {
   swap_offers_created: number;
   swap_offers_fulfilled: number;
   bloqueos_days: number;
+  /** block_type → days within this month. Drives the multi-line
+   *  "Libranzas por mes" chart on the Carga tab. Empty for months
+   *  with no bloqueos. */
+  bloqueos_days_by_type: Record<string, number>;
   incidents_count: number;
 };
 

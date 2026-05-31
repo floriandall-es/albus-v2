@@ -607,22 +607,46 @@ export default function StatsPage() {
           )}
           {ov.data && (
             <MonthlyLineChart
-              title="Bloqueos del equipo por mes"
-              subtitle="Días de libranza aprobados (vacaciones, baja, formación...) en cada mes."
+              title="Libranzas del equipo por mes"
+              subtitle="Días aprobados por tipo (vacaciones, baja, formación...) en cada mes."
               months={monthsBetween(fromDate, toDate)}
-              series={[
-                {
-                  key: "bloqueos",
-                  label: "Días bloqueados",
-                  color: "#f59e0b",
+              series={(() => {
+                // Pivot monthly[].bloqueos_days_by_type → one line
+                // per type. Drop types that never appear so the
+                // legend doesn't carry empty entries (e.g. a team
+                // with no baja in the period shouldn't see a flat
+                // sick line).
+                const monthly = ov.data!.monthly;
+                const seen = new Set<string>();
+                for (const m of monthly) {
+                  for (const [t, n] of Object.entries(
+                    m.bloqueos_days_by_type ?? {},
+                  )) {
+                    if (n > 0) seen.add(t);
+                  }
+                }
+                const orderedTypes = [
+                  ...BLOQUEO_TYPE_ORDER.filter((t) => seen.has(t)),
+                  ...Array.from(seen).filter(
+                    (t) => !BLOQUEO_TYPE_ORDER.includes(t),
+                  ),
+                ];
+                return orderedTypes.map((type) => ({
+                  key: type,
+                  label:
+                    (BLOQUEO_LABEL_BY_TYPE[type] ?? type).replace(
+                      /^./,
+                      (c) => c.toUpperCase(),
+                    ),
+                  color: BLOQUEO_TYPE_COLOR[type] ?? "#64748b",
                   points: Object.fromEntries(
-                    ov.data.monthly.map((m) => [
+                    monthly.map((m) => [
                       m.year_month,
-                      m.bloqueos_days,
+                      m.bloqueos_days_by_type?.[type] ?? 0,
                     ]),
                   ),
-                },
-              ]}
+                }));
+              })()}
             />
           )}
           {!ov.data && (
@@ -1361,15 +1385,9 @@ function BloqueosPorTipo({
     [byType],
   );
   const max = Math.max(1, ...entries.map(([, n]) => n));
-  // Color per type so admins recognise them at a glance — matched
-  // to the rest of the app's bloqueo treatments (sick=rose, etc.).
-  const TYPE_COLOR: Record<string, string> = {
-    vacation: "#0d9488", // teal
-    sick: "#f43f5e", // rose
-    training: "#3b82f6", // blue
-    personal: "#8b5cf6", // violet
-    other: "#64748b", // slate
-  };
+  // Shared palette with the over-time chart on the same tab so the
+  // colors stay locked across surfaces.
+  const TYPE_COLOR = BLOQUEO_TYPE_COLOR;
   return (
     <ChartCard
       title="Libranzas por tipo"
@@ -2323,6 +2341,29 @@ const BLOQUEO_LABEL_BY_TYPE: Record<string, string> = {
   personal: "personal",
   other: "otros",
 };
+
+// One palette for every "libranza por tipo" surface so the same color
+// always means the same reason across the stats page (bar chart,
+// line chart, breakdown hint, etc.). Matches the rest of the app's
+// bloqueo treatments: sick=rose, training=blue, vacation=teal.
+const BLOQUEO_TYPE_COLOR: Record<string, string> = {
+  vacation: "#0d9488", // teal
+  sick: "#f43f5e", // rose
+  training: "#3b82f6", // blue
+  personal: "#8b5cf6", // violet
+  other: "#64748b", // slate
+};
+
+// Render order for the monthly line-chart legend. Keeps the legend
+// stable across periods (otherwise the order would flip when a new
+// type appears mid-year) and groups the high-volume types first.
+const BLOQUEO_TYPE_ORDER = [
+  "vacation",
+  "sick",
+  "training",
+  "personal",
+  "other",
+];
 
 function formatBloqueoBreakdown(by: Record<string, number>): string {
   const entries = Object.entries(by)

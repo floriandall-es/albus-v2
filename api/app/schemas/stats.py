@@ -121,6 +121,10 @@ class MonthlyRow(BaseModel):
     swap_offers_created: int
     swap_offers_fulfilled: int
     bloqueos_days: int
+    # block_type → days within this month. Empty dict for months
+    # with no bloqueos. Keys match availability_blocks.block_type
+    # ('vacation' | 'sick' | 'training' | 'personal' | 'other').
+    bloqueos_days_by_type: dict[str, int] = {}
     incidents_count: int
 
 
