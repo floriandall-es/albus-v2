@@ -45,6 +45,7 @@ import {
   Calendar,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   RefreshCw,
   Sparkles,
   TrendingUp,
@@ -556,15 +557,16 @@ export default function StatsPage() {
               <h2 className="mt-2 text-base font-semibold text-gray-800">
                 Detalle por actividad
               </h2>
-              {slotMeta.map((slot) => (
-                <PerSlotChart
-                  key={slot.key}
-                  slot={slot}
-                  rows={scopedRows}
-                  months={monthsBetween(fromDate, toDate)}
-                  onPersonClick={setSelectedPersonId}
-                />
-              ))}
+              <p className="-mt-3 text-xs text-gray-500">
+                Vista compacta de las actividades del periodo. Pulsa una fila
+                para abrir su gráfico mensual por persona.
+              </p>
+              <SlotOverviewAccordion
+                slotMeta={slotMeta}
+                rows={scopedRows}
+                months={monthsBetween(fromDate, toDate)}
+                onPersonClick={setSelectedPersonId}
+              />
               <DetailTable rows={scopedRows} slotMeta={slotMeta} />
             </>
           )}
@@ -893,6 +895,125 @@ const ICON_MAP = {
   CheckCircle2,
   Sparkles,
 } as const;
+
+// ===========================================================================
+// SlotOverviewAccordion — per-slot overview + click-to-expand
+// ===========================================================================
+// Replaces the previous "stack every PerSlotChart vertically" layout
+// on the Detalle tab. With 10+ slots that was a 4000px scroll. Now
+// each slot is a single compact row (color dot + name + bar + total)
+// that the admin can click to expand the existing PerSlotChart
+// inline. Multiple rows can be open at once so admins can compare.
+
+type SlotMeta = {
+  key: string;
+  slot_id: number;
+  slot_name: string;
+  team_role_id: number | null;
+  team_role_label: string | null;
+  color: string;
+};
+
+function SlotOverviewAccordion({
+  slotMeta,
+  rows,
+  months,
+  onPersonClick,
+}: {
+  slotMeta: SlotMeta[];
+  rows: StatsRow[];
+  months: string[];
+  onPersonClick?: (personId: number) => void;
+}) {
+  const [openKeys, setOpenKeys] = useState<Set<string>>(new Set());
+
+  // Per-slot totals across all rows in the period — drives the mini
+  // bar widths (scaled to the busiest slot) and the right-aligned
+  // count.
+  const slotTotals = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of rows) {
+      const k = `${r.slot_id}|${r.team_role_id ?? ""}`;
+      m.set(k, (m.get(k) ?? 0) + r.count);
+    }
+    return m;
+  }, [rows]);
+  const maxTotal = useMemo(
+    () => Math.max(1, ...Array.from(slotTotals.values())),
+    [slotTotals],
+  );
+
+  const toggle = (k: string) =>
+    setOpenKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+      {slotMeta.map((slot, i) => {
+        const total = slotTotals.get(slot.key) ?? 0;
+        const isOpen = openKeys.has(slot.key);
+        const pct = (total / maxTotal) * 100;
+        return (
+          <div
+            key={slot.key}
+            className={i > 0 ? "border-t border-gray-100" : ""}
+          >
+            <button
+              type="button"
+              onClick={() => toggle(slot.key)}
+              className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-gray-50"
+            >
+              <ChevronRight
+                className={
+                  "h-4 w-4 shrink-0 text-gray-400 transition-transform "
+                  + (isOpen ? "rotate-90" : "")
+                }
+              />
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: slot.color }}
+              />
+              <span className="min-w-0 flex-1 text-sm font-medium text-gray-800">
+                <span className="truncate">{slot.slot_name}</span>
+                {slot.team_role_label && (
+                  <span className="ml-2 text-xs font-normal text-gray-500">
+                    · {slot.team_role_label}
+                  </span>
+                )}
+              </span>
+              <div className="hidden h-2 w-32 overflow-hidden rounded-full bg-gray-100 sm:block">
+                <div
+                  className="h-full transition-all"
+                  style={{
+                    width: `${pct}%`,
+                    backgroundColor: slot.color,
+                  }}
+                />
+              </div>
+              <span className="w-14 shrink-0 text-right text-sm font-semibold tabular-nums text-gray-700">
+                {total.toLocaleString("es-ES")}
+              </span>
+            </button>
+            {isOpen && (
+              <div className="border-t border-gray-100 bg-gray-50/40 p-4">
+                <PerSlotChart
+                  slot={slot}
+                  rows={rows}
+                  months={months}
+                  onPersonClick={onPersonClick}
+                />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function ChartCard({
   title,
