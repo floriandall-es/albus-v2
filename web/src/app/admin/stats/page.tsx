@@ -745,7 +745,6 @@ export default function StatsPage() {
                 months={monthsBetween(fromDate, toDate)}
                 onPersonClick={setSelectedPersonId}
               />
-              <DetailTable rows={scopedRows} slotMeta={slotMeta} />
             </>
           )}
         </div>
@@ -2191,117 +2190,6 @@ function PerSlotChart({
         </BarChart>
       </ResponsiveContainer>
     </ChartCard>
-  );
-}
-
-function DetailTable({
-  rows,
-  slotMeta,
-}: {
-  rows: StatsRow[];
-  slotMeta: {
-    key: string;
-    slot_id: number;
-    slot_name: string;
-    team_role_id: number | null;
-    team_role_label: string | null;
-    color: string;
-  }[];
-}) {
-  // Pivot to person × (slot, role) totals for a precise readout
-  // under the charts. Mirrors the BalanceStats panel idea but spans
-  // the whole range instead of one schedule.
-  const persons = useMemo(() => {
-    const m = new Map<number, string>();
-    for (const r of rows) {
-      m.set(r.person_id, personLastName({ name: r.person_name }));
-    }
-    return Array.from(m.entries()).sort((a, b) =>
-      a[1].localeCompare(b[1]),
-    );
-  }, [rows]);
-
-  const totalBy = useMemo(() => {
-    const t = new Map<string, number>(); // `${pid}|${chart_key}`
-    for (const r of rows) {
-      const chartKey = `${r.slot_id}|${r.team_role_id ?? ""}`;
-      const k = `${r.person_id}|${chartKey}`;
-      t.set(k, (t.get(k) ?? 0) + r.count);
-    }
-    return t;
-  }, [rows]);
-
-  const totalPerPerson = useMemo(() => {
-    const t = new Map<number, number>();
-    for (const r of rows) {
-      t.set(r.person_id, (t.get(r.person_id) ?? 0) + r.count);
-    }
-    return t;
-  }, [rows]);
-
-  return (
-    <Card>
-      <div className="p-4">
-        <h2 className="text-sm font-semibold text-gray-800">Detalle</h2>
-        <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead className="border-b border-gray-200 bg-gray-50 text-left">
-              <tr className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-                <th className="px-3 py-2">Persona</th>
-                {slotMeta.map((s) => (
-                  <th
-                    key={s.key}
-                    className="px-3 py-2 text-right whitespace-nowrap"
-                  >
-                    <span className="inline-flex items-start gap-1 normal-case font-medium text-gray-700 text-xs tracking-normal">
-                      <span
-                        className="h-2 w-2 mt-1.5 rounded-full"
-                        style={{ backgroundColor: s.color }}
-                      />
-                      <span className="flex flex-col leading-tight">
-                        <span>{s.slot_name}</span>
-                        {s.team_role_label && (
-                          <span className="text-[10px] font-normal text-gray-500">
-                            {s.team_role_label}
-                          </span>
-                        )}
-                      </span>
-                    </span>
-                  </th>
-                ))}
-                <th className="px-3 py-2 text-right">Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {persons.map(([pid, name]) => (
-                <tr key={pid} className="hover:bg-gray-50/60">
-                  <td className="px-3 py-2 font-medium text-gray-900">
-                    {name}
-                  </td>
-                  {slotMeta.map((s) => {
-                    const v = totalBy.get(`${pid}|${s.key}`) ?? 0;
-                    return (
-                      <td
-                        key={s.key}
-                        className={
-                          "px-3 py-2 text-right "
-                          + (v ? "text-gray-800" : "text-gray-300")
-                        }
-                      >
-                        {v || "—"}
-                      </td>
-                    );
-                  })}
-                  <td className="px-3 py-2 text-right font-semibold text-gray-900">
-                    {totalPerPerson.get(pid) ?? 0}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </Card>
   );
 }
 
