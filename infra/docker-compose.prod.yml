@@ -22,7 +22,13 @@ services:
       APP_DATABASE_URL: postgresql+psycopg2://albus_app:albus_app_password@db:5432/${POSTGRES_DB}
       JWT_SECRET: ${JWT_SECRET}
       JWT_ALGORITHM: HS256
-      JWT_TTL_MINUTES: 60
+      # Session length. Was 60 (a leftover from early testing) which
+      # logged users out one hour after login, mid-shift, with no
+      # refresh flow to renew. 720 = 12h covers a full clinical shift.
+      # The expiry is absolute (no sliding renewal yet), so this is the
+      # hard ceiling. Proper fix — a refresh-token flow — is tracked in
+      # docs/production-hardening.md.
+      JWT_TTL_MINUTES: 720
       # HMAC key for invitation token lookup (sprint 17). Set this in
       # /srv/albus/.env. Rotating it invalidates every pending invite.
       INVITATION_LOOKUP_SECRET: ${INVITATION_LOOKUP_SECRET}
