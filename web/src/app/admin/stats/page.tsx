@@ -124,12 +124,19 @@ function lastDayOfMonthIso(yyyyMm01: string): string {
 // single-scroll layout interleaved answers to all three and made the
 // page feel undifferentiated. Tab state syncs to ?tab=… so deep-links
 // from emails / shared URLs land on the right view.
-type TabKey = "resumen" | "carga" | "equidad" | "cobertura" | "detalle";
+type TabKey =
+  | "resumen"
+  | "carga"
+  | "equidad"
+  | "cobertura"
+  | "eficiencia"
+  | "detalle";
 const TABS: { key: TabKey; label: string }[] = [
   { key: "resumen", label: "Resumen" },
   { key: "carga", label: "Carga" },
   { key: "equidad", label: "Equidad" },
   { key: "cobertura", label: "Cobertura" },
+  { key: "eficiencia", label: "Eficiencia" },
   { key: "detalle", label: "Detalle" },
 ];
 function isTabKey(s: string | null): s is TabKey {
@@ -138,6 +145,7 @@ function isTabKey(s: string | null): s is TabKey {
     || s === "carga"
     || s === "equidad"
     || s === "cobertura"
+    || s === "eficiencia"
     || s === "detalle"
   );
 }
@@ -572,6 +580,18 @@ export default function StatsPage() {
           {!ov.data && (
             <p className="text-sm text-gray-500">Cargando…</p>
           )}
+        </div>
+      )}
+
+      {/* ----- EFICIENCIA ------------------------------------- */}
+      {/* "¿Funciona bien el proceso?" — process-health signals
+          across the period. Reaperturas, incidencias, cambios de
+          turno y tasa de cobertura entre compañeros. Admin manual
+          edits to assignments aren't tracked yet (would need an
+          audit table); when that lands it'll surface here. */}
+      {(tab === "eficiencia" || printAll) && ov.data && (
+        <div className="space-y-6">
+          <EficienciaPanel kpis={ov.data.kpis} />
         </div>
       )}
 
@@ -1273,6 +1293,139 @@ function WeekendChart({
         </ResponsiveContainer>
       )}
     </ChartCard>
+  );
+}
+
+// ===========================================================================
+// Eficiencia tab — process-health signals
+// ===========================================================================
+// Four KPI tiles + a small swap-breakdown card. Everything comes
+// from the existing /stats/overview payload — no new backend
+// endpoints. Admin manual edits to assignments aren't tracked
+// today (assignments table has no audit history); when that
+// becomes a priority, add a `schedule_audit` table on the backend
+// and surface a fifth tile here.
+function EficienciaPanel({ kpis }: { kpis: StatsKpis }) {
+  const swapTotal =
+    kpis.swap_offers_open
+    + kpis.swap_offers_fulfilled
+    + kpis.swap_offers_cancelled;
+  // Coverage rate: of the swap offers that closed (fulfilled or
+  // cancelled), what % were covered by a colleague? Open offers
+  // are excluded from the denominator because they haven't
+  // resolved one way or the other yet.
+  const swapResolved = kpis.swap_offers_fulfilled + kpis.swap_offers_cancelled;
+  const coverageRate =
+    swapResolved > 0
+      ? Math.round((kpis.swap_offers_fulfilled / swapResolved) * 100)
+      : null;
+  return (
+    <>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiTile
+          label="Reaperturas"
+          value={kpis.reopened_schedules_count.toLocaleString("es-ES")}
+          hint="Planificaciones reabiertas tras publicar. Cada reapertura suele indicar un cambio reactivo."
+          tone={kpis.reopened_schedules_count > 0 ? "warning" : "neutral"}
+        />
+        <KpiTile
+          label="Incidencias"
+          value={kpis.incidents_count.toLocaleString("es-ES")}
+          hint="Entradas registradas en el log de incidencias del servicio."
+        />
+        <KpiTile
+          label="Cambios solicitados"
+          value={swapTotal.toLocaleString("es-ES")}
+          hint="Total de cambios de turno propuestos por el equipo en el periodo."
+        />
+        <KpiTile
+          label="Cobertura entre compañeros"
+          value={coverageRate !== null ? `${coverageRate}%` : "—"}
+          hint={
+            swapResolved > 0
+              ? "% de cambios cerrados que cubrió otro miembro (cubiertos / cerrados). Alto = equipo se auto-organiza."
+              : "Sin cambios cerrados en el periodo."
+          }
+          tone={
+            coverageRate !== null && coverageRate < 60 ? "warning" : "neutral"
+          }
+        />
+      </div>
+
+      {/* Breakdown of swap-offer states. Useful even when the
+          headline coverage rate is fine — admins can spot a high
+          "abiertos" count (backlog forming) before it shows up
+          as a coverage problem. */}
+      {swapTotal > 0 && (
+        <ChartCard
+          title="Estado de los cambios de turno"
+          subtitle="Desglose de los cambios propuestos en el periodo."
+        >
+          <div className="space-y-2">
+            <SwapStateRow
+              label="Cubiertos"
+              value={kpis.swap_offers_fulfilled}
+              total={swapTotal}
+              color="#10b981"
+            />
+            <SwapStateRow
+              label="Abiertos"
+              value={kpis.swap_offers_open}
+              total={swapTotal}
+              color="#f59e0b"
+            />
+            <SwapStateRow
+              label="Cancelados"
+              value={kpis.swap_offers_cancelled}
+              total={swapTotal}
+              color="#9ca3af"
+            />
+          </div>
+        </ChartCard>
+      )}
+
+      {swapTotal === 0
+        && kpis.incidents_count === 0
+        && kpis.reopened_schedules_count === 0 && (
+          <Card>
+            <div className="p-5 text-sm text-gray-600">
+              Sin incidencias, reaperturas ni cambios de turno en el periodo.
+              El proceso ha ido limpio.
+            </div>
+          </Card>
+        )}
+    </>
+  );
+}
+
+function SwapStateRow({
+  label,
+  value,
+  total,
+  color,
+}: {
+  label: string;
+  value: number;
+  total: number;
+  color: string;
+}) {
+  const pct = total > 0 ? (value / total) * 100 : 0;
+  return (
+    <div className="flex items-center gap-3">
+      <span className="w-28 shrink-0 text-sm text-gray-800">{label}</span>
+      <div className="relative h-5 flex-1 overflow-hidden rounded bg-gray-100">
+        <div
+          className="h-full"
+          style={{ width: `${pct}%`, backgroundColor: color }}
+        />
+      </div>
+      <span className="w-20 shrink-0 text-right text-sm font-semibold tabular-nums text-gray-800">
+        {value.toLocaleString("es-ES")}
+        <span className="ml-1 text-[11px] font-normal text-gray-500">
+          {Math.round(pct)}%
+        </span>
+      </span>
+    </div>
   );
 }
 
