@@ -38,8 +38,6 @@ import {
   Activity,
   ArrowRight,
   Check,
-  ChevronDown,
-  ChevronUp,
   HelpCircle,
   Pencil,
   RotateCcw,
@@ -185,11 +183,9 @@ function ToggleSwitch({
 }
 
 function CatalogueSection() {
-  // Default collapsed: most pageloads are "I want to glance at the
-  // stats", not "I want to edit questions". The catalogue is long
-  // and previously forced the admin to scroll past it every time
-  // to reach the charts.
-  const [expanded, setExpanded] = useState(false);
+  // Always-open since results moved to /admin/stats?tab=pulso —
+  // editing the catalogue is now the main reason to be on this
+  // page, so we lay it out flat instead of behind a chevron.
   const catalogue = useQuery({
     queryKey: ["admin-pulse-catalogue"],
     queryFn: api.getAdminPulseCatalogue,
@@ -211,13 +207,7 @@ function CatalogueSection() {
   return (
     <div className="mb-8 max-w-2xl">
       <Card>
-        {/* Header is a button so the whole row is clickable (cursor
-            target is the entire bar, not just the chevron). */}
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="flex w-full items-start gap-2 p-4 text-left hover:bg-gray-50"
-        >
+        <div className="flex items-start gap-2 p-4">
           <HelpCircle className="mt-0.5 h-5 w-5 shrink-0 text-gray-500" />
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-medium text-gray-900">
@@ -228,52 +218,45 @@ function CatalogueSection() {
               {customCount > 0 && ` · ${customCount} personalizadas`}
             </p>
           </div>
-          {expanded ? (
-            <ChevronUp className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
-          ) : (
-            <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
-          )}
-        </button>
-        {expanded && (
-          <div className="border-t border-gray-100 p-4">
-            <p className="text-xs text-gray-500">
-              Estas son todas las preguntas disponibles. Cada
-              semana se piden todas las que tengas activas.
-              Recomendamos empezar con las 4 que vienen
-              preactivadas y añadir más cuando tengas curiosidad
-              por nuevos ángulos.
-            </p>
-            <div className="mt-5">
-              <SectionLabel
-                icon={<Star className="h-3.5 w-3.5" />}
-                text="Recomendadas · activas por defecto"
-              />
-              <ul className="mt-2 divide-y divide-gray-100 rounded-md border border-gray-200">
-                {core.map((q) => (
-                  <QuestionRow key={q.key} q={q} />
-                ))}
-              </ul>
-            </div>
-            <div className="mt-5">
-              <SectionLabel
-                icon={<Activity className="h-3.5 w-3.5" />}
-                text="Opcionales · desactivadas por defecto"
-              />
-              <ul className="mt-2 divide-y divide-gray-100 rounded-md border border-gray-200">
-                {rotating.map((q) => (
-                  <QuestionRow key={q.key} q={q} />
-                ))}
-              </ul>
-            </div>
-            <p className="mt-4 text-[11px] text-gray-500">
-              Reescribe cualquier pregunta para que suene a tu
-              equipo, o cambia su interruptor para activarla o
-              desactivarla. La escala se queda fija para que las
-              gráficas históricas sigan comparándose como deben.
-              (Semana actual: {prettyWeek(current_week_iso)}.)
-            </p>
+        </div>
+        <div className="border-t border-gray-100 p-4">
+          <p className="text-xs text-gray-500">
+            Estas son todas las preguntas disponibles. Cada
+            semana se piden todas las que tengas activas.
+            Recomendamos empezar con las 4 que vienen
+            preactivadas y añadir más cuando tengas curiosidad
+            por nuevos ángulos.
+          </p>
+          <div className="mt-5">
+            <SectionLabel
+              icon={<Star className="h-3.5 w-3.5" />}
+              text="Recomendadas · activas por defecto"
+            />
+            <ul className="mt-2 divide-y divide-gray-100 rounded-md border border-gray-200">
+              {core.map((q) => (
+                <QuestionRow key={q.key} q={q} />
+              ))}
+            </ul>
           </div>
-        )}
+          <div className="mt-5">
+            <SectionLabel
+              icon={<Activity className="h-3.5 w-3.5" />}
+              text="Opcionales · desactivadas por defecto"
+            />
+            <ul className="mt-2 divide-y divide-gray-100 rounded-md border border-gray-200">
+              {rotating.map((q) => (
+                <QuestionRow key={q.key} q={q} />
+              ))}
+            </ul>
+          </div>
+          <p className="mt-4 text-[11px] text-gray-500">
+            Reescribe cualquier pregunta para que suene a tu
+            equipo, o cambia su interruptor para activarla o
+            desactivarla. La escala se queda fija para que las
+            gráficas históricas sigan comparándose como deben.
+            (Semana actual: {prettyWeek(current_week_iso)}.)
+          </p>
+        </div>
       </Card>
     </div>
   );
