@@ -359,9 +359,14 @@ export default function StatsPage() {
     return { list, months };
   }, [scopedRows, fromDate, toDate]);
 
+  // Shade stops in the page accent — was hardcoded amber, which
+  // clashed with every other chart on the Equidad tab. The
+  // shadeStops helper builds a pale→saturated ramp from any base
+  // hex, so feeding palette[0] keeps the multi-month stacking
+  // legible while staying in the user's color family.
   const weekendShades = useMemo(
-    () => shadeStops("#f59e0b", weekendData.months.length),
-    [weekendData.months.length],
+    () => shadeStops(palette[0], weekendData.months.length),
+    [palette, weekendData.months.length],
   );
   // Same trailing-empty-month workaround as PerSlotChart — anchor the
   // total label to the last bar with actual data so Recharts doesn't
@@ -559,6 +564,7 @@ export default function StatsPage() {
               data={weekendData}
               shades={weekendShades}
               lastIdx={weekendLastIdx}
+              accent={palette[0]}
             />
           )}
         </div>
@@ -1441,16 +1447,23 @@ function WeekendChart({
   data,
   shades,
   lastIdx,
+  accent,
 }: {
   data: { list: Record<string, string | number>[]; months: string[] };
   shades: string[];
   lastIdx: number;
+  /** Page accent — matches the rest of the Equidad tab so the
+   *  weekend bars don't read as a different metric family. */
+  accent: string;
 }) {
   return (
     <ChartCard
       title={
         <span className="inline-flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+          <span
+            className="h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: accent }}
+          />
           Fines de semana y festivos
         </span>
       }
