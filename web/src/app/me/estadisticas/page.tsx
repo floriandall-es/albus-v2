@@ -223,18 +223,36 @@ export default function MyStatsPage() {
   // Per-actividad totals across the whole range (horizontal bar
   // chart). One row per slot/role; sorted by count descending so
   // the heaviest activity sits on top.
-  type ActividadRow = { key: string; label: string; count: number; color: string };
+  type ActividadRow = {
+    key: string;
+    label: string;
+    count: number;
+    avg: number;
+    color: string;
+  };
   const perActividad = useMemo(() => {
     const totals = new Map<string, number>();
     for (const r of q.data?.rows ?? []) {
       const k = `${r.slot_id}|${r.team_role_id ?? ""}`;
       totals.set(k, (totals.get(k) ?? 0) + r.count);
     }
+    // Team mean per activity, keyed the same way so each bar lines
+    // up with its media counterpart.
+    const avgByKey = new Map<string, number>();
+    for (const a of q.data?.team_comparison?.by_activity ?? []) {
+      avgByKey.set(`${a.slot_id}|${a.team_role_id ?? ""}`, a.avg_count);
+    }
     const rows: ActividadRow[] = [];
     for (const s of slotMeta) {
       const n = totals.get(s.key) ?? 0;
       if (n === 0) continue;
-      rows.push({ key: s.key, label: s.label, count: n, color: s.color });
+      rows.push({
+        key: s.key,
+        label: s.label,
+        count: n,
+        avg: avgByKey.get(s.key) ?? 0,
+        color: s.color,
+      });
     }
     rows.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, "es"));
     return rows;
@@ -452,16 +470,18 @@ export default function MyStatsPage() {
                 Por actividad
               </h3>
               <p className="mb-3 text-xs text-gray-500">
-                Total de turnos por tipo de actividad en el rango.
+                Tus turnos (en color) frente a la media del equipo (en gris),
+                por tipo de actividad.
               </p>
               <ResponsiveContainer
                 width="100%"
-                height={Math.max(160, perActividad.length * 36 + 60)}
+                height={Math.max(180, perActividad.length * 52 + 70)}
               >
                 <BarChart
                   data={perActividad}
                   layout="vertical"
-                  margin={{ top: 8, right: 32, left: 16, bottom: 4 }}
+                  margin={{ top: 8, right: 40, left: 16, bottom: 4 }}
+                  barCategoryGap="22%"
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis
@@ -483,7 +503,8 @@ export default function MyStatsPage() {
                       borderRadius: 8,
                     }}
                   />
-                  <Bar dataKey="count" name="Turnos" radius={[0, 4, 4, 0]}>
+                  {/* "Tú" — per-activity colour, bold label. */}
+                  <Bar dataKey="count" name="Tú" radius={[0, 4, 4, 0]}>
                     {perActividad.map((row) => (
                       <Cell key={row.key} fill={row.color} />
                     ))}
@@ -492,6 +513,20 @@ export default function MyStatsPage() {
                       position="right"
                       fill="#1f2937"
                       style={{ fontSize: 11, fontWeight: 600 }}
+                    />
+                  </Bar>
+                  {/* "Media del equipo" — neutral grey, lighter label. */}
+                  <Bar
+                    dataKey="avg"
+                    name="Media del equipo"
+                    fill="#cbd5e1"
+                    radius={[0, 4, 4, 0]}
+                  >
+                    <LabelList
+                      dataKey="avg"
+                      position="right"
+                      fill="#6b7280"
+                      style={{ fontSize: 11 }}
                     />
                   </Bar>
                 </BarChart>

@@ -21,6 +21,16 @@ class StatsRow(BaseModel):
     weekend_or_holiday_count: int = 0
 
 
+class ActivityAverage(BaseModel):
+    """Team mean assignments per member for one (slot, team_role).
+    Keyed so the /me page can line each up with the caller's own
+    per-actividad bar (`slot_id|team_role_id`)."""
+
+    slot_id: int
+    team_role_id: int | None
+    avg_count: float
+
+
 class TeamComparison(BaseModel):
     """Privacy-safe team aggregate for the /me/estadisticas "vs team
     average" card. Only means + a head count — never per-person rows,
@@ -42,6 +52,9 @@ class TeamComparison(BaseModel):
     avg_swaps_requested: float
     my_swaps_covered: int
     avg_swaps_covered: float
+    # Team mean per (slot, role) so the "Por actividad" chart can show
+    # a media bar next to each of the caller's bars.
+    by_activity: list[ActivityAverage] = []
 
 
 class StatsResponse(BaseModel):

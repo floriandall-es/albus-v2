@@ -43,6 +43,7 @@ from app.models import (
 )
 from app.routes.deps import RequestContext, get_current_context
 from app.schemas.stats import (
+    ActivityAverage,
     CalendarEntry,
     CalendarPersonOut,
     KpiBlock,
@@ -200,12 +201,17 @@ def _team_comparison(
         .filter(Holiday.date.between(from_, to))
         .all()
     }
-    # One row per assignment (date only) across the whole team — same
+    # One row per assignment across the whole team — same
     # published+archived + person-assigned filters the per-person
     # aggregator uses, so "my total" and "team average" are computed
-    # on identical grounds.
-    dates = (
-        ctx.db.query(Assignment.date)
+    # on identical grounds. We pull slot_id/team_role_id too so the
+    # per-actividad averages come from the same single scan.
+    rows = (
+        ctx.db.query(
+            Assignment.date,
+            Assignment.slot_id,
+            Assignment.team_role_id,
+        )
         .join(Schedule, Schedule.id == Assignment.schedule_id)
         .filter(
             Schedule.status.in_(["published", "archived"]),
@@ -214,10 +220,21 @@ def _team_comparison(
         )
         .all()
     )
-    total = len(dates)
+    total = len(rows)
     weekend = sum(
-        1 for (d,) in dates if d.weekday() >= 5 or d in holiday_dates
+        1 for (d, _sid, _rid) in rows if d.weekday() >= 5 or d in holiday_dates
     )
+    by_activity_counts: dict[tuple[int, int | None], int] = defaultdict(int)
+    for (_d, sid, rid) in rows:
+        by_activity_counts[(sid, rid)] += 1
+    by_activity = [
+        ActivityAverage(
+            slot_id=sid,
+            team_role_id=rid,
+            avg_count=round(n / member_count, 1),
+        )
+        for (sid, rid), n in by_activity_counts.items()
+    ]
 
     # Swaps — counted by the moment the action happened (offer
     # created / response accepted) falling in the range. +1 day on
@@ -267,6 +284,7 @@ def _team_comparison(
         avg_swaps_requested=round(total_requested / member_count, 1),
         my_swaps_covered=my_covered,
         avg_swaps_covered=round(total_covered / member_count, 1),
+        by_activity=by_activity,
     )
 
 

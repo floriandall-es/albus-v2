@@ -397,6 +397,14 @@ export type StatsRow = {
 /** Privacy-safe team aggregate on the /me/stats response — means
  *  only, no per-person data. Drives the "vs media del equipo" card
  *  on /me/estadisticas. Null on the admin /stats endpoint. */
+/** Team mean per (slot, team_role), keyed to line up with the
+ *  caller's per-actividad bars. */
+export type ActivityAverage = {
+  slot_id: number;
+  team_role_id: number | null;
+  avg_count: number;
+};
+
 export type TeamComparison = {
   team_member_count: number;
   avg_total_shifts: number;
@@ -407,6 +415,8 @@ export type TeamComparison = {
   /** Times the caller accepted to cover a colleague, + team mean. */
   my_swaps_covered: number;
   avg_swaps_covered: number;
+  /** Per-activity team means for the "Por actividad" comparison. */
+  by_activity: ActivityAverage[];
 };
 
 export type StatsResponse = {
