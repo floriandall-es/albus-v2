@@ -58,6 +58,7 @@ self.addEventListener("push", (event) => {
     body: "Tienes mensajes nuevos",
     url: "/me/mensajes",
     tag: undefined,
+    timestamp: undefined,
   };
   if (event.data) {
     try {
@@ -67,6 +68,8 @@ self.addEventListener("push", (event) => {
         body: parsed.body || payload.body,
         url: parsed.url || payload.url,
         tag: parsed.tag || undefined,
+        timestamp:
+          typeof parsed.timestamp === "number" ? parsed.timestamp : undefined,
       };
     } catch (err) {
       // Keep defaults; log for service-worker devtools.
@@ -92,6 +95,17 @@ self.addEventListener("push", (event) => {
       // collapses. Without this, only the FIRST push per tag
       // alerts the user and the rest land silently.
       renotify: Boolean(payload.tag),
+      // Show the message's own send time, not when the OS surfaced
+      // the push. Android/desktop render this; iOS ignores it.
+      timestamp: payload.timestamp,
+      // Gentle double-buzz on Android, WhatsApp-ish. iOS ignores
+      // vibrate for web push (it uses the system default).
+      vibrate: [180, 80, 180],
+      // One-tap "Ver" action on Android/desktop. iOS doesn't render
+      // notification actions, so it harmlessly falls back to a body
+      // tap there. The notificationclick handler treats the action
+      // and a plain tap identically — both deep-link to the chat.
+      actions: [{ action: "open", title: "Ver" }],
       // Stash the URL on the notification itself so the click
       // handler can navigate without re-parsing the payload.
       data: { url: payload.url },

@@ -521,17 +521,30 @@ def _maybe_notify_unread(
     if not other_members:
         return
     sender_name = ctx.person.name
+    sender_first = ctx.person.first_name or sender_name
+    # Kept for the email fallback's sender_display_name below.
     sender_last = ctx.person.last_name or sender_name
     body_preview = msg.body[:200]
     deep_link = (
         f"{settings.public_base_url.rstrip('/')}/me/mensajes?c={conv.id}"
     )
-    # Title varies for DM vs group so the recipient knows whether
-    # they're seeing a 1:1 or a group ping at a glance.
+    # WhatsApp-style framing so the notification reads like a chat
+    # rather than a system alert:
+    #   - DM    → title is the sender's full name, body is the message.
+    #   - Group → title is the group name, body is "Nombre: mensaje"
+    #             so the recipient sees who spoke at a glance.
     if conv.kind == "group" and conv.title:
-        push_title = f"{conv.title} · {sender_last}"
+        push_title = conv.title
+        push_body = f"{sender_first}: {body_preview}"
     else:
-        push_title = sender_last
+        push_title = sender_name
+        push_body = body_preview
+    # Epoch-ms timestamp so platforms that render notification time
+    # (Android / desktop) show when the message was sent, not when the
+    # OS happened to display the push. iOS ignores it.
+    msg_ts_ms = (
+        int(msg.created_at.timestamp() * 1000) if msg.created_at else None
+    )
 
     from app.services.email import send_email, should_email_person
     from app.services.email_templates import dm_unread_email
@@ -551,9 +564,10 @@ def _maybe_notify_unread(
             sent = send_push_to_person(
                 mem.person_id,
                 title=push_title,
-                body=body_preview,
+                body=push_body,
                 url=deep_link,
                 tag=f"conversation:{conv.id}",
+                timestamp_ms=msg_ts_ms,
             )
             if sent > 0:
                 # Successfully delivered to at least one device —

@@ -91,6 +91,7 @@ def send_push_to_person(
     body: str,
     url: str,
     tag: str | None = None,
+    timestamp_ms: int | None = None,
 ) -> int:
     """Fan out a push to every subscription the person has.
 
@@ -103,6 +104,11 @@ def send_push_to_person(
     `tag` collapses repeat notifications for the same logical
     "thread" on the device — pass `conversation:<id>` for DM fan-outs
     so a noisy chat doesn't stack five separate notifications.
+
+    `timestamp_ms` is the epoch-ms time the underlying event happened
+    (e.g. when the message was sent). Platforms that render a
+    notification timestamp use it; iOS ignores it. Optional — omit
+    and the device stamps "now".
     """
     if not is_configured():
         return 0
@@ -116,6 +122,7 @@ def send_push_to_person(
             "body": body,
             "url": url,
             "tag": tag,
+            "timestamp": timestamp_ms,
         }
     )
     vapid_claims = {"sub": settings.vapid_subject}
