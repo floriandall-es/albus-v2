@@ -141,6 +141,64 @@ export async function subscribeToPush(): Promise<number> {
   return id;
 }
 
+/**
+ * Idempotent self-heal: make sure this device has a live, backend-
+ * synced push subscription. Safe to call on every app load.
+ *
+ * Why this exists: iOS routinely invalidates PWA push subscriptions
+ * (OS updates, storage eviction, long disuse). When that happens the
+ * browser drops the PushSubscription, our backend row gets pruned on
+ * the next 410 Gone, and — until now — nothing re-created either. The
+ * user went silently dark and had to manually re-toggle in settings
+ * (which most never discover). This closes that gap.
+ *
+ * It NEVER prompts. Re-subscribing only needs a user gesture when the
+ * permission is still "default"; once it's "granted", the browser lets
+ * us subscribe silently. So we bail unless permission is already
+ * granted — making this a safe no-op in every other state.
+ *
+ * Two heal paths:
+ *   1. Browser dropped the subscription (getSubscription() === null)
+ *      but permission survived → re-subscribe from scratch.
+ *   2. Browser still has a subscription but the backend row may have
+ *      been pruned → re-POST it (the upsert is keyed on endpoint, so
+ *      this is idempotent) and refresh the stored id.
+ */
+export async function ensurePushSubscription(): Promise<void> {
+  if (!isPushSupported() || !isInstalledPwa()) return;
+  if (Notification.permission !== "granted") return;
+  try {
+    const reg = await getRegistration();
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      // Path 1 — OS dropped it, permission survived. Recreate silently.
+      const { public_key } = await api.getVapidPublicKey();
+      if (!public_key) return;
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(public_key),
+      });
+    }
+    // Path 2 (and tail of path 1) — sync to backend. The upsert is on
+    // endpoint, so re-POSTing a still-valid subscription just heals a
+    // pruned row and refreshes last_used; it never duplicates.
+    const p256dh = arrayBufferToBase64Url(sub.getKey("p256dh"));
+    const auth = arrayBufferToBase64Url(sub.getKey("auth"));
+    if (!p256dh || !auth) return;
+    const { id } = await api.createPushSubscription({
+      endpoint: sub.endpoint,
+      p256dh,
+      auth,
+      user_agent: navigator.userAgent || null,
+    });
+    window.localStorage.setItem(STORAGE_KEY, String(id));
+  } catch (err) {
+    // Best-effort — a push hiccup must never break app load.
+    // eslint-disable-next-line no-console
+    console.warn("[push] ensureSubscription failed", err);
+  }
+}
+
 /** Tear down the current device's subscription: unsubscribe in
  * the browser AND delete on the backend. Caller usually invokes
  * this on the "Desactivar" button in the panel. */
