@@ -469,10 +469,11 @@ export default function StatsPage() {
       )}
 
       {/* ----- EQUIDAD ------------------------------------------ */}
-      {/* "¿Es justo?" — categoría rollup, equity histogram,
-          calendar heatmap. The weekend/festivos chart also lives
-          here because it answers the same question (is the
-          weekend burden distributed fairly?). */}
+      {/* "¿Es justo?" — everything that compares person-against-
+          person. Categoría rollup, FTE-normalised equity panel,
+          raw-count leaderboard, calendar heatmap, weekend
+          distribution. Carga answers the team-level "how much"
+          question; Equidad answers "is it distributed fairly". */}
       {(tab === "equidad" || printAll) && (
         <div className="space-y-6">
           {ov.data && (
@@ -493,6 +494,11 @@ export default function StatsPage() {
                 accent={palette[0]}
                 onPersonClick={setSelectedPersonId}
               />
+              <TurnosPorPersona
+                workload={ov.data.workload}
+                accent={palette[0]}
+                onPersonClick={setSelectedPersonId}
+              />
             </>
           )}
           {/* Calendar heat map. Scales naturally — each person is
@@ -508,30 +514,8 @@ export default function StatsPage() {
                 onPersonClick={setSelectedPersonId}
               />
             )}
-        </div>
-      )}
-
-      {/* ----- CARGA ------------------------------------------- */}
-      {/* "¿Cuánta carga?" — volume-focused views distinct from
-          Equidad (which is fairness-focused). Raw counts per
-          person, libranzas breakdown, and the weekend/festivos
-          burden chart (moved here because volume "who works
-          which weekends" reads as Carga, not Equidad). */}
-      {(tab === "carga" || printAll) && (
-        <div className="space-y-6">
-          {ov.data && (
-            <>
-              <TurnosPorPersona
-                workload={ov.data.workload}
-                accent={palette[0]}
-                onPersonClick={setSelectedPersonId}
-              />
-              <BloqueosPorTipo
-                byType={ov.data.kpis.bloqueos_days_by_type}
-                total={ov.data.kpis.bloqueos_days_total}
-              />
-            </>
-          )}
+          {/* Weekend / festivos burden per person — fairness lens
+              on the weekend distribution. */}
           {q.data && scopedRows.length > 0 && (
             <WeekendChart
               data={weekendData}
@@ -539,23 +523,50 @@ export default function StatsPage() {
               lastIdx={weekendLastIdx}
             />
           )}
-          {(q.isLoading || !ov.data) && (
+        </div>
+      )}
+
+      {/* ----- CARGA ------------------------------------------- */}
+      {/* "¿Cuánta carga tiene el equipo?" — team-level totals
+          and breakdowns. No per-person rows here (those answer
+          a fairness question and live on Equidad). Three
+          aggregate views: monthly volume trends, breakdown by
+          categoría profesional, and libranzas by type. */}
+      {(tab === "carga" || printAll) && (
+        <div className="space-y-6">
+          {ov.data && (
+            <>
+              <MonthlyTrendsPanel
+                monthly={ov.data.monthly}
+                accent={palette[0]}
+              />
+              <CargaPorCategoria
+                workload={ov.data.workload}
+                palette={palette}
+              />
+              <BloqueosPorTipo
+                byType={ov.data.kpis.bloqueos_days_by_type}
+                total={ov.data.kpis.bloqueos_days_total}
+              />
+            </>
+          )}
+          {!ov.data && (
             <p className="text-sm text-gray-500">Cargando…</p>
           )}
         </div>
       )}
 
       {/* ----- COBERTURA --------------------------------------- */}
-      {/* "¿Estamos cubriendo?" — coverage trend + monthly trends.
-          Service-level views; the categoría chip doesn't scope
-          these by design (a jefe filtering to Adjuntos still
-          wants the operational tempo across the whole service). */}
+      {/* "¿Estamos cubriendo?" — the coverage rate over time.
+          Activity volume trends moved to Carga (they answer
+          "how much" not "are we getting it done"). What's left
+          here is the single most important coverage question:
+          how is the % covered evolving. */}
       {(tab === "cobertura" || printAll) && (
         <div className="space-y-6">
           {ov.data && (
             <>
               <CoverageTrend monthly={ov.data.monthly} accent={palette[0]} />
-              <MonthlyTrendsPanel monthly={ov.data.monthly} accent={palette[0]} />
             </>
           )}
           {!ov.data && (
@@ -949,6 +960,87 @@ const ICON_MAP = {
 // ===========================================================================
 // Carga tab — volume-focused (distinct from Equidad which is fairness)
 // ===========================================================================
+
+/** Aggregate team workload grouped by professional categoría
+ *  (Adjuntos, Residentes, Enfermería...). Per-categoría TOTALS
+ *  — no per-person breakdown. The point is "how much volume
+ *  does each tier handle" at the service level, not who within
+ *  the tier did what. */
+function CargaPorCategoria({
+  workload,
+  palette,
+}: {
+  workload: StatsWorkloadRow[];
+  palette: string[];
+}) {
+  const aggregated = useMemo(() => {
+    const m = new Map<
+      string,
+      { label: string; shifts: number; people: number }
+    >();
+    for (const w of workload) {
+      const key = w.category_name ?? "Sin categoría";
+      const cur = m.get(key);
+      if (cur) {
+        cur.shifts += w.total_shifts;
+        cur.people += 1;
+      } else {
+        m.set(key, {
+          label: key,
+          shifts: w.total_shifts,
+          people: 1,
+        });
+      }
+    }
+    return Array.from(m.values()).sort((a, b) => b.shifts - a.shifts);
+  }, [workload]);
+  const max = Math.max(1, ...aggregated.map((c) => c.shifts));
+  if (aggregated.length === 0) {
+    return (
+      <ChartCard
+        title="Carga por categoría profesional"
+        subtitle="Suma de turnos del equipo agrupada por categoría."
+      >
+        <p className="text-sm text-gray-500">
+          Sin asignaciones en el periodo.
+        </p>
+      </ChartCard>
+    );
+  }
+  return (
+    <ChartCard
+      title="Carga por categoría profesional"
+      subtitle="Suma de turnos del equipo agrupada por categoría."
+    >
+      <div className="space-y-2">
+        {aggregated.map((cat, i) => {
+          const pct = (cat.shifts / max) * 100;
+          const color = palette[i % palette.length];
+          return (
+            <div key={cat.label} className="flex items-center gap-3">
+              <span className="w-44 shrink-0 truncate text-sm text-gray-800">
+                {cat.label}
+                <span className="ml-1 text-[11px] text-gray-500">
+                  · {cat.people}{" "}
+                  {cat.people === 1 ? "persona" : "personas"}
+                </span>
+              </span>
+              <div className="relative h-5 flex-1 overflow-hidden rounded bg-gray-100">
+                <div
+                  className="h-full"
+                  style={{ width: `${pct}%`, backgroundColor: color }}
+                />
+              </div>
+              <span className="w-16 shrink-0 text-right text-sm font-semibold tabular-nums text-gray-800">
+                {cat.shifts.toLocaleString("es-ES")}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </ChartCard>
+  );
+}
 
 /** Horizontal-bar leaderboard of total shifts per person in the
  *  selected range. Raw counts (NOT FTE-normalised) — the point
