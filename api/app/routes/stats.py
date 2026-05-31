@@ -305,12 +305,19 @@ def stats_overview(
     swap_cancelled = sum(1 for o in swap_offers if o.status == "cancelled")
     monthly_swap_created: dict[str, int] = defaultdict(int)
     monthly_swap_fulfilled: dict[str, int] = defaultdict(int)
+    # Per-month cancelled count — needed so the Eficiencia tab can
+    # plot coverage rate (fulfilled / (fulfilled + cancelled)) over
+    # time, not just as a single period figure.
+    monthly_swap_cancelled: dict[str, int] = defaultdict(int)
     for o in swap_offers:
         ym = o.created_at.strftime("%Y-%m")
         monthly_swap_created[ym] += 1
-        if o.status == "fulfilled" and o.closed_at is not None:
+        if o.closed_at is not None:
             ym_close = o.closed_at.strftime("%Y-%m")
-            monthly_swap_fulfilled[ym_close] += 1
+            if o.status == "fulfilled":
+                monthly_swap_fulfilled[ym_close] += 1
+            elif o.status == "cancelled":
+                monthly_swap_cancelled[ym_close] += 1
 
     # -----------------------------------------------------------------
     # Bloqueos — approved availability_blocks; sum overlap-days
@@ -353,15 +360,21 @@ def stats_overview(
     # -----------------------------------------------------------------
     # Reopened schedules — schedule.reopened_at within range
     # -----------------------------------------------------------------
-    reopened_count = (
-        ctx.db.query(func.count(Schedule.id))
+    # Fetch the rows (not just a count) so we can bucket by month too.
+    # Reopening volume is low (single digits per month for most teams),
+    # so the per-row scan is cheap.
+    reopened_rows = (
+        ctx.db.query(Schedule.reopened_at)
         .filter(
             Schedule.reopened_at.isnot(None),
             Schedule.reopened_at.between(from_, to + timedelta(days=1)),
         )
-        .scalar()
-        or 0
+        .all()
     )
+    reopened_count = len(reopened_rows)
+    monthly_reopened: dict[str, int] = defaultdict(int)
+    for (reopened_at,) in reopened_rows:
+        monthly_reopened[reopened_at.strftime("%Y-%m")] += 1
 
     # -----------------------------------------------------------------
     # Incidents — incident.occurred_at within range
@@ -425,9 +438,11 @@ def stats_overview(
             uncovered_count=monthly_uncovered_by_ym.get(ym, 0),
             swap_offers_created=monthly_swap_created.get(ym, 0),
             swap_offers_fulfilled=monthly_swap_fulfilled.get(ym, 0),
+            swap_offers_cancelled=monthly_swap_cancelled.get(ym, 0),
             bloqueos_days=monthly_bloqueos_days.get(ym, 0),
             bloqueos_days_by_type=dict(monthly_bloqueos_by_type.get(ym, {})),
             incidents_count=monthly_incidents.get(ym, 0),
+            reopened_count=monthly_reopened.get(ym, 0),
         )
         for ym in months
     ]

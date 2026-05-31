@@ -120,12 +120,21 @@ class MonthlyRow(BaseModel):
     uncovered_count: int
     swap_offers_created: int
     swap_offers_fulfilled: int
+    # Closed-as-cancelled this month (mirrors swap_offers_fulfilled
+    # which already bucketed by closed_at). Powers the per-month
+    # coverage-rate line on the Eficiencia tab.
+    swap_offers_cancelled: int = 0
     bloqueos_days: int
     # block_type → days within this month. Empty dict for months
     # with no bloqueos. Keys match availability_blocks.block_type
     # ('vacation' | 'sick' | 'training' | 'personal' | 'other').
     bloqueos_days_by_type: dict[str, int] = {}
     incidents_count: int
+    # Schedules reopened-after-publish this month — counted by
+    # Schedule.reopened_at, so a schedule reopened twice in the same
+    # month would only count once (we update the timestamp on each
+    # reopen). Good enough for the over-time signal.
+    reopened_count: int = 0
 
 
 class StatsOverviewResponse(BaseModel):

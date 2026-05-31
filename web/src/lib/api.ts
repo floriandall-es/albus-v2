@@ -449,12 +449,17 @@ export type StatsMonthlyRow = {
   uncovered_count: number;
   swap_offers_created: number;
   swap_offers_fulfilled: number;
+  /** Closed-as-cancelled this month. With swap_offers_fulfilled,
+   *  this lets the Eficiencia tab plot the coverage rate over time. */
+  swap_offers_cancelled: number;
   bloqueos_days: number;
   /** block_type → days within this month. Drives the multi-line
    *  "Libranzas por mes" chart on the Carga tab. Empty for months
    *  with no bloqueos. */
   bloqueos_days_by_type: Record<string, number>;
   incidents_count: number;
+  /** Schedules reopened-after-publish this month. */
+  reopened_count: number;
 };
 
 export type StatsOverviewResponse = {

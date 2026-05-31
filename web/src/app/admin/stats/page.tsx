@@ -135,9 +135,13 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "resumen", label: "Resumen" },
   { key: "carga", label: "Carga" },
   { key: "equidad", label: "Equidad" },
+  // Pulso sits next to Equidad on purpose — they answer the same
+  // question from two angles (data vs sentiment). Cobertura +
+  // Eficiencia are about the planning process itself, grouped
+  // together after the people-focused tabs.
+  { key: "pulso", label: "Pulso" },
   { key: "cobertura", label: "Cobertura" },
   { key: "eficiencia", label: "Eficiencia" },
-  { key: "pulso", label: "Pulso" },
   { key: "detalle", label: "Detalle" },
 ];
 function isTabKey(s: string | null): s is TabKey {
@@ -688,7 +692,12 @@ export default function StatsPage() {
           audit table); when that lands it'll surface here. */}
       {(tab === "eficiencia" || printAll) && ov.data && (
         <div className="space-y-6">
-          <EficienciaPanel kpis={ov.data.kpis} />
+          <EficienciaPanel
+            kpis={ov.data.kpis}
+            monthly={ov.data.monthly}
+            months={monthsBetween(fromDate, toDate)}
+            accent={palette[0]}
+          />
         </div>
       )}
 
@@ -1546,7 +1555,17 @@ function WeekendChart({
 // today (assignments table has no audit history); when that
 // becomes a priority, add a `schedule_audit` table on the backend
 // and surface a fifth tile here.
-function EficienciaPanel({ kpis }: { kpis: StatsKpis }) {
+function EficienciaPanel({
+  kpis,
+  monthly,
+  months,
+  accent,
+}: {
+  kpis: StatsKpis;
+  monthly: StatsMonthlyRow[];
+  months: string[];
+  accent: string;
+}) {
   const swapTotal =
     kpis.swap_offers_open
     + kpis.swap_offers_fulfilled
@@ -1560,6 +1579,23 @@ function EficienciaPanel({ kpis }: { kpis: StatsKpis }) {
     swapResolved > 0
       ? Math.round((kpis.swap_offers_fulfilled / swapResolved) * 100)
       : null;
+
+  // Per-month coverage rate — same formula as the KPI tile, applied
+  // month-by-month. Nulls (months with no closed offers) render as
+  // gaps in the line, which reads more honestly than a fake 0.
+  const monthlyCoverage = useMemo(() => {
+    const points: Record<string, number> = {};
+    for (const m of monthly) {
+      const resolved = m.swap_offers_fulfilled + m.swap_offers_cancelled;
+      if (resolved > 0) {
+        points[m.year_month] = Math.round(
+          (m.swap_offers_fulfilled / resolved) * 100,
+        );
+      }
+    }
+    return points;
+  }, [monthly]);
+
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1593,6 +1629,53 @@ function EficienciaPanel({ kpis }: { kpis: StatsKpis }) {
         />
       </div>
 
+      {/* Volume over time — three lines on one chart so admins can
+          read whether reaperturas and incidencias trend with the
+          number of cambios solicitados (process strain) or move
+          independently (something else is up). */}
+      <MonthlyLineChart
+        title="Volumen del proceso por mes"
+        subtitle="Reaperturas, incidencias y cambios solicitados, mes a mes."
+        months={months}
+        series={[
+          {
+            key: "reopened",
+            label: "Reaperturas",
+            color: "#d97706",
+            points: Object.fromEntries(
+              monthly.map((m) => [m.year_month, m.reopened_count]),
+            ),
+          },
+          {
+            key: "incidents",
+            label: "Incidencias",
+            color: "#9333ea",
+            points: Object.fromEntries(
+              monthly.map((m) => [m.year_month, m.incidents_count]),
+            ),
+          },
+          {
+            key: "swaps",
+            label: "Cambios solicitados",
+            color: accent,
+            points: Object.fromEntries(
+              monthly.map((m) => [m.year_month, m.swap_offers_created]),
+            ),
+          },
+        ]}
+      />
+
+      {/* Coverage rate over time — % of CLOSED swaps that were
+          actually covered by a colleague that month. Months with no
+          closed swaps don't render a point (gap in the line). */}
+      <MonthlyCoverageChart
+        title="Cobertura entre compañeros por mes"
+        subtitle="% de cambios cerrados cubiertos por otro miembro. Bajo = el equipo no consigue cubrirse."
+        months={months}
+        pointsByMonth={monthlyCoverage}
+        accent={accent}
+      />
+
       {/* Breakdown of swap-offer states. Useful even when the
           headline coverage rate is fine — admins can spot a high
           "abiertos" count (backlog forming) before it shows up
@@ -1600,7 +1683,7 @@ function EficienciaPanel({ kpis }: { kpis: StatsKpis }) {
       {swapTotal > 0 && (
         <ChartCard
           title="Estado de los cambios de turno"
-          subtitle="Desglose de los cambios propuestos en el periodo."
+          subtitle="Desglose acumulado de los cambios propuestos en todo el periodo."
         >
           <div className="space-y-2">
             <SwapStateRow
@@ -1636,6 +1719,80 @@ function EficienciaPanel({ kpis }: { kpis: StatsKpis }) {
           </Card>
         )}
     </>
+  );
+}
+
+/** Single-line % chart with a 0–100 Y axis and gap-on-null semantics.
+ *  Used for coverage rate over time on the Eficiencia tab — a flat 0
+ *  in a month with no swaps would be misleading, so we feed Recharts
+ *  `null` for those months and it draws a gap. */
+function MonthlyCoverageChart({
+  title,
+  subtitle,
+  months,
+  pointsByMonth,
+  accent,
+}: {
+  title: string;
+  subtitle: string;
+  months: string[];
+  pointsByMonth: Record<string, number>;
+  accent: string;
+}) {
+  const data = months.map((m) => ({
+    month: m,
+    rate: m in pointsByMonth ? pointsByMonth[m] : null,
+  }));
+  const hasData = Object.keys(pointsByMonth).length > 0;
+  return (
+    <ChartCard title={title} subtitle={subtitle}>
+      {!hasData ? (
+        <p className="text-sm text-gray-500">
+          Sin cambios cerrados en el periodo, todavía no hay tendencia.
+        </p>
+      ) : (
+        <ResponsiveContainer width="100%" height={260}>
+          <LineChart
+            data={data}
+            margin={{ top: 12, right: 20, left: 0, bottom: 4 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <XAxis
+              dataKey="month"
+              tick={{ fontSize: 11, fill: "#4b5563" }}
+              tickFormatter={shortMonthLabel}
+            />
+            <YAxis
+              tick={{ fontSize: 11, fill: "#4b5563" }}
+              domain={[0, 100]}
+              tickFormatter={(v) => `${v}%`}
+              width={44}
+            />
+            <Tooltip
+              contentStyle={{
+                fontSize: 12,
+                border: "1px solid #e5e7eb",
+                borderRadius: 8,
+              }}
+              labelFormatter={(v) => longMonthLabel(String(v))}
+              formatter={(v) => [
+                v === null ? "—" : `${Number(v)}%`,
+                "Cobertura",
+              ]}
+            />
+            <Line
+              type="monotone"
+              dataKey="rate"
+              stroke={accent}
+              strokeWidth={2}
+              dot={{ r: 3 }}
+              activeDot={{ r: 5 }}
+              connectNulls={false}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      )}
+    </ChartCard>
   );
 }
 
