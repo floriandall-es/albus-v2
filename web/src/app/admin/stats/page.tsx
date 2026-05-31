@@ -11,8 +11,6 @@ import {
   Legend,
   Line,
   LineChart,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -3067,7 +3065,7 @@ function CategoriaRollup({
   }, [workload]);
 
   // Drop categorías that had zero shifts in the period — they
-  // clutter the donut as 0-degree slices and waste a row in the
+  // clutter the bar chart with empty rows and waste a row in the
   // comparison table. The KPI strip already shows total team size.
   const active = buckets.filter((b) => b.total_shifts > 0);
   const totalShifts = active.reduce((acc, b) => acc + b.total_shifts, 0);
@@ -3089,37 +3087,83 @@ function CategoriaRollup({
           Reparto por categoría
         </h2>
         <p className="mt-0.5 text-xs text-gray-500">
-          Turnos totales agrupados por categoría profesional. Útil
-          cuando el equipo es grande y la vista por persona se vuelve
-          ilegible.
+          Carga por categoría profesional, expresada como turnos por
+          jornada del 100% y mes. Útil cuando el equipo es grande y
+          la vista por persona se vuelve ilegible.
         </p>
         <div className="mt-3 grid gap-4 md:grid-cols-2">
-          <ResponsiveContainer width="100%" height={220}>
-            <PieChart>
-              <Pie
-                data={colored}
-                dataKey="total_shifts"
-                nameKey="category_name"
-                cx="50%"
-                cy="50%"
-                outerRadius={80}
-                innerRadius={48}
-                paddingAngle={1}
-              >
-                {colored.map((entry) => (
-                  <Cell key={entry.key} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip
-                contentStyle={{
-                  fontSize: 12,
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 8,
-                }}
-                formatter={(v, n) => [`${Number(v)} turnos`, n]}
-              />
-            </PieChart>
-          </ResponsiveContainer>
+          {/* Horizontal bar of T/FTE·mes per category. Used to be a
+              donut of share-of-total-turnos, but that just reflected
+              headcount (the 1-jefe + 7-adjuntos team always read as
+              "11% / 89%" no matter how the load was actually split).
+              Bars on the per-month-per-FTE metric tell the equity
+              story the bold table column already leads with. */}
+          {(() => {
+            const barData = colored
+              .map((b) => ({
+                ...b,
+                tPerFtePerMonth:
+                  b.fte > 0 && monthsCount > 0
+                    ? Number(
+                      (b.total_shifts / b.fte / monthsCount).toFixed(1),
+                    )
+                    : 0,
+              }))
+              .sort((a, b) => b.tPerFtePerMonth - a.tPerFtePerMonth);
+            const height = Math.max(160, barData.length * 44 + 40);
+            return (
+              <ResponsiveContainer width="100%" height={height}>
+                <BarChart
+                  data={barData}
+                  layout="vertical"
+                  margin={{ top: 8, right: 24, left: 8, bottom: 24 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    stroke="#e5e7eb"
+                    horizontal={false}
+                  />
+                  <XAxis
+                    type="number"
+                    tick={{ fontSize: 10, fill: "#4b5563" }}
+                    label={{
+                      value: "Turnos / FTE 100% / mes",
+                      position: "insideBottom",
+                      offset: -8,
+                      style: {
+                        fontSize: 10,
+                        fill: "#6b7280",
+                        fontWeight: 500,
+                      },
+                    }}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="category_name"
+                    tick={{ fontSize: 11, fill: "#374151" }}
+                    width={110}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "rgba(0,0,0,0.04)" }}
+                    contentStyle={{
+                      fontSize: 12,
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 8,
+                    }}
+                    formatter={(v) => [
+                      `${Number(v).toFixed(1)} turnos / FTE / mes`,
+                      "Carga",
+                    ]}
+                  />
+                  <Bar dataKey="tPerFtePerMonth" radius={[0, 4, 4, 0]}>
+                    {barData.map((entry) => (
+                      <Cell key={entry.key} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            );
+          })()}
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="text-left text-[11px] uppercase tracking-wider text-gray-500">
