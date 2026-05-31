@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -524,6 +524,7 @@ export default function StatsPage() {
                 <CategoriaRollup
                   workload={ov.data.workload}
                   palette={palette}
+                  monthsCount={monthsBetween(fromDate, toDate).length}
                 />
               )}
               <EquityPanel
@@ -531,6 +532,7 @@ export default function StatsPage() {
                 activeCategoryIds={effectiveActiveCategoryIds}
                 accent={palette[0]}
                 onPersonClick={setSelectedPersonId}
+                monthsCount={monthsBetween(fromDate, toDate).length}
               />
               <TurnosPorPersona
                 workload={ov.data.workload}
@@ -2392,6 +2394,7 @@ function EquityPanel({
   activeCategoryIds,
   accent,
   onPersonClick,
+  monthsCount,
 }: {
   workload: StatsWorkloadRow[];
   activeCategoryIds: Set<number | null>;
@@ -2399,6 +2402,10 @@ function EquityPanel({
   /** Click the top / bottom outlier name → open the per-person side
    * panel. Same drill-down channel as the per-slot chart click. */
   onPersonClick?: (personId: number) => void;
+  /** Calendar months in the active period. Used to express load
+   *  per-month so the histogram + outliers stay comparable across
+   *  ranges of different length. */
+  monthsCount: number;
 }) {
   const filtered = useMemo(
     () =>
@@ -2408,12 +2415,22 @@ function EquityPanel({
     [workload, activeCategoryIds],
   );
 
-  // Bin the normalized_total values for the histogram. Use 8 bins
+  // Per-month FTE-normalized load — what each member would work in
+  // an average month of the period if they were full-time. Stable
+  // across range length: a 3-month and a 12-month view of the same
+  // team show the same "≈30 shifts/month at 100% FTE", not 90 vs 360.
+  const valuePerMonth = useCallback(
+    (w: StatsWorkloadRow) =>
+      monthsCount > 0 ? w.normalized_total / monthsCount : 0,
+    [monthsCount],
+  );
+
+  // Bin the per-month normalized values for the histogram. Use 8 bins
   // spanning min → max. At N<3 the histogram is meaningless, so skip
   // and render a placeholder.
   const hist = useMemo(() => {
     if (filtered.length < 3) return null;
-    const values = filtered.map((w) => w.normalized_total);
+    const values = filtered.map(valuePerMonth);
     const min = Math.min(...values);
     const max = Math.max(...values);
     const range = max - min;
@@ -2428,7 +2445,10 @@ function EquityPanel({
       const lo = min + i * binWidth;
       const hi = i === binCount - 1 ? max : lo + binWidth;
       return {
-        label: `${Math.round(lo)}–${Math.round(hi)}`,
+        // One decimal for tight ranges (e.g. 12.4–13.1) where
+        // rounding to integers would collapse multiple bins to the
+        // same label.
+        label: `${lo.toFixed(1)}–${hi.toFixed(1)}`,
         count: 0,
       };
     });
@@ -2440,7 +2460,7 @@ function EquityPanel({
       bins[idx].count += 1;
     }
     return bins;
-  }, [filtered]);
+  }, [filtered, valuePerMonth]);
 
   // Outlier callouts: top + bottom by normalized_total.
   const top = useMemo(
@@ -2469,7 +2489,8 @@ function EquityPanel({
           Equidad de carga
         </h2>
         <p className="mt-0.5 text-xs text-gray-500">
-          Turnos por miembro, normalizados a una jornada del 100%.
+          Turnos por miembro y mes, normalizados a una jornada del
+          100%. Comparable entre rangos de duración distinta.
           {filtered.length < 3
             ? " Aún no hay datos suficientes para comparar."
             : ""}
@@ -2494,7 +2515,7 @@ function EquityPanel({
                   // the X values "103–108" etc. are mysterious; with
                   // it they read as "turnos normalizados a 100% FTE."
                   label={{
-                    value: "Turnos / FTE 100%",
+                    value: "Turnos / FTE 100% / mes",
                     position: "insideBottom",
                     offset: -16,
                     style: {
@@ -2551,7 +2572,7 @@ function EquityPanel({
                       {personLastName({ name: top.person_name })}
                     </div>
                     <div className="text-xs text-gray-600">
-                      {top.total_shifts} turnos · {top.normalized_total.toFixed(1)}/FTE
+                      {top.total_shifts} turnos · {valuePerMonth(top).toFixed(1)}/FTE/mes
                     </div>
                   </button>
                   <button
@@ -2567,7 +2588,7 @@ function EquityPanel({
                       {personLastName({ name: bottom.person_name })}
                     </div>
                     <div className="text-xs text-gray-600">
-                      {bottom.total_shifts} turnos · {bottom.normalized_total.toFixed(1)}/FTE
+                      {bottom.total_shifts} turnos · {valuePerMonth(bottom).toFixed(1)}/FTE/mes
                     </div>
                   </button>
                   {ratio !== null && (
@@ -2996,9 +3017,15 @@ function CategoryFilterChips({
 function CategoriaRollup({
   workload,
   palette,
+  monthsCount,
 }: {
   workload: StatsWorkloadRow[];
   palette: string[];
+  /** Number of calendar months in the active period. Drives the
+   *  T/FTE·mes column so the figure stays comparable across ranges
+   *  of different length (a 6-month view shouldn't read as "twice as
+   *  loaded" as a 3-month view of the same team). */
+  monthsCount: number;
 }) {
   // Bucket per categoría. Use category_id (or null) as the key.
   const buckets = useMemo(() => {
@@ -3101,7 +3128,7 @@ function CategoriaRollup({
                   <th className="pb-2 text-right">Turnos</th>
                   <th className="pb-2 text-right">Personas</th>
                   <th className="pb-2 text-right">FTE</th>
-                  <th className="pb-2 text-right">T/FTE</th>
+                  <th className="pb-2 text-right">T/FTE·mes</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -3109,8 +3136,13 @@ function CategoriaRollup({
                   const pct = totalShifts > 0
                     ? Math.round((b.total_shifts / totalShifts) * 100)
                     : 0;
-                  const tPerFte =
-                    b.fte > 0 ? (b.total_shifts / b.fte).toFixed(1) : "—";
+                  // Divide by months so a 6-month and a 3-month
+                  // selection of the same team show comparable
+                  // numbers. The KPI strip uses the same convention.
+                  const tPerFtePerMonth =
+                    b.fte > 0 && monthsCount > 0
+                      ? (b.total_shifts / b.fte / monthsCount).toFixed(1)
+                      : "—";
                   return (
                     <tr key={b.key}>
                       <td className="py-1.5">
@@ -3139,7 +3171,7 @@ function CategoriaRollup({
                         {b.fte.toFixed(1)}
                       </td>
                       <td className="py-1.5 text-right tabular-nums font-semibold text-gray-900">
-                        {tPerFte}
+                        {tPerFtePerMonth}
                       </td>
                     </tr>
                   );
@@ -3147,9 +3179,9 @@ function CategoriaRollup({
               </tbody>
             </table>
             <p className="mt-2 text-[10px] leading-snug text-gray-500">
-              T/FTE = turnos por jornada del 100%. Compara categorías
-              con composiciones de tiempo parcial distintas en igualdad
-              de condiciones.
+              T/FTE·mes = turnos por jornada del 100% por mes. Compara
+              categorías con composiciones de tiempo parcial distintas
+              y rangos de duración distinta en igualdad de condiciones.
             </p>
           </div>
         </div>
