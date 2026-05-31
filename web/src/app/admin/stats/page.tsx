@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
   Bar,
@@ -80,6 +81,23 @@ function lastDayOfMonthIso(yyyyMm01: string): string {
   return `${yyyyMm01.slice(0, 7)}-${String(last).padStart(2, "0")}`;
 }
 
+// Tabs reorganise the page around the three questions admins
+// actually arrive with: ¿estamos cubriendo?, ¿es justo?, ¿quién hizo
+// qué? Plus a Resumen landing for the at-a-glance read. The previous
+// single-scroll layout interleaved answers to all three and made the
+// page feel undifferentiated. Tab state syncs to ?tab=… so deep-links
+// from emails / shared URLs land on the right view.
+type TabKey = "resumen" | "equidad" | "cobertura" | "detalle";
+const TABS: { key: TabKey; label: string }[] = [
+  { key: "resumen", label: "Resumen" },
+  { key: "equidad", label: "Equidad" },
+  { key: "cobertura", label: "Cobertura" },
+  { key: "detalle", label: "Detalle" },
+];
+function isTabKey(s: string | null): s is TabKey {
+  return s === "resumen" || s === "equidad" || s === "cobertura" || s === "detalle";
+}
+
 export default function StatsPage() {
   const today = new Date();
   // Default: YTD — Jan 1 of the current year through the current month.
@@ -91,6 +109,24 @@ export default function StatsPage() {
   );
   const fromDate = fromPeriod; // YYYY-MM-01
   const toDate = lastDayOfMonthIso(toPeriod);
+
+  // Tab state + URL sync. Reading ?tab= on mount lets us deep-link
+  // straight into a specific view; writing back on change keeps the
+  // URL honest as the user clicks around.
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const initialTab: TabKey = isTabKey(searchParams.get("tab"))
+    ? (searchParams.get("tab") as TabKey)
+    : "resumen";
+  const [tab, setTabState] = useState<TabKey>(initialTab);
+  const setTab = (next: TabKey) => {
+    setTabState(next);
+    const params = new URLSearchParams(
+      Array.from(searchParams.entries()),
+    );
+    params.set("tab", next);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
 
   const q = useQuery({
     queryKey: ["stats-assignments", fromDate, toDate],
@@ -292,7 +328,7 @@ export default function StatsPage() {
           schedule has uncovered shifts overall). Hidden when the
           tenant has ≤1 categoría. */}
       {categoryOptions.length > 1 && (
-        <div className="mb-6">
+        <div className="mb-4">
           <CategoryFilterChips
             options={categoryOptions}
             active={effectiveActiveCategoryIds}
@@ -311,103 +347,76 @@ export default function StatsPage() {
         </div>
       )}
 
-      {/* Top-of-page dashboard: KPI strip + equity panel + coverage
-          trend + monthly mini-charts. Always renders (independent of
-          the per-slot detail below) so the jefe gets a useful read
-          even when no shifts have been published in the range. */}
-      {ov.data && (
+      {/* Tab nav. Lives between the page-wide filters and the
+          tab content so the date range + categoría chip read as
+          global scope, and the tab nav reads as "pick which
+          question I'm answering". */}
+      <StatsTabNav active={tab} onChange={setTab} />
+
+      {/* ----- RESUMEN ------------------------------------------ */}
+      {/* Landing tab — at-a-glance KPI strip. #2 in the overhaul
+          will trim this from 8 tiles to 3 hero + collapsible
+          rest; for now we keep all 8 so nothing regresses. */}
+      {tab === "resumen" && ov.data && (
         <div className="mb-8 space-y-6">
           <KpiStrip kpis={ov.data.kpis} />
-          {/* Categoría rollup — donut + per-categoría comparison.
-              Hidden when the tenant has ≤1 categoría (the donut would
-              be a single 100% slice and the bars one row). For mixed-
-              composition services this is THE primary view at scale. */}
-          {categoryOptions.length > 1 && (
-            <CategoriaRollup
-              workload={ov.data.workload}
-              palette={palette}
-            />
-          )}
-          <div className="grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2">
+        </div>
+      )}
+
+      {/* ----- EQUIDAD ------------------------------------------ */}
+      {/* "¿Es justo?" — categoría rollup, equity histogram,
+          calendar heatmap. The weekend/festivos chart also lives
+          here because it answers the same question (is the
+          weekend burden distributed fairly?). */}
+      {tab === "equidad" && (
+        <div className="space-y-6">
+          {ov.data && (
+            <>
+              {/* Categoría rollup — donut + per-categoría comparison.
+                  Hidden when the tenant has ≤1 categoría (the donut would
+                  be a single 100% slice and the bars one row). For mixed-
+                  composition services this is THE primary view at scale. */}
+              {categoryOptions.length > 1 && (
+                <CategoriaRollup
+                  workload={ov.data.workload}
+                  palette={palette}
+                />
+              )}
               <EquityPanel
                 workload={ov.data.workload}
                 activeCategoryIds={effectiveActiveCategoryIds}
                 accent={palette[0]}
                 onPersonClick={setSelectedPersonId}
               />
-            </div>
-            <CoverageTrend monthly={ov.data.monthly} accent={palette[0]} />
-          </div>
-          <MonthlyTrendsPanel monthly={ov.data.monthly} accent={palette[0]} />
-        </div>
-      )}
-
-      {/* Calendar heat map (Commit 3). Sits between the dashboard
-          and the per-slot detail. Scales naturally — each person
-          is one ~16px row, so a 100-member team is a 1600px-tall
-          scrollable panel. Hidden when there's literally nothing
-          to plot in the range. The page-level categoría filter
-          scopes which persons appear here. */}
-      {cal.data
-        && (cal.data.entries.length > 0 || cal.data.persons.length > 0) && (
-          <CalendarHeatmap
-            data={cal.data}
-            accent={palette[0]}
-            personIdsFilter={personIdsByCategoryFilter}
-            onPersonClick={setSelectedPersonId}
-          />
-        )}
-
-      {/* Per-person side panel (Commit 2 drill-down). Renders when
-          selectedPersonId is set; otherwise nothing. Reads the
-          person's per-slot detail from the existing scopedRows so
-          there's no extra fetch. */}
-      {selectedPerson && (
-        <PersonDetailPanel
-          person={selectedPerson}
-          rows={q.data?.rows ?? []}
-          months={monthsBetween(fromDate, toDate)}
-          accent={palette[0]}
-          onClose={() => setSelectedPersonId(null)}
-        />
-      )}
-
-      {q.isLoading && (
-        <p className="text-sm text-gray-500">Cargando…</p>
-      )}
-      {q.data && scopedRows.length === 0 && (
-        <EmptyState
-          icon={<BarChart3 className="h-5 w-5" />}
-          title="Sin datos en el rango seleccionado"
-          description="Solo se contabilizan asignaciones de planificaciones publicadas o archivadas."
-        />
-      )}
-
-      {q.data && scopedRows.length > 0 && (
-        <div className="space-y-6">
-          <h2 className="mt-2 text-base font-semibold text-gray-800">
-            Detalle por actividad
-          </h2>
-          {slotMeta.map((slot) => (
-            <PerSlotChart
-              key={slot.key}
-              slot={slot}
-              rows={scopedRows}
-              months={monthsBetween(fromDate, toDate)}
-              onPersonClick={setSelectedPersonId}
-            />
-          ))}
-
-          <ChartCard
-            title={
-              <span className="inline-flex items-center gap-2">
-                <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
-                Fines de semana y festivos
-              </span>
-            }
-            subtitle="Sábado, domingo o festivo · barras apiladas por mes (más oscuro = mes más reciente)."
-          >
+            </>
+          )}
+          {/* Calendar heat map. Scales naturally — each person is
+              one ~16px row, so a 100-member team is a 1600px-tall
+              scrollable panel. The page-level categoría filter
+              scopes which persons appear here. */}
+          {cal.data
+            && (cal.data.entries.length > 0 || cal.data.persons.length > 0) && (
+              <CalendarHeatmap
+                data={cal.data}
+                accent={palette[0]}
+                personIdsFilter={personIdsByCategoryFilter}
+                onPersonClick={setSelectedPersonId}
+              />
+            )}
+          {/* Weekend / festivos burden — was previously down with
+              the per-slot detail, but it's really an equity question
+              ("who's getting hit with weekends?"), not a coverage
+              one. Lives here now. */}
+          {q.data && scopedRows.length > 0 && (
+            <ChartCard
+              title={
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
+                  Fines de semana y festivos
+                </span>
+              }
+              subtitle="Sábado, domingo o festivo · barras apiladas por mes (más oscuro = mes más reciente)."
+            >
             {weekendData.list.length === 0 ? (
               <p className="text-sm text-gray-500">
                 Nadie ha trabajado fines de semana o festivos en este rango.
@@ -474,12 +483,121 @@ export default function StatsPage() {
                 </BarChart>
               </ResponsiveContainer>
             )}
-          </ChartCard>
-
-          <DetailTable rows={scopedRows} slotMeta={slotMeta} />
+            </ChartCard>
+          )}
+          {/* Loading state for the weekend chart specifically — the
+              equity / heatmap loads from ov.data + cal.data, which
+              may finish before scopedRows from q.data. */}
+          {q.isLoading && (
+            <p className="text-sm text-gray-500">Cargando…</p>
+          )}
         </div>
       )}
+
+      {/* ----- COBERTURA --------------------------------------- */}
+      {/* "¿Estamos cubriendo?" — coverage trend + monthly trends.
+          Service-level views; the categoría chip doesn't scope
+          these by design (a jefe filtering to Adjuntos still
+          wants the operational tempo across the whole service). */}
+      {tab === "cobertura" && (
+        <div className="space-y-6">
+          {ov.data && (
+            <>
+              <CoverageTrend monthly={ov.data.monthly} accent={palette[0]} />
+              <MonthlyTrendsPanel monthly={ov.data.monthly} accent={palette[0]} />
+            </>
+          )}
+          {!ov.data && (
+            <p className="text-sm text-gray-500">Cargando…</p>
+          )}
+        </div>
+      )}
+
+      {/* ----- DETALLE ----------------------------------------- */}
+      {/* "¿Quién hizo qué?" — per-slot charts + full detail
+          table. Drives the per-person side panel when the admin
+          clicks a person bar in any of the charts. */}
+      {tab === "detalle" && (
+        <div className="space-y-6">
+          {q.isLoading && (
+            <p className="text-sm text-gray-500">Cargando…</p>
+          )}
+          {q.data && scopedRows.length === 0 && (
+            <EmptyState
+              icon={<BarChart3 className="h-5 w-5" />}
+              title="Sin datos en el rango seleccionado"
+              description="Solo se contabilizan asignaciones de planificaciones publicadas o archivadas."
+            />
+          )}
+          {q.data && scopedRows.length > 0 && (
+            <>
+              <h2 className="mt-2 text-base font-semibold text-gray-800">
+                Detalle por actividad
+              </h2>
+              {slotMeta.map((slot) => (
+                <PerSlotChart
+                  key={slot.key}
+                  slot={slot}
+                  rows={scopedRows}
+                  months={monthsBetween(fromDate, toDate)}
+                  onPersonClick={setSelectedPersonId}
+                />
+              ))}
+              <DetailTable rows={scopedRows} slotMeta={slotMeta} />
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Per-person side panel — page-level overlay, opens from
+          a click on any per-person bar regardless of which tab
+          is active. Closes via X or backdrop. */}
+      {selectedPerson && (
+        <PersonDetailPanel
+          person={selectedPerson}
+          rows={q.data?.rows ?? []}
+          months={monthsBetween(fromDate, toDate)}
+          accent={palette[0]}
+          onClose={() => setSelectedPersonId(null)}
+        />
+      )}
     </>
+  );
+}
+
+// Tab nav at the top of /admin/stats. Same visual idiom as
+// other in-page tab strips in the app (light border-bottom,
+// brand accent on the active tab).
+function StatsTabNav({
+  active,
+  onChange,
+}: {
+  active: TabKey;
+  onChange: (next: TabKey) => void;
+}) {
+  return (
+    <div className="mb-6 border-b border-gray-200">
+      <nav className="-mb-px flex gap-6">
+        {TABS.map((t) => {
+          const isActive = active === t.key;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => onChange(t.key)}
+              className={
+                "border-b-2 px-1 py-2.5 text-sm font-medium transition-colors "
+                + (isActive
+                  ? "border-brand-600 text-brand-700"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300")
+              }
+            >
+              {t.label}
+            </button>
+          );
+        })}
+      </nav>
+    </div>
   );
 }
 
