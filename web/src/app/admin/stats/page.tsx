@@ -84,6 +84,32 @@ function monthsBetween(fromIso: string, toIso: string): string[] {
   return out;
 }
 
+/** Gini coefficient of a list of non-negative values. Returns
+ *  null when input is empty or the sum is zero — both mean
+ *  "no carga to distribute", so no fairness number is meaningful.
+ *
+ *  0 = perfect equality (every value equal)
+ *  1 = maximum inequality (one value carries the whole sum)
+ *
+ *  Standard formula via the sorted-cumulative shortcut:
+ *      G = 2·Σ(i·x_i) / (n·Σx_i)  −  (n+1)/n
+ *  with i ∈ [1..n] and x_i sorted ascending. Numerically stable
+ *  for the team sizes we expect (≤ a few hundred). */
+function computeGini(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const n = sorted.length;
+  const sum = sorted.reduce((s, v) => s + v, 0);
+  if (sum === 0) return null;
+  let weighted = 0;
+  for (let i = 0; i < n; i++) {
+    weighted += (i + 1) * sorted[i];
+  }
+  const g = (2 * weighted) / (n * sum) - (n + 1) / n;
+  // Clamp tiny negative rounding to 0 so the UI never shows -0.00.
+  return Math.max(0, g);
+}
+
 function lastDayOfMonthIso(yyyyMm01: string): string {
   // yyyyMm01 is "YYYY-MM-01" — return YYYY-MM-(last day).
   const y = Number(yyyyMm01.slice(0, 4));
@@ -436,6 +462,7 @@ export default function StatsPage() {
           <KpiStrip
             kpis={ov.data.kpis}
             monthsCount={monthsBetween(fromDate, toDate).length}
+            workload={ov.data.workload}
           />
           <InsightsPanel insights={insights} onJumpTab={setTab} />
         </div>
@@ -720,6 +747,26 @@ function computeInsights(
         icon: "TrendingUp",
         headline: `${personLastName({ name: top.person_name })} tiene ${pct}% más carga que la media (ajustada por FTE)`,
         sub: `${top.total_shifts} turnos. Mira el histograma completo en Equidad.`,
+        jumpTab: "equidad",
+      });
+    }
+  }
+
+  // Gini of FTE-normalised load. 0.30 is empirical — past that
+  // the histogram on Equidad usually shows visible asymmetry
+  // worth surfacing as a headline rather than waiting for the
+  // admin to scroll there.
+  if (ov.workload.length >= 4) {
+    const gini = computeGini(
+      ov.workload.map((w) => w.normalized_total).filter((v) => v > 0),
+    );
+    if (gini !== null && gini > 0.3) {
+      out.push({
+        priority: 35,
+        tone: "warning",
+        icon: "TrendingUp",
+        headline: `Carga desigual entre el equipo (Gini ${gini.toFixed(2)})`,
+        sub: "El equipo tiene un reparto desigual de turnos (ajustado por FTE). Mira el histograma en Equidad.",
         jumpTab: "equidad",
       });
     }
@@ -1635,19 +1682,24 @@ function DetailTable({
 function KpiStrip({
   kpis,
   monthsCount,
+  workload,
 }: {
   kpis: StatsKpis;
   /** Number of calendar months in the selected date range. Used
    *  to express the load metric as a per-month rate so a Jan-Jun
    *  selection and a YTD-Dec selection give comparable numbers. */
   monthsCount: number;
+  /** Per-person workload rows — feed the Gini fairness number on
+   *  the hero strip. We use normalized_total (FTE-adjusted) so
+   *  part-timers doing their fair share don't drag the score. */
+  workload: StatsWorkloadRow[];
 }) {
   // Eight tiles was too many to scan — eyes glazed by the sixth.
-  // Hero strip surfaces the three numbers admins care about
+  // Hero strip surfaces the four numbers admins care about
   // operationally: "is anything broken" (sin cubrir), "how
-  // turbulent is this" (cambios de turno), and "what's the load
-  // per person" (turnos / FTE / mes — also the fairness narrative
-  // in one number). Everything else goes behind "Más métricas".
+  // turbulent is this" (cambios de turno), "what's the load
+  // per person" (turnos / FTE / mes), and "is it fair" (Gini de
+  // carga). Everything else goes behind "Más métricas".
   const [expanded, setExpanded] = useState(false);
   const totalSwaps =
     kpis.swap_offers_open
@@ -1657,9 +1709,16 @@ function KpiStrip({
     kpis.total_fte > 0 && monthsCount > 0
       ? (kpis.total_assignments / kpis.total_fte / monthsCount).toFixed(1)
       : "—";
+  const giniDeCarga = useMemo(
+    () =>
+      computeGini(
+        workload.map((w) => w.normalized_total).filter((v) => v > 0),
+      ),
+    [workload],
+  );
   return (
     <div className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <HeroKpiTile
           label="Sin cubrir"
           value={kpis.uncovered_count.toLocaleString("es-ES")}
@@ -1679,6 +1738,14 @@ function KpiStrip({
           label="Turnos / FTE / mes"
           value={shiftsPerFtePerMonth}
           hint="Turnos medios por miembro a tiempo completo cada mes."
+        />
+        <HeroKpiTile
+          label="Gini de carga"
+          value={giniDeCarga !== null ? giniDeCarga.toFixed(2) : "—"}
+          hint="0 = todos igual · 1 = uno lo hace todo. Sobre carga ajustada por FTE."
+          tone={
+            giniDeCarga !== null && giniDeCarga > 0.25 ? "warning" : "neutral"
+          }
         />
       </div>
 
