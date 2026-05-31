@@ -34,6 +34,7 @@ import {
   EmptyState,
   PageHeader,
 } from "@/components/admin/ui";
+import { PulseStats } from "@/components/admin/pulse-stats";
 import {
   MonthPicker,
   isoFromMonthYear,
@@ -130,6 +131,7 @@ type TabKey =
   | "equidad"
   | "cobertura"
   | "eficiencia"
+  | "pulso"
   | "detalle";
 const TABS: { key: TabKey; label: string }[] = [
   { key: "resumen", label: "Resumen" },
@@ -137,6 +139,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "equidad", label: "Equidad" },
   { key: "cobertura", label: "Cobertura" },
   { key: "eficiencia", label: "Eficiencia" },
+  { key: "pulso", label: "Pulso" },
   { key: "detalle", label: "Detalle" },
 ];
 function isTabKey(s: string | null): s is TabKey {
@@ -146,6 +149,7 @@ function isTabKey(s: string | null): s is TabKey {
     || s === "equidad"
     || s === "cobertura"
     || s === "eficiencia"
+    || s === "pulso"
     || s === "detalle"
   );
 }
@@ -655,6 +659,19 @@ export default function StatsPage() {
       {(tab === "eficiencia" || printAll) && ov.data && (
         <div className="space-y-6">
           <EficienciaPanel kpis={ov.data.kpis} />
+        </div>
+      )}
+
+      {/* ----- PULSO ------------------------------------------ */}
+      {/* "¿Cómo se siente el equipo?" — weekly survey results.
+          Lives here so admins find sentiment alongside the other
+          team metrics; question catalogue + on/off toggle stays
+          on /admin/pulso. The pulso route doesn't depend on the
+          date-range picker — the survey has its own weekly
+          cadence. */}
+      {(tab === "pulso" || printAll) && (
+        <div className="space-y-6">
+          <PulseStats />
         </div>
       )}
 
