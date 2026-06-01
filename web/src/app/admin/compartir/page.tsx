@@ -6,15 +6,18 @@ import { Building2, CalendarOff, Eye, EyeOff } from "lucide-react";
 import { api, type SharePolicy, type Slot } from "@/lib/api";
 import { Card, EmptyState, PageHeader } from "@/components/admin/ui";
 
-/** Migration 0085. Cargo string match must agree with the backend
- * (_person_is_jefe_de_servicio in routes/availability.py): strip
- * whitespace + lowercase, exact equality. Keeps the UI gate
- * consistent with the API gate so a jefe never sees the toggle
- * card without being able to use it (or vice versa). */
-const JEFE_CARGO = "jefe de servicio";
+/** Migration 0085. Cargo string match must agree with the backend's
+ * _JEFE_DE_SERVICIO_CARGOS set (routes/availability.py): strip
+ * whitespace + lowercase, exact equality. BOTH the masculine form
+ * (legacy profiles from before the inclusive rename) and the
+ * inclusive "Jefe/a de Servicio" form (current CARGO_OPTIONS) count
+ * — otherwise an inclusively-labelled jefe/a would be wrongly denied
+ * the toggle even though the API allows them. Keeps the UI gate
+ * consistent with the API gate. */
+const JEFE_CARGOS = new Set(["jefe de servicio", "jefe/a de servicio"]);
 function personIsJefe(cargos: string[] | undefined | null): boolean {
-  return (cargos ?? []).some(
-    (c) => (c ?? "").trim().toLowerCase() === JEFE_CARGO,
+  return (cargos ?? []).some((c) =>
+    JEFE_CARGOS.has((c ?? "").trim().toLowerCase()),
   );
 }
 
