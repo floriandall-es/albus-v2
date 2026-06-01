@@ -397,10 +397,11 @@ function ApprovalToggleCard() {
 }
 
 /** Migration 0084. One pending-admin offer rendered as a card the
- * admin can approve or veto. Lists every still-pending response on
- * the offer — admins can also approve a different one if the
- * staged response no longer makes sense (the staged one shows up
- * as "Esperando admin" / amber, siblings show "Pendiente"). */
+ * admin can approve or veto. Shows ONLY the response the requester
+ * accepted (status pending_admin) — that's the single change the admin
+ * decides on. The colleagues the requester didn't pick stay out of the
+ * approval card. Denying with scope=response_only reopens the offer so
+ * the requester can pick a different colleague. */
 function PendingAdminCard({ offer }: { offer: SwapOffer }) {
   const qc = useQueryClient();
   const [vetoFor, setVetoFor] = useState<number | null>(null);
@@ -447,9 +448,7 @@ function PendingAdminCard({ offer }: { offer: SwapOffer }) {
 
       <ul className="mt-3 space-y-2 border-t border-amber-200 pt-3">
         {offer.responses
-          .filter(
-            (r) => r.status === "pending_admin" || r.status === "pending",
-          )
+          .filter((r) => r.status === "pending_admin")
           .map((r) => (
             <li key={r.id} className="text-sm">
               <div className="flex items-start justify-between gap-3">
@@ -477,39 +476,24 @@ function PendingAdminCard({ offer }: { offer: SwapOffer }) {
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  {r.status === "pending_admin" ? (
-                    <StatusPill tone="warning">Esperando admin</StatusPill>
-                  ) : (
-                    <StatusPill tone="neutral">Pendiente</StatusPill>
-                  )}
-                  {/* Approve / veto only for the response the
-                      requester actually picked. Siblings are read-
-                      only here; if the admin wants a different
-                      colleague to cover, they should veto with
-                      scope=response_only and let the requester
-                      re-pick. */}
-                  {r.status === "pending_admin" && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => approve.mutate(r.id)}
-                        disabled={approve.isPending || veto.isPending}
-                        className="inline-flex items-center gap-1 rounded-md bg-emerald-700 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
-                      >
-                        <Check className="h-3.5 w-3.5" />
-                        Aprobar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setVetoFor(r.id)}
-                        disabled={approve.isPending || veto.isPending}
-                        className="inline-flex items-center gap-1 rounded-md border border-rose-300 bg-white px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50"
-                      >
-                        <X className="h-3.5 w-3.5" />
-                        Denegar
-                      </button>
-                    </>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => approve.mutate(r.id)}
+                    disabled={approve.isPending || veto.isPending}
+                    className="inline-flex items-center gap-1 rounded-md bg-emerald-700 px-2 py-1 text-xs font-medium text-white hover:bg-emerald-600 disabled:opacity-50"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                    Aprobar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVetoFor(r.id)}
+                    disabled={approve.isPending || veto.isPending}
+                    className="inline-flex items-center gap-1 rounded-md border border-rose-300 bg-white px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Denegar
+                  </button>
                 </div>
               </div>
             </li>
