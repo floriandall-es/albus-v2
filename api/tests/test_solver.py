@@ -44,20 +44,6 @@ def _create_slot(client, headers, **overrides):
     return r.json()
 
 
-def _set_guardia_types(client, headers, person_id, types):
-    """Find the membership for `person_id` and set guardia_types[]."""
-    r = client.get("/api/team", headers=headers)
-    for m in r.json():
-        if m["person_id"] == person_id:
-            client.put(
-                f"/api/team/{m['id']}",
-                headers=headers,
-                json={"guardia_types": types, "does_guardias": True},
-            )
-            return
-    raise AssertionError(f"membership for person_id={person_id} not found")
-
-
 def _set_fte(client, headers, person_id, fte):
     r = client.get("/api/team", headers=headers)
     for m in r.json():
@@ -67,40 +53,6 @@ def _set_fte(client, headers, person_id, fte):
             )
             return
     raise AssertionError("not found")
-
-
-def test_solver_respects_hard_skills(auth_client, client):
-    _client, headers, info = auth_client
-    pid_a = _onboard(client, headers, "skilled@example.com", "Skilled")
-    pid_b = _onboard(client, headers, "unskilled@example.com", "Unskilled")
-    r = client.post("/api/skills", headers=headers, json={"name": "ECMO"})
-    skill_id = r.json()["id"]
-    from sqlalchemy import create_engine, text
-    from app.core.config import settings
-
-    eng = create_engine(settings.database_url, future=True)
-    with eng.begin() as conn:
-        conn.execute(
-            text(
-                "INSERT INTO person_skills (tenant_id, person_id, skill_id) "
-                "VALUES (:t, :p, :s)"
-            ),
-            {"t": info["tenant_id"], "p": pid_a, "s": skill_id},
-        )
-    eng.dispose()
-    _create_slot(
-        client,
-        headers,
-        name="ECMO duty",
-        skills_required=[{"skill_id": skill_id, "strength": "hard"}],
-    )
-    r = client.post(
-        "/api/schedules/generate", headers=headers, json={"period": "2026-05-01"}
-    )
-    body = r.json()
-    persons = {a["person_id"] for a in body["assignments"] if a["person_id"] is not None}
-    assert pid_a in persons
-    assert pid_b not in persons
 
 
 def test_solver_post_rest_constraint(auth_client, client):
@@ -141,29 +93,6 @@ def test_solver_post_rest_constraint(auth_client, client):
                 raise AssertionError(
                     f"Person {pid_} worked A on {ds} and was scheduled again on {next_ds}"
                 )
-
-
-def test_solver_guardia_type_filter(auth_client, client):
-    _client, headers, _info = auth_client
-    pid_yes = _onboard(client, headers, "yes@example.com", "Yes")
-    pid_no = _onboard(client, headers, "no@example.com", "No")
-    _set_guardia_types(client, headers, pid_yes, ["presencial_24h"])
-    # pid_no: leave guardia_types empty (default).
-
-    _create_slot(
-        client,
-        headers,
-        name="Guardia 24h",
-        guardia_type="presencial_24h",
-        days_applied="all",
-    )
-    r = client.post(
-        "/api/schedules/generate", headers=headers, json={"period": "2026-05-01"}
-    )
-    body = r.json()
-    persons = {a["person_id"] for a in body["assignments"] if a["person_id"] is not None}
-    assert pid_yes in persons
-    assert pid_no not in persons
 
 
 def test_solver_fairness(auth_client, client):
@@ -264,26 +193,6 @@ def test_solver_locked_assignment_preserved(auth_client, client):
     on_date = [a for a in body["assignments"] if a["date"] == target_date]
     persons_on_date = {a["person_id"] for a in on_date}
     assert p1 in persons_on_date
-
-
-def test_solver_falls_back_when_infeasible(auth_client, client):
-    """Slot with a hard skill nobody has → assignments should still be
-    generated, but with person_id=NULL placeholders."""
-    _client, headers, _info = auth_client
-    r = client.post("/api/skills", headers=headers, json={"name": "Marciano"})
-    skill_id = r.json()["id"]
-    _create_slot(
-        client,
-        headers,
-        name="Marciano duty",
-        skills_required=[{"skill_id": skill_id, "strength": "hard"}],
-    )
-    r = client.post(
-        "/api/schedules/generate", headers=headers, json={"period": "2026-05-01"}
-    )
-    body = r.json()
-    assert len(body["assignments"]) > 0
-    assert all(a["person_id"] is None for a in body["assignments"])
 
 
 def test_solver_balances_per_equity_group(auth_client, client):

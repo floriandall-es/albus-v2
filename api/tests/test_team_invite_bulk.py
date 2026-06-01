@@ -197,7 +197,13 @@ def test_commit_happy_path(auth_client, client):
         assert r.status_code == 200
 
 
-def test_commit_revokes_prior_pending(auth_client, client):
+def test_commit_skips_prior_pending(auth_client, client):
+    """A bulk row whose email already has a live invitation is SKIPPED on
+    commit — the existing invitation stays intact (refresh it from the
+    team page / resend if needed). This replaced the old
+    revoke-and-reissue behaviour once invites began creating a pending
+    member up front (migration 0059) and resend became a dedicated
+    endpoint."""
     _c, headers, _ = auth_client
     r = client.post(
         "/api/team/invite",
@@ -205,7 +211,6 @@ def test_commit_revokes_prior_pending(auth_client, client):
         json={"email": "again@example.com", "person_name": "A"},
     )
     old_token = r.json()["accept_url"].rsplit("/", 1)[-1]
-    old_id = r.json()["invitation_id"]
 
     r = client.post(
         "/api/team/invite/bulk/commit",
@@ -217,14 +222,13 @@ def test_commit_revokes_prior_pending(auth_client, client):
         },
     )
     assert r.status_code == 200
-    new_token = r.json()["results"][0]["invitation"]["accept_url"].rsplit("/", 1)[-1]
+    result = r.json()["results"][0]
+    assert result["status"] == "skipped"
+    assert result["invitation"] is None
+    assert "pendiente" in result["reason"].lower()
 
-    # Old token no longer works
-    assert client.get(f"/api/invitations/by-token/{old_token}").status_code == 404
-    # New one does
-    assert client.get(f"/api/invitations/by-token/{new_token}").status_code == 200
-    # And the IDs differ
-    assert r.json()["results"][0]["invitation"]["id"] != old_id
+    # The original invitation is untouched and still resolves.
+    assert client.get(f"/api/invitations/by-token/{old_token}").status_code == 200
 
 
 def test_commit_partial_skips_already_member(auth_client, client, second_tenant):

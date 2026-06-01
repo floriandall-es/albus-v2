@@ -409,16 +409,20 @@ async def preview_bulk(
                 seen_emails.add(normalized_email)
 
         if error is None and normalized_email is not None:
-            # 4) already a member?
-            if is_already_member(ctx.db, ctx.tenant.id, normalized_email):
-                error = "Esta persona ya es miembro del equipo."
-
-        if error is None and normalized_email is not None:
-            # 5) live invitation already exists → warning, not error
+            # 4) live invitation already exists → warning (the row is
+            #    skipped on commit; the existing invite stands — refresh
+            #    it from the team page if needed). Checked BEFORE the
+            #    "already a member" guard: since migration 0059 an invite
+            #    creates a pending membership immediately, so a pending
+            #    invitee would otherwise be misread as an activated
+            #    member and hard-errored.
             if has_live_invitation(ctx.db, ctx.tenant.id, normalized_email):
                 warning_msg = (
-                    "Ya existe una invitación pendiente; se reemplazará al confirmar."
+                    "Ya existe una invitación pendiente; se omitirá esta fila."
                 )
+            # 5) genuinely activated member (no live invitation) → error
+            elif is_already_member(ctx.db, ctx.tenant.id, normalized_email):
+                error = "Esta persona ya es miembro del equipo."
 
         status_code = (
             "error" if error else ("warning" if warning_msg else "ok")
@@ -515,6 +519,22 @@ def commit_bulk(
                     )
                 )
                 continue
+
+        # Pending invitee (live invitation already on file) → skip,
+        # leaving the existing invitation intact. Checked before the
+        # already-member guard for the same migration-0059 reason as the
+        # preview: a pending invite carries a placeholder membership.
+        if has_live_invitation(ctx.db, ctx.tenant.id, email_norm):
+            skipped += 1
+            results.append(
+                BulkCommitResultRow(
+                    row_number=row.row_number,
+                    email=email_norm,
+                    status="skipped",
+                    reason="Ya existe una invitación pendiente; se omitió.",
+                )
+            )
+            continue
 
         if is_already_member(ctx.db, ctx.tenant.id, email_norm):
             skipped += 1

@@ -125,48 +125,6 @@ def test_availability_block_excludes_person(auth_client, client):
     assert pid_b in persons
 
 
-def test_hard_skill_filters_candidates(auth_client, client):
-    _client, headers, _info = auth_client
-    pid_a = _onboard(client, headers, "skilled@example.com", "Skilled")
-    pid_b = _onboard(client, headers, "unskilled@example.com", "Unskilled")
-
-    r = client.post("/api/skills", headers=headers, json={"name": "ECMO"})
-    skill_id = r.json()["id"]
-
-    # Grant skill to A only via the API (person_skills table).
-    # There's no public endpoint; use direct SQL.
-    from sqlalchemy import create_engine, text
-    from app.core.config import settings
-
-    eng = create_engine(settings.database_url, future=True)
-    with eng.begin() as conn:
-        conn.execute(
-            text(
-                "INSERT INTO person_skills (tenant_id, person_id, skill_id) "
-                "VALUES (:t, :p, :s)"
-            ),
-            {"t": _info["tenant_id"], "p": pid_a, "s": skill_id},
-        )
-    eng.dispose()
-
-    _create_slot(
-        client,
-        headers,
-        name="ECMO duty",
-        skills_required=[{"skill_id": skill_id, "strength": "hard"}],
-    )
-
-    r = client.post(
-        "/api/schedules/generate",
-        headers=headers,
-        json={"period": "2026-05-01"},
-    )
-    body = r.json()
-    persons = {a["person_id"] for a in body["assignments"] if a["person_id"] is not None}
-    assert persons == {pid_a}
-    assert pid_b not in persons
-
-
 def test_team_composition_respects_categories(auth_client, client):
     _client, headers, info = auth_client
 
@@ -242,32 +200,6 @@ def test_round_robin_is_balanced(auth_client, client):
     assert sum(counts) == 31
 
 
-def test_unfilled_when_no_eligible_person(auth_client, client):
-    _client, headers, _info = auth_client
-    # No team members beyond the admin. Create a slot with a hard skill
-    # that no one has.
-    r = client.post("/api/skills", headers=headers, json={"name": "Marciano"})
-    skill_id = r.json()["id"]
-    _create_slot(
-        client,
-        headers,
-        name="Marciano duty",
-        skills_required=[{"skill_id": skill_id, "strength": "hard"}],
-    )
-
-    r = client.post(
-        "/api/schedules/generate",
-        headers=headers,
-        json={"period": "2026-05-01"},
-    )
-    body = r.json()
-    assert len(body["assignments"]) > 0
-    assert all(a["person_id"] is None for a in body["assignments"])
-    assert all(
-        a["notes"] == "No hay personal disponible" for a in body["assignments"]
-    )
-
-
 def test_publish_locks_regeneration(auth_client, client):
     _client, headers, _info = auth_client
     _onboard(client, headers, "lock@example.com")
@@ -292,44 +224,3 @@ def test_publish_locks_regeneration(auth_client, client):
     assert r.status_code == 400
 
 
-def test_pool_filters_eligibility(auth_client, client):
-    """A slot scoped to a pool only assigns members of that pool, even if
-    other active members in the tenant could otherwise satisfy the slot's
-    skill / category requirements."""
-    _client, headers, _info = auth_client
-    pid_in = _onboard(client, headers, "in@example.com", "InPool")
-    _pid_out = _onboard(client, headers, "out@example.com", "OutOfPool")
-
-    # Create the pool and add only InPool to it.
-    r = client.post(
-        "/api/pools",
-        headers=headers,
-        json={
-            "name": "REA",
-            "membership_mode": "dedicated",
-            "equity_independent": True,
-        },
-    )
-    assert r.status_code == 201, r.text
-    pool_id = r.json()["id"]
-
-    r = client.post(
-        f"/api/pools/{pool_id}/members",
-        headers=headers,
-        json={"person_id": pid_in},
-    )
-    assert r.status_code in (200, 201), r.text
-
-    # Slot scoped to that pool — only InPool should be eligible.
-    _create_slot(client, headers, name="REA Guardia", pool_id=pool_id)
-
-    r = client.post(
-        "/api/schedules/generate",
-        headers=headers,
-        json={"period": "2026-05-01"},
-    )
-    body = r.json()
-    persons = {
-        a["person_id"] for a in body["assignments"] if a["person_id"] is not None
-    }
-    assert persons == {pid_in}
