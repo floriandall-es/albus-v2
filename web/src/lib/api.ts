@@ -922,6 +922,11 @@ export type Conversation = {
    * NULL`). When the caller IS this person, the UI lets them
    * remove other members. */
   created_by_person_id: number | null;
+  /** Migration 0092. Optional scheduling context: when set, the
+   * thread shows a header + deep link back to the entity. Both null
+   * on a plain DM/group. */
+  context_kind: "meeting" | "bloqueo" | "swap" | null;
+  context_id: number | null;
   unread_count: number;
   last_message_preview: string | null;
 };
@@ -1707,6 +1712,27 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ peer_person_id }),
     }),
+  /** In-context DM (migration 0092). Find-or-create the DM with
+   * `peer_person_id` stamped with (context_kind, context_id) — a
+   * "Comentar" thread about a bloqueo or swap, distinct from the
+   * plain DM with the same peer. */
+  createContextDM: (body: {
+    peer_person_id: number;
+    context_kind: "bloqueo" | "swap";
+    context_id: number;
+  }) =>
+    request<DMConversation>("/api/dms/context", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  /** Open (find-or-create) the group chat for a meeting; returns the
+   * conversation id to navigate to. Membership mirrors the meeting's
+   * audience. */
+  openMeetingChat: (meetingId: number) =>
+    request<{ conversation_id: number }>(
+      `/api/meetings/${meetingId}/chat`,
+      { method: "POST" },
+    ),
   /** My conversations across all my hospitals, sorted by
    * last_message_at desc. Includes peer + unread_count +
    * last_message_preview. */
