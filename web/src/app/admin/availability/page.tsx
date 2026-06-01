@@ -83,6 +83,50 @@ function useCommentOnBloqueo() {
   });
 }
 
+/** Amber warning listing the shifts a pending bloqueo would displace.
+ * Shown in the "Pendientes de aprobar" table (migration 0083 follow-up)
+ * — that's where the admin decides, so the heads-up belongs next to
+ * Aprobar/Denegar. Renders nothing when there are no conflicts (only
+ * pending blocks ever carry them). */
+function ConflictNote({ block }: { block: AvailabilityBlock }) {
+  const n = block.conflicting_shifts.length;
+  if (n === 0) return null;
+  return (
+    <div className="mt-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-900">
+      <div className="font-semibold">
+        ⚠ Tiene {n}
+        {block.conflicting_shifts_truncated && "+"} turno{n === 1 ? "" : "s"}{" "}
+        asignado{n === 1 ? "" : "s"} en este rango
+      </div>
+      <ul className="mt-0.5 space-y-0.5">
+        {block.conflicting_shifts.slice(0, 5).map((s, i) => (
+          <li key={`${s.date}-${i}`}>
+            <span className="tabular-nums">{s.date}</span>
+            {" — "}
+            {s.slot_name}
+            {s.role_label && (
+              <span className="text-amber-700">
+                {" · "}
+                {s.role_label}
+              </span>
+            )}
+          </li>
+        ))}
+        {n > 5 && (
+          <li className="italic text-amber-700">
+            … y {n - 5} más
+            {block.conflicting_shifts_truncated && "+"}
+          </li>
+        )}
+      </ul>
+      <div className="mt-1 text-[10px] text-amber-700">
+        Si apruebas, estos turnos quedarán libres y tendrás que
+        reasignarlos manualmente.
+      </div>
+    </div>
+  );
+}
+
 export default function AvailabilityPage() {
   const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
   const [personId, setPersonId] = useState<number | "">("");
@@ -205,51 +249,10 @@ export default function AvailabilityPage() {
                       {STATUS_LABEL[b.status] ?? b.status}
                     </StatusPill>
                   </td>
-                  <td className="px-4 py-2 text-gray-600">
-                    {b.notes ?? "—"}
-                    {/* Migration 0083 follow-up. Surface conflicts
-                        when a pending bloqueo would displace
-                        already-assigned shifts. Empty array on
-                        non-pending rows (or pending rows with no
-                        conflicts) — guard on length. */}
-                    {b.conflicting_shifts.length > 0 && (
-                      <div className="mt-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-900">
-                        <div className="font-semibold">
-                          ⚠ Tiene{" "}
-                          {b.conflicting_shifts.length}
-                          {b.conflicting_shifts_truncated && "+"} turno
-                          {b.conflicting_shifts.length === 1 ? "" : "s"}{" "}
-                          asignado{b.conflicting_shifts.length === 1 ? "" : "s"}{" "}
-                          en este rango
-                        </div>
-                        <ul className="mt-0.5 space-y-0.5">
-                          {b.conflicting_shifts.slice(0, 5).map((s, i) => (
-                            <li key={`${s.date}-${i}`}>
-                              <span className="tabular-nums">{s.date}</span>
-                              {" — "}
-                              {s.slot_name}
-                              {s.role_label && (
-                                <span className="text-amber-700">
-                                  {" · "}
-                                  {s.role_label}
-                                </span>
-                              )}
-                            </li>
-                          ))}
-                          {b.conflicting_shifts.length > 5 && (
-                            <li className="italic text-amber-700">
-                              … y {b.conflicting_shifts.length - 5} más
-                              {b.conflicting_shifts_truncated && "+"}
-                            </li>
-                          )}
-                        </ul>
-                        <div className="mt-1 text-[10px] text-amber-700">
-                          Si apruebas, estos turnos quedarán libres y
-                          tendrás que reasignarlos manualmente.
-                        </div>
-                      </div>
-                    )}
-                  </td>
+                  {/* Conflict heads-up lives only in the
+                      "Pendientes de aprobar" table now (where the
+                      admin actually decides) — see ConflictNote. */}
+                  <td className="px-4 py-2 text-gray-600">{b.notes ?? "—"}</td>
                   <td className="px-4 py-2">
                     {/* Same flex pattern /admin/slots + /admin/trasplantes
                         use — `text-right space-x-2` was wrapping the
@@ -451,7 +454,10 @@ function PendingApprovals() {
                 <td className="px-4 py-2">
                   {TYPE_LABEL[b.block_type] ?? b.block_type}
                 </td>
-                <td className="px-4 py-2 text-gray-600">{b.notes ?? "—"}</td>
+                <td className="px-4 py-2 text-gray-600">
+                  {b.notes ?? "—"}
+                  <ConflictNote block={b} />
+                </td>
                 <td className="px-4 py-2 text-right space-x-2 whitespace-nowrap">
                   <Button
                     variant="secondary"
