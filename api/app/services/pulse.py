@@ -80,12 +80,12 @@ class PulseQuestion:
 # admins can still toggle them off from /admin/pulso.
 CORE_QUESTIONS: tuple[PulseQuestion, ...] = (
     PulseQuestion(
-        key="fairness",
-        prompt_es="¿Sientes que el reparto de turnos esta semana ha sido justo contigo?",
-        scale_type="scale",
+        key="workload",
+        prompt_es="¿Cómo describirías tu carga esta semana?",
+        scale_type="choice",
         scale_max=4,
-        # Every scale question now ships with per-point labels so
-        # the survey button can render "3 · Justo" instead of a
+        # Every scale/choice question ships with per-point labels so
+        # the survey button can render "3 · Pesada" instead of a
         # bare "3". The numbers are the data we chart; the labels
         # are the UX. Labels are part of the time-series contract
         # (along with scale_max) and are NOT tenant-customisable —
@@ -95,15 +95,15 @@ CORE_QUESTIONS: tuple[PulseQuestion, ...] = (
         # middle to hide in) — we deliberately do not offer a
         # "regular / normal" option that would let respondents
         # coast.
-        labels_es=("Injusto", "Poco justo", "Justo", "Muy justo"),
+        labels_es=("Ligera", "Adecuada", "Pesada", "Insostenible"),
         default_enabled=True,
     ),
     PulseQuestion(
-        key="workload",
-        prompt_es="¿Cómo describirías tu carga esta semana?",
-        scale_type="choice",
+        key="fairness",
+        prompt_es="¿Sientes que el reparto de turnos esta semana ha sido justo contigo?",
+        scale_type="scale",
         scale_max=4,
-        labels_es=("Ligera", "Adecuada", "Pesada", "Insostenible"),
+        labels_es=("Injusto", "Poco justo", "Justo", "Muy justo"),
         default_enabled=True,
     ),
     PulseQuestion(
@@ -144,21 +144,14 @@ ROTATING_QUESTIONS: tuple[PulseQuestion, ...] = (
         default_enabled=False,
     ),
     PulseQuestion(
-        key="tool_friction",
-        prompt_es="¿Trivu te ha facilitado o complicado la semana?",
-        scale_type="choice",
+        # Support from supervisors / leadership (jefatura, responsables)
+        # — distinct from `team_support`, which covers peers. Mirrors
+        # that question's wording + scale so the two read as a pair.
+        key="leadership_support",
+        prompt_es="¿Has sentido apoyo de tus responsables cuando lo necesitabas?",
+        scale_type="scale",
         scale_max=4,
-        # Order stays "facilitated → complicated" (higher = more
-        # friction) to match the directional convention workload
-        # and predictability already use for choice questions —
-        # the chart-direction hint reads consistently across all
-        # "higher = worse" metrics.
-        labels_es=(
-            "Facilitado mucho",
-            "Algo facilitado",
-            "Algo complicado",
-            "Complicado mucho",
-        ),
+        labels_es=("Ninguno", "Poco", "Bastante", "Total"),
         default_enabled=False,
     ),
     PulseQuestion(

@@ -483,8 +483,8 @@ function shortQuestionLabel(key: string): string {
       return "Cambios imprevistos";
     case "team_support":
       return "Apoyo del equipo";
-    case "tool_friction":
-      return "Trivu";
+    case "leadership_support":
+      return "Apoyo responsables";
     case "wellbeing":
       return "Bienestar";
     case "recommend":
