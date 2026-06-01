@@ -827,6 +827,50 @@ def respond_to_offer(
     return _serialize_response(ctx, r)
 
 
+def _invalidate_offers_for_assignments(
+    ctx: RequestContext,
+    assignment_ids: set[int],
+    exclude_offer_id: int,
+    now: datetime,
+) -> None:
+    """Cancel any OTHER live offer whose underlying assignment just
+    changed hands in this swap.
+
+    Once a shift no longer belongs to the offer's requester, that offer
+    is void — leaving it 'open'/'pending_admin' would let a colleague
+    accept (or an admin approve) a swap of a shift the requester no
+    longer holds. Declines those offers' still-pending responses too so
+    nobody is left with a dangling "Esperando admin". Best-effort
+    cleanup: no email (the requester got their swap by another route)."""
+    if not assignment_ids:
+        return
+    stale = (
+        ctx.db.query(ShiftSwapOffer)
+        .filter(
+            ShiftSwapOffer.assignment_id.in_(assignment_ids),
+            ShiftSwapOffer.id != exclude_offer_id,
+            ShiftSwapOffer.status.in_(("open", "pending_admin")),
+        )
+        .all()
+    )
+    for so in stale:
+        so.status = "cancelled"
+        so.closed_at = now
+        responses = (
+            ctx.db.query(ShiftSwapResponse)
+            .filter(
+                ShiftSwapResponse.offer_id == so.id,
+                ShiftSwapResponse.status.in_(("pending", "pending_admin")),
+            )
+            .all()
+        )
+        for rr in responses:
+            rr.status = "declined"
+            rr.decided_at = now
+    if stale:
+        ctx.db.flush()
+
+
 def _finalize_swap(
     ctx: RequestContext,
     o: ShiftSwapOffer,
@@ -860,6 +904,21 @@ def _finalize_swap(
     requester_m = ctx.db.get(Membership, o.requested_by_membership_id)
     if requester_m is None:
         raise HTTPException(status_code=400, detail="Solicitante inválido")
+    # The requester must still own the shift they're offering. If
+    # another swap reassigned it in the meantime (e.g. they swapped
+    # this same shift away on a different offer), this request is
+    # stale — applying it would hand off a shift that's no longer
+    # theirs and corrupt the schedule. The fulfillment path below
+    # proactively cancels such offers; this is the safety net for any
+    # that slip through (e.g. one already parked in pending_admin).
+    if original.person_id != requester_m.person_id:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "El solicitante ya no tiene este turno — el cambio se "
+                "resolvió por otra vía y esta solicitud ya no es válida."
+            ),
+        )
     requester_p = ctx.db.get(Person, requester_m.person_id)
     responder_p = ctx.db.get(Person, responder_m.person_id)
     requester_name = (
@@ -964,6 +1023,15 @@ def _finalize_swap(
         other.decided_at = now
 
     ctx.db.flush()
+
+    # Void any OTHER live offer on a shift this swap just reassigned —
+    # its requester no longer holds that shift, so the offer is stale
+    # (this is the bug where a swapped-away shift's old request still
+    # surfaced to the admin for approval).
+    reassigned_ids: set[int] = {original.id}
+    if r.kind == "swap" and r.swap_assignment_id is not None:
+        reassigned_ids.add(r.swap_assignment_id)
+    _invalidate_offers_for_assignments(ctx, reassigned_ids, o.id, now)
 
     _notify_response_accepted(ctx, o, r, original, requester_p, responder_p)
     _notify_admins(ctx, o, r, original, requester_p, responder_p)
