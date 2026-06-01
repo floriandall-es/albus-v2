@@ -117,6 +117,12 @@ class ConversationOut(BaseModel):
         default_factory=list
     )
     created_by_person_id: int | None = None
+    # Migration 0092 — optional scheduling context. When set, the
+    # thread renders a context header + deep link back to the entity.
+    # ('meeting' | 'bloqueo' | 'swap') + the entity id; both null on a
+    # plain DM/group.
+    context_kind: str | None = None
+    context_id: int | None = None
     # Computed per request: messages.id > last_read_message_id AND
     # author != self. Capped at 99 to keep the badge readable.
     unread_count: int
@@ -937,6 +943,8 @@ def _serialize_conversation(
         member_count=member_count,
         member_previews=member_previews,
         created_by_person_id=conv.created_by_person_id,
+        context_kind=conv.context_kind,
+        context_id=conv.context_id,
         unread_count=unread_count,
         last_message_preview=preview,
     )

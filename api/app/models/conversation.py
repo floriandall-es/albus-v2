@@ -78,6 +78,17 @@ class Conversation(Base):
     last_message_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # Migration 0092 — optional link to a Trivu entity so chat can
+    # carry scheduling context. ('meeting' | 'bloqueo' | 'swap') +
+    # the entity id. Both NULL for a plain DM/group. Polymorphic, so
+    # not an FK — integrity is enforced in routes/dms.py; a deleted
+    # entity just leaves an orphan header. A meeting has at most one
+    # conversation (partial unique index); bloqueo/swap DMs dedupe on
+    # (member pair + context) in code.
+    context_kind: Mapped[str | None] = mapped_column(
+        String(16), nullable=True
+    )
+    context_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class ConversationMember(Base):
