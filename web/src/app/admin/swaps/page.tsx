@@ -41,6 +41,13 @@ export default function AdminSwapsPage() {
     [q.data],
   );
 
+  // Whether admin approval is on — drives the explainer below so an
+  // admin who just enabled it understands WHERE approvals show up
+  // (and why an "Abierta" request isn't actionable yet).
+  const me = useQuery({ queryKey: ["me"], queryFn: api.me });
+  const approvalOn =
+    me.data?.current_tenant.swap_requires_admin_approval ?? false;
+
   return (
     <>
       <PageHeader title="Cambios de turno" />
@@ -72,6 +79,22 @@ export default function AdminSwapsPage() {
             ))}
           </div>
         </section>
+      )}
+
+      {/* Approval is on but nothing is waiting yet. Tell the admin
+          where approvals will surface so an "Abierta" request doesn't
+          read as "stuck waiting for me". */}
+      {approvalOn && pendingAdmin.length === 0 && q.data
+        && q.data.length > 0 && (
+        <div className="mb-6 rounded-md border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm text-amber-900">
+          No tienes cambios por aprobar ahora mismo. Cuando un miembro
+          acepte la respuesta a su solicitud, el cambio aparecerá aquí
+          como <span className="font-medium">«Esperando admin»</span> con
+          los botones Aprobar / Denegar. Las solicitudes en estado{" "}
+          <span className="font-medium">«Abierta»</span> aún no necesitan
+          tu aprobación — esperan a que un compañero se ofrezca y el
+          solicitante lo acepte.
+        </div>
       )}
 
       {q.data && q.data.length === 0 && (
