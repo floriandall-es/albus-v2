@@ -40,7 +40,7 @@ export const metadata: Metadata = {
     locale: "es_ES",
     title: "Trivu — la planificación del mes, hecha.",
     description:
-      "Turnos, guardias, vacaciones y cambios para servicios hospitalarios. El jefe valida; el equipo lo ve en su móvil. 30 días gratis.",
+      "Turnos, guardias, vacaciones y cambios para servicios hospitalarios. Quien planifica valida; el equipo lo ve en su móvil. 30 días gratis.",
   },
   twitter: {
     card: "summary_large_image",

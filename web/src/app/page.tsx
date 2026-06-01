@@ -82,7 +82,7 @@ const COPY = {
       title: "La planificación del mes,",
       titleAccent: "hecha.",
       subtitle:
-        "Trivu construye la planificación de tu servicio respetando guardias, rotaciones, vacaciones y reglas — y la reparte de forma justa. El jefe valida; el equipo lo ve en su móvil.",
+        "Trivu construye la planificación de tu servicio respetando guardias, rotaciones, vacaciones y reglas — y la reparte de forma justa. Quien planifica valida; el equipo lo ve en su móvil.",
       ctaPrimary: "Empezar gratis",
       ctaSecondary: "Ver cómo funciona",
       ctaNote: "30 días gratis · sin tarjeta · cancela cuando quieras",
@@ -159,7 +159,7 @@ const COPY = {
       subtitle:
         "Una para quien planifica. Otra para quien recibe los turnos. Las dos pensadas con el mismo cuidado.",
       tabs: {
-        jefe: "Para el jefe de servicio",
+        jefe: "Para jefes y jefas",
         equipo: "Para el equipo",
       },
       jefe: {
@@ -182,7 +182,7 @@ const COPY = {
             body: "Antes de publicar te avisa de huecos, conflictos y descansos. Si publicas, sabes lo que publicas.",
           },
         ],
-        ctaLabel: "Empezar como jefe",
+        ctaLabel: "Empezar como jefe o jefa",
       },
       equipo: {
         heading: "Tus turnos, en la palma de tu mano.",
@@ -192,25 +192,25 @@ const COPY = {
             body: "Calendario propio + del equipo, con avisos antes de cada guardia. También exportable a tu Google / Apple Calendar.",
           },
           {
-            heading: "Cambios sin pasar por el jefe",
-            body: "Pide cobertura a tus compañeros, acepta intercambios, todo desde el móvil. Tu jefe solo entra si hace falta.",
+            heading: "Cambios sin pasar por la jefatura",
+            body: "Pide cobertura a tus compañeros, acepta intercambios, todo desde el móvil. Tu jefe o jefa solo entra si hace falta.",
           },
           {
             heading: "Vacaciones y bloqueos",
-            body: "Solicita días libres, formación o baja desde la app. El jefe ve la solicitud y aprueba con un toque.",
+            body: "Solicita días libres, formación o baja desde la app. Tu jefe o jefa ve la solicitud y aprueba con un toque.",
           },
           {
             heading: "Directorio del hospital",
             body: "Teléfono, WhatsApp y email de cada compañero del servicio. Saber quién está de guardia hoy, también.",
           },
         ],
-        ctaLabel: "Pídeselo a tu jefe",
+        ctaLabel: "Pídeselo a tu jefe o jefa",
       },
     },
     features: {
       title: "Las funciones que te van a enganchar",
       subtitle:
-        "Cada una resuelve un dolor concreto. Todas vienen de horas escuchando a jefes de servicio.",
+        "Cada una resuelve un dolor concreto. Todas vienen de horas escuchando a jefes y jefas de servicio.",
       cards: [
         {
           icon: "wand" as const,
@@ -230,7 +230,7 @@ const COPY = {
           icon: "swap" as const,
           tone: "sky" as const,
           heading: "Cambios entre compañeros",
-          body: "Una persona pide cobertura, otra la acepta. El cambio se aplica a la planificación, los dos calendarios se actualizan, y queda registrado quién cubrió a quién — todo sin que el jefe tenga que firmar nada.",
+          body: "Una persona pide cobertura, otra la acepta. El cambio se aplica a la planificación, los dos calendarios se actualizan, y queda registrado quién cubrió a quién — todo sin que la jefatura tenga que firmar nada.",
           chip: "Auto-aprobado",
         },
         {
@@ -355,9 +355,9 @@ const COPY = {
       finePrint: "Sin tarjeta hasta probarlo · Cancela cuando quieras",
     },
     share: {
-      title: "Pídeselo a tu jefe",
+      title: "Pídeselo a tu jefe o jefa",
       subtitle:
-        "Trivu lo da de alta el jefe del servicio. Mándale esto y deja que decida.",
+        "Trivu lo da de alta quien dirige el servicio. Mándale esto y deja que decida.",
       message:
         "Hola! He visto Trivu, una herramienta para planificar los turnos del servicio. Parece que nos podría ahorrar bastante tiempo y los cambios entre compañeros serían mucho más fáciles. Tienen 30 días gratis para probarlo: https://trivu.net",
       emailSubject: "Trivu — planificación de turnos para el servicio",
