@@ -165,11 +165,61 @@ class Message(Base):
         ForeignKey("persons.id", ondelete="SET NULL"),
         nullable=True,
     )
-    body: Mapped[str] = mapped_column(Text, nullable=False)
+    # Nullable since migration 0093: a voice-note-only message has no
+    # text. The DB CHECK (ck_messages_body_or_voice) guarantees a
+    # message carries a body OR a voice note.
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Migration 0093. Optional attached audio. ON DELETE SET NULL — if
+    # the audio is purged (RGPD), the message row survives as a
+    # tombstone and the UI renders "(audio eliminado)".
+    voice_note_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("voice_notes.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     # Soft-delete only. Row stays for stable id sequence; UI
     # renders "mensaje borrado" instead of the body.
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class VoiceNote(Base):
+    """Audio attachment for a chat message (migration 0093).
+
+    Only metadata lives here; the bytes are a file on the
+    voice-notes host volume keyed by `file_key`. Hospital-scoped, no
+    RLS — access is enforced at the route layer (you can only fetch a
+    voice note attached to a message in a conversation you belong to)."""
+
+    __tablename__ = "voice_notes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    hospital_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("hospitals.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    author_person_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("persons.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # Client-reported clip length, used to render the bubble without
+    # decoding the audio. Seconds.
+    duration_seconds: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    # Path within the voice-notes volume:
+    # {hospital_id}/{yyyy-mm}/{id}.{ext}
+    file_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    byte_size: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

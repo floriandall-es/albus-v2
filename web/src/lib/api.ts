@@ -943,12 +943,26 @@ export type DMConversation = Conversation;
 /** Single message in a conversation. `body` is null when the
  * message has been soft-deleted (deleted_at non-null); UI
  * renders "mensaje borrado". */
+/** Audio attachment on a message (migration 0093). `url` is the
+ * access-checked API path; play it by fetching with the Bearer token
+ * (see api.fetchVoiceNoteAudio) — it is NOT a public static file. */
+export type VoiceNote = {
+  id: number;
+  duration_seconds: number;
+  mime_type: string;
+  byte_size: number;
+  url: string;
+};
+
 export type DMMessage = {
   id: number;
   conversation_id: number;
   author_person_id: number | null;
   author_name: string | null;
   body: string | null;
+  /** Present on voice-note messages; null for plain text and for
+   * deleted messages (audio is purged on delete). */
+  voice_note: VoiceNote | null;
   deleted_at: string | null;
   created_at: string;
 };
@@ -1799,13 +1813,54 @@ export const api = {
       `/api/conversations/${conversationId}/messages?${qs.toString()}`,
     );
   },
-  /** Send a message. body is plain text 1–4000 chars. Returns
-   * the inserted message. */
-  sendMessage: (conversationId: number, body: string) =>
+  /** Send a message: text, a voice note (voice_note_id from
+   * uploadVoiceNote), or both. The server rejects the empty case.
+   * Returns the inserted message. */
+  sendMessage: (
+    conversationId: number,
+    payload: { body?: string | null; voice_note_id?: number },
+  ) =>
     request<DMMessage>(
       `/api/conversations/${conversationId}/messages`,
-      { method: "POST", body: JSON.stringify({ body }) },
+      { method: "POST", body: JSON.stringify(payload) },
     ),
+  /** Upload a recorded clip; returns the VoiceNote to attach via
+   * sendMessage({voice_note_id}). Multipart (Bearer header set
+   * manually since `request` JSON-encodes). */
+  uploadVoiceNote: async (blob: Blob, durationSeconds: number) => {
+    const fd = new FormData();
+    // Filename hints the extension; the server keys off content-type.
+    const ext = blob.type.includes("mp4") ? "m4a" : "webm";
+    fd.append("file", blob, `nota.${ext}`);
+    fd.append("duration_seconds", String(Math.round(durationSeconds)));
+    const headers = new Headers();
+    const token = getToken();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    const res = await fetch(`${API_BASE_URL}/api/voice-notes`, {
+      method: "POST",
+      headers,
+      body: fd,
+    });
+    if (!res.ok) {
+      const detail = await res
+        .json()
+        .then((j) => j?.detail)
+        .catch(() => null);
+      throw new Error(detail || "No se pudo subir la nota de voz");
+    }
+    return (await res.json()) as VoiceNote;
+  },
+  /** Fetch a voice note's audio (auth'd) and return an object URL the
+   * <audio> element can play. The caller must revoke it when done. */
+  fetchVoiceNoteAudio: async (url: string) => {
+    const headers = new Headers();
+    const token = getToken();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    const res = await fetch(`${API_BASE_URL}${url}`, { headers });
+    if (!res.ok) throw new Error("No se pudo cargar el audio");
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  },
   /** Mark a conversation as read up to `last_message_id`. The
    * server only ever moves the high-water mark forward; sending
    * a smaller id is a no-op. 204. */

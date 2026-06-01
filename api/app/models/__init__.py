@@ -36,6 +36,7 @@ from app.models.conversation import (
     Conversation,
     ConversationMember,
     Message,
+    VoiceNote,
 )
 from app.models.directory_favorite import DirectoryFavorite
 from app.models.violation_suppression import ViolationSuppression
@@ -96,6 +97,7 @@ __all__ = [
     "Conversation",
     "ConversationMember",
     "Message",
+    "VoiceNote",
     "DirectoryFavorite",
     "ViolationSuppression",
     "PeriodoEspecial",

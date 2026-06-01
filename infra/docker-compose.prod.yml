@@ -46,6 +46,9 @@ services:
       SMTP_USE_TLS: ${SMTP_USE_TLS}
       EMAIL_ENABLED: ${EMAIL_ENABLED}
       AVATARS_DIR: /app/avatars
+      # Chat voice notes (migration 0093). Host volume below; back it
+      # up alongside avatars + the DB.
+      VOICE_NOTES_DIR: /app/voice-notes
       # Web Push (migration 0089). Pasted into /srv/albus/.env from
       # `npx web-push generate-vapid-keys`. SUBJECT is a mailto: or
       # https:// URI the push services email if abuse is detected.
@@ -69,6 +72,9 @@ services:
       # Profile photos uploaded by users. Host directory is created by
       # bootstrap; back this up alongside the DB.
       - /srv/albus/avatars:/app/avatars
+      # Chat voice-note audio. Created on first upload; the API also
+      # mkdir -p's it on startup. Back this up alongside avatars.
+      - /srv/albus/voice-notes:/app/voice-notes
       # Read-only mount for one-off CSV → Trivu migrations (the
       # `scripts/migrate_legacy.py` path). The script computes
       # DATA_DIR as `/data/legacy-migration` inside the container,

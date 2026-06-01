@@ -20,9 +20,21 @@ Privacy gates:
 from __future__ import annotations
 
 import logging
+import os
+import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, text
 
@@ -35,6 +47,7 @@ from app.models import (
     Message,
     Person,
     ShiftSwapOffer,
+    VoiceNote,
 )
 from app.routes.deps import RequestContext, get_current_context
 from app.services.realtime import broker
@@ -164,18 +177,38 @@ class GroupMembersAddRequest(BaseModel):
     person_ids: list[int] = Field(min_length=1)
 
 
+class VoiceNoteOut(BaseModel):
+    """Audio attachment surfaced on a message. `url` is the
+    access-checked endpoint the client fetches (with its Bearer token)
+    to play — not a public static path."""
+
+    id: int
+    duration_seconds: int
+    mime_type: str
+    byte_size: int
+    url: str
+
+
 class MessageOut(BaseModel):
     id: int
     conversation_id: int
     author_person_id: int | None
     author_name: str | None
     body: str | None
+    # Migration 0093. Present when the message is a voice note; null
+    # for plain text and for deleted messages (audio is purged on
+    # delete, so we never serve a tombstone's audio).
+    voice_note: VoiceNoteOut | None = None
     deleted_at: datetime | None
     created_at: datetime
 
 
 class MessageCreateRequest(BaseModel):
-    body: str = Field(min_length=1, max_length=4000)
+    """A message carries text, a voice note, or both. The route
+    rejects the empty case (neither set)."""
+
+    body: str | None = Field(default=None, max_length=4000)
+    voice_note_id: int | None = None
 
 
 class MarkReadRequest(BaseModel):
@@ -296,6 +329,31 @@ def _member_person_ids(ctx: RequestContext, conversation_id: int) -> list[int]:
         .filter(ConversationMember.conversation_id == conversation_id)
         .all()
     ]
+
+
+# Browser MediaRecorder output we accept. Chrome/Firefox emit
+# audio/webm; Safari emits audio/mp4. The others are belt-and-braces.
+_VOICE_MIME_EXT = {
+    "audio/webm": "webm",
+    "audio/ogg": "ogg",
+    "audio/mp4": "m4a",
+    "audio/mpeg": "mp3",
+    "audio/aac": "aac",
+}
+
+
+def _voice_note_path(file_key: str) -> str:
+    return os.path.join(settings.voice_notes_dir, file_key)
+
+
+def _serialize_voice_note(vn: VoiceNote) -> VoiceNoteOut:
+    return VoiceNoteOut(
+        id=vn.id,
+        duration_seconds=vn.duration_seconds,
+        mime_type=vn.mime_type,
+        byte_size=vn.byte_size,
+        url=f"/api/voice-notes/{vn.id}/audio",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -616,6 +674,21 @@ def list_messages(
             {"ids": list(author_ids)},
         ).all():
             name_by_id[pid] = name
+    # Batch-hydrate voice notes for the non-deleted messages that have
+    # one (a deleted message's audio has been purged).
+    vn_ids = {
+        r.voice_note_id
+        for r in rows
+        if r.voice_note_id is not None and r.deleted_at is None
+    }
+    vn_by_id: dict[int, VoiceNote] = {}
+    if vn_ids:
+        for vn in (
+            ctx.db.query(VoiceNote)
+            .filter(VoiceNote.id.in_(vn_ids))
+            .all()
+        ):
+            vn_by_id[vn.id] = vn
     return [
         MessageOut(
             id=r.id,
@@ -627,6 +700,15 @@ def list_messages(
                 else None
             ),
             body=None if r.deleted_at else r.body,
+            voice_note=(
+                _serialize_voice_note(vn_by_id[r.voice_note_id])
+                if (
+                    r.deleted_at is None
+                    and r.voice_note_id is not None
+                    and r.voice_note_id in vn_by_id
+                )
+                else None
+            ),
             deleted_at=r.deleted_at,
             created_at=r.created_at,
         )
@@ -645,13 +727,37 @@ def send_message(
     ctx: RequestContext = Depends(get_current_context),
 ) -> MessageOut:
     conv = _ensure_membership(ctx, conversation_id)
-    body = payload.body.strip()
-    if not body:
+    body = (payload.body or "").strip() or None
+    # Validate + claim the voice note, if any. It must be the caller's
+    # own freshly-uploaded note, in this hospital, not already attached
+    # to another message (one note → one message).
+    vn: VoiceNote | None = None
+    if payload.voice_note_id is not None:
+        vn = ctx.db.get(VoiceNote, payload.voice_note_id)
+        if (
+            vn is None
+            or vn.author_person_id != ctx.person.id
+            or vn.hospital_id != conv.hospital_id
+        ):
+            raise HTTPException(
+                status_code=404, detail="Nota de voz no encontrada"
+            )
+        already = (
+            ctx.db.query(Message.id)
+            .filter(Message.voice_note_id == vn.id)
+            .first()
+        )
+        if already is not None:
+            raise HTTPException(
+                status_code=409, detail="Esa nota de voz ya se envió"
+            )
+    if body is None and vn is None:
         raise HTTPException(status_code=422, detail="El mensaje está vacío")
     msg = Message(
         conversation_id=conv.id,
         author_person_id=ctx.person.id,
         body=body,
+        voice_note_id=vn.id if vn is not None else None,
     )
     ctx.db.add(msg)
     ctx.db.flush()
@@ -674,6 +780,7 @@ def send_message(
         author_person_id=msg.author_person_id,
         author_name=ctx.person.name,
         body=msg.body,
+        voice_note=_serialize_voice_note(vn) if vn is not None else None,
         deleted_at=None,
         created_at=msg.created_at,
     )
@@ -736,7 +843,14 @@ def _maybe_notify_unread(
     sender_first = ctx.person.first_name or sender_name
     # Kept for the email fallback's sender_display_name below.
     sender_last = ctx.person.last_name or sender_name
-    body_preview = msg.body[:200]
+    # Voice-note-only messages have no text body — surface a label so
+    # the push/email still reads sensibly (and so msg.body[:200]
+    # doesn't blow up on None).
+    body_preview = (
+        msg.body[:200]
+        if msg.body
+        else ("🎤 Nota de voz" if msg.voice_note_id is not None else "")
+    )
     deep_link = (
         f"{settings.public_base_url.rstrip('/')}/me/mensajes?c={conv.id}"
     )
@@ -1033,13 +1147,29 @@ def delete_message(
         # Already deleted — idempotent no-op.
         return
     msg.deleted_at = datetime.now(timezone.utc)
-    # Null the body so the content is gone from the DB. The column
-    # is NOT NULL in the schema, so we can't actually set it to
-    # NULL — instead empty-string it. The serializer still keys off
-    # deleted_at, so the UI rendering ("mensaje borrado") is
-    # unchanged.
+    # Empty the body so the content is gone from the DB. (body is
+    # nullable since 0093, but we keep "" rather than NULL so a deleted
+    # voice-note message still satisfies ck_messages_body_or_voice the
+    # instant the FK below nulls voice_note_id.) The serializer keys
+    # off deleted_at, so the UI still renders "mensaje borrado".
+    vn_id = msg.voice_note_id
     msg.body = ""
     ctx.db.flush()
+    # RGPD: purge the audio too — delete the file then the row. ON
+    # DELETE SET NULL clears msg.voice_note_id; body="" (above) keeps
+    # the CHECK satisfied. Best-effort on the file (a missing file
+    # must not block the DB delete).
+    if vn_id is not None:
+        vn = ctx.db.get(VoiceNote, vn_id)
+        if vn is not None:
+            try:
+                os.remove(_voice_note_path(vn.file_key))
+            except FileNotFoundError:
+                pass
+            except OSError:
+                logger.exception("voice-note file unlink failed")
+            ctx.db.delete(vn)
+            ctx.db.flush()
     # Realtime: tell every member to re-render the slot as borrado.
     try:
         broker.publish(
@@ -1052,6 +1182,114 @@ def delete_message(
         )
     except Exception:  # noqa: BLE001
         logger.exception("realtime publish (message_deleted) failed")
+
+
+# ---------------------------------------------------------------------------
+# Voice notes (migration 0093)
+# ---------------------------------------------------------------------------
+
+
+@router.post("/voice-notes", response_model=VoiceNoteOut, status_code=201)
+async def upload_voice_note(
+    file: UploadFile = File(...),
+    duration_seconds: int = Form(0),
+    ctx: RequestContext = Depends(get_current_context),
+) -> VoiceNoteOut:
+    """Upload a recorded clip, returning a VoiceNote the caller then
+    attaches by sending a message with `voice_note_id`. Two-step
+    (upload → send) so the audio exists before the message row and the
+    send stays a plain JSON POST.
+
+    Hospital-scoped; size/duration/mime capped. Stored on the
+    voice-notes volume at {hospital}/{yyyy-mm}/{id}.{ext}.
+    """
+    hospital_id = _require_hospital(ctx)
+    mime = (file.content_type or "").split(";")[0].strip().lower()
+    ext = _VOICE_MIME_EXT.get(mime)
+    if ext is None:
+        raise HTTPException(
+            status_code=415,
+            detail="Formato de audio no soportado.",
+        )
+    raw = await file.read()
+    if len(raw) == 0:
+        raise HTTPException(status_code=400, detail="Audio vacío")
+    if len(raw) > settings.voice_note_max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail="La nota de voz supera el tamaño máximo.",
+        )
+    dur = max(0, min(int(duration_seconds), settings.voice_note_max_seconds))
+
+    # Create the row first so we can key the file by its id, then
+    # write the file and stamp file_key.
+    vn = VoiceNote(
+        hospital_id=hospital_id,
+        author_person_id=ctx.person.id,
+        duration_seconds=dur,
+        file_key="",  # set below once we know the id
+        mime_type=mime,
+        byte_size=len(raw),
+    )
+    ctx.db.add(vn)
+    ctx.db.flush()  # assigns vn.id
+
+    month = datetime.now(timezone.utc).strftime("%Y-%m")
+    rel_dir = os.path.join(str(hospital_id), month)
+    abs_dir = os.path.join(settings.voice_notes_dir, rel_dir)
+    os.makedirs(abs_dir, exist_ok=True)
+    # token suffix so a guessed {id}.{ext} can't be probed directly on
+    # disk if the volume were ever mis-mounted as static.
+    fname = f"{vn.id}-{secrets.token_hex(6)}.{ext}"
+    file_key = os.path.join(rel_dir, fname)
+    with open(os.path.join(settings.voice_notes_dir, file_key), "wb") as fh:
+        fh.write(raw)
+    vn.file_key = file_key
+    ctx.db.flush()
+    return _serialize_voice_note(vn)
+
+
+@router.get("/voice-notes/{voice_note_id}/audio")
+def stream_voice_note(
+    voice_note_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> FileResponse:
+    """Stream a voice note's audio after an access check: the caller
+    must be the author (covers the just-uploaded preview before send)
+    OR a member of a conversation that has a live (non-deleted)
+    message referencing this note. Served through Python rather than a
+    static mount so clinical audio stays access-controlled."""
+    vn = ctx.db.get(VoiceNote, voice_note_id)
+    if vn is None:
+        raise HTTPException(status_code=404, detail="No encontrado")
+    allowed = vn.author_person_id == ctx.person.id
+    if not allowed:
+        # Is there a non-deleted message with this note in a
+        # conversation the caller belongs to?
+        hit = (
+            ctx.db.query(Message.id)
+            .join(
+                ConversationMember,
+                ConversationMember.conversation_id == Message.conversation_id,
+            )
+            .filter(
+                Message.voice_note_id == voice_note_id,
+                Message.deleted_at.is_(None),
+                ConversationMember.person_id == ctx.person.id,
+            )
+            .first()
+        )
+        allowed = hit is not None
+    if not allowed:
+        raise HTTPException(status_code=404, detail="No encontrado")
+    path = _voice_note_path(vn.file_key)
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Audio no disponible")
+    return FileResponse(
+        path,
+        media_type=vn.mime_type,
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1213,8 +1451,15 @@ def _serialize_conversation(
     )
     preview: str | None = None
     if last_row is not None:
-        body = "(mensaje borrado)" if last_row.deleted_at else last_row.body
-        preview = body[:140] if body else None
+        if last_row.deleted_at:
+            preview = "(mensaje borrado)"
+        elif last_row.body:
+            preview = last_row.body[:140]
+        elif last_row.voice_note_id is not None:
+            # Voice-note-only message — no text to preview.
+            preview = "🎤 Nota de voz"
+        else:
+            preview = None
 
     return ConversationOut(
         id=conv.id,

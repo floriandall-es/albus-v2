@@ -43,6 +43,11 @@ import {
 } from "@/lib/api";
 import { Avatar } from "@/components/schedule/planning-grid";
 import { useChatRealtime, type ChatEvent } from "@/lib/use-realtime";
+import {
+  MicButton,
+  VoiceNoteBubble,
+  VoiceRecorderBar,
+} from "@/components/chat/voice-note";
 
 /**
  * /me/mensajes — Phase 2A + 2B DM UI.
@@ -451,6 +456,7 @@ function ConversationPane({
 }) {
   const qc = useQueryClient();
   const [draft, setDraft] = useState("");
+  const [recording, setRecording] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -595,7 +601,8 @@ function ConversationPane({
   }, [messages.data, conversationId]);
 
   const send = useMutation({
-    mutationFn: (body: string) => api.sendMessage(conversationId, body),
+    mutationFn: (payload: { body?: string | null; voice_note_id?: number }) =>
+      api.sendMessage(conversationId, payload),
     onSuccess: (msg) => {
       setDraft("");
       qc.setQueryData<DMMessage[]>(
@@ -604,6 +611,23 @@ function ConversationPane({
       );
       onMessageSent();
     },
+  });
+
+  // Record → upload → send a voice note in one shot.
+  const sendVoice = useMutation({
+    mutationFn: async (rec: { blob: Blob; durationSeconds: number }) => {
+      const vn = await api.uploadVoiceNote(rec.blob, rec.durationSeconds);
+      return api.sendMessage(conversationId, { voice_note_id: vn.id });
+    },
+    onSuccess: (msg) => {
+      setRecording(false);
+      qc.setQueryData<DMMessage[]>(
+        ["messages", conversationId],
+        (prev) => (prev ? [...prev, msg] : [msg]),
+      );
+      onMessageSent();
+    },
+    onError: () => setRecording(false),
   });
 
   const deleteConv = useMutation({
@@ -674,7 +698,7 @@ function ConversationPane({
     e.preventDefault();
     const body = draft.trim();
     if (!body || send.isPending) return;
-    send.mutate(body);
+    send.mutate({ body });
   }
 
   function onDeleteConversation() {
@@ -888,30 +912,52 @@ function ConversationPane({
         onSubmit={onSubmit}
         className="flex items-end gap-2 border-t border-gray-100 px-3 py-2"
       >
-        <textarea
-          ref={inputRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            // Enter sends; Shift+Enter inserts a newline.
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              onSubmit(e as unknown as FormEvent);
+        {recording ? (
+          // Recording UI replaces the text input + send for the
+          // duration of the recording.
+          <VoiceRecorderBar
+            busy={sendVoice.isPending}
+            onSend={(blob, durationSeconds) =>
+              sendVoice.mutate({ blob, durationSeconds })
             }
-          }}
-          placeholder="Escribe un mensaje…"
-          rows={1}
-          maxLength={4000}
-          className="flex-1 resize-none rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
-        />
-        <button
-          type="submit"
-          disabled={draft.trim() === "" || send.isPending}
-          className="inline-flex items-center gap-1 rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white shadow-soft hover:bg-brand-700 disabled:opacity-50"
-        >
-          <Send className="h-4 w-4" />
-          {send.isPending ? "Enviando…" : "Enviar"}
-        </button>
+            onCancel={() => setRecording(false)}
+          />
+        ) : (
+          <>
+            <textarea
+              ref={inputRef}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                // Enter sends; Shift+Enter inserts a newline.
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  onSubmit(e as unknown as FormEvent);
+                }
+              }}
+              placeholder="Escribe un mensaje…"
+              rows={1}
+              maxLength={4000}
+              className="flex-1 resize-none rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+            />
+            {draft.trim() === "" ? (
+              // Empty box → offer the mic (WhatsApp-style).
+              <MicButton
+                onClick={() => setRecording(true)}
+                disabled={sendVoice.isPending}
+              />
+            ) : (
+              <button
+                type="submit"
+                disabled={send.isPending}
+                className="inline-flex items-center gap-1 rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white shadow-soft hover:bg-brand-700 disabled:opacity-50"
+              >
+                <Send className="h-4 w-4" />
+                {send.isPending ? "Enviando…" : "Enviar"}
+              </button>
+            )}
+          </>
+        )}
       </form>
       {isGroup && conversation && membersOpen && (
         <GroupMembersPanel
@@ -1059,7 +1105,14 @@ function MessageBubble({
    * tooltip (who/when). */
   receipt?: { label: string; read: boolean; title?: string };
 }) {
-  const text = message.body ?? "(mensaje borrado)";
+  const isDeleted = !!message.deleted_at;
+  // A live voice note renders the player; otherwise plain text (or
+  // the "borrado" tombstone). Audio is purged on delete, so
+  // message.voice_note is already null once deleted_at is set.
+  const isVoice = !isDeleted && !!message.voice_note;
+  const text = isDeleted
+    ? "(mensaje borrado)"
+    : (message.body ?? "");
   // Mine messages with a receipt switch to a column so the caption
   // sits below the bubble; otherwise we keep the original layouts.
   const asColumn = !!authorLabel || (!!mine && !!receipt);
@@ -1111,10 +1164,17 @@ function MessageBubble({
             + (mine
               ? "bg-brand-600 text-white"
               : "bg-gray-100 text-gray-900")
-            + (message.deleted_at ? " italic opacity-70" : "")
+            + (isDeleted ? " italic opacity-70" : "")
           }
         >
-          {text}
+          {isVoice ? (
+            <VoiceNoteBubble
+              voiceNote={message.voice_note!}
+              mine={!!mine}
+            />
+          ) : (
+            text
+          )}
         </div>
       </div>
       {mine && receipt && (

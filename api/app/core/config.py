@@ -93,6 +93,14 @@ class Settings(BaseSettings):
     # Directory where profile photos land. Mounted from a host volume in
     # prod (/srv/albus/avatars); in dev defaults to a sibling of the app.
     avatars_dir: str = "/app/avatars"
+    # Directory where chat voice-note audio lands (migration 0093).
+    # Mounted from a host volume in prod (/srv/albus/voice-notes).
+    # Sharded {hospital_id}/{yyyy-mm}/{id}.{ext} inside.
+    voice_notes_dir: str = "/app/voice-notes"
+    # Caps for a single voice note. 2 minutes / 10 MB is plenty for a
+    # "quick voice message" and bounds disk + upload abuse.
+    voice_note_max_bytes: int = 10 * 1024 * 1024
+    voice_note_max_seconds: int = 120
 
     # ---------------------------------------------------------------
     # Stripe Billing (migration 0080 / docs/billing-plan.md).

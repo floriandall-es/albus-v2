@@ -97,6 +97,12 @@ app.mount(
     name="avatars",
 )
 
+# Chat voice notes (migration 0093). NOT mounted as static — clinical
+# audio is access-controlled and streamed through
+# GET /api/voice-notes/{id}/audio after a membership check. We only
+# ensure the directory exists so the first upload doesn't 500.
+os.makedirs(settings.voice_notes_dir, exist_ok=True)
+
 
 # ---------------------------------------------------------------------------
 # Background scheduler (migration 0066: meeting reminders)
