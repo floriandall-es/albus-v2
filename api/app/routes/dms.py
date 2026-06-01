@@ -374,6 +374,38 @@ _CONTEXT_DM_MODELS = {
 }
 
 
+def _context_entity_visible(
+    ctx: RequestContext, context_kind: str, context_id: int
+) -> bool:
+    """Can the caller open a context DM about this entity?
+
+    The default rule is "you can see it via RLS" — a plain
+    ``ctx.db.get()`` scoped to the caller's tenant. That covers swaps
+    (always within the caller's tenant) and a member commenting on
+    their own bloqueo.
+
+    The one exception is a bloqueo routed cross-tenant: migration 0083
+    lets a member send a bloqueo to a reviewer in a *sibling* equipo,
+    and that block lives in the requester's tenant, invisible to the
+    reviewer's RLS session. So when the RLS lookup misses, we re-check
+    via AdminSessionLocal whether the caller is the block's assigned
+    reviewer — the same escape hatch the availability list endpoint
+    uses to surface cross-tenant blocks.
+    """
+    model = _CONTEXT_DM_MODELS[context_kind]
+    if ctx.db.get(model, context_id) is not None:
+        return True
+    if context_kind == "bloqueo":
+        with AdminSessionLocal() as adb:
+            block = adb.get(AvailabilityBlock, context_id)
+            if (
+                block is not None
+                and block.reviewer_membership_id == ctx.membership.id
+            ):
+                return True
+    return False
+
+
 class DMContextCreateRequest(BaseModel):
     """Open (find-or-create) a DM *in the context of* a Trivu entity —
     e.g. "Comentar" on a bloqueo or a swap. Distinct from the plain
@@ -414,11 +446,13 @@ def create_or_get_context_dm(
             status_code=404,
             detail="Esta persona no está disponible en tu hospital",
         )
-    # Verify the context entity is visible to the caller (RLS-scoped
-    # .get() returns None for other tenants) — you can only open a
-    # thread about a bloqueo / swap you can actually see.
-    model = _CONTEXT_DM_MODELS[payload.context_kind]
-    if ctx.db.get(model, payload.context_id) is None:
+    # Verify the context entity is visible to the caller — you can
+    # only open a thread about a bloqueo / swap you can actually see.
+    # (Handles the cross-tenant reviewer case for bloqueos; see
+    # _context_entity_visible.)
+    if not _context_entity_visible(
+        ctx, payload.context_kind, payload.context_id
+    ):
         raise HTTPException(
             status_code=404, detail="No encontramos ese elemento"
         )

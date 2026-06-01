@@ -1,7 +1,8 @@
 "use client";
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeftRight } from "lucide-react";
+import { ArrowLeftRight, MessageSquare } from "lucide-react";
 import {
   api,
   type SwapAssignmentSummary,
@@ -9,6 +10,56 @@ import {
   type SwapResponse,
 } from "@/lib/api";
 import { EmptyState, StatusPill } from "@/components/admin/ui";
+
+/**
+ * "Comentar" on a swap. Opens (or re-uses) an in-context DM with the
+ * given peer, tagged to the swap offer so the thread shows a
+ * "Cambio de turno · Ver →" banner. Used both ways:
+ *   - a potential responder messaging the requester (OpenOfferCard)
+ *   - the requester messaging a responder (MyOfferCard)
+ */
+function useCommentOnSwap() {
+  const router = useRouter();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: { peerPersonId: number; offerId: number }) =>
+      api.createContextDM({
+        peer_person_id: vars.peerPersonId,
+        context_kind: "swap",
+        context_id: vars.offerId,
+      }),
+    onSuccess: (conv) => {
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      router.push(`/me/mensajes?c=${conv.id}`);
+    },
+  });
+}
+
+function CommentButton({
+  onClick,
+  busy,
+  className,
+}: {
+  onClick: () => void;
+  busy: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      title="Comentar sobre este cambio"
+      className={
+        className
+        ?? "inline-flex items-center gap-1 text-xs text-brand-700 hover:underline disabled:opacity-50"
+      }
+    >
+      <MessageSquare className="h-3.5 w-3.5" />
+      {busy ? "Abriendo…" : "Comentar"}
+    </button>
+  );
+}
 
 export default function SwapsPage() {
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
@@ -166,6 +217,7 @@ function StatusBadge({ status }: { status: string }) {
 function MyOfferCard({ offer }: { offer: SwapOffer }) {
   const qc = useQueryClient();
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
+  const comment = useCommentOnSwap();
   // Migration 0084. When the tenant requires admin approval, we
   // warn the requester before they accept ("this won't apply
   // right away") and show a pending-admin banner once it's
@@ -266,6 +318,18 @@ function MyOfferCard({ offer }: { offer: SwapOffer }) {
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <StatusBadge status={r.status} />
+                <CommentButton
+                  busy={
+                    comment.isPending
+                    && comment.variables?.peerPersonId === r.responder_person_id
+                  }
+                  onClick={() =>
+                    comment.mutate({
+                      peerPersonId: r.responder_person_id,
+                      offerId: offer.id,
+                    })
+                  }
+                />
                 {r.status === "pending" && offer.status === "open" && (
                   <>
                     <button
@@ -522,6 +586,7 @@ function OpenOfferCard({
   const [respondMode, setRespondMode] = useState<null | "cover" | "swap">(
     null,
   );
+  const comment = useCommentOnSwap();
   const myResponse = offer.responses.find(
     (r) => r.responder_membership_id === myMembershipId,
   );
@@ -540,7 +605,18 @@ function OpenOfferCard({
             <div className="mt-0.5 text-xs text-gray-600">{offer.notes}</div>
           )}
         </div>
-        <StatusBadge status={offer.status} />
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <StatusBadge status={offer.status} />
+          <CommentButton
+            busy={comment.isPending}
+            onClick={() =>
+              comment.mutate({
+                peerPersonId: offer.requested_by_person_id,
+                offerId: offer.id,
+              })
+            }
+          />
+        </div>
       </div>
 
       {!readOnly && offer.status === "open" && !myResponse && (

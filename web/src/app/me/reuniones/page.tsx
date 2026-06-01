@@ -37,6 +37,7 @@ export default function MyMeetingsPage() {
   const openChat = useMutation({
     mutationFn: (meetingId: number) => api.openMeetingChat(meetingId),
     onSuccess: ({ conversation_id }) => {
+      qc.invalidateQueries({ queryKey: ["conversations"] });
       router.push(`/me/mensajes?c=${conversation_id}`);
     },
   });

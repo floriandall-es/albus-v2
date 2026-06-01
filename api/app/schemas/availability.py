@@ -67,6 +67,10 @@ class AvailabilityBlockOut(BaseModel):
     # reviewer_membership_id is NULL.
     reviewer_person_name: str | None = None
     reviewer_tenant_name: str | None = None
+    # Person id of the chosen reviewer (when reviewer_membership_id is
+    # set). Lets the member open an in-context DM with the reviewer
+    # ("Comentar" on their own bloqueo). NULL when no reviewer.
+    reviewer_person_id: int | None = None
     # Migration 0083 follow-up. Shifts the requester already has on
     # days inside this block's range — what the admin would be
     # asking the solver to re-assign if they approve. Populated ONLY

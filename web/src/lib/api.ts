@@ -312,6 +312,10 @@ export type AvailabilityBlock = {
    * fetch. NULL whenever reviewer_membership_id is NULL. */
   reviewer_person_name: string | null;
   reviewer_tenant_name: string | null;
+  /** Person id of the chosen reviewer. Lets the member open an
+   * in-context DM with them ("Comentar" on their own bloqueo).
+   * NULL whenever reviewer_membership_id is NULL. */
+  reviewer_person_id: number | null;
   /** Shifts the requester already has on days inside this block's
    * range — what the admin would be asking the solver to
    * re-assign if they approve. Populated ONLY for status='pending'

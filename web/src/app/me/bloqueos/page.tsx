@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
@@ -9,7 +10,7 @@ import {
 } from "@/lib/api";
 import { DateRangeField } from "@/components/admin/date-range";
 import { EmptyState, StatusPill } from "@/components/admin/ui";
-import { CalendarOff, Plus } from "lucide-react";
+import { CalendarOff, MessageSquare, Plus } from "lucide-react";
 
 const TYPE_LABEL: Record<AvailabilityBlockType, string> = {
   vacation: "Vacaciones",
@@ -32,6 +33,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default function BloqueosPage() {
   const qc = useQueryClient();
+  const router = useRouter();
   const list = useQuery({
     queryKey: ["my-availability"],
     queryFn: api.listMyAvailabilityRequests,
@@ -40,6 +42,21 @@ export default function BloqueosPage() {
   const del = useMutation({
     mutationFn: (id: number) => api.deleteMyAvailabilityRequest(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["my-availability"] }),
+  });
+  // "Comentar" → open (or re-use) an in-context DM with the reviewer
+  // this bloqueo was sent to, tagged to the bloqueo. Only offered when
+  // a reviewer person is known (reviewer_person_id != null).
+  const comment = useMutation({
+    mutationFn: (b: AvailabilityBlock) =>
+      api.createContextDM({
+        peer_person_id: b.reviewer_person_id!,
+        context_kind: "bloqueo",
+        context_id: b.id,
+      }),
+    onSuccess: (conv) => {
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      router.push(`/me/mensajes?c=${conv.id}`);
+    },
   });
 
   return (
@@ -133,6 +150,21 @@ export default function BloqueosPage() {
                     <StatusPill tone={tone}>
                       {STATUS_LABEL[b.status] ?? b.status}
                     </StatusPill>
+                    {b.reviewer_person_id != null && (
+                      <button
+                        className="inline-flex items-center gap-1 text-xs text-brand-700 hover:underline disabled:opacity-50"
+                        onClick={() => comment.mutate(b)}
+                        disabled={
+                          comment.isPending && comment.variables?.id === b.id
+                        }
+                        title={`Comentar con ${b.reviewer_person_name ?? "el revisor"}`}
+                      >
+                        <MessageSquare className="h-3.5 w-3.5" />
+                        {comment.isPending && comment.variables?.id === b.id
+                          ? "Abriendo…"
+                          : "Comentar"}
+                      </button>
+                    )}
                     {b.status === "pending" && (
                       <button
                         className="text-xs text-rose-700 hover:underline"

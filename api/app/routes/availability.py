@@ -134,7 +134,7 @@ def _serialize(
     block: AvailabilityBlock,
     person: Person,
     *,
-    reviewers: dict[int, tuple[str, str]] | None = None,
+    reviewers: dict[int, tuple[int, str, str]] | None = None,
     conflicts: dict[int, tuple[list[ConflictingShift], bool]] | None = None,
     ctx: RequestContext | None = None,
 ) -> AvailabilityBlockOut:
@@ -150,15 +150,18 @@ def _serialize(
     non-pending blocks we skip the lookup entirely (conflicts are
     only interesting before the decision is made).
     """
+    rev_person_id: int | None = None
     rev_name: str | None = None
     rev_tenant: str | None = None
     if block.reviewer_membership_id is not None:
         if reviewers is not None:
             hit = reviewers.get(block.reviewer_membership_id)
             if hit is not None:
-                rev_name, rev_tenant = hit
+                rev_person_id, rev_name, rev_tenant = hit
         else:
-            rev_name, rev_tenant = _reviewer_display(block.reviewer_membership_id)
+            rev_person_id, rev_name, rev_tenant = _reviewer_display(
+                block.reviewer_membership_id
+            )
     conflict_shifts: list[ConflictingShift] = []
     conflict_truncated = False
     if block.status == "pending":
@@ -185,6 +188,7 @@ def _serialize(
         reviewed_at=block.reviewed_at,
         review_notes=block.review_notes,
         reviewer_membership_id=block.reviewer_membership_id,
+        reviewer_person_id=rev_person_id,
         reviewer_person_name=rev_name,
         reviewer_tenant_name=rev_tenant,
         conflicting_shifts=conflict_shifts,
@@ -195,15 +199,15 @@ def _serialize(
 
 def _reviewer_display(
     reviewer_membership_id: int,
-) -> tuple[str | None, str | None]:
-    """Resolve a single reviewer_membership_id → (person_name,
-    tenant_name). Uses AdminSessionLocal so we can find the row even
-    when it belongs to a sibling tenant (RLS on the caller's
-    connection would otherwise hide it).
+) -> tuple[int | None, str | None, str | None]:
+    """Resolve a single reviewer_membership_id → (person_id,
+    person_name, tenant_name). Uses AdminSessionLocal so we can find
+    the row even when it belongs to a sibling tenant (RLS on the
+    caller's connection would otherwise hide it).
 
-    Returns (None, None) when the membership has been deleted since
-    the bloqueo was assigned (FK is ON DELETE SET NULL but a race
-    could still leave the id pointing at nothing).
+    Returns (None, None, None) when the membership has been deleted
+    since the bloqueo was assigned (FK is ON DELETE SET NULL but a
+    race could still leave the id pointing at nothing).
     """
     with AdminSessionLocal() as adb:
         row = (
@@ -214,9 +218,9 @@ def _reviewer_display(
             .first()
         )
     if row is None:
-        return (None, None)
+        return (None, None, None)
     _m, p, t = row
-    return (p.name, t.name)
+    return (p.id, p.name, t.name)
 
 
 # Cap on conflicting-shift rows reported per pending bloqueo. Past
@@ -292,11 +296,12 @@ def _resolve_conflicts(
 
 def _resolve_reviewers(
     blocks: list[AvailabilityBlock],
-) -> dict[int, tuple[str, str]]:
+) -> dict[int, tuple[int, str, str]]:
     """Bulk resolve every distinct reviewer_membership_id in `blocks`
-    → (person_name, tenant_name). One AdminSessionLocal round-trip;
-    list endpoints feed the result into _serialize via the
-    `reviewers=` kwarg to avoid N+1 lookups."""
+    → (person_id, person_name, tenant_name). One AdminSessionLocal
+    round-trip; list endpoints feed the result into _serialize via the
+    `reviewers=` kwarg to avoid N+1 lookups. person_id lets the member
+    open an in-context DM with their reviewer."""
     mids = {
         b.reviewer_membership_id
         for b in blocks
@@ -306,13 +311,13 @@ def _resolve_reviewers(
         return {}
     with AdminSessionLocal() as adb:
         rows = (
-            adb.query(Membership.id, Person.name, Tenant.name)
+            adb.query(Membership.id, Person.id, Person.name, Tenant.name)
             .join(Person, Person.id == Membership.person_id)
             .join(Tenant, Tenant.id == Membership.tenant_id)
             .filter(Membership.id.in_(mids))
             .all()
         )
-    return {mid: (pname, tname) for (mid, pname, tname) in rows}
+    return {mid: (pid, pname, tname) for (mid, pid, pname, tname) in rows}
 
 
 # ---------------------------------------------------------------------------

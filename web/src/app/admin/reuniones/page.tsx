@@ -1,6 +1,8 @@
 "use client";
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { MessageSquare } from "lucide-react";
 import { api, type Meeting } from "@/lib/api";
 import {
   Button,
@@ -29,9 +31,19 @@ import { formatLongDate } from "@/lib/dates";
  */
 export default function AdminMeetingsPage() {
   const qc = useQueryClient();
+  const router = useRouter();
   const list = useQuery({
     queryKey: ["meetings"],
     queryFn: api.listMeetings,
+  });
+  // "Abrir chat" → find-or-create the meeting's group chat and jump
+  // to the messaging surface with it selected.
+  const openChat = useMutation({
+    mutationFn: (meetingId: number) => api.openMeetingChat(meetingId),
+    onSuccess: ({ conversation_id }) => {
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      router.push(`/me/mensajes?c=${conversation_id}`);
+    },
   });
   const [editing, setEditing] = useState<
     { meeting: Meeting | null; defaultKind: "regular" | "ad_hoc" } | null
@@ -100,6 +112,10 @@ export default function AdminMeetingsPage() {
                 <MeetingRow
                   key={m.id}
                   meeting={m}
+                  onChat={() => openChat.mutate(m.id)}
+                  chatBusy={
+                    openChat.isPending && openChat.variables === m.id
+                  }
                   onEdit={() =>
                     setEditing({ meeting: m, defaultKind: "regular" })
                   }
@@ -133,6 +149,10 @@ export default function AdminMeetingsPage() {
                 <MeetingRow
                   key={m.id}
                   meeting={m}
+                  onChat={() => openChat.mutate(m.id)}
+                  chatBusy={
+                    openChat.isPending && openChat.variables === m.id
+                  }
                   onEdit={() =>
                     setEditing({ meeting: m, defaultKind: "ad_hoc" })
                   }
@@ -165,10 +185,14 @@ export default function AdminMeetingsPage() {
 
 function MeetingRow({
   meeting,
+  onChat,
+  chatBusy = false,
   onEdit,
   onDelete,
 }: {
   meeting: Meeting;
+  onChat: () => void;
+  chatBusy?: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -211,6 +235,10 @@ function MeetingRow({
           )}
         </div>
         <div className="flex shrink-0 gap-2">
+          <Button variant="secondary" onClick={onChat} disabled={chatBusy}>
+            <MessageSquare className="h-4 w-4" />
+            {chatBusy ? "Abriendo…" : "Chat"}
+          </Button>
           <Button variant="secondary" onClick={onEdit}>
             Editar
           </Button>

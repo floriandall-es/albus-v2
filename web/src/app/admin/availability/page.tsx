@@ -1,6 +1,8 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { MessageSquare } from "lucide-react";
 import {
   api,
   personLastName,
@@ -46,6 +48,33 @@ const STATUS_LABEL: Record<string, string> = {
   denied: "Denegada",
 };
 
+/**
+ * "Comentar" on a bloqueo from the admin side. Opens (or re-uses) an
+ * in-context DM with the *requester* — `peer_person_id` is the person
+ * who asked for the leave — tagged to this bloqueo so the thread shows
+ * a "Bloqueo de disponibilidad · Ver →" banner. Jumps to /me/mensajes
+ * with the conversation pre-selected.
+ */
+function useCommentOnBloqueo() {
+  const router = useRouter();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (b: AvailabilityBlock) =>
+      api.createContextDM({
+        peer_person_id: b.person_id,
+        context_kind: "bloqueo",
+        context_id: b.id,
+      }),
+    onSuccess: (conv) => {
+      // Mark the list stale so the new thread (and its context
+      // banner) shows immediately on the mensajes page rather than
+      // waiting for the 30s poll tick.
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      router.push(`/me/mensajes?c=${conv.id}`);
+    },
+  });
+}
+
 export default function AvailabilityPage() {
   const team = useQuery({ queryKey: ["team"], queryFn: api.listTeam });
   const [personId, setPersonId] = useState<number | "">("");
@@ -65,6 +94,7 @@ export default function AvailabilityPage() {
   });
 
   const qc = useQueryClient();
+  const comment = useCommentOnBloqueo();
   const del = useMutation({
     mutationFn: (id: number) => api.deleteAvailabilityBlock(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["availability"] }),
@@ -221,6 +251,18 @@ export default function AvailabilityPage() {
                         the buttons on one line; the row grows
                         horizontally to fit instead of breaking. */}
                     <div className="flex justify-end gap-2 whitespace-nowrap">
+                      <Button
+                        variant="secondary"
+                        onClick={() => comment.mutate(b)}
+                        disabled={
+                          comment.isPending && comment.variables?.id === b.id
+                        }
+                      >
+                        <MessageSquare className="h-4 w-4" />
+                        {comment.isPending && comment.variables?.id === b.id
+                          ? "Abriendo…"
+                          : "Comentar"}
+                      </Button>
                       <Button variant="secondary" onClick={() => setEditing(b)}>
                         Editar
                       </Button>
@@ -369,6 +411,7 @@ function PendingApprovals() {
       api.denyAvailabilityBlock(id, notes || null),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["availability"] }),
   });
+  const comment = useCommentOnBloqueo();
 
   if (pending.isLoading) return null;
   const rows = pending.data ?? [];
@@ -401,7 +444,19 @@ function PendingApprovals() {
                   {TYPE_LABEL[b.block_type] ?? b.block_type}
                 </td>
                 <td className="px-4 py-2 text-gray-600">{b.notes ?? "—"}</td>
-                <td className="px-4 py-2 text-right space-x-2">
+                <td className="px-4 py-2 text-right space-x-2 whitespace-nowrap">
+                  <Button
+                    variant="secondary"
+                    onClick={() => comment.mutate(b)}
+                    disabled={
+                      comment.isPending && comment.variables?.id === b.id
+                    }
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    {comment.isPending && comment.variables?.id === b.id
+                      ? "Abriendo…"
+                      : "Comentar"}
+                  </Button>
                   <Button
                     onClick={() => approve.mutate(b.id)}
                     disabled={approve.isPending}
