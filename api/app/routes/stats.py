@@ -187,38 +187,22 @@ def _team_comparison(
     Denominator: distinct non-disabled membership persons sharing the
     caller's category_id. RLS scopes every query to the tenant.
     """
-    # Peer set — same category, currently active. If the caller is the
-    # only one in their category (e.g. a sole Jefe de servicio), there
-    # are no same-category peers to compare against, so fall back to
-    # the whole team rather than hiding the comparison entirely.
+    # Peer set — distinct active members sharing the caller's category.
     my_category_id = ctx.membership.category_id
     cat_filter = (
         Membership.category_id.is_(None)
         if my_category_id is None
         else Membership.category_id == my_category_id
     )
-    cat_peers = (
+    peers = (
         ctx.db.query(Membership.person_id, Membership.id)
         .filter(Membership.disabled_at.is_(None), cat_filter)
         .all()
     )
-    if len({pid for pid, _ in cat_peers}) >= 2:
-        peers = cat_peers
-        comparison_scope = "category"
-    else:
-        peers = (
-            ctx.db.query(Membership.person_id, Membership.id)
-            .filter(Membership.disabled_at.is_(None))
-            .all()
-        )
-        comparison_scope = "team"
-
     peer_person_ids = {pid for pid, _mid in peers}
     peer_membership_ids = {mid for _pid, mid in peers}
     member_count = len(peer_person_ids)
-    # Genuinely alone (a one-person team) — nothing meaningful to
-    # compare, so omit the block.
-    if member_count < 2:
+    if member_count == 0:
         return None
 
     category_name: str | None = None
@@ -315,7 +299,6 @@ def _team_comparison(
     return TeamComparison(
         team_member_count=member_count,
         category_name=category_name,
-        comparison_scope=comparison_scope,
         avg_total_shifts=round(total / member_count, 1),
         avg_weekend_or_holiday_shifts=round(weekend / member_count, 1),
         my_swaps_requested=my_requested,

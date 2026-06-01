@@ -44,10 +44,6 @@ class TeamComparison(BaseModel):
     # can say "media de tu categoría (Adjunto)". Null when the caller
     # has no category set.
     category_name: str | None = None
-    # "category" when the averages are over same-category peers,
-    # "team" when the caller is the only one in their category and we
-    # fell back to the whole team. Drives the card's label.
-    comparison_scope: str = "category"
     # Mean assignments per member across the range (team total / members).
     avg_total_shifts: float
     # Same, restricted to weekend-or-holiday assignments.

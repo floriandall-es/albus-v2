@@ -476,11 +476,7 @@ export default function MyStatsPage() {
               </h3>
               <p className="mb-3 text-xs text-gray-500">
                 {hasComparison
-                  ? `Tus turnos (en color) frente a la media ${
-                      q.data.team_comparison?.comparison_scope === "team"
-                        ? "del equipo"
-                        : "de tu categoría"
-                    } (en gris), por tipo de actividad.`
+                  ? "Tus turnos (en color) frente a la media de tu categoría (en gris), por tipo de actividad."
                   : "Total de turnos por tipo de actividad en el rango."}
               </p>
               <ResponsiveContainer
@@ -529,17 +525,11 @@ export default function MyStatsPage() {
                       style={{ fontSize: 11, fontWeight: 600 }}
                     />
                   </Bar>
-                  {/* Media bar — neutral grey, lighter label. Only
-                      rendered when the backend supplied a comparison
-                      (>= 2 people). */}
+                  {/* Media bar — neutral grey, lighter label. */}
                   {hasComparison && (
                     <Bar
                       dataKey="avg"
-                      name={
-                        q.data.team_comparison?.comparison_scope === "team"
-                          ? "Media del equipo"
-                          : "Media de tu categoría"
-                      }
+                      name="Media de tu categoría"
                       fill="#cbd5e1"
                       radius={[0, 4, 4, 0]}
                     >
@@ -686,28 +676,14 @@ function TeamComparisonCard({
     <Card>
       <div className="p-5">
         <h3 className="mb-1 text-sm font-semibold text-gray-800">
-          {comparison.comparison_scope === "team"
-            ? "Comparativa con el equipo"
-            : "Comparativa con tu categoría"}
+          Comparativa con tu categoría
         </h3>
         <p className="mb-4 text-xs text-gray-500">
-          {comparison.comparison_scope === "team" ? (
-            <>
-              Tu actividad frente a la media de las{" "}
-              {comparison.team_member_count} personas del equipo
-              {comparison.category_name
-                ? " (eres la única persona de tu categoría)"
-                : ""}
-              , en el mismo rango.
-            </>
-          ) : (
-            <>
-              Tu actividad frente a la media de las{" "}
-              {comparison.team_member_count} personas de tu categoría
-              {comparison.category_name ? ` (${comparison.category_name})` : ""}
-              , en el mismo rango.
-            </>
-          )}
+          Tu actividad frente a la media de las {comparison.team_member_count}{" "}
+          {comparison.team_member_count === 1 ? "persona" : "personas"} de tu
+          categoría
+          {comparison.category_name ? ` (${comparison.category_name})` : ""}, en
+          el mismo rango.
         </p>
         <div className="space-y-5">
           <ComparisonMetric

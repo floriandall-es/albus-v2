@@ -410,9 +410,6 @@ export type TeamComparison = {
   /** Caller's category name; averages are scoped to it. Null when
    *  the caller has no category. */
   category_name: string | null;
-  /** "category" = averages over same-category peers; "team" = caller
-   *  is alone in their category, fell back to the whole team. */
-  comparison_scope: "category" | "team";
   avg_total_shifts: number;
   avg_weekend_or_holiday_shifts: number;
   /** Swap offers the caller created, + team mean. */
