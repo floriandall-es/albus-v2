@@ -325,7 +325,14 @@ function MyOfferCard({ offer }: { offer: SwapOffer }) {
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <StatusBadge status={r.status} />
+                {/* The response you accepted is in pending_admin too —
+                    show "Aceptada" (your choice) instead of repeating
+                    the offer header's "Esperando admin" pill. */}
+                {r.status === "pending_admin" ? (
+                  <StatusPill tone="success">Aceptada</StatusPill>
+                ) : (
+                  <StatusBadge status={r.status} />
+                )}
                 <CommentButton
                   busy={
                     comment.isPending
