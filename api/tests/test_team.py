@@ -10,7 +10,6 @@ def test_team_list_returns_admin(auth_client):
     me = rows[0]
     assert me["person_id"] == info["person_id"]
     assert me["fte_pct"] == 100
-    assert me["does_guardias"] is True
     assert me["category_id"] is None
 
 
@@ -22,16 +21,15 @@ def test_team_update_member_attrs(auth_client):
     )
     cat_id = r.json()["id"]
 
+    # Guardia-type + exemption fields were removed from the membership
+    # model in the equipos redesign; the updatable attrs are now
+    # category_id, fte_pct, roles, disabled, allowed_slot_ids, email.
     r = client.put(
         f"/api/team/{info['membership_id']}",
         headers=headers,
         json={
             "category_id": cat_id,
             "fte_pct": 80,
-            "does_guardias": False,
-            "guardia_types": ["12h", "24h"],
-            "exemption_type": "temporary",
-            "exemption_until": "2026-12-31",
         },
     )
     assert r.status_code == 200, r.text
@@ -39,20 +37,6 @@ def test_team_update_member_attrs(auth_client):
     assert body["category_id"] == cat_id
     assert body["category_name"] == "Adjunto"
     assert body["fte_pct"] == 80
-    assert body["does_guardias"] is False
-    assert body["guardia_types"] == ["12h", "24h"]
-    assert body["exemption_type"] == "temporary"
-    assert body["exemption_until"] == "2026-12-31"
-
-    # Clear exemption
-    r = client.put(
-        f"/api/team/{info['membership_id']}",
-        headers=headers,
-        json={"clear_exemption": True},
-    )
-    assert r.status_code == 200
-    assert r.json()["exemption_type"] is None
-    assert r.json()["exemption_until"] is None
 
 
 def test_team_update_invalid_fte_422(auth_client):
@@ -66,10 +50,12 @@ def test_team_update_invalid_fte_422(auth_client):
 
 
 def test_team_invite_creates_invitation(auth_client):
-    """The new invite contract: returns invitation_id + accept_url, does NOT
-    create a Person until accept. Full accept-flow is covered in
-    test_invitations.py — here we just sanity-check the response shape and
-    confirm /team count is unchanged until acceptance."""
+    """Invite contract: returns invitation_id + accept_url AND creates a
+    *pending* Person + Membership immediately (migration 0059), so the
+    invitee shows on /team right away with is_pending=True (they activate
+    later via the accept link). Full accept-flow is covered in
+    test_invitations.py — here we sanity-check the response shape and the
+    pending row."""
     client, headers, _info = auth_client
     r = client.post(
         "/api/categories", headers=headers, json={"name": "Residente"}
@@ -93,9 +79,13 @@ def test_team_invite_creates_invitation(auth_client):
     assert body["accept_url"].startswith("http")
     assert "/invite/" in body["accept_url"]
 
-    # /team unchanged — invitation pending
+    # The invitee now appears immediately as a pending member
+    # (admin + Carlos = 2). Carlos is is_pending until he activates.
     r = client.get("/api/team", headers=headers)
-    assert len(r.json()) == 1
+    rows = r.json()
+    assert len(rows) == 2
+    carlos = next(m for m in rows if m["person_email"] == "carlos@example.com")
+    assert carlos["is_pending"] is True
 
 
 def test_team_tenant_isolation(auth_client, second_tenant):
