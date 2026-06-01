@@ -67,6 +67,15 @@ def upgrade() -> None:
         ALTER TABLE messages
             ADD CONSTRAINT ck_messages_body_or_voice
             CHECK (body IS NOT NULL OR voice_note_id IS NOT NULL);
+
+        -- The app connects as albus_app (APP_DATABASE_URL), which only
+        -- gets privileges via explicit GRANTs — a new table is denied to
+        -- it otherwise. Forgetting this ships a 500 to production even
+        -- though migrations (run as the superuser) succeed; see the same
+        -- lesson called out in 0058/0089. `messages` already has its
+        -- grants (existing table), so the added column needs none.
+        GRANT SELECT, INSERT, UPDATE, DELETE ON voice_notes TO albus_app;
+        GRANT USAGE, SELECT ON SEQUENCE voice_notes_id_seq TO albus_app;
         """
     )
 
