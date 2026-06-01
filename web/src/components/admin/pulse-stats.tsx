@@ -12,9 +12,10 @@
  *   - Response rate (single line, % of eligible team who answered
  *     each week). Watch this before reading any other chart — if
  *     it's low the other lines are noise.
- *   - Per-question time-series (4 small line charts, one per core
- *     question). Rotating questions are excluded because each
- *     week's slot is a different metric.
+ *   - Per-question time-series (one small line chart per ENABLED
+ *     question — the recommended core plus any optional question the
+ *     admin turned on in /admin/pulso). A question that has data but
+ *     was since disabled still charts so its history isn't lost.
  *
  * The "enabled" gate copy points the admin back to /admin/pulso
  * when the feature is off — this component doesn't know how to
@@ -38,8 +39,9 @@ import {
 import { Card } from "@/components/admin/ui";
 import { api, type PulseQuestionStat } from "@/lib/api";
 
-// Kept in sync with services/pulse.py::CORE_QUESTIONS — rotating
-// questions are intentionally excluded from the chart grid.
+// Fallback order used only until the catalogue query resolves. The
+// real chart set is driven by which questions the tenant has ENABLED
+// (core + any optional the admin turned on) — see PulseStats.
 const CORE_KEYS = [
   "fairness",
   "workload",
@@ -47,6 +49,10 @@ const CORE_KEYS = [
   "predictability",
 ] as const;
 
+// Curated short titles + direction hints for the known catalogue keys.
+// Any question not listed here falls back to its catalogue prompt + a
+// hint derived from its scale labels (hintFromLabels), so new optional
+// questions still render sensibly without a code change.
 const QUESTION_TITLES: Record<string, string> = {
   fairness: "Reparto justo",
   workload: "Carga de trabajo",
@@ -55,6 +61,10 @@ const QUESTION_TITLES: Record<string, string> = {
   // but the display matches what the score actually measures:
   // higher = more last-minute changes = LESS predictable.
   predictability: "Cambios de última hora",
+  team_support: "Apoyo del equipo",
+  leadership_support: "Apoyo de responsables",
+  wellbeing: "Bienestar general",
+  recommend: "Recomendaría el equipo",
 };
 
 const QUESTION_HINTS: Record<string, string> = {
@@ -62,7 +72,20 @@ const QUESTION_HINTS: Record<string, string> = {
   workload: "Más alto = más pesado",
   recovery: "Más alto = más descansado",
   predictability: "Más alto = más cambios imprevistos",
+  team_support: "Más alto = más apoyo",
+  leadership_support: "Más alto = más apoyo",
+  wellbeing: "Más alto = mejor",
+  recommend: "Más alto = más probable",
 };
+
+/** Generic direction hint for a question we don't have a curated
+ * line for — uses the top scale label (scales are monotonic worst→
+ * best by contract). e.g. labels ["Ninguno",…,"Total"] → "Más alto =
+ * Total". */
+function hintFromLabels(labels: string[]): string {
+  const top = labels[labels.length - 1];
+  return top ? `Más alto = ${top}` : "";
+}
 
 export function PulseStats() {
   const stats = useQuery({
@@ -72,6 +95,10 @@ export function PulseStats() {
   const settings = useQuery({
     queryKey: ["admin-pulse-settings"],
     queryFn: api.getAdminPulseSettings,
+  });
+  const catalogue = useQuery({
+    queryKey: ["admin-pulse-catalogue"],
+    queryFn: api.getAdminPulseCatalogue,
   });
   const enabled = settings.data?.enabled ?? false;
   if (!enabled) {
@@ -113,6 +140,29 @@ export function PulseStats() {
       </Card>
     );
   }
+  // Which questions to chart: every ENABLED question from the
+  // catalogue (core + admin-enabled optional), in catalogue order —
+  // plus any question that already has data in the window even if it's
+  // since been disabled, so turning one off doesn't erase its history.
+  // Falls back to the core keys until the catalogue query resolves.
+  const ordered = catalogue.data
+    ? [...catalogue.data.core, ...catalogue.data.rotating]
+    : null;
+  const weeklyKeys = new Set(data.weekly.map((w) => w.question_key));
+  const chartKeys: { key: string; title: string; hint: string }[] = ordered
+    ? ordered
+        .filter((q) => q.enabled || weeklyKeys.has(q.key))
+        .map((q) => ({
+          key: q.key,
+          title: QUESTION_TITLES[q.key] ?? q.prompt,
+          hint: QUESTION_HINTS[q.key] ?? hintFromLabels(q.labels),
+        }))
+    : CORE_KEYS.map((k) => ({
+        key: k,
+        title: QUESTION_TITLES[k] ?? k,
+        hint: QUESTION_HINTS[k] ?? "",
+      }));
+
   return (
     <div className="space-y-6">
       <ResponseRateCard
@@ -120,10 +170,12 @@ export function PulseStats() {
         eligibleCount={data.eligible_count}
       />
       <div className="grid gap-4 lg:grid-cols-2">
-        {CORE_KEYS.map((key) => (
+        {chartKeys.map((q) => (
           <QuestionTimeseriesCard
-            key={key}
-            questionKey={key}
+            key={q.key}
+            questionKey={q.key}
+            title={q.title}
+            hint={q.hint}
             weekly={data.weekly}
           />
         ))}
@@ -233,9 +285,13 @@ function ResponseRateCard({
 
 function QuestionTimeseriesCard({
   questionKey,
+  title,
+  hint,
   weekly,
 }: {
   questionKey: string;
+  title: string;
+  hint: string;
   weekly: PulseQuestionStat[];
 }) {
   const series = useMemo(() => {
@@ -249,8 +305,6 @@ function QuestionTimeseriesCard({
         count: w.response_count,
       }));
   }, [weekly, questionKey]);
-  const title = QUESTION_TITLES[questionKey] ?? questionKey;
-  const hint = QUESTION_HINTS[questionKey] ?? "";
   const latest = series[series.length - 1];
   return (
     <Card>
