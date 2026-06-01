@@ -1056,8 +1056,9 @@ def admin_approve_response(
     parties are notified, and the audit trail records which admin
     decided + when.
 
-    The deciding admin must not be the requester or the responder —
-    even an admin can't rubber-stamp their own cambio.
+    An admin who is the requester or responder may still approve —
+    they already control assignments directly, so a separate-admin
+    requirement would only deadlock single-admin teams.
     """
     if "admin" not in ctx.membership.roles:
         raise HTTPException(status_code=403, detail="Admin role required")
@@ -1074,13 +1075,10 @@ def admin_approve_response(
     responder_m = ctx.db.get(Membership, r.responder_membership_id)
     if responder_m is None:
         raise HTTPException(status_code=400, detail="Respondedor inválido")
-    if ctx.membership.id in (
-        o.requested_by_membership_id,
-        responder_m.id,
-    ):
-        raise HTTPException(
-            status_code=403, detail="No puedes aprobar tu propio cambio"
-        )
+    # NOTE: an admin who is the requester or responder CAN approve. The
+    # admin already has full authority over assignments (direct edit),
+    # so a self-approval block adds no real protection and only
+    # deadlocks single-admin teams.
     original = _assignment_or_404(ctx, o.assignment_id)
     _finalize_swap(
         ctx,
@@ -1117,8 +1115,8 @@ def admin_veto_response(
         shouldn't be swappable (admin needs the requester on
         this one, or the schedule is about to change).
 
-    Same self-veto guard as approve: the deciding admin can't be
-    the requester or the responder.
+    Like approve, an admin who is a party to the cambio may still
+    decide it.
     """
     if "admin" not in ctx.membership.roles:
         raise HTTPException(status_code=403, detail="Admin role required")
@@ -1135,13 +1133,8 @@ def admin_veto_response(
     responder_m = ctx.db.get(Membership, r.responder_membership_id)
     if responder_m is None:
         raise HTTPException(status_code=400, detail="Respondedor inválido")
-    if ctx.membership.id in (
-        o.requested_by_membership_id,
-        responder_m.id,
-    ):
-        raise HTTPException(
-            status_code=403, detail="No puedes denegar tu propio cambio"
-        )
+    # Same as approve: an admin who is a party to the cambio may still
+    # decide it (no separate-admin requirement).
 
     now = datetime.now(timezone.utc)
     r.status = "declined"
