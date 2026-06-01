@@ -798,6 +798,16 @@ export type SwapResponseStatus =
  * "entire_offer" closes the cambio for good. */
 export type SwapVetoScope = "response_only" | "entire_offer";
 
+export type SwapSimViolation = {
+  kind: string;
+  message: string;
+  severity: string | null;
+};
+export type SwapSimulation = {
+  would_violate: boolean;
+  violations: SwapSimViolation[];
+};
+
 export type SwapAssignmentSummary = {
   id: number;
   schedule_id: number;
@@ -2784,6 +2794,14 @@ export const api = {
     request<SwapOffer>(
       `/api/swap-offers/${offerId}/responses/${responseId}/admin-veto`,
       { method: "POST", body: JSON.stringify(body) },
+    ),
+  /** Dry-run a swap through the rule engine: returns the rule
+   * violations applying this response WOULD newly create (pre-existing
+   * conflicts excluded). Advisory only — never blocks. Visible to the
+   * offer's requester and to admins. */
+  simulateSwapResponse: (offerId: number, responseId: number) =>
+    request<SwapSimulation>(
+      `/api/swap-offers/${offerId}/responses/${responseId}/simulate`,
     ),
   /** Per-person view of swap usage in a given month.
    *

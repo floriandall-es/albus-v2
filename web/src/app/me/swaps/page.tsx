@@ -10,6 +10,7 @@ import {
   type SwapResponse,
 } from "@/lib/api";
 import { EmptyState, StatusPill } from "@/components/admin/ui";
+import { SwapRuleWarning } from "@/components/swaps/rule-warning";
 
 /**
  * "Comentar" on a swap. Opens (or re-uses) an in-context DM with the
@@ -297,11 +298,9 @@ function MyOfferCard({ offer }: { offer: SwapOffer }) {
       {offer.responses.length > 0 && (
         <ul className="mt-3 space-y-2 border-t pt-3">
           {offer.responses.map((r) => (
-            <li
-              key={r.id}
-              className="flex items-start justify-between gap-3 text-sm"
-            >
-              <div>
+            <li key={r.id} className="text-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
                 <div className="font-medium">
                   {r.responder_person_name}{" "}
                   <span className="font-normal text-gray-600">
@@ -381,6 +380,11 @@ function MyOfferCard({ offer }: { offer: SwapOffer }) {
                   </>
                 )}
               </div>
+              </div>
+              {/* Dry-run the rule engine before the requester accepts. */}
+              {r.status === "pending" && offer.status === "open" && (
+                <SwapRuleWarning offerId={offer.id} responseId={r.id} />
+              )}
             </li>
           ))}
         </ul>

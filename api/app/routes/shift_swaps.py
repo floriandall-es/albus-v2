@@ -57,6 +57,11 @@ from app.services.email_templates import (
     swap_vetoed_email,
 )
 from app.services.scheduler import slots_overlap_in_time
+from app.services.violations import (
+    Violation,
+    find_violations,
+    violation_signature,
+)
 
 logger = logging.getLogger("app.shift_swaps")
 router = APIRouter()
@@ -1626,4 +1631,121 @@ def my_swap_quota(
         period=period_date.strftime("%Y-%m"),
         used=used,
         limit=ctx.tenant.max_swaps_per_member_per_month,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Rule-violation simulation — "would applying this swap break any rules?"
+# ---------------------------------------------------------------------------
+
+
+class SwapSimViolation(BaseModel):
+    kind: str
+    message: str
+    severity: str | None = None
+
+
+class SwapSimulationOut(BaseModel):
+    """Result of dry-running a swap through the rule engine. `violations`
+    are the rule breaches the swap would NEWLY introduce (pre-existing
+    conflicts are excluded). Advisory only — never blocks the swap."""
+
+    would_violate: bool
+    violations: list[SwapSimViolation]
+
+
+def _simulate_swap_violations(
+    ctx: RequestContext,
+    o: ShiftSwapOffer,
+    r: ShiftSwapResponse,
+) -> list[Violation]:
+    """Replay this (offer, response) through the rule engine without
+    persisting, and return the violations it would NEWLY create.
+
+    A swap only mutates `Assignment.person_id` on one (cover) or two
+    (swap) rows. We snapshot the affected schedule(s)' current
+    violations, apply that mutation inside a SAVEPOINT, re-run
+    find_violations, roll the savepoint back, and diff by signature so
+    only swap-introduced breaches survive. Cheap (find_violations is a
+    few queries); safe (nothing commits)."""
+    original = ctx.db.get(Assignment, o.assignment_id)
+    if original is None:
+        return []
+    responder_m = ctx.db.get(Membership, r.responder_membership_id)
+    requester_m = ctx.db.get(Membership, o.requested_by_membership_id)
+    if responder_m is None or requester_m is None:
+        return []
+
+    their: Assignment | None = None
+    if r.kind == "swap" and r.swap_assignment_id is not None:
+        their = ctx.db.get(Assignment, r.swap_assignment_id)
+
+    schedule_ids = {original.schedule_id}
+    if their is not None:
+        schedule_ids.add(their.schedule_id)
+    schedules = [
+        s
+        for s in (ctx.db.get(Schedule, sid) for sid in schedule_ids)
+        if s is not None
+    ]
+
+    # Baseline: conflicts that already exist (so we don't blame the
+    # swap for pre-existing breaches).
+    baseline: set[str] = set()
+    for s in schedules:
+        for v in find_violations(ctx.db, s):
+            baseline.add(violation_signature(v))
+
+    # Dry-run the mutation inside a savepoint, then roll back.
+    after: list[Violation] = []
+    sp = ctx.db.begin_nested()
+    try:
+        original.person_id = responder_m.person_id
+        if their is not None:
+            their.person_id = requester_m.person_id
+        ctx.db.flush()
+        for s in schedules:
+            after.extend(find_violations(ctx.db, s))
+    finally:
+        sp.rollback()
+
+    seen: set[str] = set()
+    new_violations: list[Violation] = []
+    for v in after:
+        sig = violation_signature(v)
+        if sig in baseline or sig in seen:
+            continue
+        seen.add(sig)
+        new_violations.append(v)
+    return new_violations
+
+
+@router.get(
+    "/swap-offers/{offer_id}/responses/{response_id}/simulate",
+    response_model=SwapSimulationOut,
+)
+def simulate_swap_response(
+    offer_id: int,
+    response_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> SwapSimulationOut:
+    """Preview the rule violations applying this response would create.
+
+    Visible to the offer's requester (the member-accept flow) and to
+    admins (the approval card). Advisory — does not change anything."""
+    o = _offer_or_404(ctx, offer_id)
+    is_requester = o.requested_by_membership_id == ctx.membership.id
+    is_admin = "admin" in ctx.membership.roles
+    if not (is_requester or is_admin):
+        raise HTTPException(status_code=403, detail="No autorizado")
+    r = _response_or_404(ctx, o, response_id)
+    violations = _simulate_swap_violations(ctx, o, r)
+    return SwapSimulationOut(
+        would_violate=len(violations) > 0,
+        violations=[
+            SwapSimViolation(
+                kind=v.kind, message=v.message, severity=v.severity
+            )
+            for v in violations
+        ],
     )

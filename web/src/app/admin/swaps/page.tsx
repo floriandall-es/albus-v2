@@ -21,6 +21,7 @@ import {
   PageHeader,
   StatusPill,
 } from "@/components/admin/ui";
+import { SwapRuleWarning } from "@/components/swaps/rule-warning";
 
 export default function AdminSwapsPage() {
   const q = useQuery({
@@ -546,6 +547,8 @@ function PendingAdminCard({ offer }: { offer: SwapOffer }) {
                   </button>
                 </div>
               </div>
+              {/* Dry-run: would approving this break any rule? */}
+              <SwapRuleWarning offerId={offer.id} responseId={r.id} />
             </li>
           ))}
       </ul>
