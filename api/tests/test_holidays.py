@@ -112,7 +112,7 @@ def test_holidays_admin_required(auth_client, client):
     token = r.json()["accept_url"].rsplit("/", 1)[-1]
     r = client.post(
         f"/api/invitations/by-token/{token}/accept",
-        json={"password": "memberH123"},
+        json={"accept_terms": True, "password": "memberH123"},
     )
     member_jwt = r.json()["access_token"]
     member_headers = {"Authorization": f"Bearer {member_jwt}"}

@@ -1,22 +1,28 @@
 import re
 
 
-def test_signup_login_me_flow(client, unique_email):
+def test_signup_login_me_flow(client, unique_email, cnh_hospital):
     r = client.post(
         "/api/signup",
         json={
-            "tenant_name": "Hospital General Test",
-            "person_name": "Alice Admin",
+            "first_name": "Alice",
+            "last_name": "Admin",
             "email": unique_email,
             "password": "supersecret1",
+            "accept_terms": True,
+            "hospital_id": cnh_hospital,
+            "servicio_name": "Cardiología Test",
+            "equipo_name": "Equipo General Test",
         },
     )
     assert r.status_code == 201, r.text
     body = r.json()
     assert body["access_token"]
-    # Slug is server-generated from the tenant name. Allow optional collision
-    # suffix because parallel test runs may have created the same slug already.
-    assert re.match(r"^hospital-general-test(-\d+|-[0-9a-f]{6})?$", body["tenant"]["slug"])
+    # Slug is server-generated (Phase D.2: derived from equipo + servicio,
+    # with a uniqueness suffix). Assert it's a well-formed slug rather than
+    # a specific value — the exact derivation is covered in
+    # test_signup_slug_generation.
+    assert re.match(r"^[a-z0-9-]+$", body["tenant"]["slug"])
     assert body["person"]["email"] == unique_email
     assert len(body["memberships"]) == 1
     assert "admin" in body["memberships"][0]["roles"]
@@ -44,14 +50,18 @@ def test_signup_login_me_flow(client, unique_email):
     assert me["departments"] == []
 
 
-def test_login_wrong_password(client, unique_email):
+def test_login_wrong_password(client, unique_email, cnh_hospital):
+    suffix = unique_email.split("@")[0]
     client.post(
         "/api/signup",
         json={
-            "tenant_name": "Hospital Wrong-Pass",
-            "person_name": "X",
+            "first_name": "X",
             "email": unique_email,
             "password": "supersecret1",
+            "accept_terms": True,
+            "hospital_id": cnh_hospital,
+            "servicio_name": f"Servicio {suffix}",
+            "equipo_name": f"Equipo {suffix}",
         },
     )
     r = client.post(

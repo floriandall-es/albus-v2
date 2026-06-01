@@ -42,7 +42,7 @@ def test_complete_requires_admin(auth_client, client):
     token = r.json()["accept_url"].rsplit("/", 1)[-1]
     r = client.post(
         f"/api/invitations/by-token/{token}/accept",
-        json={"password": "regularpw1"},
+        json={"accept_terms": True, "password": "regularpw1"},
     )
     member_token = r.json()["access_token"]
 

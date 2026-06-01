@@ -41,7 +41,7 @@ def test_full_invite_accept_flow(auth_client, client):
     # Accept with a chosen password
     r = client.post(
         f"/api/invitations/by-token/{token}/accept",
-        json={"password": "carloss3cret", "person_name": "Carlos Pérez"},
+        json={"accept_terms": True, "password": "carloss3cret", "person_name": "Carlos Pérez"},
     )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -54,7 +54,7 @@ def test_full_invite_accept_flow(auth_client, client):
     # Token cannot be reused
     r = client.post(
         f"/api/invitations/by-token/{token}/accept",
-        json={"password": "anothersecret"},
+        json={"accept_terms": True, "password": "anothersecret"},
     )
     assert r.status_code == 400
 
@@ -110,7 +110,7 @@ def test_expired_invitation_rejected(auth_client, client):
     assert r.status_code == 404
     r = client.post(
         f"/api/invitations/by-token/{token}/accept",
-        json={"password": "somepassword"},
+        json={"accept_terms": True, "password": "somepassword"},
     )
     assert r.status_code == 400
 
@@ -187,7 +187,7 @@ def test_existing_person_new_tenant_keeps_password(auth_client, second_tenant, c
 
     r = client.post(
         f"/api/invitations/by-token/{token}/accept",
-        json={"password": "ignored-password-because-existing-user"},
+        json={"accept_terms": True, "password": "ignored-password-because-existing-user"},
     )
     assert r.status_code == 200
     body = r.json()
@@ -260,7 +260,7 @@ def test_non_admin_cannot_invite(auth_client, client):
     token = _token_from_url(r.json()["accept_url"])
     r = client.post(
         f"/api/invitations/by-token/{token}/accept",
-        json={"password": "regularpass1"},
+        json={"accept_terms": True, "password": "regularpass1"},
     )
     member_token = r.json()["access_token"]
 
@@ -391,7 +391,7 @@ def test_reissue_rejects_accepted(auth_client, client):
 
     r = client.post(
         f"/api/invitations/by-token/{token}/accept",
-        json={"password": "donesecret1"},
+        json={"accept_terms": True, "password": "donesecret1"},
     )
     assert r.status_code == 200
 
@@ -410,7 +410,7 @@ def test_reissue_requires_admin(auth_client, client):
     member_token = r.json()["accept_url"].rsplit("/", 1)[-1]
     r = client.post(
         f"/api/invitations/by-token/{member_token}/accept",
-        json={"password": "regular12"},
+        json={"accept_terms": True, "password": "regular12"},
     )
     member_jwt = r.json()["access_token"]
 

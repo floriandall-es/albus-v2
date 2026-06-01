@@ -83,7 +83,7 @@ def _onboard(client, headers, email, name="P"):
     token = r.json()["accept_url"].rsplit("/", 1)[-1]
     r = client.post(
         f"/api/invitations/by-token/{token}/accept",
-        json={"password": "memberpass"},
+        json={"accept_terms": True, "password": "memberpass"},
     )
     return r.json()["person"]["id"]
 

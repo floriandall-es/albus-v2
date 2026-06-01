@@ -20,14 +20,22 @@ import pytest
 from app.core.config import settings
 
 
-def _signup(client, name: str, email: str, password: str = "supersecret1") -> dict:
+def _signup(
+    client, hospital_id: int, name: str, email: str, password: str = "supersecret1"
+) -> dict:
+    suffix = uuid.uuid4().hex[:6]
     r = client.post(
         "/api/signup",
         json={
-            "tenant_name": name,
-            "person_name": "User",
+            "first_name": "User",
             "email": email,
             "password": password,
+            "accept_terms": True,
+            "hospital_id": hospital_id,
+            # Fresh servicio per call → the equipo is auto-approved as its
+            # first one, so each signup yields an independent tenant.
+            "servicio_name": f"{name} {suffix}",
+            "equipo_name": name,
         },
     )
     assert r.status_code == 201, r.text
@@ -44,15 +52,16 @@ def _invite_and_accept(client, headers, email: str, person_name: str, password: 
     accept_url = r.json()["accept_url"]
     token = accept_url.rsplit("/", 1)[-1]
     # The accept endpoint requires a password field even for existing
-    # persons (where it's ignored — see test_existing_person_new_tenant_keeps_password).
-    body = {"password": password or "ignored-existing-user"}
+    # persons (where it's ignored — see test_existing_person_new_tenant_keeps_password),
+    # plus terms acceptance (migration 0039).
+    body = {"accept_terms": True, "password": password or "ignored-existing-user"}
     r = client.post(f"/api/invitations/by-token/{token}/accept", json=body)
     assert r.status_code == 200, r.text
     return r.json()
 
 
 @pytest.fixture
-def two_membership_user(client):
+def two_membership_user(client, cnh_hospital):
     """Create Alice with admin memberships in two tenants. Returns (email,
     password, [tenant_a_id, tenant_b_id])."""
     suffix = uuid.uuid4().hex[:6]
@@ -60,13 +69,13 @@ def two_membership_user(client):
     password = "supersecret1"
 
     # Tenant A — Alice signs up.
-    a = _signup(client, f"Hospital A {suffix}", email, password)
+    a = _signup(client, cnh_hospital, f"Equipo A {suffix}", email, password)
     a_token = a["access_token"]
     tenant_a_id = a["tenant"]["id"]
 
     # Tenant B — different admin signs up, then invites Alice.
     other_email = f"bob-{suffix}@example.com"
-    b = _signup(client, f"Hospital B {suffix}", other_email, password)
+    b = _signup(client, cnh_hospital, f"Equipo B {suffix}", other_email, password)
     b_headers = {"Authorization": f"Bearer {b['access_token']}"}
     tenant_b_id = b["tenant"]["id"]
 
@@ -77,10 +86,10 @@ def two_membership_user(client):
     return email, password, [tenant_a_id, tenant_b_id], a_token
 
 
-def test_single_membership_returns_access_token(client):
+def test_single_membership_returns_access_token(client, cnh_hospital):
     suffix = uuid.uuid4().hex[:6]
     email = f"solo-{suffix}@example.com"
-    _signup(client, f"Hospital Solo {suffix}", email)
+    _signup(client, cnh_hospital, f"Equipo Solo {suffix}", email)
 
     r = client.post("/api/login", json={"email": email, "password": "supersecret1"})
     assert r.status_code == 200, r.text
@@ -90,12 +99,12 @@ def test_single_membership_returns_access_token(client):
     assert body["tenant"]["id"]
 
 
-def test_zero_memberships_returns_401(client, db_url):
+def test_zero_memberships_returns_401(client, db_url, cnh_hospital):
     """A Person row with no memberships at all (rare — could happen if all
     memberships were removed) should not be able to log in."""
     suffix = uuid.uuid4().hex[:6]
     email = f"orphan-{suffix}@example.com"
-    body = _signup(client, f"Hospital Orphan {suffix}", email)
+    body = _signup(client, cnh_hospital, f"Equipo Orphan {suffix}", email)
 
     # Strip the membership directly via the migrations role to simulate.
     from sqlalchemy import create_engine, text as _text
@@ -143,13 +152,13 @@ def test_select_tenant_exchanges_pre_auth_for_jwt(client, two_membership_user):
     assert r.status_code == 200
 
 
-def test_select_tenant_rejects_non_member(client, two_membership_user):
+def test_select_tenant_rejects_non_member(client, two_membership_user, cnh_hospital):
     email, password, tenant_ids, _ = two_membership_user
     r = client.post("/api/login", json={"email": email, "password": password})
     pre_auth = r.json()["pre_auth_token"]
 
     # Sign up an unrelated tenant Alice isn't a member of.
-    unrelated = _signup(client, f"Hospital Otro {uuid.uuid4().hex[:6]}",
+    unrelated = _signup(client, cnh_hospital, f"Equipo Otro {uuid.uuid4().hex[:6]}",
                         f"other-{uuid.uuid4().hex[:6]}@example.com")
     unrelated_id = unrelated["tenant"]["id"]
     assert unrelated_id not in tenant_ids

@@ -13,7 +13,7 @@ def _invite_member(client, headers, email, name="Member") -> int:
     token = r.json()["accept_url"].rsplit("/", 1)[-1]
     r = client.post(
         f"/api/invitations/by-token/{token}/accept",
-        json={"password": "membermember"},
+        json={"accept_terms": True, "password": "membermember"},
     )
     return r.json()["person"]["id"]
 
@@ -142,7 +142,7 @@ def test_availability_admin_required(auth_client, client):
     token = r.json()["accept_url"].rsplit("/", 1)[-1]
     r = client.post(
         f"/api/invitations/by-token/{token}/accept",
-        json={"password": "regav1234"},
+        json={"accept_terms": True, "password": "regav1234"},
     )
     member_jwt = r.json()["access_token"]
     member_headers = {"Authorization": f"Bearer {member_jwt}"}

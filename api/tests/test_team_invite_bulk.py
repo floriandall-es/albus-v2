@@ -151,7 +151,7 @@ def test_non_admin_cannot_preview_or_commit(auth_client, client):
     token = r.json()["accept_url"].rsplit("/", 1)[-1]
     r = client.post(
         f"/api/invitations/by-token/{token}/accept",
-        json={"password": "memberpass1"},
+        json={"accept_terms": True, "password": "memberpass1"},
     )
     member_token = r.json()["access_token"]
     member_headers = {"Authorization": f"Bearer {member_token}"}
@@ -241,7 +241,7 @@ def test_commit_partial_skips_already_member(auth_client, client, second_tenant)
     token = r.json()["accept_url"].rsplit("/", 1)[-1]
     r = client.post(
         f"/api/invitations/by-token/{token}/accept",
-        json={"password": "secret123"},
+        json={"accept_terms": True, "password": "secret123"},
     )
     assert r.status_code == 200
 
