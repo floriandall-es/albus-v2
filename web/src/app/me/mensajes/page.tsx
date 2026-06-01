@@ -42,6 +42,7 @@ import {
   type ReadReceipt,
 } from "@/lib/api";
 import { Avatar } from "@/components/schedule/planning-grid";
+import { useChatRealtime, type ChatEvent } from "@/lib/use-realtime";
 
 /**
  * /me/mensajes — Phase 2A + 2B DM UI.
@@ -51,17 +52,17 @@ import { Avatar } from "@/components/schedule/planning-grid";
  * active conversation linkable (the "Mensaje" buttons on the
  * directory deep-link here).
  *
- * No realtime (Phase 3 territory). Polling strategy:
- *   - Active conversation: 5s. Tight enough that the room
- *     feels responsive without committing to websockets.
- *   - Conversation list (background): 30s. Refresh-on-focus
- *     via react-query defaults catches the "I was in another
- *     tab" case.
- * Marking as read happens automatically the moment a
- * conversation becomes active and after a successful send.
+ * Realtime: an SSE stream (useChatRealtime) pushes message / read /
+ * message_deleted events while the page is open, so the room updates
+ * the instant the server emits. The polls below are now only a
+ * SAFETY NET for a dropped stream (offline, proxy hiccup, expired
+ * session) — hence the relaxed intervals. Refresh-on-focus via
+ * react-query defaults still catches the "I was in another tab" case.
+ * Marking as read happens automatically the moment a conversation
+ * becomes active and after a successful send.
  */
-const ACTIVE_POLL_INTERVAL_MS = 5_000;
-const LIST_POLL_INTERVAL_MS = 30_000;
+const ACTIVE_POLL_INTERVAL_MS = 20_000;
+const LIST_POLL_INTERVAL_MS = 60_000;
 
 export default function MensajesPage() {
   const router = useRouter();
@@ -85,6 +86,37 @@ export default function MensajesPage() {
     // refresh while the page is open. Focus-refetch also kicks
     // in via React Query's defaults.
     refetchInterval: LIST_POLL_INTERVAL_MS,
+  });
+
+  // Realtime: push events while the page is open. Each event nudges
+  // the relevant React Query cache so the UI updates instantly; the
+  // slow polls above remain as a fallback if the stream drops.
+  useChatRealtime((ev: ChatEvent) => {
+    if (ev.type === "message") {
+      // Append to the open conversation's message cache (dedupe by id
+      // so the sender's own optimistic insert isn't duplicated).
+      qc.setQueryData<DMMessage[]>(
+        ["messages", ev.conversation_id],
+        (prev) => {
+          if (!prev) return prev; // not the open conversation — list refresh covers it
+          if (prev.some((m) => m.id === ev.message.id)) return prev;
+          return [...prev, ev.message];
+        },
+      );
+      // List preview / ordering / unread badge.
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+      qc.invalidateQueries({ queryKey: ["my-unread-count"] });
+    } else if (ev.type === "read") {
+      // Someone read up to a point → their "Visto" can move.
+      qc.invalidateQueries({
+        queryKey: ["receipts", ev.conversation_id],
+      });
+    } else if (ev.type === "message_deleted") {
+      qc.invalidateQueries({
+        queryKey: ["messages", ev.conversation_id],
+      });
+      qc.invalidateQueries({ queryKey: ["conversations"] });
+    }
   });
 
   const [composeOpen, setComposeOpen] = useState(false);

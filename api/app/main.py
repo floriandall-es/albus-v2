@@ -31,6 +31,7 @@ from app.routes import (
     public_catalog,
     pulse,
     push,
+    realtime,
     schedules,
     servicios,
     shift_swaps,
@@ -84,6 +85,7 @@ app.include_router(stripe_webhook.router, prefix="/api")
 app.include_router(billing.router, prefix="/api")
 app.include_router(push.router, prefix="/api")
 app.include_router(pulse.router, prefix="/api")
+app.include_router(realtime.router, prefix="/api")
 
 # Serve user-uploaded profile photos. The directory is mounted from a
 # host volume in prod (/srv/albus/avatars). We create it on startup so
@@ -172,6 +174,20 @@ def _start_background_jobs() -> None:
     )
     _scheduler.start()
     logging.getLogger("app").info("Background scheduler started.")
+
+
+@app.on_event("startup")
+async def _bind_realtime_loop() -> None:
+    """Capture the running event loop for the chat SSE broker so sync
+    (threadpool) request handlers can publish events onto it
+    thread-safely. Async handler so get_running_loop() returns the
+    loop the SSE streams actually run on."""
+    import asyncio
+
+    from app.services.realtime import broker
+
+    broker.bind_loop(asyncio.get_running_loop())
+    logging.getLogger("app").info("Realtime broker bound to event loop.")
 
 
 @app.on_event("shutdown")

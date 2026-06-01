@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     # login picker flow. 5 minutes is plenty for "user clicks a tenant card"
     # but tight enough that a leaked token isn't a long-term threat.
     pre_auth_ttl_minutes: int = 5
+    # TTL for the SSE realtime stream ticket (chat). The browser's
+    # EventSource can't send an auth header, so this short-lived,
+    # single-purpose token rides in the stream URL's query string.
+    # 60s is enough to open the connection; the client re-mints one
+    # on every (re)connect, so a leaked ticket is worthless fast.
+    stream_ticket_ttl_seconds: int = 60
     # TTL for the email-change confirmation link sent to the NEW
     # address. 24h matches typical "verify your email" UX (recipient
     # may read it on a phone, switch devices, etc.) while keeping the

@@ -102,6 +102,38 @@ docker compose -f infra/docker-compose.prod.yml logs --tail=100 api
 
 Migrations run automatically as part of the API container's CMD (`alembic upgrade head` before `uvicorn`). If a migration fails, the container exits — fix the migration, push, redeploy.
 
+**If you changed the Caddyfile** (e.g. the chat realtime SSE deploy added an `encode` exclusion for `/api/realtime/stream`), reload Caddy so the new config takes effect:
+
+```bash
+docker compose -f infra/docker-compose.prod.yml exec caddy caddy reload --config /etc/caddy/Caddyfile
+# or, if the container doesn't pick it up: restart just caddy
+docker compose -f infra/docker-compose.prod.yml restart caddy
+```
+
+---
+
+## 3a. Chat realtime (SSE)
+
+Chat pushes new messages / read-receipts / deletions over Server-Sent
+Events (`GET /api/realtime/stream`) instead of polling. Operational notes:
+
+- **Single worker only.** The fan-out broker (`app/services/realtime.py`)
+  is **in-process** — it reaches only SSE connections held by the same
+  uvicorn process. The prod API runs one worker (see `api/Dockerfile`),
+  so this is correct today. ⚠️ **Do NOT add `--workers N` / a second API
+  replica without first moving the broker to Postgres LISTEN/NOTIFY (or
+  Redis).** With multiple workers, a message sent on worker A won't reach
+  a subscriber on worker B and realtime silently half-breaks (the client
+  still self-heals via its slow fallback poll, so it won't error — it'll
+  just feel laggy and inconsistent).
+- **Caddy must not compress the stream.** The Caddyfile excludes
+  `/api/realtime/stream` from `encode` (gzip/zstd buffer the response,
+  which stalls SSE). If you ever rewrite the proxy block, keep that
+  exclusion.
+- **Health check:** `curl -N https://api.trivu.net/api/realtime/stream?ticket=BOGUS`
+  should return `401` immediately (invalid ticket). A valid stream emits
+  a `: connected` line, then `: ping` every ~25s.
+
 ---
 
 ## 4. Postgres backup

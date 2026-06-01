@@ -37,6 +37,7 @@ from app.models import (
     ShiftSwapOffer,
 )
 from app.routes.deps import RequestContext, get_current_context
+from app.services.realtime import broker
 
 
 logger = logging.getLogger("app.dms")
@@ -284,6 +285,17 @@ def _ensure_membership(
     if mem is None:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
     return conv
+
+
+def _member_person_ids(ctx: RequestContext, conversation_id: int) -> list[int]:
+    """All member person_ids of a conversation — the realtime fan-out
+    audience. Cheap single-column scan."""
+    return [
+        pid
+        for (pid,) in ctx.db.query(ConversationMember.person_id)
+        .filter(ConversationMember.conversation_id == conversation_id)
+        .all()
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -656,7 +668,7 @@ def send_message(
         _maybe_notify_unread(ctx, conv, msg)
     except Exception:  # noqa: BLE001 — broadest catch is intentional
         logger.exception("DM email-fallback notification failed")
-    return MessageOut(
+    out = MessageOut(
         id=msg.id,
         conversation_id=msg.conversation_id,
         author_person_id=msg.author_person_id,
@@ -665,6 +677,23 @@ def send_message(
         deleted_at=None,
         created_at=msg.created_at,
     )
+    # Realtime push to every member (author included, so their other
+    # tabs/devices stay in sync — the client dedupes by message id).
+    # The full message rides in the event so the client appends
+    # without a round-trip. Best-effort: a publish failure must never
+    # fail the send.
+    try:
+        broker.publish(
+            _member_person_ids(ctx, conv.id),
+            {
+                "type": "message",
+                "conversation_id": conv.id,
+                "message": out.model_dump(mode="json"),
+            },
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("realtime publish (message) failed")
+    return out
 
 
 def _maybe_notify_unread(
@@ -843,16 +872,38 @@ def mark_read(
     )
     # Don't go backwards. The client can over-send (it's idempotent)
     # but the high-water mark only moves forward.
-    if (
+    advanced = (
         mem.last_read_message_id is None
         or payload.last_message_id > mem.last_read_message_id
-    ):
+    )
+    if advanced:
         mem.last_read_message_id = payload.last_message_id
     # Always stamp last_read_at, even when the high-water mark
     # didn't move. We use this in the email-fallback path as
     # "this person looked recently, don't email them."
     mem.last_read_at = datetime.now(timezone.utc)
     ctx.db.flush()
+    # Realtime: tell the OTHER members their "Visto" marker can move.
+    # Only when the mark actually advanced — idle re-sends shouldn't
+    # spam the stream. The reader doesn't need their own event.
+    if advanced:
+        try:
+            others = [
+                pid
+                for pid in _member_person_ids(ctx, conv.id)
+                if pid != ctx.person.id
+            ]
+            broker.publish(
+                others,
+                {
+                    "type": "read",
+                    "conversation_id": conv.id,
+                    "person_id": ctx.person.id,
+                    "last_read_message_id": payload.last_message_id,
+                },
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("realtime publish (read) failed")
 
 
 @router.get(
@@ -989,6 +1040,18 @@ def delete_message(
     # unchanged.
     msg.body = ""
     ctx.db.flush()
+    # Realtime: tell every member to re-render the slot as borrado.
+    try:
+        broker.publish(
+            _member_person_ids(ctx, conversation_id),
+            {
+                "type": "message_deleted",
+                "conversation_id": conversation_id,
+                "message_id": message_id,
+            },
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception("realtime publish (message_deleted) failed")
 
 
 # ---------------------------------------------------------------------------

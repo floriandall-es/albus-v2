@@ -17,6 +17,12 @@ trivu.net {
 }
 
 api.trivu.net {
-    encode zstd gzip
+    # Compress everything EXCEPT the chat SSE stream. gzip/zstd buffer
+    # the response to compress it, which would stall Server-Sent
+    # Events (the whole point is unbuffered, incremental delivery).
+    # Caddy's reverse_proxy auto-flushes text/event-stream, so the
+    # only thing we must do here is keep `encode` off that one path.
+    @compressible not path /api/realtime/stream
+    encode @compressible zstd gzip
     reverse_proxy api:8000
 }

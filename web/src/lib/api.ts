@@ -1824,6 +1824,15 @@ export const api = {
     request<{ receipts: ReadReceipt[] }>(
       `/api/conversations/${conversationId}/receipts`,
     ),
+  /** Mint a short-lived ticket for the realtime SSE stream. The
+   * browser's EventSource can't send the Bearer header, so we mint
+   * this with the normal token and pass it in the stream URL. ~60s
+   * TTL; re-mint on each (re)connect. */
+  createRealtimeTicket: () =>
+    request<{ ticket: string; expires_in: number }>(
+      "/api/realtime/ticket",
+      { method: "POST" },
+    ),
   /** Phase 2C: per-user "delete conversation". Hides the chat
    * from the caller's list (sets hidden_at on their member row).
    * The peer is unaffected and their copy of the history is

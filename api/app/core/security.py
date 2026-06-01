@@ -224,6 +224,41 @@ def decode_password_reset_token(token: str) -> dict[str, Any]:
     return payload
 
 
+def create_stream_ticket(*, person_id: int, tenant_id: int) -> str:
+    """Very short-lived, single-purpose token for opening the SSE
+    realtime stream (chat).
+
+    The browser's EventSource API can't send an Authorization header,
+    so the stream URL carries a ticket in its query string instead.
+    To keep that safe we DON'T reuse the access token: this is a
+    distinct `kind` that grants nothing but the stream subscription,
+    and it expires in ~60s — long enough to open the connection,
+    short enough that a ticket leaked via a URL/log is worthless by
+    the time anyone sees it. The client re-mints one on each
+    (re)connect.
+    """
+    now = datetime.now(timezone.utc)
+    payload: dict[str, Any] = {
+        "kind": "stream",
+        "person_id": person_id,
+        "tenant_id": tenant_id,
+        "iat": int(now.timestamp()),
+        "exp": int(
+            (now + timedelta(seconds=settings.stream_ticket_ttl_seconds)).timestamp()
+        ),
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def decode_stream_ticket(token: str) -> dict[str, Any]:
+    payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    if payload.get("kind") != "stream":
+        raise jwt.InvalidTokenError("Not a stream ticket")
+    if not payload.get("person_id") or not payload.get("tenant_id"):
+        raise jwt.InvalidTokenError("Malformed stream ticket")
+    return payload
+
+
 def password_fingerprint(hashed_password: str) -> str:
     """Short stable derivative of the current password hash. Embedded
     in password-reset tokens so a single reset link can be used only
