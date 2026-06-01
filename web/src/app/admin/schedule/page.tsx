@@ -155,7 +155,8 @@ export default function SchedulesPage() {
                       })}
                     </span>
                     <span className="text-xs text-gray-500">
-                      {r.assignments_created} asignaciones · solver: {r.solver_used}
+                      {r.assignments_created} asignaciones ·{" "}
+                      {r.solver_used === "cpsat" ? "Equilibrada" : "Simplificada"}
                     </span>
                     <Link
                       href={`/admin/schedule/${r.schedule_id}`}

@@ -244,8 +244,8 @@ export default function AvailabilityPage() {
                           )}
                         </ul>
                         <div className="mt-1 text-[10px] text-amber-700">
-                          Si apruebas, el solver tendrá que
-                          re-asignar estos turnos.
+                          Si apruebas, estos turnos quedarán libres y
+                          tendrás que reasignarlos manualmente.
                         </div>
                       </div>
                     )}
