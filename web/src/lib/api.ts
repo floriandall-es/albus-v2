@@ -953,6 +953,16 @@ export type DMMessage = {
   created_at: string;
 };
 
+/** Read receipt for one OTHER member of a conversation (the caller
+ * is excluded). `last_read_message_id` is null when they've never
+ * opened the thread. Powers the "Visto" line under own messages. */
+export type ReadReceipt = {
+  person_id: number;
+  name: string | null;
+  last_read_message_id: number | null;
+  last_read_at: string | null;
+};
+
 /** Migration 0090. One question in this week's pulse survey.
  * `scale_type` distinguishes pure numeric scales (render N
  * buttons 1..scale_max) from labelled choice questions (render
@@ -1807,6 +1817,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ last_message_id }),
     }),
+  /** Other members' read high-water marks for a conversation. Polled
+   * by the open-conversation view to render "Visto" under the
+   * caller's own messages. Excludes the caller. */
+  getConversationReceipts: (conversationId: number) =>
+    request<{ receipts: ReadReceipt[] }>(
+      `/api/conversations/${conversationId}/receipts`,
+    ),
   /** Phase 2C: per-user "delete conversation". Hides the chat
    * from the caller's list (sets hidden_at on their member row).
    * The peer is unaffected and their copy of the history is

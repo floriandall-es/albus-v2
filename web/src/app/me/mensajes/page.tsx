@@ -19,6 +19,7 @@ import {
   ArrowLeftRight,
   CalendarDays,
   CalendarOff,
+  CheckCheck,
   LogOut,
   MessageCircle,
   MoreVertical,
@@ -38,6 +39,7 @@ import {
   type ConversationMemberPreview,
   type DMMessage,
   type HospitalDirectoryEntry,
+  type ReadReceipt,
 } from "@/lib/api";
 import { Avatar } from "@/components/schedule/planning-grid";
 
@@ -468,6 +470,70 @@ function ConversationPane({
     refetchInterval: ACTIVE_POLL_INTERVAL_MS,
   });
 
+  // Read receipts for the open conversation ("Visto"). Polled on the
+  // same cadence as the messages so the marker updates as the peer
+  // catches up. Cheap query (one member scan); only runs while a
+  // conversation is open.
+  const receipts = useQuery({
+    queryKey: ["receipts", conversationId],
+    queryFn: () => api.getConversationReceipts(conversationId),
+    refetchInterval: ACTIVE_POLL_INTERVAL_MS,
+  });
+
+  // WhatsApp-style "Visto" marker. We anchor it under the last
+  // (highest-id) non-deleted message I authored, and label it from
+  // how many of the OTHER members have read up to that id:
+  //   DM    → "Visto" / "Enviado"
+  //   group → "Visto por todos" / "Visto por N/M" / "Enviado"
+  // The tooltip lists who saw it and when.
+  const readMarker = useMemo(() => {
+    const list = messages.data ?? [];
+    const rcpts = receipts.data?.receipts ?? [];
+    if (list.length === 0 || rcpts.length === 0) return null;
+    const isGroupKind = conversation?.kind === "group";
+    const isMineMsg = (m: DMMessage) =>
+      m.author_person_id !== null
+      && (isGroupKind
+        ? myPersonId !== null && m.author_person_id === myPersonId
+        : !!conversation
+          && conversation.peer!.person_id !== m.author_person_id);
+    let lastMineId: number | null = null;
+    for (const m of list) {
+      if (isMineMsg(m) && !m.deleted_at) lastMineId = m.id;
+    }
+    if (lastMineId === null) return null;
+    const readers = rcpts.filter(
+      (r) =>
+        r.last_read_message_id !== null
+        && r.last_read_message_id >= lastMineId!,
+    );
+    const total = rcpts.length;
+    let label: string;
+    if (readers.length === 0) label = "Enviado";
+    else if (isGroupKind)
+      label =
+        readers.length === total
+          ? "Visto por todos"
+          : `Visto por ${readers.length}/${total}`;
+    else label = "Visto";
+    const title =
+      readers
+        .map((r) => {
+          const when = r.last_read_at
+            ? new Date(r.last_read_at).toLocaleString()
+            : null;
+          return r.name ? (when ? `${r.name} · ${when}` : r.name) : null;
+        })
+        .filter(Boolean)
+        .join("\n") || undefined;
+    return {
+      messageId: lastMineId,
+      label,
+      read: readers.length > 0,
+      title,
+    };
+  }, [messages.data, receipts.data, conversation, myPersonId]);
+
   // Auto-mark as read whenever we have the latest message id.
   // Server only moves the high-water mark forward; over-sending
   // is a no-op. Bumps both the conversation list (per-conv
@@ -777,6 +843,11 @@ function ConversationPane({
                   ? () => onDeleteMessage(m.id)
                   : undefined
               }
+              receipt={
+                readMarker && m.id === readMarker.messageId
+                  ? readMarker
+                  : undefined
+              }
             />
           );
         })}
@@ -936,6 +1007,7 @@ function MessageBubble({
   mine,
   authorLabel,
   onDelete,
+  receipt,
 }: {
   message: DMMessage;
   mine: boolean | undefined;
@@ -949,17 +1021,26 @@ function MessageBubble({
    * devices that don't fire hover). Calling it triggers the
    * confirm dialog + DELETE request. */
   onDelete?: () => void;
+  /** Read-receipt caption ("Visto" / "Enviado"). Set only on the
+   * last message I authored; renders a small line under the bubble.
+   * `read` flips the double-check icon on; `title` is the hover
+   * tooltip (who/when). */
+  receipt?: { label: string; read: boolean; title?: string };
 }) {
   const text = message.body ?? "(mensaje borrado)";
+  // Mine messages with a receipt switch to a column so the caption
+  // sits below the bubble; otherwise we keep the original layouts.
+  const asColumn = !!authorLabel || (!!mine && !!receipt);
   return (
     <div
       className={
-        // When we render an author label we switch the outer flex
-        // to a column so the label sits ABOVE the bubble. Without
-        // this the label would render to the left of the bubble
-        // and the layout breaks for incoming group messages.
-        authorLabel
-          ? "group flex flex-col items-start gap-0.5"
+        // When we render an author label OR a receipt caption we
+        // switch the outer flex to a column so the extra line sits
+        // above/below the bubble. Without this it would render to
+        // the side and break the layout.
+        asColumn
+          ? "group flex flex-col gap-0.5 "
+            + (mine ? "items-end" : "items-start")
           : "group flex items-center gap-1 "
             + (mine ? "justify-end" : "justify-start")
       }
@@ -1004,6 +1085,18 @@ function MessageBubble({
           {text}
         </div>
       </div>
+      {mine && receipt && (
+        <span
+          title={receipt.title}
+          className={
+            "mr-1 inline-flex items-center gap-0.5 text-[10px] "
+            + (receipt.read ? "text-brand-600" : "text-gray-400")
+          }
+        >
+          {receipt.read && <CheckCheck className="h-3 w-3" />}
+          {receipt.label}
+        </span>
+      )}
     </div>
   );
 }

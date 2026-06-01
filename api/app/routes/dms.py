@@ -6,6 +6,7 @@ Five routes for the minimum playable build:
   GET    /api/conversations/{id}/messages      paginated message history
   POST   /api/conversations/{id}/messages      send
   POST   /api/conversations/{id}/read          mark read (last_message_id)
+  GET    /api/conversations/{id}/receipts       other members' read marks ("Visto")
 
 No realtime, no email fallback yet — those land in Phase 2B.
 
@@ -186,6 +187,25 @@ class UnreadCountOut(BaseModel):
     rendering exact numbers past that."""
 
     total: int
+
+
+class ReadReceiptOut(BaseModel):
+    """One other member's read high-water mark. `last_read_message_id`
+    is NULL when they've never opened the conversation."""
+
+    person_id: int
+    name: str | None = None
+    last_read_message_id: int | None = None
+    last_read_at: datetime | None = None
+
+
+class ReadReceiptsOut(BaseModel):
+    """Read positions of the *other* members of a conversation (the
+    caller is excluded). Powers the WhatsApp-style "Visto" line under
+    the caller's own messages: a DM has exactly one entry, a group
+    one per other member."""
+
+    receipts: list[ReadReceiptOut]
 
 
 # ---------------------------------------------------------------------------
@@ -833,6 +853,50 @@ def mark_read(
     # "this person looked recently, don't email them."
     mem.last_read_at = datetime.now(timezone.utc)
     ctx.db.flush()
+
+
+@router.get(
+    "/conversations/{conversation_id}/receipts",
+    response_model=ReadReceiptsOut,
+)
+def conversation_receipts(
+    conversation_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> ReadReceiptsOut:
+    """Other members' read high-water marks for this conversation.
+    Polled by the open-conversation view to render "Visto" under the
+    caller's own messages. Cheap: one ConversationMember scan + one
+    batched name lookup. Names are resolved via raw SQL so cross-tenant
+    group members in the same hospital still resolve (RLS on persons
+    would otherwise hide them — same pattern as list_messages)."""
+    _ensure_membership(ctx, conversation_id)
+    members = (
+        ctx.db.query(ConversationMember)
+        .filter(
+            ConversationMember.conversation_id == conversation_id,
+            ConversationMember.person_id != ctx.person.id,
+        )
+        .all()
+    )
+    if not members:
+        return ReadReceiptsOut(receipts=[])
+    name_by_id: dict[int, str] = {}
+    for pid, name in ctx.db.execute(
+        text("SELECT id, name FROM persons WHERE id = ANY(:ids)"),
+        {"ids": [m.person_id for m in members]},
+    ).all():
+        name_by_id[pid] = name
+    return ReadReceiptsOut(
+        receipts=[
+            ReadReceiptOut(
+                person_id=m.person_id,
+                name=name_by_id.get(m.person_id),
+                last_read_message_id=m.last_read_message_id,
+                last_read_at=m.last_read_at,
+            )
+            for m in members
+        ]
+    )
 
 
 @router.delete(
