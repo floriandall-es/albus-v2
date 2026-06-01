@@ -300,7 +300,7 @@ export function VoiceNoteBubble({
           <Play className={"h-4 w-4 " + iconColor} />
         )}
       </button>
-      <div className="flex-1">
+      <div className="min-w-0 flex-1">
         <div className={"h-1.5 w-full overflow-hidden rounded-full " + accentTrack}>
           <div
             className={"h-full rounded-full " + accentFill}

@@ -19,6 +19,7 @@ import {
   ArrowLeftRight,
   CalendarDays,
   CalendarOff,
+  Check,
   CheckCheck,
   LogOut,
   MessageCircle,
@@ -155,7 +156,7 @@ export default function MensajesPage() {
   return (
     <div>
       <h1 className="mb-4 text-2xl font-semibold">Mensajes</h1>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-[260px_1fr]">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-[260px_1fr] md:items-start">
         {/* Mobile flow: when a conversation is open, hide the
             list pane so the conversation fills the screen. The
             in-conversation header gets a back arrow that returns
@@ -171,7 +172,19 @@ export default function MensajesPage() {
             onNewGroup={() => setComposeOpen(true)}
           />
         </div>
-        <div className={activeId === null ? "hidden md:block min-h-[420px]" : "min-h-[420px]"}>
+        {/* Bound the chat pane to the dynamic viewport so the message
+            list scrolls *internally* and the composer stays pinned to
+            the bottom. `dvh` tracks the visual viewport, so when the
+            mobile soft keyboard opens the pane shrinks with it instead
+            of the whole page scrolling (which used to "descuadrar" the
+            conversation). Floor with min-h only on desktop, where the
+            keyboard never steals height. */}
+        <div
+          className={
+            "h-[calc(100dvh-10rem)] md:h-[calc(100dvh-8rem)] md:min-h-[420px] "
+            + (activeId === null ? "hidden md:block" : "")
+          }
+        >
           {activeId === null && (
             <EmptyPane>
               {conversations.isLoading
@@ -1113,21 +1126,14 @@ function MessageBubble({
   const text = isDeleted
     ? "(mensaje borrado)"
     : (message.body ?? "");
-  // Mine messages with a receipt switch to a column so the caption
-  // sits below the bubble; otherwise we keep the original layouts.
-  const asColumn = !!authorLabel || (!!mine && !!receipt);
+  // A full-width column per message; the bubble ROW is what's capped
+  // at 75% (so the cap resolves against the pane, not a shrunk
+  // wrapper — the old bug that squeezed every incoming bubble to two
+  // lines). items-end/start pushes the row to the correct side.
   return (
     <div
       className={
-        // When we render an author label OR a receipt caption we
-        // switch the outer flex to a column so the extra line sits
-        // above/below the bubble. Without this it would render to
-        // the side and break the layout.
-        asColumn
-          ? "group flex flex-col gap-0.5 "
-            + (mine ? "items-end" : "items-start")
-          : "group flex items-center gap-1 "
-            + (mine ? "justify-end" : "justify-start")
+        "group flex flex-col gap-0.5 " + (mine ? "items-end" : "items-start")
       }
     >
       {authorLabel && (
@@ -1137,30 +1143,16 @@ function MessageBubble({
       )}
       <div
         className={
-          "flex items-center gap-1 "
-          + (mine ? "self-end" : "self-start")
+          "flex max-w-[85%] items-center gap-1 sm:max-w-[75%] "
+          // Own messages: trash on the inside (left) edge via reverse.
+          + (mine ? "flex-row-reverse" : "")
         }
       >
-        {/* Trash icon sits OUTSIDE the bubble, on the inside edge
-            (left side for own messages aligned right). Always
-            rendered for layout stability — opacity flip on
-            group-hover means the message stays in the same spot
-            and the icon doesn't jump in. Sized to a 32px touch
-            target which is enough for thumb-precise taps on
-            mobile without being awkwardly large on desktop. */}
-        {mine && onDelete && (
-          <button
-            type="button"
-            aria-label="Borrar mensaje"
-            onClick={onDelete}
-            className="flex h-8 w-8 items-center justify-center rounded-full text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-red-600 focus:opacity-100 group-hover:opacity-100"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        )}
         <div
           className={
-            "max-w-[75%] rounded-2xl px-3 py-2 text-sm leading-snug "
+            // min-w-0 + break-words lets the bubble shrink to content
+            // and wrap long/unbroken strings instead of overflowing.
+            "min-w-0 break-words rounded-2xl px-3 py-2 text-sm leading-snug "
             + (mine
               ? "bg-brand-600 text-white"
               : "bg-gray-100 text-gray-900")
@@ -1176,16 +1168,32 @@ function MessageBubble({
             text
           )}
         </div>
+        {/* Trash: own, non-deleted messages only. Hover/touch reveal;
+            always rendered for layout stability. */}
+        {mine && onDelete && (
+          <button
+            type="button"
+            aria-label="Borrar mensaje"
+            onClick={onDelete}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-400 opacity-0 transition hover:bg-gray-100 hover:text-red-600 focus:opacity-100 group-hover:opacity-100"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
       {mine && receipt && (
         <span
           title={receipt.title}
           className={
-            "mr-1 inline-flex items-center gap-0.5 text-[10px] "
+            "mr-1 inline-flex items-center gap-1 text-[11px] "
             + (receipt.read ? "text-brand-600" : "text-gray-400")
           }
         >
-          {receipt.read && <CheckCheck className="h-3 w-3" />}
+          {receipt.read ? (
+            <CheckCheck className="h-3.5 w-3.5 shrink-0" />
+          ) : (
+            <Check className="h-3.5 w-3.5 shrink-0" />
+          )}
           {receipt.label}
         </span>
       )}
