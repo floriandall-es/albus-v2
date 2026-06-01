@@ -88,15 +88,16 @@ def test_rls_blocks_cross_tenant_reads():
     engine.dispose()
 
 
-def test_me_endpoint_isolates_memberships(client):
+def test_me_endpoint_isolates_memberships(client, cnh_hospital):
     """End-to-end: tenant A's /me must not list tenant B's data, and vice versa."""
     suffix = uuid.uuid4().hex[:6]
 
     # Tenant A admin
     r = client.post("/api/signup", json={
-        "tenant_name": f"A {suffix}",
-        "person_name": "Alice", "email": f"alice-{suffix}@x.com",
-        "password": "supersecret1",
+        "first_name": "Alice", "email": f"alice-{suffix}@x.com",
+        "password": "supersecret1", "accept_terms": True,
+        "hospital_id": cnh_hospital,
+        "servicio_name": f"Serv A {suffix}", "equipo_name": f"Equipo A {suffix}",
     })
     assert r.status_code == 201
     a_body = r.json()
@@ -105,9 +106,10 @@ def test_me_endpoint_isolates_memberships(client):
 
     # Tenant B admin (different person)
     r = client.post("/api/signup", json={
-        "tenant_name": f"B {suffix}",
-        "person_name": "Bob", "email": f"bob-{suffix}@x.com",
-        "password": "supersecret1",
+        "first_name": "Bob", "email": f"bob-{suffix}@x.com",
+        "password": "supersecret1", "accept_terms": True,
+        "hospital_id": cnh_hospital,
+        "servicio_name": f"Serv B {suffix}", "equipo_name": f"Equipo B {suffix}",
     })
     assert r.status_code == 201
     b_body = r.json()

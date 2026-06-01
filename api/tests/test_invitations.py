@@ -135,7 +135,12 @@ def test_revoked_invitation_rejected(auth_client, client):
     assert r.status_code == 404
 
 
-def test_reinviting_revokes_previous(auth_client, client):
+def test_reinviting_pending_conflicts(auth_client, client):
+    """Re-inviting an email that already has a pending invite now CONFLICTS
+    (409) instead of silently revoking + reissuing. Since migration 0059 an
+    invite creates a pending member immediately, so a second invite collides;
+    to refresh the link the admin uses the dedicated resend endpoint. The
+    original invitation stays valid."""
     _client, headers, _info = auth_client
     r = client.post(
         "/api/team/invite",
@@ -149,15 +154,10 @@ def test_reinviting_revokes_previous(auth_client, client):
         headers=headers,
         json={"email": "again@example.com", "person_name": "A"},
     )
-    assert r2.status_code == 201
-    token2 = _token_from_url(r2.json()["accept_url"])
-    assert token1 != token2
+    assert r2.status_code == 409
 
-    # Old one no longer resolves
+    # The original invitation is untouched and still resolves.
     r = client.get(f"/api/invitations/by-token/{token1}")
-    assert r.status_code == 404
-    # New one does
-    r = client.get(f"/api/invitations/by-token/{token2}")
     assert r.status_code == 200
 
 

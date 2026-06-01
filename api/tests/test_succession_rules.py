@@ -171,7 +171,8 @@ def test_non_admin_forbidden(auth_client, client):
     )
     token = r.json()["accept_url"].rsplit("/", 1)[-1]
     r = client.post(
-        f"/api/invitations/by-token/{token}/accept", json={"password": "memberpass"}
+        f"/api/invitations/by-token/{token}/accept",
+        json={"accept_terms": True, "password": "memberpass"},
     )
     member_token = r.json()["access_token"]
     member_headers = {"Authorization": f"Bearer {member_token}"}
