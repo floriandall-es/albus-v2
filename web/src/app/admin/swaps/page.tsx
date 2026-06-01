@@ -5,7 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { ArrowLeftRight, Check, X } from "lucide-react";
+import { ArrowLeftRight, Check, ChevronDown, ChevronRight, X } from "lucide-react";
 import {
   api,
   type SwapAssignmentSummary,
@@ -47,6 +47,35 @@ export default function AdminSwapsPage() {
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   const approvalOn =
     me.data?.current_tenant.swap_requires_admin_approval ?? false;
+  const swapLimit =
+    me.data?.current_tenant.max_swaps_per_member_per_month ?? null;
+
+  // Collapsible config. Open by default; once the admin has read it
+  // they can fold it away so the actionable approvals sit higher. The
+  // choice persists per browser (localStorage) so it stays folded on
+  // return visits.
+  const [configOpen, setConfigOpen] = useState(true);
+  useEffect(() => {
+    if (
+      typeof window !== "undefined"
+      && window.localStorage.getItem("albus.swaps.configOpen") === "0"
+    ) {
+      setConfigOpen(false);
+    }
+  }, []);
+  const toggleConfig = () =>
+    setConfigOpen((v) => {
+      const next = !v;
+      try {
+        window.localStorage.setItem(
+          "albus.swaps.configOpen",
+          next ? "1" : "0",
+        );
+      } catch {
+        /* private mode / storage disabled — non-fatal */
+      }
+      return next;
+    });
 
   return (
     <>
@@ -58,11 +87,32 @@ export default function AdminSwapsPage() {
         la planificación correspondiente.
       </p>
 
-      <div className="mb-4">
-        <ApprovalToggleCard />
-      </div>
       <div className="mb-6">
-        <SwapLimitCard />
+        <button
+          type="button"
+          onClick={toggleConfig}
+          aria-expanded={configOpen}
+          className="flex w-full items-center gap-1.5 rounded-md py-1 text-left text-sm font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-700"
+        >
+          {configOpen ? (
+            <ChevronDown className="h-4 w-4 shrink-0" />
+          ) : (
+            <ChevronRight className="h-4 w-4 shrink-0" />
+          )}
+          Configuración
+          {!configOpen && (
+            <span className="ml-1 normal-case tracking-normal font-normal text-gray-400">
+              · Aprobación {approvalOn ? "activada" : "desactivada"} ·{" "}
+              Límite {swapLimit === null ? "sin límite" : `${swapLimit}/mes`}
+            </span>
+          )}
+        </button>
+        {configOpen && (
+          <div className="mt-2 space-y-4">
+            <ApprovalToggleCard />
+            <SwapLimitCard />
+          </div>
+        )}
       </div>
 
       {q.isLoading && <p className="text-sm text-gray-500">Cargando…</p>}
