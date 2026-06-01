@@ -27,6 +27,7 @@ from datetime import date, timedelta
 from typing import Iterable
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy import and_, or_, text
 
 from app.models import (
@@ -45,6 +46,7 @@ from app.schemas.meeting import (
     RegularMeetingCreate,
     RegularMeetingUpdate,
 )
+from app.services.meeting_chat import get_or_create_meeting_chat
 
 router = APIRouter()
 
@@ -449,6 +451,42 @@ def create_ad_hoc_meeting(
     _replace_audience(ctx, m, payload.person_ids)
     ctx.db.flush()
     return _serialize(ctx, m)
+
+
+class MeetingChatOut(BaseModel):
+    conversation_id: int
+
+
+@router.post("/meetings/{meeting_id}/chat", response_model=MeetingChatOut)
+def open_meeting_chat(
+    meeting_id: int,
+    ctx: RequestContext = Depends(get_current_context),
+) -> MeetingChatOut:
+    """Open (find-or-create) the group chat for a meeting and return
+    its conversation id; the frontend then navigates to /me/mensajes.
+
+    Access = "can the caller see this meeting?" — reuse the same
+    visibility query the list uses (admin, audience, include_main_team,
+    cross-tenant invitee). Membership is reconciled against the
+    current audience on every open (see services/meeting_chat.py)."""
+    m = _visible_meetings_query(ctx).filter(Meeting.id == meeting_id).first()
+    if m is None:
+        raise HTTPException(status_code=404, detail="Reunión no encontrada")
+    hospital_id = ctx.tenant.hospital_id
+    if hospital_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Tu servicio no está vinculado a un hospital.",
+        )
+    conversation_id = get_or_create_meeting_chat(
+        meeting_id=m.id,
+        tenant_id=m.tenant_id,
+        hospital_id=hospital_id,
+        title=m.title,
+        include_main_team=m.include_main_team,
+        opener_person_id=ctx.person.id,
+    )
+    return MeetingChatOut(conversation_id=conversation_id)
 
 
 def _get_or_404(ctx: RequestContext, meeting_id: int) -> Meeting:
