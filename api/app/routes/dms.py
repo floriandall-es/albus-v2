@@ -28,10 +28,12 @@ from sqlalchemy import func, text
 from app.core.config import settings
 from app.db.session import AdminSessionLocal
 from app.models import (
+    AvailabilityBlock,
     Conversation,
     ConversationMember,
     Message,
     Person,
+    ShiftSwapOffer,
 )
 from app.routes.deps import RequestContext, get_current_context
 
@@ -324,6 +326,11 @@ def create_or_get_dm(
                   ON mb.conversation_id = c.id AND mb.person_id = :peer
                 WHERE c.hospital_id = :hid
                   AND c.kind = 'dm'
+                  -- Plain DM only: a context-stamped DM (bloqueo /
+                  -- swap thread) for the same pair must NOT be
+                  -- returned here, or the directory "Mensaje" button
+                  -- would land in a context thread.
+                  AND c.context_kind IS NULL
                 LIMIT 1
                 """
             ),
@@ -348,6 +355,122 @@ def create_or_get_dm(
         ctx.db.add(
             ConversationMember(
                 conversation_id=conv.id, person_id=payload.peer_person_id
+            )
+        )
+        ctx.db.flush()
+    else:
+        conv = ctx.db.get(Conversation, existing[0])
+        assert conv is not None
+
+    return _serialize_conversation(ctx, conv)
+
+
+# Context-kind → the model whose existence/visibility we verify before
+# stamping a DM with it. RLS scopes the .get() to the caller's tenant,
+# so you can only open a context DM about something you can see.
+_CONTEXT_DM_MODELS = {
+    "bloqueo": AvailabilityBlock,
+    "swap": ShiftSwapOffer,
+}
+
+
+class DMContextCreateRequest(BaseModel):
+    """Open (find-or-create) a DM *in the context of* a Trivu entity —
+    e.g. "Comentar" on a bloqueo or a swap. Distinct from the plain
+    DM with the same peer: a pair can have one plain DM plus one
+    thread per (kind, id)."""
+
+    peer_person_id: int
+    context_kind: str  # 'bloqueo' | 'swap'
+    context_id: int
+
+
+@router.post(
+    "/dms/context",
+    response_model=ConversationOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_or_get_context_dm(
+    payload: DMContextCreateRequest,
+    ctx: RequestContext = Depends(get_current_context),
+) -> ConversationOut:
+    """Find-or-create the DM between the caller and `peer_person_id`
+    that's stamped with (context_kind, context_id). Idempotent per
+    (pair, context). The thread renders a context header + deep link
+    on the frontend."""
+    hospital_id = _require_hospital(ctx)
+    if payload.context_kind not in _CONTEXT_DM_MODELS:
+        raise HTTPException(
+            status_code=422, detail="Contexto no válido"
+        )
+    if payload.peer_person_id == ctx.person.id:
+        raise HTTPException(
+            status_code=400, detail="No puedes abrir un DM contigo mismo"
+        )
+    if not _peer_is_in_my_hospital(
+        ctx, payload.peer_person_id, hospital_id
+    ):
+        raise HTTPException(
+            status_code=404,
+            detail="Esta persona no está disponible en tu hospital",
+        )
+    # Verify the context entity is visible to the caller (RLS-scoped
+    # .get() returns None for other tenants) — you can only open a
+    # thread about a bloqueo / swap you can actually see.
+    model = _CONTEXT_DM_MODELS[payload.context_kind]
+    if ctx.db.get(model, payload.context_id) is None:
+        raise HTTPException(
+            status_code=404, detail="No encontramos ese elemento"
+        )
+
+    a = min(ctx.person.id, payload.peer_person_id)
+    b = max(ctx.person.id, payload.peer_person_id)
+    ctx.db.execute(
+        text("SELECT pg_advisory_xact_lock(:a, :b)"), {"a": a, "b": b}
+    )
+    existing = ctx.db.execute(
+        text(
+            """
+            SELECT c.id
+            FROM conversations c
+            JOIN conversation_members ma
+              ON ma.conversation_id = c.id AND ma.person_id = :me
+            JOIN conversation_members mb
+              ON mb.conversation_id = c.id AND mb.person_id = :peer
+            WHERE c.hospital_id = :hid
+              AND c.kind = 'dm'
+              AND c.context_kind = :ck
+              AND c.context_id = :cid
+            LIMIT 1
+            """
+        ),
+        {
+            "me": ctx.person.id,
+            "peer": payload.peer_person_id,
+            "hid": hospital_id,
+            "ck": payload.context_kind,
+            "cid": payload.context_id,
+        },
+    ).first()
+
+    if existing is None:
+        conv = Conversation(
+            hospital_id=hospital_id,
+            kind="dm",
+            context_kind=payload.context_kind,
+            context_id=payload.context_id,
+        )
+        ctx.db.add(conv)
+        ctx.db.flush()
+        ctx.db.add(
+            ConversationMember(
+                conversation_id=conv.id, person_id=ctx.person.id
+            )
+        )
+        ctx.db.add(
+            ConversationMember(
+                conversation_id=conv.id,
+                person_id=payload.peer_person_id,
             )
         )
         ctx.db.flush()
