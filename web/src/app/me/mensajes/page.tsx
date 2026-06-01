@@ -13,8 +13,12 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import Link from "next/link";
 import {
   ArrowLeft,
+  ArrowLeftRight,
+  CalendarDays,
+  CalendarOff,
   LogOut,
   MessageCircle,
   MoreVertical,
@@ -716,6 +720,9 @@ function ConversationPane({
           </div>
         </div>
       )}
+      {conversation?.context_kind && (
+        <ContextBanner kind={conversation.context_kind} />
+      )}
       <div
         ref={scrollerRef}
         className="flex-1 overflow-y-auto px-4 py-3 space-y-2"
@@ -998,6 +1005,44 @@ function MessageBubble({
         </div>
       </div>
     </div>
+  );
+}
+
+/** Banner shown atop a context-stamped conversation (migration
+ * 0092), linking back to the reunión / bloqueo / cambio it's about.
+ * The label is generic (we only carry kind + id, not a snapshot of
+ * the entity) but the deep link lands the user on the right list. */
+function ContextBanner({
+  kind,
+}: {
+  kind: "meeting" | "bloqueo" | "swap";
+}) {
+  const meta = {
+    meeting: {
+      label: "Sobre una reunión",
+      href: "/me/reuniones",
+      icon: <CalendarDays className="h-3.5 w-3.5" />,
+    },
+    bloqueo: {
+      label: "Sobre un bloqueo o ausencia",
+      href: "/me/bloqueos",
+      icon: <CalendarOff className="h-3.5 w-3.5" />,
+    },
+    swap: {
+      label: "Sobre un cambio de turno",
+      href: "/me/swaps",
+      icon: <ArrowLeftRight className="h-3.5 w-3.5" />,
+    },
+  }[kind];
+  return (
+    <Link
+      href={meta.href}
+      className="flex items-center gap-2 border-b border-brand-100 bg-brand-50/60 px-4 py-2 text-xs text-brand-800 hover:bg-brand-50"
+    >
+      <span className="text-brand-600">{meta.icon}</span>
+      <span className="font-medium">{meta.label}</span>
+      <span className="ml-auto text-brand-600">Ver →</span>
+    </Link>
   );
 }
 

@@ -1,6 +1,8 @@
 "use client";
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { MessageSquare } from "lucide-react";
 import {
   api,
   type Meeting,
@@ -29,6 +31,15 @@ import { formatLongDate, todayIso } from "@/lib/dates";
  */
 export default function MyMeetingsPage() {
   const qc = useQueryClient();
+  const router = useRouter();
+  // "Abrir chat" → find-or-create the meeting's group chat and jump
+  // to the messaging surface with it selected.
+  const openChat = useMutation({
+    mutationFn: (meetingId: number) => api.openMeetingChat(meetingId),
+    onSuccess: ({ conversation_id }) => {
+      router.push(`/me/mensajes?c=${conversation_id}`);
+    },
+  });
   // Window: previous 30 days through next 90. Roughly the
   // useful read window for a residente checking what's on the
   // calendar. We can widen it later if anyone asks.
@@ -111,6 +122,11 @@ export default function MyMeetingsPage() {
                 <InstanceRow
                   key={`${inst.meeting_id}_${inst.date}`}
                   inst={inst}
+                  onChat={() => openChat.mutate(inst.meeting_id)}
+                  chatBusy={
+                    openChat.isPending
+                    && openChat.variables === inst.meeting_id
+                  }
                   onEdit={
                     inst.can_edit && meetingById.get(inst.meeting_id)
                       ? () => setEditing(meetingById.get(inst.meeting_id)!)
@@ -143,6 +159,11 @@ export default function MyMeetingsPage() {
                 <InstanceRow
                   key={`${inst.meeting_id}_${inst.date}`}
                   inst={inst}
+                  onChat={() => openChat.mutate(inst.meeting_id)}
+                  chatBusy={
+                    openChat.isPending
+                    && openChat.variables === inst.meeting_id
+                  }
                   dimmed
                 />
               ))}
@@ -173,11 +194,15 @@ export default function MyMeetingsPage() {
 
 function InstanceRow({
   inst,
+  onChat,
+  chatBusy = false,
   onEdit,
   onDelete,
   dimmed = false,
 }: {
   inst: MeetingInstance;
+  onChat?: () => void;
+  chatBusy?: boolean;
   onEdit?: () => void;
   onDelete?: () => void;
   dimmed?: boolean;
@@ -215,8 +240,18 @@ function InstanceRow({
             </div>
           )}
         </div>
-        {(onEdit || onDelete) && (
-          <div className="flex shrink-0 gap-2">
+        {(onChat || onEdit || onDelete) && (
+          <div className="flex shrink-0 items-center gap-2">
+            {onChat && (
+              <Button
+                variant="secondary"
+                onClick={onChat}
+                disabled={chatBusy}
+              >
+                <MessageSquare className="h-4 w-4" />
+                {chatBusy ? "Abriendo…" : "Chat"}
+              </Button>
+            )}
             {onEdit && (
               <Button variant="secondary" onClick={onEdit}>
                 Editar
