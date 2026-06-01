@@ -20,8 +20,34 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: { default: "Trivu", template: "%s · Trivu" },
-  description: "Planificación de turnos para servicios hospitalarios",
+  // Absolute base for OG / canonical URLs. Without it the
+  // auto-generated opengraph-image resolves to a relative path and
+  // some scrapers (WhatsApp, Slack) drop it.
+  metadataBase: new URL("https://trivu.net"),
+  title: {
+    default: "Trivu — turnos para servicios hospitalarios",
+    template: "%s · Trivu",
+  },
+  description:
+    "Trivu construye la planificación de tu servicio respetando guardias, rotaciones y vacaciones, y la reparte de forma justa. El jefe valida; el equipo lo ve en su móvil.",
+  // The whole member→jefe growth loop is "send your boss this link",
+  // so the unfurl card matters. opengraph-image.tsx supplies the
+  // image automatically; here we set the title/description/locale.
+  openGraph: {
+    type: "website",
+    siteName: "Trivu",
+    url: "https://trivu.net",
+    locale: "es_ES",
+    title: "Trivu — la planificación del mes, hecha.",
+    description:
+      "Turnos, guardias, vacaciones y cambios para servicios hospitalarios. El jefe valida; el equipo lo ve en su móvil. 30 días gratis.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Trivu — la planificación del mes, hecha.",
+    description:
+      "Turnos, guardias, vacaciones y cambios para servicios hospitalarios. 30 días gratis.",
+  },
   // App-router auto-discovers app/manifest.ts and serves it at
   // /manifest.webmanifest, but we still declare it here so the
   // <link rel="manifest"> tag lands in <head>.

@@ -78,12 +78,14 @@ const COPY = {
       faq: "Preguntas",
     },
     hero: {
+      eyebrow: "Hecho para servicios hospitalarios",
       title: "La planificación del mes,",
       titleAccent: "hecha.",
       subtitle:
         "Trivu construye la planificación de tu servicio respetando guardias, rotaciones, vacaciones y reglas — y la reparte de forma justa. El jefe valida; el equipo lo ve en su móvil.",
       ctaPrimary: "Empezar gratis",
       ctaSecondary: "Ver cómo funciona",
+      ctaNote: "30 días gratis · sin tarjeta · cancela cuando quieras",
       mockHeader: "Planificación · Junio",
       mockBalanced: "Equilibrada",
       mockPublished: "Publicada",
@@ -385,12 +387,14 @@ const COPY = {
       faq: "FAQ",
     },
     hero: {
+      eyebrow: "Built for hospital departments",
       title: "The monthly rota,",
       titleAccent: "done.",
       subtitle:
         "Trivu builds your department's schedule respecting on-calls, rotations, vacations and rules — and distributes the load fairly. The chief approves; the team sees it on their phone.",
       ctaPrimary: "Start free",
       ctaSecondary: "See how it works",
+      ctaNote: "30 days free · no card · cancel anytime",
       mockHeader: "Schedule · June",
       mockBalanced: "Balanced",
       mockPublished: "Published",
@@ -870,7 +874,11 @@ export default function LandingPage() {
         <div className="relative mx-auto max-w-6xl px-4 sm:px-6 pt-8 sm:pt-20 pb-12 sm:pb-16">
           <div className="grid gap-8 sm:gap-12 lg:grid-cols-[1.05fr_1fr] lg:items-center">
             <div className="min-w-0">
-              <h1 className="text-[1.75rem] sm:text-5xl lg:text-6xl font-semibold tracking-tight text-gray-900 leading-[1.15] sm:leading-[1.05] break-words">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 ring-1 ring-brand-200">
+                <Hospital className="h-3.5 w-3.5" />
+                {c.hero.eyebrow}
+              </span>
+              <h1 className="mt-4 text-[1.75rem] sm:text-5xl lg:text-6xl font-semibold tracking-tight text-gray-900 leading-[1.15] sm:leading-[1.05] break-words">
                 {/* On mobile the two halves stack on their own
                     lines so the title can't overflow the viewport;
                     on sm and up they flow inline next to each
@@ -899,6 +907,10 @@ export default function LandingPage() {
                   <ArrowDown className="h-4 w-4" />
                 </a>
               </div>
+              <p className="mt-3 flex items-center gap-1.5 text-sm text-gray-500">
+                <Check className="h-4 w-4 text-emerald-600" />
+                {c.hero.ctaNote}
+              </p>
             </div>
             <HeroMockup
               label={c.hero.mockHeader}
