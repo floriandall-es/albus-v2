@@ -258,6 +258,12 @@ export default function MyStatsPage() {
     return rows;
   }, [q.data, slotMeta]);
 
+  // True when the caller has at least one same-category peer, i.e.
+  // the averages compare against someone other than themselves. When
+  // they're the only one in their category we hide the comparisons
+  // (a "vs media" that equals your own number is pointless).
+  const hasPeers = (q.data?.team_comparison?.team_member_count ?? 0) > 1;
+
   // Per-month stacked chart. One row per month in the range; each
   // numeric key on the row is a slot label → count.
   const months = useMemo(
@@ -447,8 +453,7 @@ export default function MyStatsPage() {
               (mean per member) so no colleague's individual numbers
               are exposed. Hidden until the API returns the block and
               the team has at least one member. */}
-          {q.data.team_comparison
-            && q.data.team_comparison.team_member_count > 0 && (
+          {q.data.team_comparison && hasPeers && (
             <TeamComparisonCard
               comparison={q.data.team_comparison}
               myTotal={totalTurnos}
@@ -470,12 +475,16 @@ export default function MyStatsPage() {
                 Por actividad
               </h3>
               <p className="mb-3 text-xs text-gray-500">
-                Tus turnos (en color) frente a la media del equipo (en gris),
-                por tipo de actividad.
+                {hasPeers
+                  ? "Tus turnos (en color) frente a la media de tu categoría (en gris), por tipo de actividad."
+                  : "Total de turnos por tipo de actividad en el rango."}
               </p>
               <ResponsiveContainer
                 width="100%"
-                height={Math.max(180, perActividad.length * 52 + 70)}
+                height={Math.max(
+                  hasPeers ? 180 : 160,
+                  perActividad.length * (hasPeers ? 52 : 36) + (hasPeers ? 70 : 60),
+                )}
               >
                 <BarChart
                   data={perActividad}
@@ -515,20 +524,24 @@ export default function MyStatsPage() {
                       style={{ fontSize: 11, fontWeight: 600 }}
                     />
                   </Bar>
-                  {/* "Media del equipo" — neutral grey, lighter label. */}
-                  <Bar
-                    dataKey="avg"
-                    name="Media del equipo"
-                    fill="#cbd5e1"
-                    radius={[0, 4, 4, 0]}
-                  >
-                    <LabelList
+                  {/* "Media de tu categoría" — neutral grey, lighter
+                      label. Hidden when the caller has no same-category
+                      peers (the bar would just mirror their own). */}
+                  {hasPeers && (
+                    <Bar
                       dataKey="avg"
-                      position="right"
-                      fill="#6b7280"
-                      style={{ fontSize: 11 }}
-                    />
-                  </Bar>
+                      name="Media de tu categoría"
+                      fill="#cbd5e1"
+                      radius={[0, 4, 4, 0]}
+                    >
+                      <LabelList
+                        dataKey="avg"
+                        position="right"
+                        fill="#6b7280"
+                        style={{ fontSize: 11 }}
+                      />
+                    </Bar>
+                  )}
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -664,11 +677,14 @@ function TeamComparisonCard({
     <Card>
       <div className="p-5">
         <h3 className="mb-1 text-sm font-semibold text-gray-800">
-          Comparativa con el equipo
+          Comparativa con tu categoría
         </h3>
         <p className="mb-4 text-xs text-gray-500">
           Tu actividad frente a la media de las {comparison.team_member_count}{" "}
-          personas del equipo en el mismo rango.
+          {comparison.team_member_count === 1 ? "persona" : "personas"} de tu
+          categoría
+          {comparison.category_name ? ` (${comparison.category_name})` : ""} en
+          el mismo rango.
         </p>
         <div className="space-y-5">
           <ComparisonMetric

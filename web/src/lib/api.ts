@@ -407,6 +407,9 @@ export type ActivityAverage = {
 
 export type TeamComparison = {
   team_member_count: number;
+  /** Caller's category name; averages are scoped to it. Null when
+   *  the caller has no category. */
+  category_name: string | null;
   avg_total_shifts: number;
   avg_weekend_or_holiday_shifts: number;
   /** Swap offers the caller created, + team mean. */

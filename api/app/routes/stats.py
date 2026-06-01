@@ -25,7 +25,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import distinct, func
+from sqlalchemy import func
 
 from app.models import (
     Assignment,
@@ -176,24 +176,40 @@ def stats_assignments(
 def _team_comparison(
     ctx: RequestContext, from_: date, to: date
 ) -> TeamComparison | None:
-    """Privacy-safe team aggregate for /me/estadisticas: the mean
-    assignments per active member over the range, plus the same for
-    weekend/holiday shifts. Returns ONLY means + a head count — never
-    per-person rows — so a member can see where they stand without
-    seeing colleagues' individual numbers.
+    """Privacy-safe peer aggregate for /me/estadisticas: the mean
+    assignments over the range, plus weekend/holiday + swaps, computed
+    WITHIN the caller's professional category (a resident is compared
+    to residents, an adjunto to adjuntos — not the whole mixed team).
+    Returns ONLY means + a head count — never per-person rows — so a
+    member can see where they stand without seeing colleagues'
+    individual numbers.
 
-    Denominator: distinct non-disabled membership persons in the
-    tenant (matches the admin equity view's population). RLS scopes
-    every query to the caller's tenant automatically.
+    Denominator: distinct non-disabled membership persons sharing the
+    caller's category_id. RLS scopes every query to the tenant.
     """
-    member_count = (
-        ctx.db.query(func.count(distinct(Membership.person_id)))
-        .filter(Membership.disabled_at.is_(None))
-        .scalar()
-        or 0
+    # Peer set — same category, currently active. Caller is always in
+    # it, so member_count >= 1.
+    my_category_id = ctx.membership.category_id
+    cat_filter = (
+        Membership.category_id.is_(None)
+        if my_category_id is None
+        else Membership.category_id == my_category_id
     )
+    peers = (
+        ctx.db.query(Membership.person_id, Membership.id)
+        .filter(Membership.disabled_at.is_(None), cat_filter)
+        .all()
+    )
+    peer_person_ids = {pid for pid, _mid in peers}
+    peer_membership_ids = {mid for _pid, mid in peers}
+    member_count = len(peer_person_ids)
     if member_count == 0:
         return None
+
+    category_name: str | None = None
+    if my_category_id is not None:
+        cat = ctx.db.get(Category, my_category_id)
+        category_name = cat.name if cat else None
 
     holiday_dates: set[date] = {
         h.date
@@ -201,11 +217,11 @@ def _team_comparison(
         .filter(Holiday.date.between(from_, to))
         .all()
     }
-    # One row per assignment across the whole team — same
-    # published+archived + person-assigned filters the per-person
-    # aggregator uses, so "my total" and "team average" are computed
-    # on identical grounds. We pull slot_id/team_role_id too so the
-    # per-actividad averages come from the same single scan.
+    # One row per assignment by a same-category peer — same
+    # published+archived filters the per-person aggregator uses, so
+    # "my total" and "peer average" are computed on identical grounds.
+    # We pull slot_id/team_role_id too so the per-actividad averages
+    # come from the same single scan.
     rows = (
         ctx.db.query(
             Assignment.date,
@@ -216,7 +232,7 @@ def _team_comparison(
         .filter(
             Schedule.status.in_(["published", "archived"]),
             Assignment.date.between(from_, to),
-            Assignment.person_id.isnot(None),
+            Assignment.person_id.in_(peer_person_ids),
         )
         .all()
     )
@@ -241,9 +257,13 @@ def _team_comparison(
     # the upper bound because these are timestamps, not dates.
     upper = to + timedelta(days=1)
     my_membership_id = ctx.membership.id
+    # Peer totals are scoped to the same-category memberships too.
     total_requested = (
         ctx.db.query(func.count(ShiftSwapOffer.id))
-        .filter(ShiftSwapOffer.created_at.between(from_, upper))
+        .filter(
+            ShiftSwapOffer.requested_by_membership_id.in_(peer_membership_ids),
+            ShiftSwapOffer.created_at.between(from_, upper),
+        )
         .scalar()
         or 0
     )
@@ -259,6 +279,7 @@ def _team_comparison(
     total_covered = (
         ctx.db.query(func.count(ShiftSwapResponse.id))
         .filter(
+            ShiftSwapResponse.responder_membership_id.in_(peer_membership_ids),
             ShiftSwapResponse.status == "accepted",
             ShiftSwapResponse.created_at.between(from_, upper),
         )
@@ -278,6 +299,7 @@ def _team_comparison(
 
     return TeamComparison(
         team_member_count=member_count,
+        category_name=category_name,
         avg_total_shifts=round(total / member_count, 1),
         avg_weekend_or_holiday_shifts=round(weekend / member_count, 1),
         my_swaps_requested=my_requested,

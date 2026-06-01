@@ -37,9 +37,13 @@ class TeamComparison(BaseModel):
     so a member can see where they stand without seeing colleagues'
     individual numbers."""
 
-    # Distinct active (non-disabled) members in the tenant — the
-    # denominator for the averages below.
+    # Distinct active (non-disabled) members in the caller's
+    # professional category — the denominator for the averages below.
     team_member_count: int
+    # The caller's category name ("Adjunto", "Residente"…), so the UI
+    # can say "media de tu categoría (Adjunto)". Null when the caller
+    # has no category set.
+    category_name: str | None = None
     # Mean assignments per member across the range (team total / members).
     avg_total_shifts: float
     # Same, restricted to weekend-or-holiday assignments.
