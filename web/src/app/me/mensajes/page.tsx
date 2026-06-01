@@ -951,7 +951,12 @@ function ConversationPane({
               placeholder="Escribe un mensaje…"
               rows={1}
               maxLength={4000}
-              className="flex-1 resize-none rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
+              // text-base (16px) on mobile is deliberate: iOS Safari
+              // auto-zooms the page when you focus an input whose
+              // font-size is < 16px, which was clipping the
+              // conversation off-screen. 16px stops the zoom; we drop
+              // back to text-sm on sm+ where it never zooms.
+              className="flex-1 resize-none rounded-md border border-gray-300 px-3 py-2 text-base focus:border-brand-500 focus:outline-none sm:text-sm"
             />
             {draft.trim() === "" ? (
               // Empty box → offer the mic (WhatsApp-style).

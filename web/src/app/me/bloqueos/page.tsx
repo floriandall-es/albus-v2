@@ -57,6 +57,14 @@ export default function BloqueosPage() {
       qc.invalidateQueries({ queryKey: ["conversations"] });
       router.push(`/me/mensajes?c=${conv.id}`);
     },
+    onError: (err) => {
+      // Never fail silently — a swallowed error here read as
+      // "Comentar does nothing".
+      window.alert(
+        (err as Error)?.message
+          ?? "No se pudo abrir el chat. Inténtalo de nuevo.",
+      );
+    },
   });
 
   return (

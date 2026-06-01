@@ -44,6 +44,7 @@ from app.models import (
     AvailabilityBlock,
     Conversation,
     ConversationMember,
+    Membership,
     Message,
     Person,
     ShiftSwapOffer,
@@ -496,6 +497,82 @@ def _context_entity_visible(
     return False
 
 
+def _peer_is_party_to_context(
+    context_kind: str, context_id: int, peer_person_id: int
+) -> bool:
+    """True when peer_person_id is the *other side* of this context
+    entity — a bloqueo's requester or its reviewer; a swap's requester
+    or one of its responders.
+
+    Lets an in-context "Comentar" reach a counterpart who has hidden
+    from the hospital directory: the directory opt-out governs cold
+    directory contact, not a thread about a bloqueo/swap the two people
+    already share. Read via AdminSessionLocal so a cross-tenant
+    counterpart is visible. Tightly scoped — it only ever authorises
+    the genuine parties to the referenced entity, never an arbitrary
+    third person the caller might name.
+    """
+    with AdminSessionLocal() as adb:
+        if context_kind == "bloqueo":
+            block = adb.get(AvailabilityBlock, context_id)
+            if block is None:
+                return False
+            if block.person_id == peer_person_id:
+                return True
+            if block.reviewer_membership_id is not None:
+                rm = adb.get(Membership, block.reviewer_membership_id)
+                if rm is not None and rm.person_id == peer_person_id:
+                    return True
+            return False
+        if context_kind == "swap":
+            offer = adb.get(ShiftSwapOffer, context_id)
+            if offer is None:
+                return False
+            rm = adb.get(Membership, offer.requested_by_membership_id)
+            if rm is not None and rm.person_id == peer_person_id:
+                return True
+            row = adb.execute(
+                text(
+                    """
+                    SELECT 1
+                    FROM shift_swap_responses sr
+                    JOIN memberships m ON m.id = sr.responder_membership_id
+                    WHERE sr.offer_id = :oid AND m.person_id = :pid
+                    LIMIT 1
+                    """
+                ),
+                {"oid": context_id, "pid": peer_person_id},
+            ).first()
+            return row is not None
+    return False
+
+
+def _peer_has_active_hospital_membership(
+    peer_person_id: int, hospital_id: int
+) -> bool:
+    """Like ``_peer_is_in_my_hospital`` but WITHOUT the
+    ``directory_visible`` gate — the peer just needs a live membership
+    somewhere in the hospital. Pairs with ``_peer_is_party_to_context``
+    to keep context DMs inside the hospital boundary while ignoring the
+    directory opt-out for genuine counterparts."""
+    with AdminSessionLocal() as adb:
+        row = adb.execute(
+            text(
+                """
+                SELECT 1
+                FROM memberships m
+                JOIN tenants t ON t.id = m.tenant_id
+                WHERE m.person_id = :pid
+                  AND m.disabled_at IS NULL
+                  AND t.hospital_id = :hid
+                LIMIT 1
+                """
+            ),
+            {"pid": peer_person_id, "hid": hospital_id},
+        ).first()
+    return row is not None
+
+
 class DMContextCreateRequest(BaseModel):
     """Open (find-or-create) a DM *in the context of* a Trivu entity —
     e.g. "Comentar" on a bloqueo or a swap. Distinct from the plain
@@ -529,9 +606,25 @@ def create_or_get_context_dm(
         raise HTTPException(
             status_code=400, detail="No puedes abrir un DM contigo mismo"
         )
-    if not _peer_is_in_my_hospital(
+    # A directory-visible peer is always reachable. Additionally, a
+    # genuine counterpart to THIS bloqueo/swap is reachable even if
+    # they've hidden from the directory — the opt-out is about cold
+    # directory contact, not about a thread on something the two people
+    # already share. Without this, "Comentar" silently 404s whenever
+    # the other party has toggled directory visibility off.
+    peer_ok = _peer_is_in_my_hospital(
         ctx, payload.peer_person_id, hospital_id
-    ):
+    ) or (
+        _peer_has_active_hospital_membership(
+            payload.peer_person_id, hospital_id
+        )
+        and _peer_is_party_to_context(
+            payload.context_kind,
+            payload.context_id,
+            payload.peer_person_id,
+        )
+    )
+    if not peer_ok:
         raise HTTPException(
             status_code=404,
             detail="Esta persona no está disponible en tu hospital",
