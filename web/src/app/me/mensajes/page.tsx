@@ -618,9 +618,18 @@ function ConversationPane({
       api.sendMessage(conversationId, payload),
     onSuccess: (msg) => {
       setDraft("");
+      // Dedup by id: the SSE realtime stream also delivers our own
+      // sent message, and that handler may have already appended it
+      // (the two arrive in a race). Without this check the sender
+      // sees the message twice. Recipients only get the SSE path, so
+      // they always saw a single copy.
       qc.setQueryData<DMMessage[]>(
         ["messages", conversationId],
-        (prev) => (prev ? [...prev, msg] : [msg]),
+        (prev) => {
+          if (!prev) return [msg];
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        },
       );
       onMessageSent();
     },
@@ -634,9 +643,14 @@ function ConversationPane({
     },
     onSuccess: (msg) => {
       setRecording(false);
+      // Dedup by id — same SSE race as the text send above.
       qc.setQueryData<DMMessage[]>(
         ["messages", conversationId],
-        (prev) => (prev ? [...prev, msg] : [msg]),
+        (prev) => {
+          if (!prev) return [msg];
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        },
       );
       onMessageSent();
     },
