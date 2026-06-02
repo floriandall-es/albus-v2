@@ -273,11 +273,80 @@ export default function StatsPage() {
     return ids;
   }, [ov.data, effectiveActiveCategoryIds]);
 
+  // Is the categoría filter actually narrowing anything? True only
+  // when the tenant has >1 categoría AND the admin has deselected at
+  // least one. We gate every "scope the chart" branch on this so the
+  // default view (all categorías selected) stays byte-identical to the
+  // pre-filter behaviour — important because some service-level totals
+  // (uncovered shifts, disabled members' past assignments) live only
+  // in the tenant-wide payloads and recomputing them from the per-
+  // person data would silently drop those rows.
+  const allCategoriesSelected = useMemo(
+    () => categoryOptions.every(([id]) => effectiveActiveCategoryIds.has(id)),
+    [categoryOptions, effectiveActiveCategoryIds],
+  );
+  const isCategoryFiltered = categoryOptions.length > 1 && !allCategoriesSelected;
+
+  // Workload rows scoped to the selected categorías. Identical to the
+  // full set when the filter is inactive (so per-person/rollup charts
+  // are unchanged by default). Feeds the equity rollup, per-person
+  // bars and the Resumen KPI strip.
+  const filteredWorkload = useMemo(() => {
+    const all = ov.data?.workload ?? [];
+    if (!isCategoryFiltered) return all;
+    return all.filter((w) => effectiveActiveCategoryIds.has(w.category_id));
+  }, [ov.data, isCategoryFiltered, effectiveActiveCategoryIds]);
+
+  // Names of the selected categorías — used to filter the per-categoría
+  // "carga por mes" line chart down to the chosen tiers (that chart is
+  // keyed by category name, the filter state by id).
+  const selectedCategoryNames = useMemo(
+    () =>
+      new Set(
+        categoryOptions
+          .filter(([id]) => effectiveActiveCategoryIds.has(id))
+          .map(([, name]) => name),
+      ),
+    [categoryOptions, effectiveActiveCategoryIds],
+  );
+
   const scopedRows = useMemo(() => {
     const all = q.data?.rows ?? [];
     if (personIdsByCategoryFilter === null) return all;
     return all.filter((r) => personIdsByCategoryFilter.has(r.person_id));
   }, [q.data, personIdsByCategoryFilter]);
+
+  // Filtered "turnos del equipo por mes" — recomputed from the per-
+  // person rows so it honours the categoría filter. Only consumed when
+  // the filter is active; otherwise the chart keeps using
+  // ov.data.monthly (which also counts uncovered shifts, which have no
+  // categoría) so the default total is unchanged.
+  const cargaTotalPorMesFiltered = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const r of scopedRows) {
+      m[r.year_month] = (m[r.year_month] ?? 0) + r.count;
+    }
+    return m;
+  }, [scopedRows]);
+
+  // Filtered "libranzas por mes por tipo" — recomputed from the
+  // calendar entries (the only payload that carries per-person
+  // bloqueo_type) scoped to the persons passing the categoría filter.
+  // Mirrors the backend's monthly_bloqueos_by_type: one day per
+  // (person, day) overlap. Empty until cal.data lands; only consumed
+  // when the filter is active.
+  const libranzasPorMesPorTipoFiltered = useMemo(() => {
+    const out: Record<string, Record<string, number>> = {};
+    if (!cal.data || personIdsByCategoryFilter === null) return out;
+    for (const e of cal.data.entries) {
+      if (!e.bloqueo_type) continue;
+      if (!personIdsByCategoryFilter.has(e.person_id)) continue;
+      const ym = String(e.date).slice(0, 7);
+      if (!out[ym]) out[ym] = {};
+      out[ym][e.bloqueo_type] = (out[ym][e.bloqueo_type] ?? 0) + 1;
+    }
+    return out;
+  }, [cal.data, personIdsByCategoryFilter]);
 
   // Commit 2 — per-person drill-down. State for which person's side
   // panel is open. Null = panel closed. Set by clicking any per-person
@@ -459,14 +528,17 @@ export default function StatsPage() {
       </div>
 
       {/* Categoría filter — sits at the top so it reads as a
-          page-wide scope, not a per-section thing. Applies to the
-          equity histogram, the calendar heat map, the per-slot
-          detail charts and the detail table. Does NOT scope the
-          KPI strip / categoría rollup / coverage trend / monthly
-          trends — those are service-level views by design (a jefe
-          filtering to "Adjuntos" still wants to see whether the
-          schedule has uncovered shifts overall). Hidden when the
-          tenant has ≤1 categoría. */}
+          page-wide scope, not a per-section thing. Scopes every
+          people/workload view: the equity histogram + rollup, the
+          per-person bars, the calendar heat map, the per-slot detail
+          charts + table, and the three Carga line charts (turnos
+          total, turnos por categoría, libranzas). The Resumen KPI
+          strip narrows its people-attributable tiles too. Genuinely
+          service-level views (Cobertura % and Eficiencia) stay tenant-
+          wide by design and say so when a filter is active — a jefe
+          filtering to "Adjuntos" still wants to know if the schedule
+          has uncovered shifts overall. Hidden when the tenant has ≤1
+          categoría. */}
       {categoryOptions.length > 1 && (
         <div className="mb-4">
           <CategoryFilterChips
@@ -507,7 +579,8 @@ export default function StatsPage() {
           <KpiStrip
             kpis={ov.data.kpis}
             monthsCount={monthsBetween(fromDate, toDate).length}
-            workload={ov.data.workload}
+            workload={filteredWorkload}
+            isFiltered={isCategoryFiltered}
           />
           <InsightsPanel insights={insights} onJumpTab={setTab} />
         </div>
@@ -529,7 +602,7 @@ export default function StatsPage() {
                   composition services this is THE primary view at scale. */}
               {categoryOptions.length > 1 && (
                 <CategoriaRollup
-                  workload={ov.data.workload}
+                  workload={filteredWorkload}
                   palette={palette}
                   monthsCount={monthsBetween(fromDate, toDate).length}
                 />
@@ -542,7 +615,7 @@ export default function StatsPage() {
                 monthsCount={monthsBetween(fromDate, toDate).length}
               />
               <TurnosPorPersona
-                workload={ov.data.workload}
+                workload={filteredWorkload}
                 accent={palette[0]}
                 onPersonClick={setSelectedPersonId}
               />
@@ -585,19 +658,25 @@ export default function StatsPage() {
           {ov.data && (
             <MonthlyLineChart
               title="Turnos del equipo por mes"
-              subtitle="Total de asignaciones publicadas / archivadas en cada mes."
+              subtitle={
+                isCategoryFiltered
+                  ? "Turnos cubiertos por las categorías seleccionadas en cada mes."
+                  : "Total de asignaciones publicadas / archivadas en cada mes."
+              }
               months={monthsBetween(fromDate, toDate)}
               series={[
                 {
                   key: "total",
                   label: "Turnos",
                   color: palette[0],
-                  points: Object.fromEntries(
-                    ov.data.monthly.map((m) => [
-                      m.year_month,
-                      m.total_assignments,
-                    ]),
-                  ),
+                  points: isCategoryFiltered
+                    ? cargaTotalPorMesFiltered
+                    : Object.fromEntries(
+                        ov.data.monthly.map((m) => [
+                          m.year_month,
+                          m.total_assignments,
+                        ]),
+                      ),
                 },
               ]}
             />
@@ -607,31 +686,53 @@ export default function StatsPage() {
               title="Turnos por categoría profesional, por mes"
               subtitle="Una línea por categoría — quién carga con la actividad cada mes."
               months={monthsBetween(fromDate, toDate)}
-              series={cargaPorCategoriaPorMes.categories.map((cat, i) => ({
-                key: cat,
-                label: cat,
-                color: palette[i % palette.length],
-                points: cargaPorCategoriaPorMes.pointsByCategory[cat],
-              }))}
+              series={cargaPorCategoriaPorMes.categories
+                .map((cat, i) => ({
+                  key: cat,
+                  label: cat,
+                  color: palette[i % palette.length],
+                  points: cargaPorCategoriaPorMes.pointsByCategory[cat],
+                }))
+                // Honour the categoría filter — show only the selected
+                // tiers' lines. Colours stay stable because the index
+                // is assigned before filtering.
+                .filter(
+                  (s) => !isCategoryFiltered || selectedCategoryNames.has(s.key),
+                )}
             />
           )}
-          {ov.data && (
+          {/* Libranzas por mes por tipo. Default view reads the tenant-
+              wide monthly rollup; when a categoría filter is active we
+              recompute from the calendar entries (the only payload that
+              carries per-person bloqueo_type) so the lines reflect just
+              the selected tiers. */}
+          {ov.data && !(isCategoryFiltered && !cal.data) && (
             <MonthlyLineChart
               title="Libranzas del equipo por mes"
-              subtitle="Días aprobados por tipo (vacaciones, baja, formación...) en cada mes."
+              subtitle={
+                isCategoryFiltered
+                  ? "Días aprobados por tipo en las categorías seleccionadas, por mes."
+                  : "Días aprobados por tipo (vacaciones, baja, formación...) en cada mes."
+              }
               months={monthsBetween(fromDate, toDate)}
               series={(() => {
-                // Pivot monthly[].bloqueos_days_by_type → one line
-                // per type. Drop types that never appear so the
-                // legend doesn't carry empty entries (e.g. a team
-                // with no baja in the period shouldn't see a flat
-                // sick line).
-                const monthly = ov.data!.monthly;
+                // Source: month → {type: days}. Filtered variant comes
+                // from the calendar; default from the monthly rollup.
+                const byMonthType: Record<string, Record<string, number>> =
+                  isCategoryFiltered
+                    ? libranzasPorMesPorTipoFiltered
+                    : Object.fromEntries(
+                        ov.data!.monthly.map((m) => [
+                          m.year_month,
+                          m.bloqueos_days_by_type ?? {},
+                        ]),
+                      );
+                // Pivot → one line per type. Drop types that never
+                // appear so the legend doesn't carry empty entries (a
+                // team with no baja shouldn't see a flat sick line).
                 const seen = new Set<string>();
-                for (const m of monthly) {
-                  for (const [t, n] of Object.entries(
-                    m.bloqueos_days_by_type ?? {},
-                  )) {
+                for (const types of Object.values(byMonthType)) {
+                  for (const [t, n] of Object.entries(types)) {
                     if (n > 0) seen.add(t);
                   }
                 }
@@ -641,6 +742,7 @@ export default function StatsPage() {
                     (t) => !BLOQUEO_TYPE_ORDER.includes(t),
                   ),
                 ];
+                const months = monthsBetween(fromDate, toDate);
                 return orderedTypes.map((type) => ({
                   key: type,
                   label:
@@ -650,16 +752,13 @@ export default function StatsPage() {
                     ),
                   color: BLOQUEO_TYPE_COLOR[type] ?? "#64748b",
                   points: Object.fromEntries(
-                    monthly.map((m) => [
-                      m.year_month,
-                      m.bloqueos_days_by_type?.[type] ?? 0,
-                    ]),
+                    months.map((ym) => [ym, byMonthType[ym]?.[type] ?? 0]),
                   ),
                 }));
               })()}
             />
           )}
-          {!ov.data && (
+          {(!ov.data || (isCategoryFiltered && !cal.data)) && (
             <p className="text-sm text-gray-500">Cargando…</p>
           )}
         </div>
@@ -673,6 +772,7 @@ export default function StatsPage() {
           how is the % covered evolving. */}
       {(tab === "cobertura" || printAll) && (
         <div className="space-y-6">
+          {isCategoryFiltered && <ServiceWideNote />}
           {ov.data && (
             <>
               <CoverageTrend monthly={ov.data.monthly} accent={palette[0]} />
@@ -692,6 +792,7 @@ export default function StatsPage() {
           audit table); when that lands it'll surface here. */}
       {(tab === "eficiencia" || printAll) && ov.data && (
         <div className="space-y-6">
+          {isCategoryFiltered && <ServiceWideNote />}
           <EficienciaPanel
             kpis={ov.data.kpis}
             monthly={ov.data.monthly}
@@ -2214,6 +2315,7 @@ function KpiStrip({
   kpis,
   monthsCount,
   workload,
+  isFiltered = false,
 }: {
   kpis: StatsKpis;
   /** Number of calendar months in the selected date range. Used
@@ -2222,8 +2324,16 @@ function KpiStrip({
   monthsCount: number;
   /** Per-person workload rows — feed the Gini fairness number on
    *  the hero strip. We use normalized_total (FTE-adjusted) so
-   *  part-timers doing their fair share don't drag the score. */
+   *  part-timers doing their fair share don't drag the score.
+   *  When a categoría filter is active these are already scoped to
+   *  the selected tiers (see `isFiltered`). */
   workload: StatsWorkloadRow[];
+  /** True when a categoría filter is narrowing the view. Switches
+   *  the people-attributable tiles (turnos, T/FTE·mes, equipo, Gini)
+   *  to numbers recomputed from the scoped `workload`, and marks the
+   *  genuinely service-level tiles (sin cubrir, cambios, incidencias,
+   *  reaperturas, bloqueos) as still reflecting the whole team. */
+  isFiltered?: boolean;
 }) {
   // Eight tiles was too many to scan — eyes glazed by the sixth.
   // Hero strip surfaces the four numbers admins care about
@@ -2236,9 +2346,22 @@ function KpiStrip({
     kpis.swap_offers_open
     + kpis.swap_offers_fulfilled
     + kpis.swap_offers_cancelled;
+
+  // People-attributable aggregates recomputed from the (scoped)
+  // workload. Used only when a filter is active — otherwise we read
+  // the tenant-wide kpis so the default view is unchanged (note:
+  // kpis.total_assignments also counts uncovered shifts, which have
+  // no categoría, so we deliberately don't recompute it at all-
+  // selected).
+  const wlTotalShifts = workload.reduce((a, w) => a + w.total_shifts, 0);
+  const wlFte = workload.reduce((a, w) => a + w.fte_pct, 0) / 100;
+  const wlMembers = workload.length;
+
+  const totalTurnos = isFiltered ? wlTotalShifts : kpis.total_assignments;
+  const fteForRate = isFiltered ? wlFte : kpis.total_fte;
   const shiftsPerFtePerMonth =
-    kpis.total_fte > 0 && monthsCount > 0
-      ? (kpis.total_assignments / kpis.total_fte / monthsCount).toFixed(1)
+    fteForRate > 0 && monthsCount > 0
+      ? (totalTurnos / fteForRate / monthsCount).toFixed(1)
       : "—";
   const giniDeCarga = useMemo(
     () =>
@@ -2247,23 +2370,38 @@ function KpiStrip({
       ),
     [workload],
   );
+
+  // Suffix appended to the service-level tile hints when a filter is
+  // active, so the admin understands those tiles ignore it.
+  const svc = (hint: string) =>
+    isFiltered ? `${hint} · todo el equipo` : hint;
+
   return (
     <div className="space-y-3">
+      {isFiltered && (
+        <p className="text-xs text-gray-500">
+          Filtrado por categoría. Las tarjetas de turnos, T/FTE·mes, equipo y
+          Gini reflejan las categorías seleccionadas; sin cubrir, cambios,
+          incidencias y reaperturas siguen mostrando todo el equipo.
+        </p>
+      )}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <HeroKpiTile
           label="Sin cubrir"
           value={kpis.uncovered_count.toLocaleString("es-ES")}
-          hint={
+          hint={svc(
             kpis.total_assignments > 0
               ? `${kpis.uncovered_pct}% de los turnos del periodo.`
-              : "Sin actividad en el periodo."
-          }
+              : "Sin actividad en el periodo.",
+          )}
           tone={kpis.uncovered_count > 0 ? "warning" : "neutral"}
         />
         <HeroKpiTile
           label="Cambios de turno"
           value={totalSwaps.toLocaleString("es-ES")}
-          hint={`${kpis.swap_offers_fulfilled} cubiertos · ${kpis.swap_offers_open} abiertos · ${kpis.swap_offers_cancelled} cancelados`}
+          hint={svc(
+            `${kpis.swap_offers_fulfilled} cubiertos · ${kpis.swap_offers_open} abiertos · ${kpis.swap_offers_cancelled} cancelados`,
+          )}
         />
         <HeroKpiTile
           label="Turnos / FTE / mes"
@@ -2298,32 +2436,49 @@ function KpiStrip({
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <KpiTile
             label="Total turnos"
-            value={kpis.total_assignments.toLocaleString("es-ES")}
-            hint="En planificaciones publicadas y archivadas."
+            value={totalTurnos.toLocaleString("es-ES")}
+            hint={
+              isFiltered
+                ? "Turnos cubiertos por las categorías seleccionadas."
+                : "En planificaciones publicadas y archivadas."
+            }
           />
           <KpiTile
             label="Bloqueos"
             value={`${kpis.bloqueos_days_total} días`}
-            hint={formatBloqueoBreakdown(kpis.bloqueos_days_by_type)}
+            hint={svc(formatBloqueoBreakdown(kpis.bloqueos_days_by_type))}
           />
           <KpiTile
             label="Equipo"
-            value={`${kpis.active_members} activos`}
-            hint={`${kpis.total_fte.toLocaleString("es-ES")} FTE total`}
+            value={`${isFiltered ? wlMembers : kpis.active_members} activos`}
+            hint={`${(isFiltered ? wlFte : kpis.total_fte).toLocaleString("es-ES")} FTE total`}
           />
           <KpiTile
             label="Incidencias"
             value={kpis.incidents_count.toLocaleString("es-ES")}
-            hint="Registradas en el periodo."
+            hint={svc("Registradas en el periodo.")}
           />
           <KpiTile
             label="Reabiertas"
             value={kpis.reopened_schedules_count.toLocaleString("es-ES")}
-            hint="Planificaciones reabiertas tras publicar."
+            hint={svc("Planificaciones reabiertas tras publicar.")}
             tone={kpis.reopened_schedules_count > 0 ? "warning" : "neutral"}
           />
         </div>
       )}
+    </div>
+  );
+}
+
+// Small inline note shown on the Cobertura / Eficiencia tabs when a
+// categoría filter is active, making explicit that those service-level
+// views aren't affected by it (coverage and process health are
+// inherently whole-service questions; see the filter comment above).
+function ServiceWideNote() {
+  return (
+    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+      Esta vista es a nivel de servicio y no se ve afectada por el filtro de
+      categoría. Para datos por categoría, usa las pestañas Carga y Equidad.
     </div>
   );
 }
