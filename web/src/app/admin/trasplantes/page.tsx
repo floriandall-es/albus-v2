@@ -256,6 +256,8 @@ export default function TrasplantesPage() {
           <option value="">Cualquier estado</option>
           <option value="completo">Completo</option>
           <option value="no_valido">No válido</option>
+          <option value="envio">Envío a otro hospital</option>
+          <option value="recibido">Recibido de otro hospital</option>
         </select>
         <input
           type="date"
