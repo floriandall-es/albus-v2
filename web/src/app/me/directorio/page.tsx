@@ -49,7 +49,7 @@ import { Avatar } from "@/components/schedule/planning-grid";
  *    left untouched, so a foreign colleague who typed theirs in full
  *    still works.
  */
-export function whatsappDigitsES(raw: string | null | undefined): string {
+function whatsappDigitsES(raw: string | null | undefined): string {
   let d = (raw ?? "").replace(/[^0-9]/g, "");
   if (!d) return "";
   if (d.startsWith("00")) d = d.slice(2);
