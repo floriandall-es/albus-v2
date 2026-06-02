@@ -57,13 +57,30 @@ docker run --rm -d --name "$CONTAINER" \
     -e POSTGRES_PASSWORD=drill -e POSTGRES_DB=albus_restore \
     "$PG_IMAGE" >/dev/null
 
+# Wait for the REAL server, not the temporary bootstrap one. The
+# postgres image starts a throwaway server to run initdb + create
+# POSTGRES_DB, then shuts it down and starts the real server. Both log
+# "ready to accept connections", so pg_isready (or a lone SELECT 1) can
+# succeed against the temp server and then the actual load hits
+# "FATAL: the database system is starting up" during the restart.
+# Wait for the SECOND "ready" line AND a live query.
+echo "Waiting for Postgres to finish init…"
 ready=0
-for _ in $(seq 1 30); do
-    if docker exec "$CONTAINER" pg_isready -U postgres -d albus_restore \
-        >/dev/null 2>&1; then ready=1; break; fi
+for _ in $(seq 1 60); do
+    n="$(docker logs "$CONTAINER" 2>&1 \
+        | grep -c 'ready to accept connections' || true)"
+    if [ "${n:-0}" -ge 2 ] \
+        && docker exec "$CONTAINER" psql -U postgres -d albus_restore \
+            -tAc 'SELECT 1' >/dev/null 2>&1; then
+        ready=1; break
+    fi
     sleep 1
 done
-[ "$ready" = 1 ] || { echo "FAIL: throwaway Postgres never became ready"; exit 1; }
+if [ "$ready" != 1 ]; then
+    echo "FAIL: throwaway Postgres never became ready"
+    docker logs "$CONTAINER" 2>&1 | tail -20
+    exit 1
+fi
 
 # The dump GRANTs to the app role; create it first so the restore is
 # faithful (a real DR restore into a fresh server needs the same — see
