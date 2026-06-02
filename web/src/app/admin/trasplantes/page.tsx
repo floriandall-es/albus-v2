@@ -387,14 +387,13 @@ function CaseRow({
   const notes = Array.from(notesSet).join(" · ");
 
   // Estado badge. The three special cases (set via the checkboxes in
-  // the editor, which write canonical phrases into the notes) take
-  // priority over the structural labels — they're what the admin
-  // actually wants to read at a glance. Detect on the combined notes
-  // so legacy cases (phrase in a procedure note) light up too.
+  // the editor, which write canonical phrases into the notes) are the
+  // only non-default states; everything else is a complete transplant.
+  // Detect on the combined notes so legacy cases (phrase in a procedure
+  // note) light up too.
   const low = notes.toLowerCase();
-  let statusTone: "success" | "warning" | "danger" | "info" | "neutral" =
-    "neutral";
-  let statusLabel: string = "—";
+  let statusTone: "success" | "danger" | "info" = "success";
+  let statusLabel: string = "Completo";
   if (low.includes("no válido") || low.includes("no valido")) {
     statusTone = "danger";
     statusLabel = "No válido";
@@ -407,18 +406,6 @@ function CaseRow({
   } else if (low.includes("recibido de otro hospital")) {
     statusTone = "info";
     statusLabel = "Recibido";
-  } else if (c.is_cross_hospital) {
-    statusTone = "info";
-    statusLabel = "Cross-hospital";
-  } else if (c.has_explante && c.has_implante) {
-    statusTone = "success";
-    statusLabel = "Completo";
-  } else if (c.has_explante) {
-    statusTone = "warning";
-    statusLabel = "Solo explante";
-  } else if (c.has_implante) {
-    statusTone = "warning";
-    statusLabel = "Solo implante";
   }
 
   return (
