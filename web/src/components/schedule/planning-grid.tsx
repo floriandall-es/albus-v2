@@ -7,7 +7,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
+  api,
   avatarSrc,
   personLastName,
   type Assignment,
@@ -900,6 +902,22 @@ function MeetingDetailModal({
   );
   const kindLabel =
     meeting.kind === "regular" ? "Reunión periódica" : "Reunión puntual";
+
+  // Attendees aren't on the compact instance payload, so pull them from
+  // the caller's visible meetings list (cached by React Query, shared
+  // with /me/reuniones) and match by id. Audience = the whole main team
+  // (a flag) plus any explicitly-added people.
+  const meetingsQ = useQuery({
+    queryKey: ["meetings"],
+    queryFn: api.listMeetings,
+  });
+  const audience = meetingsQ.data?.find(
+    (m) => m.id === meeting.meeting_id,
+  )?.audience;
+  const hasAttendees =
+    !!audience
+    && (audience.include_main_team || audience.person_names.length > 0);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
@@ -952,6 +970,31 @@ function MeetingDetailModal({
             </div>
           )}
         </dl>
+
+        <div className="mt-3 border-t border-gray-100 pt-3">
+          <div className="mb-1.5 text-sm text-gray-500">Asistentes</div>
+          {meetingsQ.isLoading ? (
+            <p className="text-sm text-gray-400">Cargando…</p>
+          ) : hasAttendees ? (
+            <div className="flex flex-wrap gap-1.5">
+              {audience!.include_main_team && (
+                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700">
+                  Todo el equipo
+                </span>
+              )}
+              {audience!.person_names.map((n, i) => (
+                <span
+                  key={`${n}_${i}`}
+                  className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-700"
+                >
+                  {n}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400">—</p>
+          )}
+        </div>
 
         {meeting.description && (
           <p className="mt-3 whitespace-pre-wrap border-t border-gray-100 pt-3 text-sm text-gray-700">
