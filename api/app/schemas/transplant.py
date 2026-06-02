@@ -132,6 +132,11 @@ class TransplantStatsSurgeonOut(BaseModel):
     explante_secondary: int
     implante_primary: int
     implante_secondary: int
+    # Explante participations (primary + secondary) on cases flagged
+    # "no válido" — i.e. an organ this surgeon extracted that was not
+    # transplanted. Drives the "No válidos" charts; the rate is this
+    # over the surgeon's total explantes.
+    no_valido_count: int = 0
 
 
 class TransplantStatsOut(BaseModel):

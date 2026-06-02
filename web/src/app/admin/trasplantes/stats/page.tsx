@@ -16,6 +16,7 @@ import {
   api,
   personLastName,
   type TransplantStats,
+  type TransplantStatsSurgeon,
 } from "@/lib/api";
 import {
   Card,
@@ -40,82 +41,103 @@ import { useAccentHex, useAccentPalette } from "@/lib/use-accent";
  *     numeric table was correct but visually dead.
  */
 export default function TrasplantesStatsPage() {
-  // Optional date range filter — the chart + table re-fetch when
-  // either bound changes.
-  const [from, setFrom] = useState<string>("");
-  const [to, setTo] = useState<string>("");
-  // Per-user accent (migration 0065). The Implantes side of the
-  // page historically rode the Trivu teal; resolve to whichever
-  // colour the caller has picked so the charts respect it.
+  // Period filter: a year + an optional single month ("Todos" = the
+  // whole year). Everything re-fetches when either changes.
+  const currentYear = new Date().getFullYear();
+  const [year, setYear] = useState<number>(currentYear);
+  const [month, setMonth] = useState<number | "all">("all");
+  // Per-user accent (migration 0065) — used by the kept monthly
+  // trend charts. The per-surgeon event charts use the fixed mockup
+  // palette.
   const brandHex600 = useAccentHex(600);
 
+  // The API filters by case date; derive the [from, to] range from the
+  // year + month selection.
+  const { from, to } = useMemo(() => {
+    if (month === "all") {
+      return { from: `${year}-01-01`, to: `${year}-12-31` };
+    }
+    const mm = String(month).padStart(2, "0");
+    const lastDay = new Date(year, month, 0).getDate();
+    return {
+      from: `${year}-${mm}-01`,
+      to: `${year}-${mm}-${String(lastDay).padStart(2, "0")}`,
+    };
+  }, [year, month]);
+
   const stats = useQuery({
-    queryKey: ["transplants-stats", from || null, to || null],
-    queryFn: () =>
-      api.transplantStats({
-        from: from || undefined,
-        to: to || undefined,
-      }),
+    queryKey: ["transplants-stats", from, to],
+    queryFn: () => api.transplantStats({ from, to }),
+  });
+
+  // Unfiltered fetch — drives the year dropdown options AND the stable
+  // surgeon roster, so every event chart shows the same surgeons in the
+  // same order (including those with zero activity in the period).
+  const allStats = useQuery({
+    queryKey: ["transplants-stats", "all"],
+    queryFn: () => api.transplantStats({}),
   });
 
   const data = stats.data;
 
-  // Per-type horizontal-bar data. Each surgeon contributes
-  // {primary, secondary} for the bar segments and a precomputed
-  // last-name display label. Sorted independently per chart so
-  // an admin who's strong on explantes but weak on implantes
-  // (or vice versa) doesn't get hidden by the global sort.
-  const explanteRows = useMemo(() => {
-    if (!data) return [] as SurgeonBarRow[];
-    return data.surgeons
-      .map((s) => ({
-        person_id: s.person_id,
-        display_name: personLastName({ name: s.person_name }),
-        primary: s.explante_primary,
-        secondary: s.explante_secondary,
-      }))
-      .filter((r) => r.primary + r.secondary > 0)
-      .sort(
-        (a, b) =>
-          b.primary - a.primary
-          || b.secondary - a.secondary
-          || a.display_name.localeCompare(b.display_name),
-      );
-  }, [data]);
-  const implanteRows = useMemo(() => {
-    if (!data) return [] as SurgeonBarRow[];
-    return data.surgeons
-      .map((s) => ({
-        person_id: s.person_id,
-        display_name: personLastName({ name: s.person_name }),
-        primary: s.implante_primary,
-        secondary: s.implante_secondary,
-      }))
-      .filter((r) => r.primary + r.secondary > 0)
-      .sort(
-        (a, b) =>
-          b.primary - a.primary
-          || b.secondary - a.secondary
-          || a.display_name.localeCompare(b.display_name),
-      );
+  const yearOptions = useMemo(() => {
+    const set = new Set<number>();
+    for (const m of allStats.data?.months ?? []) {
+      set.add(Number(m.period.slice(0, 4)));
+    }
+    set.add(currentYear);
+    return Array.from(set).sort((a, b) => b - a);
+  }, [allStats.data, currentYear]);
+
+  // Stable, alphabetical surgeon roster from the all-time data.
+  const roster = useMemo(() => {
+    const src = allStats.data?.surgeons ?? data?.surgeons ?? [];
+    const seen = new Map<number, string>();
+    for (const s of src) {
+      if (!seen.has(s.person_id)) {
+        seen.set(s.person_id, personLastName({ name: s.person_name }));
+      }
+    }
+    return Array.from(seen.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "es"));
+  }, [allStats.data, data]);
+
+  // Per-surgeon stats for the selected period, indexed by person.
+  const byId = useMemo(() => {
+    const m = new Map<number, TransplantStatsSurgeon>();
+    for (const s of data?.surgeons ?? []) m.set(s.person_id, s);
+    return m;
   }, [data]);
 
-  // Single x-axis maximum across BOTH charts so the bars are
-  // visually comparable between explantes and implantes (e.g.
-  // an "I do 50 explantes" bar should look exactly twice as
-  // wide as a "25 explantes" bar AND a "25 implantes" bar).
-  const maxBarValue = useMemo(() => {
-    const all = [...explanteRows, ...implanteRows].map(
-      (r) => r.primary + r.secondary,
-    );
-    return Math.max(1, ...all);
-  }, [explanteRows, implanteRows]);
+  // One row per roster surgeon carrying every metric the six event
+  // charts need. Surgeons with no activity in the period stay in the
+  // list at zero (matches the mockup — e.g. Pastor showing 0).
+  const eventRows = useMemo(() => {
+    return roster.map((r) => {
+      const s = byId.get(r.id);
+      const explantes =
+        (s?.explante_primary ?? 0) + (s?.explante_secondary ?? 0);
+      const implantes1 = s?.implante_primary ?? 0;
+      const implantes2 = s?.implante_secondary ?? 0;
+      const noValidos = s?.no_valido_count ?? 0;
+      return {
+        id: r.id,
+        name: r.name,
+        totales: explantes + implantes1 + implantes2,
+        explantes,
+        implantes1,
+        implantes2,
+        noValidos,
+        // % of this surgeon's explantes that turned out non-valid.
+        noValidosPct:
+          explantes > 0 ? Math.round((noValidos / explantes) * 100) : 0,
+      };
+    });
+  }, [roster, byId]);
 
-  // Combined totals: per surgeon, all four counts collapsed into
-  // (explantes_total, implantes_total). Sorted by grand total
-  // desc so the chart reads as a leaderboard. Used by the
-  // top-of-page summary chart that answers "who's done the
-  // most overall" before the per-type splits.
+  // Surgeon colour-order for the per-month-per-surgeon chart (kept from
+  // the previous design): grand total desc, zeros dropped.
   const totalRows = useMemo(() => {
     if (!data) return [] as SurgeonTotalRow[];
     return data.surgeons
@@ -138,10 +160,6 @@ export default function TrasplantesStatsPage() {
           || a.display_name.localeCompare(b.display_name),
       );
   }, [data]);
-  const totalMaxBarValue = useMemo(
-    () => Math.max(1, ...totalRows.map((r) => r.total)),
-    [totalRows],
-  );
 
   return (
     <>
@@ -158,75 +176,41 @@ export default function TrasplantesStatsPage() {
         }
       />
 
-      {/* Compact filter bar — match the toolbar style of the list
-          page so the two views feel like the same product. */}
+      {/* Compact filter bar — month + year selectors. "Todos" = the
+          whole year. Matches the list page toolbar style. */}
       <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-soft">
         <span className="text-xs font-medium uppercase tracking-wider text-gray-500">
           Periodo
         </span>
-        <input
-          type="date"
-          value={from}
-          onChange={(e) => setFrom(e.target.value)}
-          aria-label="Desde"
+        <select
+          value={month}
+          onChange={(e) =>
+            setMonth(e.target.value === "all" ? "all" : Number(e.target.value))
+          }
+          aria-label="Mes"
           className="rounded-md border border-gray-300 px-2 py-1 text-sm"
-        />
-        <span className="text-xs text-gray-400">→</span>
-        <input
-          type="date"
-          value={to}
-          onChange={(e) => setTo(e.target.value)}
-          aria-label="Hasta"
+        >
+          <option value="all">Todos los meses</option>
+          {MONTH_NAMES.map((mn, i) => (
+            <option key={mn} value={i + 1}>
+              {mn}
+            </option>
+          ))}
+        </select>
+        <select
+          value={year}
+          onChange={(e) => setYear(Number(e.target.value))}
+          aria-label="Año"
           className="rounded-md border border-gray-300 px-2 py-1 text-sm"
-        />
-        {/* Quick-pick presets. Each button sets both inputs in one
-            click; the active button (preset's [from, to] matches
-            the current state) renders highlighted so admins know
-            where they stand without re-reading the dates. */}
-        <div className="flex items-center gap-1 pl-1">
-          {(() => {
-            const today = new Date();
-            const iso = (d: Date) => d.toISOString().slice(0, 10);
-            const y = today.getFullYear();
-            const ytd: [string, string] = [iso(new Date(y, 0, 1)), iso(today)];
-            const lastYear: [string, string] = [
-              `${y - 1}-01-01`,
-              `${y - 1}-12-31`,
-            ];
-            const all: [string, string] = ["", ""];
-            const presets: {
-              label: string;
-              value: [string, string];
-            }[] = [
-              { label: "Este año", value: ytd },
-              { label: "Año pasado", value: lastYear },
-              { label: "Todo", value: all },
-            ];
-            return presets.map((p) => {
-              const active = from === p.value[0] && to === p.value[1];
-              return (
-                <button
-                  key={p.label}
-                  type="button"
-                  onClick={() => {
-                    setFrom(p.value[0]);
-                    setTo(p.value[1]);
-                  }}
-                  className={
-                    "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors "
-                    + (active
-                      ? "border-brand-300 bg-brand-50 text-brand-800"
-                      : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50")
-                  }
-                >
-                  {p.label}
-                </button>
-              );
-            });
-          })()}
-        </div>
+        >
+          {yearOptions.map((y) => (
+            <option key={y} value={y}>
+              {y}
+            </option>
+          ))}
+        </select>
         <span className="ml-auto text-xs text-gray-500">
-          {from || to ? "Filtrado por fecha del caso" : "Histórico completo"}
+          Por fecha del caso
         </span>
       </div>
 
@@ -285,6 +269,81 @@ export default function TrasplantesStatsPage() {
               </div>
             </div>
           </Card>
+
+          {/* EVENTOS DE TRASPLANTE — six per-surgeon vertical-bar
+              charts. Same roster + order across all six so the bars
+              line up column-to-column. */}
+          <div>
+            <h2 className="mb-3 text-base font-semibold text-gray-800">
+              Eventos de trasplante
+            </h2>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <SurgeonBars
+                title="Trasplantes totales"
+                color="#10b981"
+                rows={eventRows.map((r) => ({
+                  id: r.id,
+                  name: r.name,
+                  value: r.totales,
+                  label: String(r.totales),
+                }))}
+              />
+              <SurgeonBars
+                title="Explantes"
+                color="#0ea5e9"
+                rows={eventRows.map((r) => ({
+                  id: r.id,
+                  name: r.name,
+                  value: r.explantes,
+                  label: String(r.explantes),
+                }))}
+              />
+              <SurgeonBars
+                title="No válidos"
+                subtitle="Órganos explantados no trasplantados"
+                color="#64748b"
+                rows={eventRows.map((r) => ({
+                  id: r.id,
+                  name: r.name,
+                  value: r.noValidos,
+                  label: String(r.noValidos),
+                }))}
+              />
+              <SurgeonBars
+                title="No válidos %"
+                subtitle="Sobre los explantes de cada cirujano"
+                color="#94a3b8"
+                rows={eventRows.map((r) => ({
+                  id: r.id,
+                  name: r.name,
+                  value: r.noValidosPct,
+                  label: `${r.noValidosPct}%`,
+                }))}
+              />
+              <SurgeonBars
+                title="Implantes 1"
+                subtitle="Como cirujano principal"
+                color="#8b5cf6"
+                rows={eventRows.map((r) => ({
+                  id: r.id,
+                  name: r.name,
+                  value: r.implantes1,
+                  label: String(r.implantes1),
+                }))}
+              />
+              <SurgeonBars
+                title="Implantes 2"
+                subtitle="Como segundo cirujano"
+                color="#f59e0b"
+                rows={eventRows.map((r) => ({
+                  id: r.id,
+                  name: r.name,
+                  value: r.implantes2,
+                  label: String(r.implantes2),
+                }))}
+              />
+            </div>
+          </div>
 
           {/* PER-MONTH CHART — muted teal/amber palette, no
               cross-hospital overlay (visible in the hero). */}
@@ -355,17 +414,6 @@ export default function TrasplantesStatsPage() {
             </div>
           </Card>
 
-          {/* TOTAL PROCEDIMIENTOS — full-width leaderboard. Each
-              bar is stacked by procedure type so the rank by
-              total is visible AND the explantes/implantes
-              composition shows. Lives above the per-type split
-              charts because "who's pulling the most weight
-              overall" is the question admins ask first. */}
-          <SurgeonTotalsChart
-            rows={totalRows}
-            max={totalMaxBarValue}
-          />
-
           {/* PROCEDIMIENTOS POR MES Y CIRUJANO — same x-axis as
               "Trasplantes por mes" but stacked by surgeon
               instead of by procedure type. Lets admins read
@@ -373,37 +421,86 @@ export default function TrasplantesStatsPage() {
               client-side from the global surgeon order so
               colors stay stable across months. */}
           <MonthPerSurgeonChart data={data} surgeonOrder={totalRows} />
-
-          {/* SURGEON PARTICIPATION — split into two cards, one
-              per procedure type. Bars share a global x-axis max
-              so widths stay comparable between the two charts
-              (a 50-explante bar matches a 50-implante bar). */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <SurgeonChart
-              title="Participación en explantes"
-              rows={explanteRows}
-              max={maxBarValue}
-              accent="amber"
-            />
-            <SurgeonChart
-              title="Participación en implantes"
-              rows={implanteRows}
-              max={maxBarValue}
-              accent="teal"
-            />
-          </div>
         </div>
       )}
     </>
   );
 }
 
-type SurgeonBarRow = {
-  person_id: number;
-  display_name: string;
-  primary: number;
-  secondary: number;
+const MONTH_NAMES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+];
+
+type SurgeonBarsRow = {
+  id: number;
+  name: string;
+  value: number;
+  label: string;
 };
+
+/** One of the six per-surgeon "Eventos de trasplante" charts. Simple
+ * vertical bars in a light track — bar height is the value scaled to
+ * the chart's own max, the label (count or %) sits below each bar.
+ * Every chart receives the same roster in the same order so columns
+ * line up across charts. */
+function SurgeonBars({
+  title,
+  subtitle,
+  rows,
+  color,
+}: {
+  title: string;
+  subtitle?: string;
+  rows: SurgeonBarsRow[];
+  color: string;
+}) {
+  const max = Math.max(1, ...rows.map((r) => r.value));
+  return (
+    <Card>
+      <div className="p-5">
+        <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
+        {subtitle && (
+          <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p>
+        )}
+        {rows.length === 0 ? (
+          <p className="mt-4 text-xs text-gray-400">
+            Sin datos en este periodo.
+          </p>
+        ) : (
+          <div className="mt-4 flex items-end gap-1.5 sm:gap-2">
+            {rows.map((r) => {
+              // Give any non-zero value a visible sliver; zero stays flat.
+              const h = r.value > 0 ? Math.max(6, (r.value / max) * 100) : 0;
+              return (
+                <div
+                  key={r.id}
+                  className="flex min-w-0 flex-1 flex-col items-center"
+                >
+                  <div
+                    className="flex h-28 w-full items-end overflow-hidden rounded-md bg-gray-100/80"
+                    title={`${r.name}: ${r.label}`}
+                  >
+                    <div
+                      className="w-full rounded-md transition-[height]"
+                      style={{ height: `${h}%`, backgroundColor: color }}
+                    />
+                  </div>
+                  <div className="mt-1.5 w-full truncate text-center text-[11px] text-gray-600">
+                    {r.name}
+                  </div>
+                  <div className="text-sm font-semibold tabular-nums text-gray-900">
+                    {r.label}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
 
 type SurgeonTotalRow = {
   person_id: number;
@@ -412,88 +509,6 @@ type SurgeonTotalRow = {
   implantes: number;
   total: number;
 };
-
-/** Single-card leaderboard for total procedimientos per cirujano.
- * Each row's bar is stacked by procedure type (amber explantes,
- * teal implantes) so the chart simultaneously communicates rank
- * by total volume AND the explantes/implantes composition. */
-function SurgeonTotalsChart({
-  rows,
-  max,
-}: {
-  rows: SurgeonTotalRow[];
-  max: number;
-}) {
-  return (
-    <Card>
-      <div className="p-5">
-        <div className="mb-1 flex items-baseline justify-between">
-          <h3 className="text-sm font-semibold text-gray-800">
-            Total de procedimientos por cirujano
-          </h3>
-          <div className="flex items-center gap-3 text-[11px] text-gray-500">
-            <LegendDot color="#f59e0b" label="Explantes" />
-            <LegendDot color="#0d9488" label="Implantes" />
-          </div>
-        </div>
-        <p className="mb-4 text-xs text-gray-500">
-          Suma de roles principal y segundo. Ordenado por total descendente.
-        </p>
-        {rows.length === 0 ? (
-          <p className="text-xs text-gray-400">
-            Sin procedimientos en este rango.
-          </p>
-        ) : (
-          <ul className="space-y-2.5">
-            {rows.map((r) => {
-              const explantesPct = (r.explantes / max) * 100;
-              const implantesPct = (r.implantes / max) * 100;
-              const fillsFull = explantesPct + implantesPct >= 99;
-              return (
-                <li
-                  key={r.person_id}
-                  className="grid grid-cols-[120px_1fr_56px] items-center gap-3"
-                >
-                  <div className="truncate text-sm font-medium text-gray-800">
-                    {r.display_name}
-                  </div>
-                  <div className="relative h-6 rounded-md bg-gray-100">
-                    {r.explantes > 0 && (
-                      <div
-                        className="absolute inset-y-0 left-0 flex items-center rounded-l-md bg-amber-500 px-2 text-[11px] font-semibold text-white"
-                        style={{ width: `${explantesPct}%` }}
-                        title={`Explantes: ${r.explantes}`}
-                      >
-                        {explantesPct > 6 && r.explantes}
-                      </div>
-                    )}
-                    {r.implantes > 0 && (
-                      <div
-                        className="absolute inset-y-0 flex items-center bg-brand-600 px-2 text-[11px] font-semibold text-white"
-                        style={{
-                          left: `${explantesPct}%`,
-                          width: `${implantesPct}%`,
-                          borderTopRightRadius: fillsFull ? 6 : 0,
-                          borderBottomRightRadius: fillsFull ? 6 : 0,
-                        }}
-                        title={`Implantes: ${r.implantes}`}
-                      >
-                        {implantesPct > 6 && r.implantes}
-                      </div>
-                    )}
-                  </div>
-                  <div className="text-right text-sm font-semibold tabular-nums text-gray-900">
-                    {r.total}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
-    </Card>
-  );
-}
 
 // Stable palette for the per-month stacked-by-surgeon chart. Tuned
 // to look distinct against each other AND not collide with the
@@ -660,119 +675,6 @@ function MonthPerSurgeonChart({
             </BarChart>
           </ResponsiveContainer>
         </div>
-      </div>
-    </Card>
-  );
-}
-
-/** Horizontal stacked bar chart, one row per surgeon. Reused for
- * the explantes and implantes views — same layout, different
- * accent colour. Bars are sized against the shared global max
- * so a 50-explante bar is visually as wide as a 50-implante bar. */
-function SurgeonChart({
-  title,
-  rows,
-  max,
-  accent,
-}: {
-  title: string;
-  rows: SurgeonBarRow[];
-  max: number;
-  accent: "amber" | "teal";
-}) {
-  // The "teal" accent here means "the user's brand colour" — it's
-  // the implantes side which historically rode the Trivu teal. We
-  // resolve to the live accent at runtime so the chart respects
-  // the per-user preference; the Tailwind classes already follow
-  // the CSS vars, only the hex strings used by the legend dots
-  // need explicit substitution.
-  const brandPrimaryHex = useAccentHex(600);
-  const brandSecondaryHex = useAccentHex(300);
-  const palette =
-    accent === "amber"
-      ? {
-          primary: "bg-amber-500 text-white",
-          primaryHex: "#f59e0b",
-          secondary: "bg-amber-200 text-amber-900",
-          secondaryHex: "#fde68a",
-        }
-      : {
-          primary: "bg-brand-600 text-white",
-          primaryHex: brandPrimaryHex,
-          secondary: "bg-brand-300 text-brand-900",
-          secondaryHex: brandSecondaryHex,
-        };
-  return (
-    <Card>
-      <div className="p-5">
-        <div className="mb-1 flex items-baseline justify-between">
-          <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
-          <div className="flex items-center gap-3 text-[11px] text-gray-500">
-            <LegendDot color={palette.primaryHex} label="Principal" />
-            <LegendDot color={palette.secondaryHex} label="Segundo" />
-          </div>
-        </div>
-        <p className="mb-4 text-xs text-gray-500">
-          Ordenado por principal.
-        </p>
-        {rows.length === 0 ? (
-          <p className="text-xs text-gray-400">
-            Sin participación en este rango.
-          </p>
-        ) : (
-          <ul className="space-y-2.5">
-            {rows.map((r) => {
-              const primaryPct = (r.primary / max) * 100;
-              const secondaryPct = (r.secondary / max) * 100;
-              const total = r.primary + r.secondary;
-              const fillsFull = primaryPct + secondaryPct >= 99;
-              return (
-                <li
-                  key={r.person_id}
-                  className="grid grid-cols-[100px_1fr_56px] items-center gap-3"
-                >
-                  <div className="truncate text-sm font-medium text-gray-800">
-                    {r.display_name}
-                  </div>
-                  <div className="relative h-6 rounded-md bg-gray-100">
-                    {r.primary > 0 && (
-                      <div
-                        className={
-                          "absolute inset-y-0 left-0 flex items-center rounded-l-md px-2 text-[11px] font-semibold "
-                          + palette.primary
-                        }
-                        style={{ width: `${primaryPct}%` }}
-                        title={`Principal: ${r.primary}`}
-                      >
-                        {primaryPct > 6 && r.primary}
-                      </div>
-                    )}
-                    {r.secondary > 0 && (
-                      <div
-                        className={
-                          "absolute inset-y-0 flex items-center px-2 text-[11px] font-medium "
-                          + palette.secondary
-                        }
-                        style={{
-                          left: `${primaryPct}%`,
-                          width: `${secondaryPct}%`,
-                          borderTopRightRadius: fillsFull ? 6 : 0,
-                          borderBottomRightRadius: fillsFull ? 6 : 0,
-                        }}
-                        title={`Segundo: ${r.secondary}`}
-                      >
-                        {secondaryPct > 6 && r.secondary}
-                      </div>
-                    )}
-                  </div>
-                  <div className="text-right text-xs font-semibold tabular-nums text-gray-900">
-                    {total}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
       </div>
     </Card>
   );

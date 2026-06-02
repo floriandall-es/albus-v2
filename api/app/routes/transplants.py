@@ -312,6 +312,30 @@ def transplants_stats(
         .all()
     )
 
+    # "No válido" cases — the organ was extracted but not transplanted.
+    # There's no dedicated column: the marker lives in free text (the
+    # form's special-case checkbox writes it to the case notes; legacy
+    # imports carry it in procedure notes). Detect on either, tolerating
+    # the un-accented spelling. We attribute the no-válido to the
+    # EXPLANTE surgeon(s) — it's their extracted organ that failed.
+    def _is_no_valido(text: str | None) -> bool:
+        if not text:
+            return False
+        low = text.lower()
+        return "no válido" in low or "no valido" in low
+
+    case_notes = (
+        ctx.db.query(TransplantCase.id, TransplantCase.notes)
+        .filter(TransplantCase.id.in_(case_ids_in_range))
+        .all()
+    )
+    no_valido_case_ids: set[int] = {
+        cid for cid, notes in case_notes if _is_no_valido(notes)
+    }
+    for p in procs:
+        if _is_no_valido(p.notes):
+            no_valido_case_ids.add(p.case_id)
+
     total_procedures = len(procs)
     explante_total = sum(1 for p in procs if p.type == "explante")
     implante_total = total_procedures - explante_total
@@ -368,6 +392,7 @@ def transplants_stats(
             "explante_secondary": 0,
             "implante_primary": 0,
             "implante_secondary": 0,
+            "no_valido": 0,
         }
     )
     for p in procs:
@@ -375,6 +400,14 @@ def transplants_stats(
             surgeon_agg[p.primary_person_id][f"{p.type}_primary"] += 1
         if p.secondary_person_id is not None:
             surgeon_agg[p.secondary_person_id][f"{p.type}_secondary"] += 1
+        # No-válido is attributed to the explante surgeon(s) of a
+        # flagged case — primary + secondary, matching how the
+        # Explantes total counts participations.
+        if p.type == "explante" and p.case_id in no_valido_case_ids:
+            if p.primary_person_id is not None:
+                surgeon_agg[p.primary_person_id]["no_valido"] += 1
+            if p.secondary_person_id is not None:
+                surgeon_agg[p.secondary_person_id]["no_valido"] += 1
 
     names = _person_name_map(ctx, set(surgeon_agg.keys()))
     surgeons_out = sorted(
@@ -389,6 +422,7 @@ def transplants_stats(
                 explante_secondary=v["explante_secondary"],
                 implante_primary=v["implante_primary"],
                 implante_secondary=v["implante_secondary"],
+                no_valido_count=v["no_valido"],
             )
             for pid, v in surgeon_agg.items()
         ],

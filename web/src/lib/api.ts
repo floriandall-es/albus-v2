@@ -3513,6 +3513,9 @@ export type TransplantStatsSurgeon = {
   explante_secondary: number;
   implante_primary: number;
   implante_secondary: number;
+  /** Explante participations (primary + secondary) on cases flagged
+   * "no válido". Drives the No válidos charts. */
+  no_valido_count: number;
 };
 
 export type TransplantStats = {
