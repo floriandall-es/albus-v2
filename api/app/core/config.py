@@ -85,6 +85,12 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = False
     email_enabled: bool = False
 
+    # Ops alerting (in-house, no Sentry). When set, unhandled 500s and
+    # background-job failures email this address (throttled). Unset →
+    # alerts no-op and we rely on the structured logs. Set this in the
+    # prod .env, e.g. OPS_ALERT_EMAIL=founder@example.com.
+    ops_alert_email: str = ""
+
     # CP-SAT solver budget. Bigger problems benefit from more time, but a
     # 30s ceiling keeps interactive "regenerate" from feeling broken.
     solver_max_seconds: int = 30
