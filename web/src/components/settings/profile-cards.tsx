@@ -647,6 +647,7 @@ export const CARGO_OPTIONS = [
   "Profesor/a",
   "Investigador/a",
   "Becario/a",
+  "Administrativo/a",
 ];
 
 function ProfileSection({
