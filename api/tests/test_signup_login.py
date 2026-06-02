@@ -79,4 +79,11 @@ def test_me_without_token(client):
 def test_health(client):
     r = client.get("/api/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok"}
+    body = r.json()
+    # Richer readiness probe now (DB connectivity + migrations-at-head);
+    # assert the meaningful subset rather than exact shape.
+    assert body["status"] == "ok"
+    assert body["db"] == "ok"
+    assert body["migrations"] in ("ok", "unknown")
+    # Request-ID middleware echoes a correlation id on every response.
+    assert r.headers.get("x-request-id")

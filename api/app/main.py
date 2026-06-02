@@ -1,6 +1,9 @@
 import logging
 import os
+import time
+from uuid import uuid4
 
+from apscheduler.events import EVENT_JOB_ERROR
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,6 +48,71 @@ from app.routes import (
 )
 
 app = FastAPI(title="Trivu API", version="0.1.0")
+
+_request_log = logging.getLogger("app.request")
+
+
+class RequestContextMiddleware:
+    """Pure-ASGI request-ID + 5xx logging.
+
+    Deliberately NOT a Starlette BaseHTTPMiddleware (`@app.middleware`):
+    BaseHTTPMiddleware buffers the response, which breaks long-lived
+    streaming responses — and we have one (the chat SSE stream at
+    /api/realtime/stream). A raw ASGI middleware passes bytes straight
+    through, so streaming is unaffected.
+
+    What it does:
+      - attaches a request id (honours an inbound X-Request-ID, else a
+        fresh short uuid) and echoes it back in the X-Request-ID
+        response header so support can correlate a user report with the
+        server logs;
+      - logs a structured line for any 5xx response or unhandled
+        exception (method, path, status, request id, duration).
+
+    The Sentry hook (P1 follow-up) attaches here once a DSN is set.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        inbound = dict(scope.get("headers") or {}).get(b"x-request-id")
+        rid = inbound.decode("latin-1") if inbound else uuid4().hex[:16]
+        method = scope.get("method", "?")
+        path = scope.get("path", "?")
+        start = time.monotonic()
+        status_code = 0
+
+        async def send_wrapper(message):
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message.get("status", 0)
+                headers = list(message.get("headers") or [])
+                headers.append((b"x-request-id", rid.encode("latin-1")))
+                message["headers"] = headers
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapper)
+        except Exception:
+            dur_ms = (time.monotonic() - start) * 1000
+            _request_log.exception(
+                "unhandled_error rid=%s %s %s dur=%.0fms",
+                rid, method, path, dur_ms,
+            )
+            raise
+        if status_code >= 500:
+            dur_ms = (time.monotonic() - start) * 1000
+            _request_log.error(
+                "server_error rid=%s %s %s status=%s dur=%.0fms",
+                rid, method, path, status_code, dur_ms,
+            )
+
+
+app.add_middleware(RequestContextMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -122,6 +190,17 @@ os.makedirs(settings.voice_notes_dir, exist_ok=True)
 _scheduler: BackgroundScheduler | None = None
 
 
+def _on_job_error(event) -> None:
+    """APScheduler error listener. Background ticks (meeting reminders,
+    billing emails, pulse fan-out) run in a daemon thread; an exception
+    there otherwise vanishes into APScheduler's own logger with no
+    signal. Surface it loudly with the job id + traceback — this is the
+    single place the Sentry capture hooks in once a DSN is set."""
+    logging.getLogger("app.scheduler").error(
+        "background_job_failed id=%s", event.job_id, exc_info=event.exception
+    )
+
+
 @app.on_event("startup")
 def _start_background_jobs() -> None:
     global _scheduler
@@ -130,6 +209,7 @@ def _start_background_jobs() -> None:
     if _scheduler is not None:
         return
     _scheduler = BackgroundScheduler(daemon=True, timezone="Europe/Madrid")
+    _scheduler.add_listener(_on_job_error, EVENT_JOB_ERROR)
     _scheduler.add_job(
         meeting_reminders_tick,
         trigger="interval",
