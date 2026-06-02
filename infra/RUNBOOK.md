@@ -138,56 +138,71 @@ Events (`GET /api/realtime/stream`) instead of polling. Operational notes:
 
 ## 4. Postgres backup
 
-Manual one-shot dump:
+`infra/backup.sh` (now a real, committed script) dumps Postgres (logical, gzip)
+**and** the user-uploaded file volumes (avatars + voice notes), uploads both to
+S3-compatible storage, prunes old local copies, and optionally pings a
+dead-man's-switch. Manual one-shot if you ever need it:
 
 ```bash
 TS=$(date -u +%Y%m%dT%H%M%SZ)
 docker compose -f /srv/albus/repo/infra/docker-compose.prod.yml exec -T db \
-  pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" | gzip > /srv/albus/backups/albus-${TS}.sql.gz
+  pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" | gzip > /srv/albus/backups/albus-db-${TS}.sql.gz
 ```
 
-Daily cron + S3-compatible upload (DigitalOcean Spaces / Backblaze B2 / R2 / Wasabi). Edit `/etc/cron.d/albus-backup` as root:
+**Setup (do once):**
 
-```cron
-# /etc/cron.d/albus-backup — runs daily at 03:14 UTC
-SHELL=/bin/bash
-PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-14 3 * * * deploy /srv/albus/repo/infra/backup.sh >> /var/log/albus-backup.log 2>&1
-```
+1. Fill these in `/srv/albus/.env` (S3-compatible: Backblaze B2 / R2 / Wasabi /
+   DO Spaces / Hetzner):
+   ```
+   S3_BUCKET=albus-backups
+   S3_ENDPOINT=https://s3.eu-central-003.backblazeb2.com   # your provider's EU endpoint
+   S3_ACCESS_KEY=...
+   S3_SECRET_KEY=...
+   # optional tunables:
+   BACKUP_RETENTION_DAYS=14        # local copies; off-box retention = bucket lifecycle
+   BACKUP_PING_URL=https://hc-ping.com/<uuid>   # healthchecks.io dead-man's-switch
+   ```
+   Prefer an **EU** bucket region (hospital data). The off-box copy is the whole
+   point — a backup on the same disk as the DB is not a backup.
+2. Set a **lifecycle / retention rule on the bucket** (e.g. keep 30 days) — the
+   script only prunes the *local* staging copies; S3 retention is the bucket's job.
+3. Install the daily cron (`/etc/cron.d/albus-backup`, as root):
+   ```cron
+   SHELL=/bin/bash
+   PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+   14 3 * * * deploy /srv/albus/repo/infra/backup.sh >> /var/log/albus-backup.log 2>&1
+   ```
+4. Run it once by hand and confirm the objects land in the bucket:
+   ```bash
+   sudo -u deploy /srv/albus/repo/infra/backup.sh
+   ```
 
-Create `/srv/albus/repo/infra/backup.sh` only if you actually configure S3. Until then, run the manual dump above and store off-box yourself.
-
-> **Placeholder credentials** — fill these in `/srv/albus/.env`:
-> `S3_BUCKET`, `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`.
+Alert recipient: alerting on a *failed* run is best done with the
+`BACKUP_PING_URL` dead-man's-switch (healthchecks.io free tier) — it pages you
+when a run is **missed**, which a crashed cron can't do for itself.
 
 ---
 
-## 5. Postgres restore drill
+## 5. Postgres restore drill + real restore
 
-**You must run this drill before you trust your backups.** Do it now:
+**An untested backup is not a backup. Run the drill now and monthly:**
 
 ```bash
-# Pick the most recent backup
-LATEST=$(ls -1t /srv/albus/backups/*.sql.gz | head -1)
-echo "Restoring from $LATEST"
-
-# Spin up an isolated test container (does NOT touch prod db)
-docker run --rm -d --name albus-restore-test \
-  -e POSTGRES_PASSWORD=test -e POSTGRES_DB=albus_restore \
-  -p 55432:5432 postgres:16-alpine
-sleep 5
-
-gunzip -c "$LATEST" | docker exec -i albus-restore-test \
-  psql -U postgres -d albus_restore
-
-# Smoke-check
-docker exec albus-restore-test \
-  psql -U postgres -d albus_restore -c "SELECT count(*) FROM tenants;"
-
-docker stop albus-restore-test
+/srv/albus/repo/infra/restore-drill.sh        # newest dump in /srv/albus/backups
+# → spins a throwaway Postgres, restores, prints alembic_version + row
+#   counts, tears down. Exit 0 = PASS. Touches nothing in prod.
 ```
 
-For a real restore into prod (DESTRUCTIVE — read twice):
+To test the *off-box* copy specifically, pull the latest object from S3 first and
+pass its path to the script.
+
+**RPO / RTO (target):**
+- **RPO ≤ 24h** — daily backup, so at most one day of writes lost. Tighten to
+  hourly later if a hospital's tolerance is lower.
+- **RTO ≤ 1h** — restore into the running DB container (below) is minutes;
+  the hour absorbs diagnosis + a fresh-host rebuild if the VPS itself is gone.
+
+**Real restore into prod (DESTRUCTIVE — read twice):**
 
 ```bash
 cd /srv/albus/repo
@@ -196,11 +211,19 @@ docker compose -f infra/docker-compose.prod.yml exec -T db \
   psql -U "$POSTGRES_USER" -c "DROP DATABASE $POSTGRES_DB WITH (FORCE);"
 docker compose -f infra/docker-compose.prod.yml exec -T db \
   psql -U "$POSTGRES_USER" -c "CREATE DATABASE $POSTGRES_DB;"
-gunzip -c /srv/albus/backups/albus-YYYYMMDDTHHMMSSZ.sql.gz | \
+gunzip -c /srv/albus/backups/albus-db-YYYYMMDDTHHMMSSZ.sql.gz | \
   docker compose -f infra/docker-compose.prod.yml exec -T db \
   psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
 docker compose -f infra/docker-compose.prod.yml start api web
+# Don't forget the files: extract albus-files-*.tar.gz back into
+# /srv/albus/avatars and /srv/albus/voice-notes.
 ```
+
+> **Fresh-host DR** (the VPS is gone, not just the DB): the dump GRANTs to the
+> `albus_app` role, so on a brand-new server create that role *before* loading
+> the dump (`CREATE ROLE albus_app LOGIN PASSWORD '…';`) — otherwise the GRANT
+> lines error. On the existing prod DB the role already exists, so the steps
+> above are enough. The drill script does this role pre-creation for you.
 
 ---
 
