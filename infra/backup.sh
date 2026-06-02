@@ -81,9 +81,14 @@ if [ -n "${S3_BUCKET:-}" ]; then
     aws_s3() {
         local extra=()
         [ -n "${S3_ENDPOINT:-}" ] && extra=(--endpoint-url "$S3_ENDPOINT")
+        # S3-compatible providers (Hetzner, Backblaze, R2…) still need a
+        # region set or the CLI errors "You must specify a region".
+        # S3_REGION matches the provider's location (Hetzner: fsn1/nbg1/
+        # hel1); default us-east-1 is the harmless catch-all most accept.
         docker run --rm \
             -e AWS_ACCESS_KEY_ID="${S3_ACCESS_KEY:-}" \
             -e AWS_SECRET_ACCESS_KEY="${S3_SECRET_KEY:-}" \
+            -e AWS_DEFAULT_REGION="${S3_REGION:-us-east-1}" \
             -v "$BACKUP_DIR:/backups:ro" \
             amazon/aws-cli "${extra[@]}" "$@"
     }
