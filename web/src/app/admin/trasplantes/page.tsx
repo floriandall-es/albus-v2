@@ -494,9 +494,18 @@ function TransplantEditor({
 }) {
   const qc = useQueryClient();
   const isNew = existing === null;
-  const [externalCaseId, setExternalCaseId] = useState<string>(
-    existing?.external_case_id ?? "",
-  );
+  // Single case-level date (no time). Explante + implante always
+  // happen the same day in practice, so we collect one date and
+  // stamp both procedures with it. Seed from the earliest procedure
+  // on record when editing, else today.
+  const [caseDate, setCaseDate] = useState<string>(() => {
+    if (existing && existing.procedures.length > 0) {
+      return existing.procedures
+        .map((p) => p.occurred_at.slice(0, 10))
+        .sort()[0];
+    }
+    return todayIso();
+  });
   const [notes, setNotes] = useState<string>(existing?.notes ?? "");
   const [procedures, setProcedures] = useState<TransplantProcedureInput[]>(
     () => {
@@ -539,12 +548,19 @@ function TransplantEditor({
 
   const save = useMutation({
     mutationFn: () => {
+      // Stamp every procedure with the single case date at a fixed
+      // 11:00Z — Spain is UTC+1/+2 so this never crosses a calendar
+      // day, and the backend only reads the date off it.
+      const at = `${caseDate}T11:00:00Z`;
       const body: TransplantCaseInput = {
-        external_case_id: externalCaseId.trim() || null,
+        // The "Referencia externa" field was removed from the form.
+        // Preserve any imported/existing id so editing a legacy case
+        // never wipes its #number; new cases simply have none.
+        external_case_id: existing?.external_case_id ?? null,
         notes: notes.trim() || null,
         procedures: procedures.map((p) => ({
           type: p.type,
-          occurred_at: p.occurred_at,
+          occurred_at: at,
           primary_person_id: p.primary_person_id,
           secondary_person_id: p.secondary_person_id,
           notes: p.notes?.trim() || null,
@@ -601,24 +617,19 @@ function TransplantEditor({
           if (canSave) save.mutate();
         }}
       >
-        <div className="grid grid-cols-2 gap-3">
-          <TextField
-            label="Referencia externa"
-            hint="Número de caso del sistema de coordinación de donantes, si lo conoces. Opcional."
-            value={externalCaseId}
-            onChange={setExternalCaseId}
-          />
-          <div />
-        </div>
-
         <div>
-          <span className="text-sm font-medium text-gray-700">Notas del caso</span>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-            placeholder="Notas sobre el caso (opcional)…"
+          <label
+            htmlFor="case-date"
+            className="text-sm font-medium text-gray-700"
+          >
+            Fecha del caso
+          </label>
+          <input
+            id="case-date"
+            type="date"
+            value={caseDate}
+            onChange={(e) => setCaseDate(e.target.value)}
+            className="mt-1 block rounded-md border border-gray-300 px-3 py-2 text-sm"
           />
         </div>
 
@@ -657,6 +668,17 @@ function TransplantEditor({
           </div>
         </div>
 
+        <div className="border-t border-gray-100 pt-3">
+          <span className="text-sm font-medium text-gray-700">Notas del caso</span>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            placeholder="Notas sobre el caso (opcional)…"
+          />
+        </div>
+
         {save.isError && (
           <ErrorText>{(save.error as Error).message}</ErrorText>
         )}
@@ -685,11 +707,8 @@ function ProcedureRow({
   onChange: (patch: Partial<TransplantProcedureInput>) => void;
   onRemove: (() => void) | null;
 }) {
-  // The API expects an ISO timestamp; the <input type="datetime-local">
-  // gives us "YYYY-MM-DDTHH:MM" without the timezone. We pad to a full
-  // ISO + Z (treated as UTC) on the way out, and slice off the seconds
-  // + tz on the way in for the input value.
-  const inputValue = proc.occurred_at.slice(0, 16);
+  // The date now lives once at the case level — each procedure just
+  // carries its type, surgeons and notes.
   return (
     <div className="rounded-md border border-gray-200 p-2.5 space-y-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -703,19 +722,6 @@ function ProcedureRow({
             { value: "explante", label: "Explante" },
             { value: "implante", label: "Implante" },
           ]}
-        />
-        <input
-          type="datetime-local"
-          value={inputValue}
-          onChange={(e) => {
-            const v = e.target.value;
-            // datetime-local gives "YYYY-MM-DDTHH:MM" without tz.
-            // Stash with ":00Z" so the server sees a UTC instant.
-            onChange({
-              occurred_at: v ? `${v}:00Z` : proc.occurred_at,
-            });
-          }}
-          className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
         />
         {onRemove && (
           <button
