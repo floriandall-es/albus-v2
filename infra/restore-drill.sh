@@ -21,12 +21,25 @@ PG_IMAGE="${PG_IMAGE:-postgres:16-alpine}"
 APP_ROLE="${APP_DB_ROLE:-albus_app}"
 CONTAINER="albus-restore-drill-$$"
 
-if [ -f "$ENV_FILE" ]; then
-    set -a
-    # shellcheck disable=SC1090
-    . "$ENV_FILE"
-    set +a
-fi
+# Load the env file SAFELY (docker-compose format isn't shell-quoted —
+# see the matching note in backup.sh). Parse, don't source.
+load_env_file() {
+    local file="$1" line key val
+    [ -f "$file" ] || return 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in ''|'#'*) continue ;; esac
+        case "$line" in *=*) ;; *) continue ;; esac
+        key="${line%%=*}"
+        val="${line#*=}"
+        case "$key" in ''|*[!A-Za-z0-9_]*) continue ;; esac
+        case "$val" in
+            \"*\") val="${val#\"}"; val="${val%\"}" ;;
+            \'*\') val="${val#\'}"; val="${val%\'}" ;;
+        esac
+        export "$key=$val"
+    done < "$file"
+}
+load_env_file "$ENV_FILE"
 
 DUMP="${1:-}"
 if [ -z "$DUMP" ]; then

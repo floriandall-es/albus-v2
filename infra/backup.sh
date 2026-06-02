@@ -30,14 +30,28 @@ DB_SERVICE="${DB_SERVICE:-db}"
 log() { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*"; }
 die() { log "ERROR: $*"; exit 1; }
 
-# Load secrets/config. `set -a` exports everything sourced so the
-# values are visible to the docker invocations below.
-if [ -f "$ENV_FILE" ]; then
-    set -a
-    # shellcheck disable=SC1090
-    . "$ENV_FILE"
-    set +a
-fi
+# Load secrets/config SAFELY. The env file is in docker-compose
+# env-file format (KEY=VALUE, values NOT shell-quoted), so `source`-ing
+# it breaks on values containing shell metacharacters — e.g.
+# SMTP_FROM=Trivu <noreply@trivu.net> (the `<` is a redirect). Parse
+# line-by-line and assign literally instead.
+load_env_file() {
+    local file="$1" line key val
+    [ -f "$file" ] || return 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in ''|'#'*) continue ;; esac
+        case "$line" in *=*) ;; *) continue ;; esac
+        key="${line%%=*}"
+        val="${line#*=}"
+        case "$key" in ''|*[!A-Za-z0-9_]*) continue ;; esac
+        case "$val" in
+            \"*\") val="${val#\"}"; val="${val%\"}" ;;
+            \'*\') val="${val#\'}"; val="${val%\'}" ;;
+        esac
+        export "$key=$val"
+    done < "$file"
+}
+load_env_file "$ENV_FILE"
 : "${POSTGRES_USER:?POSTGRES_USER not set (env file: $ENV_FILE)}"
 : "${POSTGRES_DB:?POSTGRES_DB not set (env file: $ENV_FILE)}"
 
