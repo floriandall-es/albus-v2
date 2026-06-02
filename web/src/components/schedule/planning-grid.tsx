@@ -4,6 +4,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 import {
@@ -262,6 +263,12 @@ function PlanningGridInner({
   // acceptable for our workflow.
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
+  // Clicking a meeting chip opens a small read-only detail card.
+  // Handled internally so no call site has to thread a callback.
+  const [selectedMeeting, setSelectedMeeting] = useState<MeetingInstance | null>(
+    null,
+  );
+
   // Scroll today into view as the first visible date column on
   // initial render + whenever the date window changes. The sticky
   // "Turno" column's width is subtracted so today doesn't slide
@@ -288,6 +295,7 @@ function PlanningGridInner({
   }, [dates, today]);
 
   return (
+    <>
     <div
       ref={scrollContainerRef}
       className="overflow-x-auto rounded-xl bg-white shadow-soft ring-1 ring-gray-200"
@@ -736,20 +744,12 @@ function PlanningGridInner({
                           ) : (
                             <div className="flex flex-col gap-1">
                               {items.map((m) => (
-                                <span
+                                <button
+                                  type="button"
                                   key={`${m.meeting_id}_${m.start_time}`}
-                                  className="inline-flex flex-col leading-tight"
-                                  title={
-                                    [
-                                      m.location,
-                                      m.organizer_name
-                                        ? `Organiza ${m.organizer_name}`
-                                        : null,
-                                      m.description,
-                                    ]
-                                      .filter(Boolean)
-                                      .join(" · ") || undefined
-                                  }
+                                  onClick={() => setSelectedMeeting(m)}
+                                  className="inline-flex w-full flex-col rounded leading-tight text-left -mx-0.5 px-0.5 hover:bg-violet-100/70 transition-colors cursor-pointer"
+                                  title="Ver detalles de la reunión"
                                 >
                                   <span className="font-medium text-violet-800 truncate">
                                     {m.title}
@@ -758,7 +758,7 @@ function PlanningGridInner({
                                     {m.start_time.slice(0, 5)}
                                     –{m.end_time.slice(0, 5)}
                                   </span>
-                                </span>
+                                </button>
                               ))}
                             </div>
                           )}
@@ -870,6 +870,95 @@ function PlanningGridInner({
           })}
         </tbody>
       </table>
+    </div>
+    {selectedMeeting && (
+      <MeetingDetailModal
+        meeting={selectedMeeting}
+        onClose={() => setSelectedMeeting(null)}
+      />
+    )}
+    </>
+  );
+}
+
+/** Read-only detail card for a meeting chip. Basic info only — the
+ * full edit/manage flow lives on /me/reuniones (and /admin/reuniones
+ * for organizers). The backdrop is a real <button> so closing is
+ * keyboard-accessible without extra handlers. */
+function MeetingDetailModal({
+  meeting,
+  onClose,
+}: {
+  meeting: MeetingInstance;
+  onClose: () => void;
+}) {
+  // Anchor at noon so a "YYYY-MM-DD" never slips to the previous day
+  // when formatted in the local timezone.
+  const dateLabel = new Date(`${meeting.date}T12:00:00`).toLocaleDateString(
+    "es-ES",
+    { weekday: "long", day: "numeric", month: "long", year: "numeric" },
+  );
+  const kindLabel =
+    meeting.kind === "regular" ? "Reunión periódica" : "Reunión puntual";
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label="Cerrar"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/30"
+      />
+      <div className="relative w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl ring-1 ring-gray-200">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <span className="inline-block rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700">
+              {kindLabel}
+            </span>
+            <h2 className="mt-1.5 text-base font-semibold text-gray-900 break-words">
+              {meeting.title}
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar"
+            className="shrink-0 rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+          >
+            ✕
+          </button>
+        </div>
+
+        <dl className="mt-3 space-y-2 text-sm">
+          <div className="flex gap-2">
+            <dt className="w-20 shrink-0 text-gray-500">Fecha</dt>
+            <dd className="capitalize text-gray-800">{dateLabel}</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="w-20 shrink-0 text-gray-500">Hora</dt>
+            <dd className="text-gray-800">
+              {meeting.start_time.slice(0, 5)}–{meeting.end_time.slice(0, 5)}
+            </dd>
+          </div>
+          {meeting.location && (
+            <div className="flex gap-2">
+              <dt className="w-20 shrink-0 text-gray-500">Lugar</dt>
+              <dd className="text-gray-800 break-words">{meeting.location}</dd>
+            </div>
+          )}
+          {meeting.organizer_name && (
+            <div className="flex gap-2">
+              <dt className="w-20 shrink-0 text-gray-500">Organiza</dt>
+              <dd className="text-gray-800">{meeting.organizer_name}</dd>
+            </div>
+          )}
+        </dl>
+
+        {meeting.description && (
+          <p className="mt-3 whitespace-pre-wrap border-t border-gray-100 pt-3 text-sm text-gray-700">
+            {meeting.description}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
