@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Building2,
+  EyeOff,
   Mail,
   MessageCircle,
   MessageSquare,
@@ -44,6 +45,14 @@ export default function HospitalDirectoryPage() {
   const [onGuardiaOnly, setOnGuardiaOnly] = useState(false);
 
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
+  // Reciprocity gate: you can only browse the directory if you appear
+  // in it. Read the caller's own visibility off their current
+  // membership (same source the settings toggle writes).
+  const myVisible = me.data
+    ? (me.data.memberships.find(
+        (m) => m.tenant_id === me.data!.current_tenant.id,
+      )?.directory_visible ?? true)
+    : true;
   const directory = useQuery({
     queryKey: ["hospital-directory", q, tenantId],
     queryFn: () =>
@@ -51,6 +60,8 @@ export default function HospitalDirectoryPage() {
         q: q || undefined,
         tenant_id: tenantId === "" ? undefined : tenantId,
       }),
+    // Don't fire while hidden — the backend would 403.
+    enabled: !!me.data && myVisible,
   });
 
   const hospitalName = me.data?.current_tenant.hospital_name ?? null;
@@ -111,6 +122,34 @@ export default function HospitalDirectoryPage() {
               Tipo de equipo
             </a>{" "}
             para activar el directorio compartido entre departamentos.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Hidden-from-directory gate (the backend enforces this with a 403;
+  // this is the friendly version). Only after /me loads, so it doesn't
+  // flash for visible users.
+  if (me.data && !myVisible) {
+    return (
+      <div className="max-w-2xl">
+        <h1 className="text-2xl font-semibold">Directorio del hospital</h1>
+        <div className="mt-4 rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-600">
+          <div className="mb-2 flex items-center gap-2 font-medium text-gray-800">
+            <EyeOff className="h-5 w-5 text-gray-500" />
+            Estás oculto del directorio
+          </div>
+          <p>
+            El directorio es recíproco: para ver a tus compañeros tienes
+            que aparecer tú también. Activa{" "}
+            <a
+              href="/me/settings"
+              className="font-medium text-brand-700 hover:underline"
+            >
+              «Aparezco en el directorio»
+            </a>{" "}
+            en tus ajustes y podrás verlos.
           </p>
         </div>
       </div>

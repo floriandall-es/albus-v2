@@ -101,6 +101,21 @@ def list_hospital_directory(
         # onboarding instead of forking on status codes.
         return []
 
+    # Reciprocity: you can browse the directory only if you appear in
+    # it. A member who opted out (directory_visible=False) would
+    # otherwise consume everyone's contact info while giving nothing
+    # back. Enforced here so it can't be bypassed via the API; the
+    # frontend turns this 403 into a "turn yourself on to see others"
+    # card linking to settings.
+    if not ctx.membership.directory_visible:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Para ver el directorio tienes que aparecer en él. "
+                "Actívalo en tus ajustes."
+            ),
+        )
+
     rows = ctx.db.execute(
         text(
             "SELECT person_id, person_name, person_first_name, "

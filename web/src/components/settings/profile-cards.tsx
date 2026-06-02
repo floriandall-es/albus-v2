@@ -240,8 +240,9 @@ function DirectoryVisibilitySection({
         <p className="mt-1 text-xs text-gray-500">
           Cuando está activado, otros profesionales de
           {hospitalName ? ` ${hospitalName}` : " tu hospital"} pueden
-          encontrarte por nombre o categoría en el directorio. Desactívalo
-          si prefieres no aparecer.
+          encontrarte por nombre o cargo en el directorio. Es recíproco:
+          si lo desactivas no aparecerás, pero tampoco podrás ver el
+          directorio del resto.
         </p>
         <label className="mt-3 inline-flex items-center gap-2 cursor-pointer">
           <input
