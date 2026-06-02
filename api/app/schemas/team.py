@@ -12,6 +12,10 @@ class TeamMemberOut(BaseModel):
     tenant_id: int
     person_id: int
     person_name: str
+    # Structured last name (NULL for legacy single-name rows). Lets the
+    # frontend render last-name-only labels without guessing where the
+    # surname starts (e.g. "Jose Alfonso Ceron" → "Ceron").
+    person_last_name: str | None = None
     person_email: str
     person_locale: str | None
     person_avatar_url: str | None = None

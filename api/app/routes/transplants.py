@@ -57,14 +57,20 @@ def _require_transplants_enabled(ctx: RequestContext) -> None:
         raise HTTPException(status_code=404, detail="Not Found")
 
 
-def _person_name_map(ctx: RequestContext, person_ids: set[int]) -> dict[int, str]:
-    """Resolve a set of person ids to display names in one query."""
+def _person_name_map(
+    ctx: RequestContext, person_ids: set[int]
+) -> dict[int, tuple[str, str | None]]:
+    """Resolve person ids to (full name, structured last name) in one
+    query. last_name is NULL for legacy single-name rows; the frontend
+    prefers it for the compact last-name-only labels (so "Jose Alfonso
+    Ceron" shows as "Ceron", not the name-splitting heuristic's
+    "Alfonso Ceron") and falls back to parsing the full name."""
     if not person_ids:
         return {}
     return {
-        pid: name
-        for pid, name in (
-            ctx.db.query(Person.id, Person.name)
+        pid: (name, last_name)
+        for pid, name, last_name in (
+            ctx.db.query(Person.id, Person.name, Person.last_name)
             .filter(Person.id.in_(person_ids))
             .all()
         )
@@ -108,7 +114,7 @@ def _collect_person_ids(procs: list[TransplantProcedureIn]) -> set[int]:
 
 
 def _serialize_case(
-    case: TransplantCase, names: dict[int, str]
+    case: TransplantCase, names: dict[int, tuple[str, str | None]]
 ) -> TransplantCaseOut:
     has_explante = any(p.type == "explante" for p in case.procedures)
     has_implante = any(p.type == "implante" for p in case.procedures)
@@ -129,13 +135,23 @@ def _serialize_case(
                 occurred_at=p.occurred_at,
                 primary_person_id=p.primary_person_id,
                 primary_person_name=(
-                    names.get(p.primary_person_id)
+                    names.get(p.primary_person_id, (None, None))[0]
+                    if p.primary_person_id
+                    else None
+                ),
+                primary_person_last_name=(
+                    names.get(p.primary_person_id, (None, None))[1]
                     if p.primary_person_id
                     else None
                 ),
                 secondary_person_id=p.secondary_person_id,
                 secondary_person_name=(
-                    names.get(p.secondary_person_id)
+                    names.get(p.secondary_person_id, (None, None))[0]
+                    if p.secondary_person_id
+                    else None
+                ),
+                secondary_person_last_name=(
+                    names.get(p.secondary_person_id, (None, None))[1]
                     if p.secondary_person_id
                     else None
                 ),
@@ -414,7 +430,8 @@ def transplants_stats(
         [
             TransplantStatsSurgeonOut(
                 person_id=pid,
-                person_name=names.get(pid, "(desconocido)"),
+                person_name=names.get(pid, ("(desconocido)", None))[0],
+                person_last_name=names.get(pid, (None, None))[1],
                 primary_count=v["explante_primary"] + v["implante_primary"],
                 secondary_count=v["explante_secondary"]
                 + v["implante_secondary"],

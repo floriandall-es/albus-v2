@@ -1354,6 +1354,7 @@ export type TeamMember = {
   tenant_id: number;
   person_id: number;
   person_name: string;
+  person_last_name?: string | null;
   person_email: string;
   person_locale: string | null;
   person_avatar_url: string | null;
@@ -3450,8 +3451,10 @@ export type TransplantProcedure = {
   occurred_at: string;
   primary_person_id: number | null;
   primary_person_name: string | null;
+  primary_person_last_name?: string | null;
   secondary_person_id: number | null;
   secondary_person_name: string | null;
+  secondary_person_last_name?: string | null;
   notes: string | null;
 };
 
@@ -3504,6 +3507,7 @@ export type TransplantStatsMonth = {
 export type TransplantStatsSurgeon = {
   person_id: number;
   person_name: string;
+  person_last_name?: string | null;
   /** Sum of explante_primary + implante_primary. Drives the
    * default sort on the page. */
   primary_count: number;

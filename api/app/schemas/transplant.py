@@ -61,8 +61,12 @@ class TransplantProcedureOut(BaseModel):
     occurred_at: datetime
     primary_person_id: int | None
     primary_person_name: str | None
+    # Structured last name (NULL for legacy single-name rows). The
+    # frontend prefers it for the compact last-name-only labels.
+    primary_person_last_name: str | None = None
     secondary_person_id: int | None
     secondary_person_name: str | None
+    secondary_person_last_name: str | None = None
     notes: str | None
 
 
@@ -126,6 +130,9 @@ class TransplantStatsSurgeonOut(BaseModel):
 
     person_id: int
     person_name: str
+    # Structured last name (NULL for legacy single-name rows) so the
+    # charts label "Ceron" not the heuristic's "Alfonso Ceron".
+    person_last_name: str | None = None
     primary_count: int
     secondary_count: int
     explante_primary: int

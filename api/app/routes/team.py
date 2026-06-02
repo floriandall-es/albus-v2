@@ -25,6 +25,7 @@ def _serialize(
         tenant_id=m.tenant_id,
         person_id=m.person_id,
         person_name=person.name,
+        person_last_name=person.last_name,
         person_email=person.email,
         person_locale=person.locale,
         person_avatar_url=person.avatar_url,

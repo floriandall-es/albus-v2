@@ -112,13 +112,15 @@ export default function TrasplantesPage() {
       )
       .map((m) => ({
         ...m,
-        // Last-name-only display label, computed once so the
-        // picker + sort use the same string the case rows show.
-        // TeamMember doesn't expose last_name; the helper's
-        // whitespace-split fallback (and the parenthetical-strip
-        // we added for the disabled-Pastor sentinel) handle every
-        // shape we have today.
-        display_name: personLastName({ name: m.person_name }),
+        // Last-name-only display label, computed once so the picker +
+        // sort use the same string the case rows show. Prefer the
+        // structured last_name (e.g. "Jose Alfonso Ceron" → "Ceron");
+        // the whitespace-split fallback only kicks in for legacy
+        // single-name rows.
+        display_name: personLastName({
+          name: m.person_name,
+          last_name: m.person_last_name,
+        }),
       }))
       .sort((a, b) =>
         a.display_name.localeCompare(b.display_name, "es"),
@@ -466,11 +468,17 @@ function SurgeonCell({ proc }: { proc: TransplantProcedure | undefined }) {
   }
   return (
     <span className="text-gray-800">
-      {personLastName({ name: proc.primary_person_name })}
+      {personLastName({
+        name: proc.primary_person_name,
+        last_name: proc.primary_person_last_name,
+      })}
       {proc.secondary_person_name && (
         <span className="text-gray-500">
           {" "}
-          + {personLastName({ name: proc.secondary_person_name })}
+          + {personLastName({
+            name: proc.secondary_person_name,
+            last_name: proc.secondary_person_last_name,
+          })}
         </span>
       )}
     </span>

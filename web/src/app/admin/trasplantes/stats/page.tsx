@@ -95,7 +95,7 @@ export default function TrasplantesStatsPage() {
     const seen = new Map<number, string>();
     for (const s of src) {
       if (!seen.has(s.person_id)) {
-        seen.set(s.person_id, personLastName({ name: s.person_name }));
+        seen.set(s.person_id, personLastName({ name: s.person_name, last_name: s.person_last_name }));
       }
     }
     return Array.from(seen.entries())
@@ -146,7 +146,7 @@ export default function TrasplantesStatsPage() {
         const implantes = s.implante_primary + s.implante_secondary;
         return {
           person_id: s.person_id,
-          display_name: personLastName({ name: s.person_name }),
+          display_name: personLastName({ name: s.person_name, last_name: s.person_last_name }),
           explantes,
           implantes,
           total: explantes + implantes,
@@ -565,7 +565,7 @@ function MonthPerSurgeonChart({
     // happen since they wouldn't show up in surgeons at all then).
     for (const s of data.surgeons) {
       if (!map.has(s.person_id)) {
-        map.set(s.person_id, personLastName({ name: s.person_name }));
+        map.set(s.person_id, personLastName({ name: s.person_name, last_name: s.person_last_name }));
       }
     }
     return map;
