@@ -45,6 +45,11 @@ services:
       SMTP_FROM: ${SMTP_FROM}
       SMTP_USE_TLS: ${SMTP_USE_TLS}
       EMAIL_ENABLED: ${EMAIL_ENABLED}
+      # Ops alerting (P1, in-house — no Sentry). When set, unhandled
+      # 500s + background-job failures email this address (throttled,
+      # 30 min/key). Unset → alerts no-op, errors still hit the logs.
+      # Put OPS_ALERT_EMAIL=you@example.com in /srv/albus/.env.
+      OPS_ALERT_EMAIL: ${OPS_ALERT_EMAIL:-}
       AVATARS_DIR: /app/avatars
       # Chat voice notes (migration 0093). Host volume below; back it
       # up alongside avatars + the DB.
