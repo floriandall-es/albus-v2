@@ -23,7 +23,8 @@ import { Avatar } from "@/components/schedule/planning-grid";
  *
  * Lists every active clinician at the caller's hospital (across
  * all departments / tenants), with search + filter by department
- * and categoría. Hidden when the caller's tenant has no parent
+ * (servicio) and cargo (the job-title pills — NOT the internal
+ * scheduling categoría). Hidden when the caller's tenant has no parent
  * hospital — the page renders an empty state pointing back to
  * onboarding instead of 404-ing.
  *
@@ -34,7 +35,7 @@ import { Avatar } from "@/components/schedule/planning-grid";
 export default function HospitalDirectoryPage() {
   const [q, setQ] = useState("");
   const [tenantId, setTenantId] = useState<number | "">("");
-  const [categoryId, setCategoryId] = useState<number | "">("");
+  const [cargo, setCargo] = useState<string>("");
   // "Personal de guardia" toggle — purely client-side. The directory
   // response already carries on_guardia_today per entry (migration
   // 0062), so toggling this doesn't refetch — we just narrow the
@@ -44,26 +45,29 @@ export default function HospitalDirectoryPage() {
 
   const me = useQuery({ queryKey: ["me"], queryFn: api.me });
   const directory = useQuery({
-    queryKey: ["hospital-directory", q, tenantId, categoryId],
+    queryKey: ["hospital-directory", q, tenantId],
     queryFn: () =>
       api.listHospitalDirectory({
         q: q || undefined,
         tenant_id: tenantId === "" ? undefined : tenantId,
-        category_id: categoryId === "" ? undefined : categoryId,
       }),
   });
 
   const hospitalName = me.data?.current_tenant.hospital_name ?? null;
   const hospitalId = me.data?.current_tenant.hospital_id ?? null;
 
-  // Apply the "Personal de guardia" toggle locally; the API filters
-  // by name/tenant/category but this one is presentational.
+  // Cargo + "Personal de guardia" are applied client-side: both ride
+  // along on every entry, so narrowing by them doesn't refetch. We
+  // filter by CARGO (the job-title pills shown on each card), NOT by
+  // the internal scheduling `category` — that's a solver attribute,
+  // not something users navigate the directory by.
   const visibleRows = useMemo(() => {
     if (!directory.data) return [];
-    return onGuardiaOnly
-      ? directory.data.filter((r) => r.on_guardia_today)
-      : directory.data;
-  }, [directory.data, onGuardiaOnly]);
+    let rows = directory.data;
+    if (cargo) rows = rows.filter((r) => r.cargos.includes(cargo));
+    if (onGuardiaOnly) rows = rows.filter((r) => r.on_guardia_today);
+    return rows;
+  }, [directory.data, cargo, onGuardiaOnly]);
 
   // Derive filter dropdown options from the unfiltered result set
   // — the dropdown options stay stable as the user types in the
@@ -77,16 +81,13 @@ export default function HospitalDirectoryPage() {
       .map(([id, name]) => ({ id, name }))
       .sort((a, b) => a.name.localeCompare(b.name, "es"));
   }, [allRows]);
-  const categoryOptions = useMemo(() => {
-    const m = new Map<number, string>();
-    for (const r of allRows) {
-      if (r.category_id !== null && r.category_name !== null) {
-        m.set(r.category_id, r.category_name);
-      }
-    }
-    return [...m.entries()]
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name, "es"));
+  // Cargo dropdown options: the distinct job titles across the result
+  // set (the pills on each card). Replaces the old categoría filter,
+  // which exposed the internal scheduling attribute.
+  const cargoOptions = useMemo(() => {
+    const s = new Set<string>();
+    for (const r of allRows) for (const c of r.cargos) s.add(c);
+    return [...s].sort((a, b) => a.localeCompare(b, "es"));
   }, [allRows]);
 
   // The empty state when the tenant has no hospital is different
@@ -152,16 +153,14 @@ export default function HospitalDirectoryPage() {
           ))}
         </select>
         <select
-          value={categoryId}
-          onChange={(e) =>
-            setCategoryId(e.target.value === "" ? "" : Number(e.target.value))
-          }
+          value={cargo}
+          onChange={(e) => setCargo(e.target.value)}
           className="rounded-md border border-gray-300 px-2 py-1 text-sm"
         >
-          <option value="">Todas las categorías</option>
-          {categoryOptions.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
+          <option value="">Todos los cargos</option>
+          {cargoOptions.map((c) => (
+            <option key={c} value={c}>
+              {c}
             </option>
           ))}
         </select>
