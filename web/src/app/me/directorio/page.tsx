@@ -33,6 +33,30 @@ import { Avatar } from "@/components/schedule/planning-grid";
  * phones in P1. Members opt out per-employment via the toggle on
  * /me/settings.
  */
+
+/**
+ * Normalise a saved phone number into the digits-only international
+ * form wa.me expects. People rarely type their country code, and
+ * wa.me silently fails ("número de teléfono... no válido") when it's
+ * missing — so we default the Spanish +34 prefix, since we currently
+ * only operate in Spain.
+ *
+ * Rules (digits only, no '+'):
+ *  - drop a leading "00" international dialling prefix (0034… → 34…);
+ *  - a bare 9-digit national number (the Spanish length, e.g.
+ *    612345678 or 912345678) gets a "34" prefix;
+ *  - anything that already carries a country code (length ≠ 9) is
+ *    left untouched, so a foreign colleague who typed theirs in full
+ *    still works.
+ */
+export function whatsappDigitsES(raw: string | null | undefined): string {
+  let d = (raw ?? "").replace(/[^0-9]/g, "");
+  if (!d) return "";
+  if (d.startsWith("00")) d = d.slice(2);
+  if (d.length === 9) d = "34" + d;
+  return d;
+}
+
 export default function HospitalDirectoryPage() {
   const [q, setQ] = useState("");
   const [tenantId, setTenantId] = useState<number | "">("");
@@ -425,10 +449,10 @@ function DirectoryCard({
   // Contact buttons render only when the entry exposes the channel
   // (the backend already gates this on the share_* opt-in flags).
   // WhatsApp uses the wa.me deep link — works without an API key,
-  // opens the native app on mobile and web.wa.com on desktop.
-  // wa.me wants digits-only; strip whatever formatting the user
-  // typed when they saved their personal phone.
-  const waDigits = entry.whatsapp_phone?.replace(/[^0-9]/g, "") ?? "";
+  // opens the native app on mobile and web.wa.com on desktop. wa.me
+  // needs the country code: a bare 9-digit Spanish number fails, so
+  // whatsappDigitsES defaults +34 (we only operate in Spain).
+  const waDigits = whatsappDigitsES(entry.whatsapp_phone);
   const buttons: { key: string; href: string; label: string; Icon: typeof Phone }[]
     = [];
   if (entry.work_phone) {
