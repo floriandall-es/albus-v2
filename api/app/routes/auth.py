@@ -23,6 +23,12 @@ from app.core.security import (
     password_fingerprint,
     verify_password,
 )
+from app.core.ratelimit import (
+    forgot_password_rate_limit,
+    login_rate_limit,
+    reset_password_rate_limit,
+    signup_rate_limit,
+)
 from app.db.session import get_db, set_tenant
 from app.models import Hospital, Membership, Person, Servicio, Tenant
 from app.routes.deps import RequestContext, get_current_context
@@ -211,7 +217,12 @@ def _slug_exists(db: Session, slug: str) -> bool:
     return db.query(Tenant).filter(Tenant.slug == slug).first() is not None
 
 
-@router.post("/signup", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/signup",
+    response_model=AuthResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(signup_rate_limit)],
+)
 def signup(payload: SignupRequest, db: Session = Depends(get_db)) -> AuthResponse:
     """Phase D.2 signup. Hospital → Servicio → Equipo, all anchored
     on the CNH catalog. Hospital MUST be a CNH-coded row;
@@ -450,7 +461,7 @@ def _list_person_memberships(db: Session, person_id: int) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-@router.post("/login")
+@router.post("/login", dependencies=[Depends(login_rate_limit)])
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     person = db.query(Person).filter(Person.email == payload.email.lower()).first()
     # Pendiente accounts (invited but never activated) have a NULL
@@ -634,7 +645,9 @@ def resend_verification(
 
 
 @router.post(
-    "/auth/forgot-password", status_code=status.HTTP_204_NO_CONTENT
+    "/auth/forgot-password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(forgot_password_rate_limit)],
 )
 def forgot_password(
     payload: ForgotPasswordRequest, db: Session = Depends(get_db)
@@ -683,7 +696,11 @@ def forgot_password(
     send_email(to=person.email, subject=subject, body_text=body)
 
 
-@router.post("/auth/reset-password", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/auth/reset-password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(reset_password_rate_limit)],
+)
 def reset_password(
     payload: PasswordResetRequest, db: Session = Depends(get_db)
 ) -> None:

@@ -91,6 +91,11 @@ class Settings(BaseSettings):
     # prod .env, e.g. OPS_ALERT_EMAIL=founder@example.com.
     ops_alert_email: str = ""
 
+    # Rate limiting on auth endpoints (P3). On in prod; the test suite
+    # turns it off (conftest) so fixture-heavy tests don't hit 429.
+    # Set RATE_LIMIT_ENABLED=false in the env as a prod kill-switch.
+    rate_limit_enabled: bool = True
+
     # CP-SAT solver budget. Bigger problems benefit from more time, but a
     # 30s ceiling keeps interactive "regenerate" from feeling broken.
     solver_max_seconds: int = 30

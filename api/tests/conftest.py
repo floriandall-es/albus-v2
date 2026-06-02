@@ -74,6 +74,11 @@ def _test_database():
     settings.database_url = test_migrations_url
     settings.app_database_url = test_app_url
 
+    # Auth rate limiting (P3) off by default for the suite — the
+    # fixtures hammer /signup, /login, etc. and would otherwise trip
+    # 429. The dedicated test_rate_limit.py flips it on per-test.
+    settings.rate_limit_enabled = False
+
     _ensure_test_db(test_migrations_url)
 
     # The app's session module already imported settings and created an engine
