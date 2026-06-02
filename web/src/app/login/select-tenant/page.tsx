@@ -9,6 +9,9 @@ import { finalizeLogin, PRE_AUTH_KEY } from "../_utils";
 type Stash = {
   pre_auth_token: string;
   available_tenants: TenantPickerOption[];
+  // Deep-link destination carried over from the login page so a `?next=`
+  // survives the tenant-picker hop. Validated again in finalizeLogin.
+  next?: string;
 };
 
 export default function SelectTenantPage() {
@@ -45,7 +48,7 @@ export default function SelectTenantPage() {
         tenant_id: tenantId,
       });
       sessionStorage.removeItem(PRE_AUTH_KEY);
-      finalizeLogin(res, router, qc);
+      finalizeLogin(res, router, qc, stash.next);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se ha podido continuar");
       setSubmitting(null);

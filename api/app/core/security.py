@@ -42,6 +42,32 @@ def decode_access_token(token: str) -> dict[str, Any]:
     return payload
 
 
+def refresh_access_token_if_stale(payload: dict[str, Any]) -> str | None:
+    """Sliding-expiry session keep-alive. Given a *valid* decoded access
+    token, if it's past the halfway point of its lifetime return a fresh
+    full-TTL replacement (same identity) so an active user is never
+    logged out mid-shift; otherwise None.
+
+    Stateless by design — we chose sliding expiry over a refresh-token
+    flow (no refresh-token table, no revocation). The token's own TTL
+    therefore doubles as the inactivity timeout: stop making requests
+    for longer than `jwt_ttl_minutes` and the session lapses."""
+    iat = payload.get("iat")
+    exp = payload.get("exp")
+    person_id = payload.get("person_id")
+    tenant_id = payload.get("tenant_id")
+    if not (iat and exp and person_id and tenant_id):
+        return None
+    now = datetime.now(timezone.utc).timestamp()
+    if now >= (iat + exp) / 2:  # past half-life → top up to a full TTL
+        return create_access_token(
+            person_id=person_id,
+            tenant_id=tenant_id,
+            roles=payload.get("roles") or [],
+        )
+    return None
+
+
 def create_pre_auth_token(*, person_id: int) -> str:
     """Short-lived token issued after email+password verification when the
     person has 2+ memberships and must pick a tenant before getting a real

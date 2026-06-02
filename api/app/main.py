@@ -136,6 +136,10 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Response headers the cross-origin frontend (api.trivu.net →
+    # trivu.net) must be able to READ: the sliding-expiry token refresh
+    # and the request-id for support correlation.
+    expose_headers=["X-Refreshed-Token", "X-Request-ID"],
 )
 
 app.include_router(health.router, prefix="/api")

@@ -2,10 +2,13 @@ from dataclasses import dataclass
 from typing import Generator
 
 import jwt
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
-from app.core.security import decode_access_token
+from app.core.security import (
+    decode_access_token,
+    refresh_access_token_if_stale,
+)
 from app.db.session import SessionLocal, set_person, set_tenant
 from app.models import Membership, Person, Tenant
 
@@ -27,6 +30,7 @@ def get_db_raw() -> Generator[Session, None, None]:
 
 
 def get_current_context(
+    response: Response,
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db_raw),
 ) -> Generator[RequestContext, None, None]:
@@ -81,6 +85,14 @@ def get_current_context(
     )
     if not membership:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No membership for tenant")
+
+    # Sliding expiry: if this (valid) token is past its half-life, hand
+    # back a fresh one in a response header so the client can swap it in
+    # — an active user never gets logged out mid-shift. The client reads
+    # X-Refreshed-Token (exposed via CORS in main.py).
+    refreshed = refresh_access_token_if_stale(payload)
+    if refreshed is not None:
+        response.headers["X-Refreshed-Token"] = refreshed
 
     try:
         yield RequestContext(db=db, person=person, tenant=tenant, membership=membership)

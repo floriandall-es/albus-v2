@@ -1555,6 +1555,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
   const res = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
+  // Sliding-expiry keep-alive: when the token is past its half-life the
+  // API returns a fresh one here — swap it in so an active user is
+  // never logged out mid-shift. (Exposed via CORS; see api/main.py.)
+  const refreshed = res.headers.get("X-Refreshed-Token");
+  if (refreshed) setToken(refreshed);
   if (res.status === 204) return undefined as T;
   if (!res.ok) {
     let detail: unknown = res.statusText;
@@ -1575,7 +1580,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       clearToken();
       const here = window.location.pathname + window.location.search;
       if (!here.startsWith("/login")) {
-        window.location.replace("/login");
+        // Preserve where they were so re-login lands them back there
+        // (a tapped push / deep link shouldn't dump them on home).
+        window.location.replace(`/login?next=${encodeURIComponent(here)}`);
       }
     }
     throw new Error(formatErrorDetail(detail, res.statusText));

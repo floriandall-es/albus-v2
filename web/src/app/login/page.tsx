@@ -4,7 +4,15 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, getToken, isTenantSelectionResponse } from "@/lib/api";
-import { finalizeLogin, PRE_AUTH_KEY } from "./_utils";
+import { finalizeLogin, safeNext, PRE_AUTH_KEY } from "./_utils";
+
+// Read a validated `?next=` off the current URL. Client-only (reads
+// window.location), so callers must guard with typeof window. Kept off
+// useSearchParams to avoid forcing a Suspense boundary on the page.
+function readNext(): string | null {
+  if (typeof window === "undefined") return null;
+  return safeNext(new URLSearchParams(window.location.search).get("next"));
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -39,8 +47,14 @@ export default function LoginPage() {
         if (cancelled) return;
         const isAdmin = me.memberships.some((m) => m.roles.includes("admin"));
         const onboarded = me.current_tenant.onboarding_completed_at != null;
+        // Honour a deep-link `?next=` (e.g. a tapped push that landed on
+        // /login while already authenticated) over the role default —
+        // except an admin who still has to finish onboarding.
+        const next = readNext();
         if (isAdmin && !onboarded) {
           router.replace("/onboarding");
+        } else if (next) {
+          router.replace(next);
         } else if (isAdmin) {
           router.replace("/admin");
         } else {
@@ -62,21 +76,24 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
+      const next = readNext();
       const res = await api.login({ email, password });
       if (isTenantSelectionResponse(res)) {
         // Stash the pre_auth_token + tenant list and let the picker page
-        // finish the flow.
+        // finish the flow. Carry `next` along so the destination survives
+        // the tenant-picker hop too.
         sessionStorage.setItem(
           PRE_AUTH_KEY,
           JSON.stringify({
             pre_auth_token: res.pre_auth_token,
             available_tenants: res.available_tenants,
+            next: next ?? undefined,
           }),
         );
         router.push("/login/select-tenant");
         return;
       }
-      finalizeLogin(res, router, qc);
+      finalizeLogin(res, router, qc, next);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se ha podido iniciar sesión");
     } finally {
