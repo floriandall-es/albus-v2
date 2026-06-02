@@ -166,7 +166,14 @@ docker compose -f /srv/albus/repo/infra/docker-compose.prod.yml exec -T db \
    point — a backup on the same disk as the DB is not a backup.
 2. Set a **lifecycle / retention rule on the bucket** (e.g. keep 30 days) — the
    script only prunes the *local* staging copies; S3 retention is the bucket's job.
-3. Install the daily cron (`/etc/cron.d/albus-backup`, as root):
+3. Install the daily cron. **No-sudo (preferred — runs as `deploy`):**
+   `crontab -e` and add:
+   ```cron
+   PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+   14 3 * * * /srv/albus/repo/infra/backup.sh >> /srv/albus/backup.log 2>&1
+   ```
+   (Works because `deploy` is already in the `docker` group and can read
+   `/srv/albus/.env`.) **With root**, equivalently `/etc/cron.d/albus-backup`:
    ```cron
    SHELL=/bin/bash
    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -174,7 +181,7 @@ docker compose -f /srv/albus/repo/infra/docker-compose.prod.yml exec -T db \
    ```
 4. Run it once by hand and confirm the objects land in the bucket:
    ```bash
-   sudo -u deploy /srv/albus/repo/infra/backup.sh
+   /srv/albus/repo/infra/backup.sh
    ```
 
 Alert recipient: alerting on a *failed* run is best done with the
