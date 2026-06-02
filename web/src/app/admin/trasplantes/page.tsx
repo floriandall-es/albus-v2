@@ -91,7 +91,9 @@ export default function TrasplantesPage() {
   const [filterType, setFilterType] = useState<TransplantProcedureType | "">(
     "",
   );
-  const [filterCross, setFilterCross] = useState<"" | "yes" | "no">("");
+  // Estado filter — client-side (estado is derived from notes, no
+  // clean SQL). "" = all.
+  const [filterEstado, setFilterEstado] = useState<"" | EstadoKey>("");
   const [filterFrom, setFilterFrom] = useState<string>("");
   const [filterTo, setFilterTo] = useState<string>("");
 
@@ -132,7 +134,6 @@ export default function TrasplantesPage() {
       "transplants",
       filterPersonId || null,
       filterType || null,
-      filterCross || null,
       filterFrom || null,
       filterTo || null,
     ],
@@ -141,14 +142,17 @@ export default function TrasplantesPage() {
         person_id:
           filterPersonId === "" ? undefined : Number(filterPersonId),
         type: filterType === "" ? undefined : filterType,
-        cross_hospital:
-          filterCross === ""
-            ? undefined
-            : filterCross === "yes",
         from: filterFrom || undefined,
         to: filterTo || undefined,
       }),
   });
+
+  // Estado filter is applied client-side (it's derived from notes).
+  const visibleCases = useMemo(() => {
+    const all = list.data ?? [];
+    if (filterEstado === "") return all;
+    return all.filter((c) => caseEstado(c).key === filterEstado);
+  }, [list.data, filterEstado]);
 
   const [editing, setEditing] = useState<TransplantCase | "new" | null>(null);
 
@@ -161,14 +165,14 @@ export default function TrasplantesPage() {
   const filtersActive =
     filterPersonId !== ""
     || filterType !== ""
-    || filterCross !== ""
+    || filterEstado !== ""
     || filterFrom !== ""
     || filterTo !== "";
 
   function clearFilters() {
     setFilterPersonId("");
     setFilterType("");
-    setFilterCross("");
+    setFilterEstado("");
     setFilterFrom("");
     setFilterTo("");
   }
@@ -180,7 +184,7 @@ export default function TrasplantesPage() {
   // transplants in March").
   const groupedByMonth = useMemo(() => {
     const map = new Map<string, TransplantCase[]>();
-    for (const c of list.data ?? []) {
+    for (const c of visibleCases) {
       const ym = c.occurred_on.slice(0, 7);
       const arr = map.get(ym) ?? [];
       arr.push(c);
@@ -189,7 +193,7 @@ export default function TrasplantesPage() {
     return Array.from(map.entries()).sort((a, b) =>
       b[0].localeCompare(a[0]),
     );
-  }, [list.data]);
+  }, [visibleCases]);
 
   return (
     <>
@@ -245,13 +249,13 @@ export default function TrasplantesPage() {
           <option value="implante">Solo implantes</option>
         </select>
         <select
-          value={filterCross}
-          onChange={(e) => setFilterCross(e.target.value as "" | "yes" | "no")}
+          value={filterEstado}
+          onChange={(e) => setFilterEstado(e.target.value as "" | EstadoKey)}
           className="rounded-md border border-gray-300 bg-white px-2 py-1 text-sm"
         >
-          <option value="">Cross-hospital: cualquiera</option>
-          <option value="yes">Solo cross-hospital</option>
-          <option value="no">Solo locales</option>
+          <option value="">Cualquier estado</option>
+          <option value="completo">Completo</option>
+          <option value="no_valido">No válido</option>
         </select>
         <input
           type="date"
@@ -279,9 +283,9 @@ export default function TrasplantesPage() {
             Limpiar
           </button>
         )}
-        {list.data && list.data.length > 0 && (
+        {list.data && visibleCases.length > 0 && (
           <span className="ml-auto text-xs text-gray-500">
-            {list.data.length} caso{list.data.length === 1 ? "" : "s"}
+            {visibleCases.length} caso{visibleCases.length === 1 ? "" : "s"}
           </span>
         )}
       </div>
@@ -292,7 +296,7 @@ export default function TrasplantesPage() {
       {list.isError && (
         <ErrorText>{(list.error as Error).message}</ErrorText>
       )}
-      {list.data && list.data.length === 0 && (
+      {list.data && visibleCases.length === 0 && (
         <Empty>
           {filtersActive
             ? "Ningún trasplante coincide con los filtros."
@@ -363,6 +367,37 @@ export default function TrasplantesPage() {
   );
 }
 
+// Estado is derived from the case's notes (the special-case checkboxes
+// write canonical phrases there; legacy rows carry them in a procedure
+// note). The three special cases are the only non-default states;
+// anything else is a complete transplant. Shared by the badge + the
+// list filter so they never disagree.
+type EstadoKey = "no_valido" | "envio" | "recibido" | "completo";
+
+function caseEstado(c: TransplantCase): {
+  key: EstadoKey;
+  label: string;
+  tone: "success" | "danger" | "info";
+} {
+  const parts = new Set<string>();
+  if (c.notes) parts.add(c.notes);
+  for (const p of c.procedures) if (p.notes) parts.add(p.notes);
+  const low = Array.from(parts).join(" · ").toLowerCase();
+  if (low.includes("no válido") || low.includes("no valido")) {
+    return { key: "no_valido", label: "No válido", tone: "danger" };
+  }
+  if (
+    low.includes("envío a otro hospital")
+    || low.includes("envio a otro hospital")
+  ) {
+    return { key: "envio", label: "Envío", tone: "info" };
+  }
+  if (low.includes("recibido de otro hospital")) {
+    return { key: "recibido", label: "Recibido", tone: "info" };
+  }
+  return { key: "completo", label: "Completo", tone: "success" };
+}
+
 /** One row per case in the dense list. Both procedures are
  * rendered inline (explante in one column, implante in the next)
  * so the customer can scan a month's worth at a glance. */
@@ -388,27 +423,8 @@ function CaseRow({
   }
   const notes = Array.from(notesSet).join(" · ");
 
-  // Estado badge. The three special cases (set via the checkboxes in
-  // the editor, which write canonical phrases into the notes) are the
-  // only non-default states; everything else is a complete transplant.
-  // Detect on the combined notes so legacy cases (phrase in a procedure
-  // note) light up too.
-  const low = notes.toLowerCase();
-  let statusTone: "success" | "danger" | "info" = "success";
-  let statusLabel: string = "Completo";
-  if (low.includes("no válido") || low.includes("no valido")) {
-    statusTone = "danger";
-    statusLabel = "No válido";
-  } else if (
-    low.includes("envío a otro hospital")
-    || low.includes("envio a otro hospital")
-  ) {
-    statusTone = "info";
-    statusLabel = "Envío";
-  } else if (low.includes("recibido de otro hospital")) {
-    statusTone = "info";
-    statusLabel = "Recibido";
-  }
+  // Estado badge — derived from the notes (see caseEstado).
+  const { label: statusLabel, tone: statusTone } = caseEstado(c);
 
   return (
     <tr className="border-b border-gray-100 last:border-b-0 hover:bg-gray-50/60 transition-colors">
