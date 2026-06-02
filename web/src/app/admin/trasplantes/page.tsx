@@ -21,7 +21,6 @@ import {
   PageHeader,
   Select,
   StatusPill,
-  TextField,
 } from "@/components/admin/ui";
 import { formatLongDate, todayIso } from "@/lib/dates";
 
@@ -387,9 +386,28 @@ function CaseRow({
   }
   const notes = Array.from(notesSet).join(" · ");
 
-  let statusTone: "success" | "warning" | "info" | "neutral" = "neutral";
+  // Estado badge. The three special cases (set via the checkboxes in
+  // the editor, which write canonical phrases into the notes) take
+  // priority over the structural labels — they're what the admin
+  // actually wants to read at a glance. Detect on the combined notes
+  // so legacy cases (phrase in a procedure note) light up too.
+  const low = notes.toLowerCase();
+  let statusTone: "success" | "warning" | "danger" | "info" | "neutral" =
+    "neutral";
   let statusLabel: string = "—";
-  if (c.is_cross_hospital) {
+  if (low.includes("no válido") || low.includes("no valido")) {
+    statusTone = "danger";
+    statusLabel = "No válido";
+  } else if (
+    low.includes("envío a otro hospital")
+    || low.includes("envio a otro hospital")
+  ) {
+    statusTone = "info";
+    statusLabel = "Envío";
+  } else if (low.includes("recibido de otro hospital")) {
+    statusTone = "info";
+    statusLabel = "Recibido";
+  } else if (c.is_cross_hospital) {
     statusTone = "info";
     statusLabel = "Cross-hospital";
   } else if (c.has_explante && c.has_implante) {
@@ -650,6 +668,33 @@ function TransplantEditor({
           if (canSave) save.mutate();
         }}
       >
+        {/* Caso especial — quick toggles at the top. Each writes (or
+            removes) its canonical phrase in the notes; the list view,
+            stats and estado badge all read these phrases. */}
+        <div>
+          <span className="text-sm font-medium text-gray-700">
+            Caso especial
+          </span>
+          <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1.5">
+            {SPECIAL_CASE_NOTES.map((s) => (
+              <label
+                key={s.key}
+                className="flex items-center gap-1.5 text-sm text-gray-700"
+              >
+                <input
+                  type="checkbox"
+                  checked={notesHasPhrase(notes, s.phrase)}
+                  onChange={(e) =>
+                    setNotes((n) => toggleNotePhrase(n, s.phrase, e.target.checked))
+                  }
+                  className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                />
+                {s.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
         <div>
           <label
             htmlFor="case-date"
@@ -703,31 +748,11 @@ function TransplantEditor({
 
         <div className="border-t border-gray-100 pt-3">
           <span className="text-sm font-medium text-gray-700">Notas del caso</span>
-          {/* Quick toggles for the three common special cases — each
-              writes (or removes) its phrase in the notes below. */}
-          <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1.5">
-            {SPECIAL_CASE_NOTES.map((s) => (
-              <label
-                key={s.key}
-                className="flex items-center gap-1.5 text-sm text-gray-700"
-              >
-                <input
-                  type="checkbox"
-                  checked={notesHasPhrase(notes, s.phrase)}
-                  onChange={(e) =>
-                    setNotes((n) => toggleNotePhrase(n, s.phrase, e.target.checked))
-                  }
-                  className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                />
-                {s.label}
-              </label>
-            ))}
-          </div>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
-            className="mt-2 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className="mt-1.5 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
             placeholder="Notas sobre el caso (opcional)…"
           />
         </div>
@@ -760,8 +785,10 @@ function ProcedureRow({
   onChange: (patch: Partial<TransplantProcedureInput>) => void;
   onRemove: (() => void) | null;
 }) {
-  // The date now lives once at the case level — each procedure just
-  // carries its type, surgeons and notes.
+  // The date lives once at the case level and the free-text per-
+  // procedure notes were dropped (the special-case checkboxes cover
+  // the common annotations now) — each procedure is just its type +
+  // surgeons. Any existing proc.notes is preserved through save.
   return (
     <div className="rounded-md border border-gray-200 p-2.5 space-y-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -823,12 +850,6 @@ function ProcedureRow({
           ]}
         />
       </div>
-      <TextField
-        label="Notas del procedimiento"
-        value={proc.notes ?? ""}
-        onChange={(v) => onChange({ notes: v })}
-        placeholder='ej. "Recibido Juan Canalejo", "No válido"…'
-      />
     </div>
   );
 }
