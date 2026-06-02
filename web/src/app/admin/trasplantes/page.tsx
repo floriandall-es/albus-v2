@@ -483,6 +483,39 @@ type EditorSurgeon = {
   display_name: string;
 };
 
+// Three recurring shapes a transplant can take. Each is just a
+// canonical phrase we drop into the case notes (where the list view +
+// stats read it from) — no extra column, so it stays flexible and the
+// admin can still add free text alongside.
+const SPECIAL_CASE_NOTES: { key: string; label: string; phrase: string }[] = [
+  // organ extracted but not transplanted
+  { key: "invalido", label: "No válido", phrase: "No válido" },
+  // we explanted, the organ went to another hospital
+  { key: "enviado", label: "Envío a otro hospital", phrase: "Envío a otro hospital" },
+  // we only implanted an organ received from elsewhere
+  { key: "recibido", label: "Recibido de otro hospital", phrase: "Recibido de otro hospital" },
+];
+
+function notesHasPhrase(notes: string, phrase: string): boolean {
+  return notes.toLowerCase().includes(phrase.toLowerCase());
+}
+
+// Add or remove a canonical phrase from a free-text notes string. On
+// add we prepend it (so it leads the note); on remove we strip the
+// phrase plus any trailing ". " / whitespace separator and tidy up.
+function toggleNotePhrase(notes: string, phrase: string, on: boolean): string {
+  const has = notesHasPhrase(notes, phrase);
+  if (on === has) return notes;
+  if (on) {
+    const rest = notes.trim();
+    return rest ? `${phrase}. ${rest}` : phrase;
+  }
+  return notes
+    .replace(new RegExp(`${phrase}\\.?\\s*`, "i"), "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 function TransplantEditor({
   existing,
   surgeons,
@@ -670,11 +703,31 @@ function TransplantEditor({
 
         <div className="border-t border-gray-100 pt-3">
           <span className="text-sm font-medium text-gray-700">Notas del caso</span>
+          {/* Quick toggles for the three common special cases — each
+              writes (or removes) its phrase in the notes below. */}
+          <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1.5">
+            {SPECIAL_CASE_NOTES.map((s) => (
+              <label
+                key={s.key}
+                className="flex items-center gap-1.5 text-sm text-gray-700"
+              >
+                <input
+                  type="checkbox"
+                  checked={notesHasPhrase(notes, s.phrase)}
+                  onChange={(e) =>
+                    setNotes((n) => toggleNotePhrase(n, s.phrase, e.target.checked))
+                  }
+                  className="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                />
+                {s.label}
+              </label>
+            ))}
+          </div>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
-            className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className="mt-2 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
             placeholder="Notas sobre el caso (opcional)…"
           />
         </div>
