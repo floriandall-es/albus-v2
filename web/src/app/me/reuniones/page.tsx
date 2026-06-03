@@ -211,7 +211,10 @@ function InstanceRow({
   const timeRange = `${inst.start_time.slice(0, 5)}–${inst.end_time.slice(0, 5)}`;
   return (
     <li className="px-4 py-3">
-      <div className="flex items-start justify-between gap-3">
+      {/* Stack on mobile (text full-width, actions in a row below) and
+          only go side-by-side from sm up — otherwise the buttons steal
+          width and the title + date wrap to many lines on a phone. */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
         <div className="min-w-0 flex-1">
           <div
             className={
@@ -222,9 +225,12 @@ function InstanceRow({
             {inst.title}
           </div>
           <div className="mt-0.5 text-xs text-gray-600">
-            {formatLongDate(inst.date)} · {timeRange}
+            {formatLongDate(inst.date)}{" "}
+            <span className="whitespace-nowrap">· {timeRange}</span>
             {inst.kind === "regular" && (
-              <span className="ml-1.5 text-gray-400">(semanal)</span>
+              <span className="ml-1.5 whitespace-nowrap text-gray-400">
+                (semanal)
+              </span>
             )}
           </div>
           {inst.location && (
@@ -242,7 +248,7 @@ function InstanceRow({
           )}
         </div>
         {(onChat || onEdit || onDelete) && (
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             {onChat && (
               <Button
                 variant="secondary"
